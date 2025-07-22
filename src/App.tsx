@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader } from 'lucide-react';
+import { SubscriptionSection } from './components/SubscriptionSection';
+import { ClientPortal } from './components/ClientPortal';
 
 interface FormData {
   name: string;
@@ -25,6 +27,8 @@ interface EnhanceState {
 }
 
 function App() {
+  const [showPortal, setShowPortal] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -41,6 +45,23 @@ function App() {
     isEnhancing: false,
     hasEnhanced: false
   });
+
+  const handleSubscribe = () => {
+    // In a real app, this would integrate with Stripe
+    // For demo purposes, we'll simulate subscription
+    setIsSubscribed(true);
+    setShowPortal(true);
+  };
+
+  const handleLogout = () => {
+    setShowPortal(false);
+    setIsSubscribed(false);
+  };
+
+  // Show client portal if user is subscribed and wants to access it
+  if (showPortal && isSubscribed) {
+    return <ClientPortal onLogout={handleLogout} />;
+  }
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -496,6 +517,9 @@ Enhanced details to consider:
           </div>
         </div>
       </section>
+
+      {/* Subscription Section */}
+      <SubscriptionSection onSubscribe={handleSubscribe} />
 
       {/* Footer */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
