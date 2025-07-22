@@ -344,9 +344,6 @@ Enhanced details to consider:
                   What exactly do you want your AI Sales Agent to do for you? *
                 </label>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm text-gray-400">
-                    The more detail, the better
-                  </p>
                   <button
                     type="button"
                     onClick={enhancePrompt}
