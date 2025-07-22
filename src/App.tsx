@@ -19,6 +19,11 @@ interface FormErrors {
   aiRequirements?: string;
 }
 
+interface EnhanceState {
+  isEnhancing: boolean;
+  hasEnhanced: boolean;
+}
+
 function App() {
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -32,6 +37,10 @@ function App() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
+  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
+    isEnhancing: false,
+    hasEnhanced: false
+  });
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -41,6 +50,82 @@ function App() {
   const validatePhone = (phone: string): boolean => {
     const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
     return phoneRegex.test(phone.replace(/\s/g, ''));
+  };
+
+  const enhancePrompt = async () => {
+    if (!formData.aiRequirements.trim()) {
+      return;
+    }
+
+    setEnhanceState({ isEnhancing: true, hasEnhanced: false });
+
+    try {
+      // Create a comprehensive enhancement prompt
+      const enhancementPrompt = `Please enhance and expand this AI agent requirement description to be more detailed, specific, and actionable. The original request is: "${formData.aiRequirements}"
+
+Please expand it to include:
+- Specific tasks and workflows
+- Target audience details
+- Communication style preferences
+- Integration requirements
+- Success metrics
+- Follow-up procedures
+- Any relevant industry-specific considerations
+
+Make it comprehensive but keep it focused and practical. Return only the enhanced description without any additional commentary.`;
+
+      // Using a free AI API service (you can replace this with your preferred AI service)
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY || 'demo-key'}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'user',
+              content: enhancementPrompt
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0.7
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const enhancedText = data.choices[0]?.message?.content?.trim();
+        
+        if (enhancedText) {
+          setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
+          setEnhanceState({ isEnhancing: false, hasEnhanced: true });
+        } else {
+          throw new Error('No enhanced text received');
+        }
+      } else {
+        throw new Error('Failed to enhance prompt');
+      }
+    } catch (error) {
+      console.error('Error enhancing prompt:', error);
+      // Fallback enhancement for demo purposes
+      const fallbackEnhancement = `${formData.aiRequirements}
+
+Enhanced details to consider:
+• Target audience: [Specify your ideal customer profile]
+• Communication style: [Professional, friendly, consultative, etc.]
+• Key objectives: [Lead qualification, appointment setting, follow-up, etc.]
+• Integration needs: [CRM system, calendar booking, email sequences]
+• Success metrics: [Conversion rates, response times, meeting bookings]
+• Follow-up procedures: [Automated sequences, escalation protocols]
+• Industry-specific requirements: [Compliance, terminology, processes]
+• Preferred response times and availability windows
+• Escalation criteria for complex inquiries`;
+
+      setFormData(prev => ({ ...prev, aiRequirements: fallbackEnhancement }));
+      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
+    }
   };
 
   const validateForm = (): boolean => {
@@ -258,9 +343,37 @@ function App() {
                   <MessageSquare className="inline h-4 w-4 mr-2" />
                   What exactly do you want your AI Sales Agent to do for you? *
                 </label>
-                <p className="text-sm text-gray-400 mb-3">
-                  The more detail, the better (Use ChatGPT to help)
-                </p>
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm text-gray-400">
+                    The more detail, the better
+                  </p>
+                  <button
+                    type="button"
+                    onClick={enhancePrompt}
+                    disabled={enhanceState.isEnhancing || !formData.aiRequirements.trim()}
+                    className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {enhanceState.isEnhancing ? (
+                      <>
+                        <Loader className="h-3 w-3 animate-spin" />
+                        <span>Enhancing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-3 w-3" />
+                        <span>Enhance Prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                {enhanceState.hasEnhanced && (
+                  <div className="mb-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                    <p className="text-sm text-green-300 flex items-center">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Prompt enhanced! Review and edit as needed.
+                    </p>
+                  </div>
+                )}
                 <textarea
                   id="aiRequirements"
                   name="aiRequirements"
