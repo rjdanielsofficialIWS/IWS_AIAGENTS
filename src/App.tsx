@@ -239,12 +239,12 @@ Enhanced details to consider:
       if (success) {
         setSubmitStatus('success');
         setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          business: '',
-          services: '',
-          aiRequirements: ''
+          name: 'name',
+          email: 'email',
+          phone: 'phone',
+          business: 'business',
+          services: 'services',
+          aiRequirements: 'requirements'
         });
       } else {
         setSubmitStatus('error');
