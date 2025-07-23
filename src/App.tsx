@@ -366,6 +366,9 @@ function App() {
                       </>
                     ) : (
                       <>
+                       <div className="w-4 h-4 bg-blue-500 rounded-sm flex items-center justify-center mr-1">
+                         <span className="text-white text-xs font-bold">✨</span>
+                       </div>
                         <Sparkles className="h-4 w-4" />
                         <span>Enhance with AI</span>
                       </>
