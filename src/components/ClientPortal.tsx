@@ -12,7 +12,6 @@ interface ClientPortalProps {
 export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
   const [agents, setAgents] = useState<AIAgent[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   const [selectedAgent, setSelectedAgent] = useState<AIAgent | null>(null);
   const [agentConfig, setAgentConfig] = useState({
@@ -46,9 +45,8 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
       setLoading(true);
       const agentsData = await blandAI.getAgents();
       setAgents(agentsData);
-      setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load agents');
+      console.error('Failed to load agents:', err);
     } finally {
       setLoading(false);
     }
@@ -66,7 +64,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
         a.id === agentId ? { ...a, status: newStatus } : a
       ));
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update agent status');
+      console.error('Failed to update agent status:', err);
     }
   };
 
@@ -83,7 +81,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
         setShowForm(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete agent');
+      console.error('Failed to delete agent:', err);
     }
   };
 
@@ -105,7 +103,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
       setShowForm(false);
       resetAgentConfig();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save agent');
+      console.error('Failed to save agent:', err);
     } finally {
       setIsCreatingAgent(false);
     }
@@ -216,19 +214,6 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
       </header>
 
       <div className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {error && (
-          <div className="mb-8 bg-red-500/10 border border-red-500/50 rounded-lg p-4 flex items-center space-x-3">
-            <AlertCircle className="h-6 w-6 text-red-400" />
-            <p className="text-red-300">{error}</p>
-            <button 
-              onClick={() => setError(null)}
-              className="ml-auto text-red-400 hover:text-red-300"
-            >
-              ×
-            </button>
-          </div>
-        )}
-
         {/* Main Content */}
         <div className="space-y-8">
           {/* Header Section */}
