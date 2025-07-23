@@ -30,12 +30,12 @@ function App() {
   const [showPortal, setShowPortal] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [formData, setFormData] = useState<FormData>({
-    name: '',
-    email: '',
-    phone: '',
-    business: '',
-    services: '',
-    aiRequirements: ''
+    name: 'name',
+    email: 'email',
+    phone: 'phone',
+    business: 'business',
+    services: 'services',
+    aiRequirements: 'requirements'
   });
   
   const [errors, setErrors] = useState<FormErrors>({});
