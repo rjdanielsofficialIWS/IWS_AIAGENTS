@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
+import { AuthCallback } from './components/AuthCallback';
 
 interface FormData {
   name: string;
@@ -27,6 +28,9 @@ interface EnhanceState {
 }
 
 function App() {
+  // Check if we're on the auth callback route
+  const isAuthCallback = window.location.pathname === '/auth/callback';
+  
   const [showPortal, setShowPortal] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [formData, setFormData] = useState<FormData>({
@@ -57,6 +61,17 @@ function App() {
     setShowPortal(false);
     setIsSubscribed(false);
   };
+
+  const handleAuthReturn = () => {
+    // Clear the callback URL and return to portal
+    window.history.replaceState({}, '', '/');
+    setShowPortal(true);
+  };
+
+  // Show auth callback if we're on the callback route
+  if (isAuthCallback) {
+    return <AuthCallback onReturn={handleAuthReturn} />;
+  }
 
   // Show client portal if user is subscribed and wants to access it
   if (showPortal && isSubscribed) {
