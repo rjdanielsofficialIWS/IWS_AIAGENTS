@@ -35,15 +35,28 @@ export const AuthCallback: React.FC<AuthCallbackProps> = ({ onReturn }) => {
         console.log('Authorization code received:', code);
         console.log('Service state:', state);
 
-        // TODO: Send the authorization code to backend (Supabase Edge Function)
-        // For now, we'll simulate the process
-        setMessage('Authorization code received successfully!');
+        // Send the authorization code to backend (Supabase Edge Function)
+        setMessage('Exchanging authorization code for tokens...');
         
-        // Simulate backend processing
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        setStatus('success');
-        setMessage(`Successfully connected to Google ${state || 'services'}!`);
+        const response = await fetch('/functions/v1/google-oauth', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            code: code,
+            service: state || 'google'
+          })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+          setStatus('success');
+          setMessage(`Successfully connected to Google ${state || 'services'}!`);
+        } else {
+          throw new Error(result.error || 'Failed to exchange tokens');
+        }
 
         // Auto-redirect back to portal after 3 seconds
         setTimeout(() => {
