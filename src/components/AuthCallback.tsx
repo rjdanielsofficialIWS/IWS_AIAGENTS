@@ -38,14 +38,20 @@ export const AuthCallback: React.FC<AuthCallbackProps> = ({ onReturn }) => {
         // Send the authorization code to backend (Supabase Edge Function)
         setMessage('Exchanging authorization code for tokens...');
         
-        const response = await fetch('/functions/v1/google-oauth', {
+        // Get current user (you'll need to implement user authentication)
+        // For now, we'll use a placeholder - you should replace this with actual user ID
+        const userId = 'placeholder-user-id'; // TODO: Get from Supabase Auth
+        
+        const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-oauth`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
           },
           body: JSON.stringify({
             code: code,
-            service: state || 'google'
+            service: state || 'google',
+            userId: userId
           })
         });
 

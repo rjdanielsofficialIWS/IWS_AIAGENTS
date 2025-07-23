@@ -1,4 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -12,11 +12,20 @@ serve(async (req) => {
   }
 
   try {
-    const { code, service } = await req.json()
+    const { code, service, userId } = await req.json()
 
     if (!code) {
       throw new Error('Authorization code is required')
     }
+
+    if (!userId) {
+      throw new Error('User ID is required')
+    }
+
+    // Initialize Supabase client
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
     // Exchange authorization code for tokens
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
@@ -41,10 +50,30 @@ serve(async (req) => {
 
     const tokens = await tokenResponse.json()
 
-    // TODO: Store tokens securely in Supabase database
-    // For now, we'll just return success
-    console.log('Tokens received for service:', service)
-    console.log('Access token (first 20 chars):', tokens.access_token?.substring(0, 20))
+    // Calculate token expiration time
+    const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000))
+
+    // Store tokens in database
+    const { error: dbError } = await supabase
+      .from('user_google_tokens')
+      .upsert({
+        user_id: userId,
+        service: service,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token || null,
+        expires_at: expiresAt.toISOString(),
+        scope: tokens.scope || null,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,service'
+      })
+
+    if (dbError) {
+      console.error('Database error:', dbError)
+      throw new Error(`Failed to store tokens: ${dbError.message}`)
+    }
+
+    console.log(`Successfully stored ${service} tokens for user ${userId}`)
 
     return new Response(
       JSON.stringify({
