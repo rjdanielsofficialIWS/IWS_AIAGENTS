@@ -1,8 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock } from 'lucide-react';
-import { SubscriptionSection } from './components/SubscriptionSection';
-import { ClientPortal } from './components/ClientPortal';
-import { supabase } from './services/blandAI';
+import { Brain, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Zap } from 'lucide-react';
 
 interface FormData {
   name: string;
@@ -22,18 +19,7 @@ interface FormErrors {
   aiRequirements?: string;
 }
 
-interface EnhanceState {
-  isEnhancing: boolean;
-  hasEnhanced: boolean;
-}
-
 function App() {
-  const [showPortal, setShowPortal] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
-  const [showAuthForm, setShowAuthForm] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '' });
-  const [authLoading, setAuthLoading] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -45,142 +31,6 @@ function App() {
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
-  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
-    isEnhancing: false,
-    hasEnhanced: false
-  });
-
-  const handleSubscribe = () => {
-    setIsSubscribed(true);
-    setShowPortal(true);
-  };
-
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthLoading(true);
-    // Add auth logic here
-    setAuthLoading(false);
-  };
-
-  const handleLogout = () => {
-    setShowPortal(false);
-  };
-
-  // Show client portal if user is subscribed and wants to access it
-  if (showPortal && isSubscribed) {
-    return <ClientPortal onLogout={handleLogout} />;
-  }
-  
-  // Show authentication form
-  if (showAuthForm) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center px-4">
-        <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center space-x-3 mb-4">
-              <Brain className="h-8 w-8 text-yellow-400" />
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-                Infinite Wealth Solutions
-              </h1>
-            </div>
-            <h2 className="text-xl font-semibold mb-2">
-              {isSignUp ? 'Create Account' : 'Sign In'}
-            </h2>
-            <p className="text-gray-400">
-              {isSignUp ? 'Get started with your AI agent' : 'Access your AI agent dashboard'}
-            </p>
-          </div>
-
-          <form onSubmit={handleAuth} className="space-y-6">
-            <div>
-              <label htmlFor="auth-email" className="block text-sm font-medium text-gray-300 mb-2">
-                <Mail className="inline h-4 w-4 mr-2" />
-                Email
-              </label>
-              <input
-                type="email"
-                id="auth-email"
-                value={authForm.email}
-                onChange={(e) => setAuthForm(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
-                placeholder="your@email.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="auth-password" className="block text-sm font-medium text-gray-300 mb-2">
-                <Lock className="inline h-4 w-4 mr-2" />
-                Password
-              </label>
-              <input
-                type="password"
-                id="auth-password"
-                value={authForm.password}
-                onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
-                placeholder="Enter your password"
-                required
-                minLength={6}
-              />
-            </div>
-
-            {isSignUp && (
-              <div>
-                <label htmlFor="auth-confirm-password" className="block text-sm font-medium text-gray-300 mb-2">
-                  <Lock className="inline h-4 w-4 mr-2" />
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  id="auth-confirm-password"
-                  value={authForm.confirmPassword}
-                  onChange={(e) => setAuthForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
-                  placeholder="Confirm your password"
-                  required
-                  minLength={6}
-                />
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
-              {authLoading ? (
-                <span className="flex items-center justify-center space-x-2">
-                  <Loader className="h-5 w-5 animate-spin" />
-                  <span>{isSignUp ? 'Creating Account...' : 'Signing In...'}</span>
-                </span>
-              ) : (
-                isSignUp ? 'Create Account' : 'Sign In'
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-blue-400 hover:text-blue-300 transition-colors"
-            >
-              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-            </button>
-          </div>
-
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => setShowAuthForm(false)}
-              className="text-gray-400 hover:text-gray-300 transition-colors text-sm"
-            >
-              ← Back to main page
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -190,82 +40,6 @@ function App() {
   const validatePhone = (phone: string): boolean => {
     const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
     return phoneRegex.test(phone.replace(/\s/g, ''));
-  };
-
-  const enhancePrompt = async () => {
-    if (!formData.aiRequirements.trim()) {
-      return;
-    }
-
-    setEnhanceState({ isEnhancing: true, hasEnhanced: false });
-
-    try {
-      // Create a comprehensive enhancement prompt
-      const enhancementPrompt = `Please enhance and expand this AI agent requirement description to be more detailed, specific, and actionable. The original request is: "${formData.aiRequirements}"
-
-Please expand it to include:
-- Specific tasks and workflows
-- Target audience details
-- Communication style preferences
-- Integration requirements
-- Success metrics
-- Follow-up procedures
-- Any relevant industry-specific considerations
-
-Make it comprehensive but keep it focused and practical. Return only the enhanced description without any additional commentary.`;
-
-      // Using a free AI API service (you can replace this with your preferred AI service)
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY || 'demo-key'}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'user',
-              content: enhancementPrompt
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.7
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const enhancedText = data.choices[0]?.message?.content?.trim();
-        
-        if (enhancedText) {
-          setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
-          setEnhanceState({ isEnhancing: false, hasEnhanced: true });
-        } else {
-          throw new Error('No enhanced text received');
-        }
-      } else {
-        throw new Error('Failed to enhance prompt');
-      }
-    } catch (error) {
-      console.error('Error enhancing prompt:', error);
-      // Fallback enhancement for demo purposes
-      const fallbackEnhancement = `${formData.aiRequirements}
-
-Enhanced details to consider:
-• Target audience: [Specify your ideal customer profile]
-• Communication style: [Professional, friendly, consultative, etc.]
-• Key objectives: [Lead qualification, appointment setting, follow-up, etc.]
-• Integration needs: [CRM system, calendar booking, email sequences]
-• Success metrics: [Conversion rates, response times, meeting bookings]
-• Follow-up procedures: [Automated sequences, escalation protocols]
-• Industry-specific requirements: [Compliance, terminology, processes]
-• Preferred response times and availability windows
-• Escalation criteria for complex inquiries`;
-
-      setFormData(prev => ({ ...prev, aiRequirements: fallbackEnhancement }));
-      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
-    }
   };
 
   const validateForm = (): boolean => {
@@ -313,14 +87,13 @@ Enhanced details to consider:
     }
   };
 
-  const submitToGoogleSheets = async (data: FormData): Promise<boolean> => {
+  const submitToWebhook = async (data: FormData): Promise<boolean> => {
     try {
-      // Replace with your Google Apps Script Web App URL
-      const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznqxRBfCu6PDtgyDXP8IYtFfEF_c1GsHlamgmw26EAkao8JwXTDtV8ZGpjA5uOKBuV/exec';
+      // Send to Make.com webhook
+      const WEBHOOK_URL = 'https://hook.us2.make.com/xbuqqbpezff1lsgmwqxjkdm3qpwl93qt';
       
-      const response = await fetch(GOOGLE_SCRIPT_URL, {
+      const webhookResponse = await fetch(WEBHOOK_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
           'Content-Type': 'application/json',
         },
@@ -335,7 +108,29 @@ Enhanced details to consider:
         })
       });
 
-      return true; // With no-cors mode, we can't check response.ok, so assume success
+      // Also send to Google Sheets as backup
+      const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznqxRBfCu6PDtgyDXP8IYtFfEF_c1GsHlamgmw26EAkao8JwXTDtV8ZGpjA5uOKBuV/exec';
+      
+      fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          business: data.business,
+          services: data.services,
+          aiRequirements: data.aiRequirements,
+          timestamp: new Date().toISOString()
+        })
+      }).catch(error => {
+        console.log('Google Sheets backup failed:', error);
+      });
+
+      return webhookResponse.ok;
     } catch (error) {
       console.error('Error submitting form:', error);
       return false;
@@ -353,7 +148,7 @@ Enhanced details to consider:
     setSubmitStatus(null);
 
     try {
-      const success = await submitToGoogleSheets(formData);
+      const success = await submitToWebhook(formData);
       
       if (success) {
         setSubmitStatus('success');
@@ -483,34 +278,6 @@ Enhanced details to consider:
                   <MessageSquare className="inline h-4 w-4 mr-2" />
                   What exactly do you want your AI Sales Agent to do for you? *
                 </label>
-                <div className="flex items-center justify-between mb-3">
-                  <button
-                    type="button"
-                    onClick={enhancePrompt}
-                    disabled={enhanceState.isEnhancing || !formData.aiRequirements.trim()}
-                    className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {enhanceState.isEnhancing ? (
-                      <>
-                        <Loader className="h-3 w-3 animate-spin" />
-                        <span>Enhancing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="h-3 w-3" />
-                        <span>Enhance Prompt</span>
-                      </>
-                    )}
-                  </button>
-                </div>
-                {enhanceState.hasEnhanced && (
-                  <div className="mb-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
-                    <p className="text-sm text-green-300 flex items-center">
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Prompt enhanced! Review and edit as needed.
-                    </p>
-                  </div>
-                )}
                 <textarea
                   id="aiRequirements"
                   name="aiRequirements"
@@ -636,9 +403,6 @@ Enhanced details to consider:
           </div>
         </div>
       </section>
-
-      {/* Subscription Section */}
-      <SubscriptionSection onSubscribe={handleSubscribe} />
 
       {/* Footer */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
