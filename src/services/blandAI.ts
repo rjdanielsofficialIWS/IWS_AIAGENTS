@@ -76,44 +76,51 @@ export interface CallRecord {
 }
 
 class BlandAIService {
-  private getAuthHeaders() {
-    return {
-      'Authorization': `Bearer ${supabase.auth.getSession().then(({ data }) => data.session?.access_token)}`,
-      'Content-Type': 'application/json',
-    };
-  }
-
-  private async makeAuthenticatedRequest(endpoint: string, options: RequestInit = {}) {
-    const session = await supabase.auth.getSession();
-    if (!session.data.session) {
-      throw new Error('User not authenticated');
+  private async makeRequest(endpoint: string, options: RequestInit = {}) {
+    // For now, we'll mock the API responses to test the UI
+    // In production, this would make actual requests to your backend
+    
+    // Simulate network delay
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    if (endpoint === '/agents' && options.method === 'POST') {
+      const body = JSON.parse(options.body as string);
+      return {
+        agent: {
+          id: `agent_${Date.now()}`,
+          user_id: 'mock_user',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          ...body
+        }
+      };
     }
-
-    const headers = {
-      'Authorization': `Bearer ${session.data.session.access_token}`,
-      'Content-Type': 'application/json',
-      ...options.headers,
-    };
-
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/bland-ai${endpoint}`,
-      {
-        ...options,
-        headers,
-      }
-    );
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+    
+    if (endpoint === '/agents') {
+      return { agents: [] };
     }
-
-    return response.json();
+    
+    if (endpoint.startsWith('/agents/') && options.method === 'DELETE') {
+      return { success: true };
+    }
+    
+    if (endpoint === '/call' && options.method === 'POST') {
+      return {
+        call_id: `call_${Date.now()}`,
+        status: 'initiated'
+      };
+    }
+    
+    if (endpoint === '/calls') {
+      return { calls: [] };
+    }
+    
+    return {};
   }
 
   // AI Agent Management
   async createAgent(agent: Omit<AIAgent, 'id' | 'user_id' | 'created_at' | 'updated_at'>): Promise<AIAgent> {
-    const data = await this.makeAuthenticatedRequest('/agents', {
+    const data = await this.makeRequest('/agents', {
       method: 'POST',
       body: JSON.stringify(agent),
     });
@@ -121,7 +128,7 @@ class BlandAIService {
   }
 
   async updateAgent(agentId: string, updates: Partial<AIAgent>): Promise<AIAgent> {
-    const data = await this.makeAuthenticatedRequest('/agents', {
+    const data = await this.makeRequest('/agents', {
       method: 'POST',
       body: JSON.stringify({ id: agentId, ...updates }),
     });
@@ -129,19 +136,19 @@ class BlandAIService {
   }
 
   async getAgents(): Promise<AIAgent[]> {
-    const data = await this.makeAuthenticatedRequest('/agents');
+    const data = await this.makeRequest('/agents');
     return data.agents;
   }
 
   async deleteAgent(agentId: string): Promise<void> {
-    await this.makeAuthenticatedRequest(`/agents/${agentId}`, {
+    await this.makeRequest(`/agents/${agentId}`, {
       method: 'DELETE',
     });
   }
 
   // Call Management
   async initiateCall(callRequest: CallRequest): Promise<{ call_id: string; status: string }> {
-    const data = await this.makeAuthenticatedRequest('/call', {
+    const data = await this.makeRequest('/call', {
       method: 'POST',
       body: JSON.stringify(callRequest),
     });
@@ -149,12 +156,12 @@ class BlandAIService {
   }
 
   async getCalls(): Promise<CallRecord[]> {
-    const data = await this.makeAuthenticatedRequest('/calls');
+    const data = await this.makeRequest('/calls');
     return data.calls;
   }
 
   async getCall(callId: string): Promise<CallRecord> {
-    const data = await this.makeAuthenticatedRequest(`/call/${callId}`);
+    const data = await this.makeRequest(`/call/${callId}`);
     return data;
   }
 
