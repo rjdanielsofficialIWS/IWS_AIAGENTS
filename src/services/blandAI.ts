@@ -80,10 +80,18 @@ class BlandAIService {
     const baseUrl = `${supabaseUrl}/functions/v1/bland-ai`;
     const url = `${baseUrl}${endpoint}`;
     
+    // Get the current session
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      throw new Error('No active session. Please log in first.');
+    }
+
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
         ...options.headers,
       },
     });
