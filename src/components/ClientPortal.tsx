@@ -3,12 +3,10 @@ import {
   Brain, Settings, Phone, MessageSquare, Calendar, Mail, Table, Video,
   User, LogOut, CheckCircle, AlertCircle
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
-interface ClientPortalProps {
-  onLogout: () => void;
-}
-
-export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
+export const ClientPortal: React.FC = () => {
+  const { user, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState('connections');
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [isZoomConnected, setIsZoomConnected] = useState(false);
@@ -16,6 +14,10 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
   const [isSheetsConnected, setIsSheetsConnected] = useState(false);
   const [isCalendarConnected, setIsCalendarConnected] = useState(false);
   const [isMeetConnected, setIsMeetConnected] = useState(false);
+
+  const handleLogout = async () => {
+    await signOut();
+  };
 
   const tabs = [
     { id: 'connections', label: 'Connections', icon: Settings }
@@ -230,10 +232,10 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 text-sm text-gray-300">
                 <User className="h-4 w-4" />
-                <span>Premium Account</span>
+                <span>{user?.email}</span>
               </div>
               <button
-                onClick={onLogout}
+                onClick={handleLogout}
                 className="flex items-center space-x-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors"
               >
                 <LogOut className="h-4 w-4" />

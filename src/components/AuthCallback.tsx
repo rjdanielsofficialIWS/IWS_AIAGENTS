@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { Brain, CheckCircle, AlertCircle, Loader, ArrowLeft } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AuthCallbackProps {
   onReturn: () => void;
 }
 
 export const AuthCallback: React.FC<AuthCallbackProps> = ({ onReturn }) => {
+  const { user } = useAuth();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [message, setMessage] = useState('Processing authentication...');
   const [authCode, setAuthCode] = useState<string | null>(null);
@@ -35,12 +37,14 @@ export const AuthCallback: React.FC<AuthCallbackProps> = ({ onReturn }) => {
         console.log('Authorization code received:', code);
         console.log('Service state:', state);
 
+        if (!user) {
+          setStatus('error');
+          setMessage('You must be logged in to connect Google services');
+          return;
+        }
+
         // Send the authorization code to backend (Supabase Edge Function)
         setMessage('Exchanging authorization code for tokens...');
-        
-        // Get current user (you'll need to implement user authentication)
-        // For now, we'll use a placeholder - you should replace this with actual user ID
-        const userId = 'placeholder-user-id'; // TODO: Get from Supabase Auth
         
         const response = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-oauth`, {
           method: 'POST',
@@ -51,7 +55,7 @@ export const AuthCallback: React.FC<AuthCallbackProps> = ({ onReturn }) => {
           body: JSON.stringify({
             code: code,
             service: state || 'google',
-            userId: userId
+            userId: user.id
           })
         });
 
