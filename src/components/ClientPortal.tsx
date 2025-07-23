@@ -206,9 +206,9 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
                         voice: 'sarah',
                         responseTime: 'immediate',
                         workingHours: '9am-5pm',
-                        script: '',
-                        objectives: '',
-                        escalationRules: '',
+                        script: 'script',
+                        objectives: 'objectives',
+                        escalationRules: 'escalationrules',
                         integrations: { crm: false, calendar: false, email: false }
                       });
                     }}
