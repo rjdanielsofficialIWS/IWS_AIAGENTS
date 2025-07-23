@@ -62,16 +62,31 @@ serve(async (req) => {
   }
 
   try {
+    // Get authorization header from request
+    const authHeader = req.headers.get('Authorization')
+    
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        global: {
+          headers: authHeader ? { Authorization: authHeader } : {}
+        }
+      }
     )
+
+    // Get authenticated user
+    const { data: { user }, error: userError } = await supabaseClient.auth.getUser()
+    
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      )
+    }
 
     const url = new URL(req.url)
     const path = url.pathname
-
-    // Test user ID for bypassing authentication
-    const TEST_USER_ID = '00000000-0000-0000-0000-000000000000'
 
     // Route: POST /bland-ai/call - Initiate outbound call
     if (path === '/bland-ai/call' && req.method === 'POST') {
@@ -106,7 +121,7 @@ serve(async (req) => {
       const { error: dbError } = await supabaseClient
         .from('ai_agent_calls')
         .insert({
-          user_id: TEST_USER_ID,
+          user_id: user.id,
           call_id: blandData.call_id,
           phone_number: callRequest.phone_number,
           task: callRequest.task,
@@ -163,7 +178,7 @@ serve(async (req) => {
       const { data: calls, error: callsError } = await supabaseClient
         .from('ai_agent_calls')
         .select('*')
-        .eq('user_id', TEST_USER_ID)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (callsError) {
@@ -212,7 +227,7 @@ serve(async (req) => {
       const { data, error } = await supabaseClient
         .from('ai_agents')
         .upsert({
-          user_id: TEST_USER_ID,
+          user_id: user.id,
           ...agentConfig,
           updated_at: new Date().toISOString()
         })
@@ -236,7 +251,7 @@ serve(async (req) => {
       const { data: agents, error: agentsError } = await supabaseClient
         .from('ai_agents')
         .select('*')
-        .eq('user_id', TEST_USER_ID)
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (agentsError) {
