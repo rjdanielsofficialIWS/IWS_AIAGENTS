@@ -29,6 +29,23 @@ interface EnhanceState {
 
 function App() {
   const [showPortal, setShowPortal] = useState(false);
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
+    email: '',
+    phone: '',
+    business: '',
+    services: '',
+    aiRequirements: ''
+  });
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
+  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
+    isEnhancing: false,
+    hasEnhanced: false
+  });
+
+  const handleSubscribe = () => {
     setShowPortal(true);
   };
 
@@ -217,12 +234,12 @@ Enhanced details to consider:
       if (success) {
         setSubmitStatus('success');
         setFormData({
-          name: 'name',
-          email: 'email',
-          phone: 'phone',
-          business: 'business',
-          services: 'services',
-          aiRequirements: 'requirements'
+          name: '',
+          email: '',
+          phone: '',
+          business: '',
+          services: '',
+          aiRequirements: ''
         });
       } else {
         setSubmitStatus('error');
