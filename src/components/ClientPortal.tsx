@@ -45,14 +45,14 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
 
   const [selectedAgent, setSelectedAgent] = useState<AIAgent | null>(null);
   const [agentConfig, setAgentConfig] = useState({
-    name: '',
+    name: 'name',
     personality: 'professional',
     voice: 'sarah',
     responseTime: 'immediate',
     workingHours: '9am-5pm',
-    script: '',
-    objectives: '',
-    escalationRules: '',
+    script: 'script',
+    objectives: 'objectives',
+    escalationRules: 'escalationrules',
     integrations: {
       crm: false,
       calendar: false,
