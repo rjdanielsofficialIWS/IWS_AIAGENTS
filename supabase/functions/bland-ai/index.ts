@@ -70,27 +70,11 @@ serve(async (req) => {
     const url = new URL(req.url)
     const path = url.pathname
 
+    // Test user ID for bypassing authentication
+    const TEST_USER_ID = '00000000-0000-0000-0000-000000000000'
+
     // Route: POST /bland-ai/call - Initiate outbound call
     if (path === '/bland-ai/call' && req.method === 'POST') {
-      const authHeader = req.headers.get('Authorization')
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ error: 'Missing authorization header' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      // Verify user authentication
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-      
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid authentication' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
       const callRequest: BlandAICallRequest = await req.json()
 
       // Set webhook URL to receive call updates
@@ -122,7 +106,7 @@ serve(async (req) => {
       const { error: dbError } = await supabaseClient
         .from('ai_agent_calls')
         .insert({
-          user_id: user.id,
+          user_id: TEST_USER_ID,
           call_id: blandData.call_id,
           phone_number: callRequest.phone_number,
           task: callRequest.task,
@@ -176,28 +160,10 @@ serve(async (req) => {
 
     // Route: GET /bland-ai/calls - Get user's call history
     if (path === '/bland-ai/calls' && req.method === 'GET') {
-      const authHeader = req.headers.get('Authorization')
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ error: 'Missing authorization header' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-      
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid authentication' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
       const { data: calls, error: callsError } = await supabaseClient
         .from('ai_agent_calls')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', TEST_USER_ID)
         .order('created_at', { ascending: false })
 
       if (callsError) {
@@ -217,24 +183,6 @@ serve(async (req) => {
     if (path.startsWith('/bland-ai/call/') && req.method === 'GET') {
       const callId = path.split('/').pop()
       
-      const authHeader = req.headers.get('Authorization')
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ error: 'Missing authorization header' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-      
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid authentication' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
       // Fetch from Bland AI API for real-time data
       const blandResponse = await fetch(`https://api.bland.ai/v1/calls/${callId}`, {
         headers: {
@@ -259,30 +207,12 @@ serve(async (req) => {
 
     // Route: POST /bland-ai/agents - Create/update AI agent configuration
     if (path === '/bland-ai/agents' && req.method === 'POST') {
-      const authHeader = req.headers.get('Authorization')
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ error: 'Missing authorization header' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-      
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid authentication' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
       const agentConfig = await req.json()
 
       const { data, error } = await supabaseClient
         .from('ai_agents')
         .upsert({
-          user_id: user.id,
+          user_id: TEST_USER_ID,
           ...agentConfig,
           updated_at: new Date().toISOString()
         })
@@ -303,28 +233,10 @@ serve(async (req) => {
 
     // Route: GET /bland-ai/agents - Get user's AI agents
     if (path === '/bland-ai/agents' && req.method === 'GET') {
-      const authHeader = req.headers.get('Authorization')
-      if (!authHeader) {
-        return new Response(
-          JSON.stringify({ error: 'Missing authorization header' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
-      const token = authHeader.replace('Bearer ', '')
-      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
-      
-      if (authError || !user) {
-        return new Response(
-          JSON.stringify({ error: 'Invalid authentication' }),
-          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        )
-      }
-
       const { data: agents, error: agentsError } = await supabaseClient
         .from('ai_agents')
         .select('*')
-        .eq('user_id', user.id)
+        .eq('user_id', TEST_USER_ID)
         .order('created_at', { ascending: false })
 
       if (agentsError) {

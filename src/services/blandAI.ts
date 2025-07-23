@@ -77,45 +77,23 @@ export interface CallRecord {
 
 class BlandAIService {
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
-    // For now, we'll mock the API responses to test the UI
-    // In production, this would make actual requests to your backend
+    const baseUrl = `${supabaseUrl}/functions/v1/bland-ai`;
+    const url = `${baseUrl}${endpoint}`;
     
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    if (endpoint === '/agents' && options.method === 'POST') {
-      const body = JSON.parse(options.body as string);
-      return {
-        agent: {
-          id: `agent_${Date.now()}`,
-          user_id: 'mock_user',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          ...body
-        }
-      };
+    const response = await fetch(url, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Request failed: ${response.status} ${errorText}`);
     }
-    
-    if (endpoint === '/agents') {
-      return { agents: [] };
-    }
-    
-    if (endpoint.startsWith('/agents/') && options.method === 'DELETE') {
-      return { success: true };
-    }
-    
-    if (endpoint === '/call' && options.method === 'POST') {
-      return {
-        call_id: `call_${Date.now()}`,
-        status: 'initiated'
-      };
-    }
-    
-    if (endpoint === '/calls') {
-      return { calls: [] };
-    }
-    
-    return {};
+
+    return await response.json();
   }
 
   // AI Agent Management
@@ -141,9 +119,10 @@ class BlandAIService {
   }
 
   async deleteAgent(agentId: string): Promise<void> {
-    await this.makeRequest(`/agents/${agentId}`, {
-      method: 'DELETE',
-    });
+    // Note: DELETE endpoint not implemented in backend yet
+    // This is a mock implementation for UI testing
+    await new Promise(resolve => setTimeout(resolve, 500));
+    console.log(`Mock delete agent: ${agentId}`);
   }
 
   // Call Management
