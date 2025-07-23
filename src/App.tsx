@@ -51,6 +51,7 @@ function App() {
   });
 
   const handleSubscribe = () => {
+    setIsSubscribed(true);
     setShowPortal(true);
   };
 
