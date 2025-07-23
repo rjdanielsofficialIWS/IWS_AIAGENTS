@@ -39,7 +39,7 @@ export const Auth: React.FC = () => {
       } else if (isSignUp) {
         setMessage({ 
           type: 'success', 
-          text: 'Account created successfully! You can now sign in.' 
+          text: 'Account created successfully! Please check your email to confirm your account before signing in.' 
         })
         setIsSignUp(false)
         setPassword('')
