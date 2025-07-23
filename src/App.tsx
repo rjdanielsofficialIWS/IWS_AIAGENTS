@@ -112,11 +112,11 @@ function App() {
           'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model: 'gpt-3.5-turbo',
           messages: [
             {
               role: 'system',
-              content: 'You are an expert AI consultant specializing in sales automation and AI agent development. Your task is to enhance and expand user requirements for AI sales agents to be more comprehensive, specific, and actionable.'
+              content: 'You are an expert AI consultant specializing in sales automation and AI agent development. Your task is to enhance and expand user requirements for AI sales agents to be more comprehensive, specific, and actionable. Do not include any conversational preambles or acknowledgments. Provide only the enhanced text directly.'
             },
             {
               role: 'user',
