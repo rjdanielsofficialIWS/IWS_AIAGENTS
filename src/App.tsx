@@ -1,10 +1,7 @@
 import React, { useState } from 'react';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader } from 'lucide-react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { Auth } from './components/Auth';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
-import { AuthCallback } from './components/AuthCallback';
 
 interface FormData {
   name: string;
@@ -29,12 +26,9 @@ interface EnhanceState {
   hasEnhanced: boolean;
 }
 
-function AppContent() {
-  const { user, loading } = useAuth();
-  
-  // Check if we're on the auth callback route
-  const isAuthCallback = window.location.pathname === '/auth/callback';
-  
+function App() {
+  const [showPortal, setShowPortal] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: 'name',
     email: 'email',
@@ -52,36 +46,21 @@ function AppContent() {
     hasEnhanced: false
   });
 
-  const handleAuthReturn = () => {
-    // Clear the callback URL and return to portal
-    window.history.replaceState({}, '', '/');
+  const handleSubscribe = () => {
+    // In a real app, this would integrate with Stripe
+    // For demo purposes, we'll simulate subscription
+    setIsSubscribed(true);
+    setShowPortal(true);
   };
 
-  // Show loading spinner while checking auth state
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
-        <div className="text-center">
-          <Brain className="h-12 w-12 text-yellow-400 mx-auto mb-4 animate-pulse" />
-          <p className="text-gray-300">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  const handleLogout = () => {
+    setShowPortal(false);
+    setIsSubscribed(false);
+  };
 
-  // Show auth callback if we're on the callback route
-  if (isAuthCallback) {
-    return <AuthCallback onReturn={handleAuthReturn} />;
-  }
-
-  // Show auth form if user is not authenticated
-  if (!user) {
-    return <Auth />;
-  }
-
-  // Show client portal if user is authenticated
-  if (user) {
-    return <ClientPortal />;
+  // Show client portal if user is subscribed and wants to access it
+  if (showPortal && isSubscribed) {
+    return <ClientPortal onLogout={handleLogout} />;
   }
 
   const validateEmail = (email: string): boolean => {
@@ -540,7 +519,7 @@ Enhanced details to consider:
       </section>
 
       {/* Subscription Section */}
-      <SubscriptionSection onSubscribe={() => {}} />
+      <SubscriptionSection onSubscribe={handleSubscribe} />
 
       {/* Footer */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
@@ -557,14 +536,6 @@ Enhanced details to consider:
         </div>
       </footer>
     </div>
-  );
-}
-
-function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
   );
 }
 
