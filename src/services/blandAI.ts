@@ -83,15 +83,14 @@ class BlandAIService {
     // Get the current session
     const { data: { session } } = await supabase.auth.getSession();
     
-    if (!session) {
-      throw new Error('No active session. Please log in first.');
-    }
+    // Use session token if available, otherwise fall back to anon key
+    const authToken = session?.access_token || supabaseAnonKey;
 
     const response = await fetch(url, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
+        'Authorization': `Bearer ${authToken}`,
         ...options.headers,
       },
     });
