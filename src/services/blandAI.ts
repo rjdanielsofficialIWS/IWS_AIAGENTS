@@ -16,6 +16,8 @@ const supabase = createClient(
   supabaseAnonKey
 );
 
+export { supabase };
+
 export interface AIAgent {
   id?: string;
   user_id?: string;

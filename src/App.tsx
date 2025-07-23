@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
+import { supabase } from './services/blandAI';
 
 interface FormData {
   name: string;
@@ -48,14 +49,41 @@ function App() {
 
   const handleSubscribe = () => {
     // In a real app, this would integrate with Stripe
-    // For demo purposes, we'll simulate subscription
-    setIsSubscribed(true);
-    setShowPortal(true);
+    // For demo purposes, we'll simulate subscription with anonymous auth
+    handleSubscribeWithAuth();
+  };
+
+  const handleSubscribeWithAuth = async () => {
+    try {
+      // Sign in anonymously to establish a Supabase session
+      const { data, error } = await supabase.auth.signInAnonymously();
+      
+      if (error) {
+        console.error('Authentication error:', error);
+        return;
+      }
+      
+      if (data.user) {
+        setIsSubscribed(true);
+        setShowPortal(true);
+      }
+    } catch (error) {
+      console.error('Subscription error:', error);
+    }
   };
 
   const handleLogout = () => {
-    setShowPortal(false);
-    setIsSubscribed(false);
+    handleLogoutWithAuth();
+  };
+
+  const handleLogoutWithAuth = async () => {
+    try {
+      await supabase.auth.signOut();
+      setShowPortal(false);
+      setIsSubscribed(false);
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   // Show client portal if user is subscribed and wants to access it
