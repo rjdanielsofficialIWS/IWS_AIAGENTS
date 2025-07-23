@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { GoogleOAuthProvider } from '@react-oauth/google';
+import React, { useState } from 'react';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
