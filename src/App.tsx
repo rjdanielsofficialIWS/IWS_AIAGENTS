@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
 import { supabase } from './services/blandAI';
@@ -11,6 +11,11 @@ interface FormData {
   business: string;
   services: string;
   aiRequirements: string;
+}
+
+interface EnhanceState {
+  isEnhancing: boolean;
+  hasEnhanced: boolean;
 }
 
 interface Question {
@@ -52,6 +57,10 @@ function App() {
   const [isStepValid, setIsStepValid] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
+  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
+    isEnhancing: false,
+    hasEnhanced: false
+  });
 
   const questions: Question[] = [
     {
@@ -259,10 +268,27 @@ function App() {
     return phoneRegex.test(phone.replace(/\s/g, ''));
   };
 
+  const enhancePrompt = async () => {
+    if (!formData.aiRequirements.trim()) {
+      return;
+    }
+
+    setEnhanceState({ isEnhancing: true, hasEnhanced: false });
+
+    try {
+      const enhancedText = await blandAI.enhancePrompt(formData.aiRequirements);
+      setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
+      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
+    } catch (error) {
+      setEnhanceState({ isEnhancing: false, hasEnhanced: false });
+      setCurrentError('Failed to enhance prompt. Please try again.');
+    }
+  };
+
   const validateCurrentStep = (): boolean => {
     const currentQuestion = questions[currentStep];
-    let error = '';
     let isValid = true;
+    let error = '';
 
     if (currentQuestion.type === 'multi-input') {
       // Validate all fields in the multi-input step
@@ -379,17 +405,16 @@ function App() {
         })
       });
 
-      return true; // With no-cors mode, we can't check response.ok, so assume success
+      return true;
     } catch (error) {
-      console.error('Error submitting form:', error);
+      console.error('Error submitting to Google Sheets:', error);
       return false;
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
+  const handleSubmit = async () => {
     if (!validateAllSteps()) {
+      setSubmitStatus('error');
       return;
     }
 
@@ -401,6 +426,7 @@ function App() {
       
       if (success) {
         setSubmitStatus('success');
+        // Reset form
         setFormData({
           name: '',
           email: '',
@@ -409,10 +435,12 @@ function App() {
           services: '',
           aiRequirements: ''
         });
+        setCurrentStep(0);
       } else {
         setSubmitStatus('error');
       }
     } catch (error) {
+      console.error('Submission error:', error);
       setSubmitStatus('error');
     } finally {
       setIsSubmitting(false);
@@ -537,6 +565,40 @@ function App() {
                           <question.icon className="inline h-4 w-4 mr-2" />
                           {question.label} *
                         </label>
+                      )}
+
+                      {/* Enhance Prompt Button for AI Requirements */}
+                      {question.id === 'aiRequirements' && (
+                        <div className="flex items-center justify-between mb-3">
+                          <button
+                            type="button"
+                            onClick={enhancePrompt}
+                            disabled={enhanceState.isEnhancing || !formData.aiRequirements.trim()}
+                            className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {enhanceState.isEnhancing ? (
+                              <>
+                                <Loader className="h-3 w-3 animate-spin" />
+                                <span>Enhancing...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="h-3 w-3" />
+                                <span>Enhance Prompt</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Enhanced Prompt Status */}
+                      {question.id === 'aiRequirements' && enhanceState.hasEnhanced && (
+                        <div className="mb-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                          <p className="text-sm text-green-300 flex items-center">
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Prompt enhanced! Review and edit as needed.
+                          </p>
+                        </div>
                       )}
 
                       {/* Input Field */}
