@@ -289,6 +289,16 @@ Please expand it to include:
 - Any relevant industry-specific considerations
 
 Make it comprehensive but keep it focused and practical. Return only the enhanced description without any additional commentary.`;
+      // Create a task-focused enhancement prompt
+      const enhancementPrompt = `Please enhance and expand only the specific tasks mentioned in this AI agent requirement: "${formData.aiRequirements}"
+
+Focus exclusively on:
+- Making the tasks more detailed and specific
+- Adding clarity to the workflows and processes described
+- Elaborating on the exact steps the AI should take
+- Providing more precision to any goals or objectives mentioned
+
+Do NOT add information about target audience, communication style, integration requirements, success metrics, or follow-up procedures unless they are explicitly part of the original task description. Return only the enhanced task description without any additional commentary or suggestions.`;
 
       // Using a free AI API service (you can replace this with your preferred AI service)
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -338,6 +348,16 @@ Enhanced details to consider:
 • Industry-specific requirements: [Compliance, terminology, processes]
 • Preferred response times and availability windows
 • Escalation criteria for complex inquiries`;
+      // Task-focused fallback enhancement
+      const fallbackEnhancement = `${formData.aiRequirements}
+
+Enhanced task details:
+• Break down each task into specific, actionable steps
+• Define clear workflows and processes for each objective
+• Specify exact criteria for task completion
+• Add precision to any goals or outcomes mentioned
+• Include step-by-step procedures for complex tasks
+• Clarify any decision-making processes the AI should follow`;
 
       setFormData(prev => ({ ...prev, aiRequirements: fallbackEnhancement }));
       setEnhanceState({ isEnhancing: false, hasEnhanced: true });
