@@ -61,12 +61,6 @@ export const SubscriptionSection: React.FC<SubscriptionSectionProps> = ({ onSubs
           </div>
 
           <div className="text-center">
-            <button
-              onClick={onSubscribe}
-              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-12 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 text-lg"
-            >
-              Start Your Premium Subscription
-            </button>
             <p className="text-sm text-gray-400 mt-4">
               Cancel anytime • 30-day money-back guarantee
             </p>
