@@ -3,6 +3,7 @@ import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, Message
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
 import { supabase } from './services/blandAI';
+import type { Session } from '@supabase/supabase-js';
 
 interface FormData {
   name: string;
@@ -39,7 +40,7 @@ interface Question {
 
 function App() {
   const [showPortal, setShowPortal] = useState(false);
-  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '' });
@@ -125,8 +126,7 @@ function App() {
   ];
 
   const handleSubscribe = () => {
-    setIsSubscribed(true);
-    setShowPortal(true);
+    setShowAuthForm(true);
   };
 
   const handleAuth = async (e: React.FormEvent) => {
@@ -152,9 +152,6 @@ function App() {
         if (error) {
           setAuthError(error.message);
         } else if (data.user) {
-          // Successfully signed up
-          setIsSubscribed(true);
-          setShowPortal(true);
           setShowAuthForm(false);
           // Reset form
           setAuthForm({ email: '', password: '', confirmPassword: '' });
@@ -169,9 +166,6 @@ function App() {
         if (error) {
           setAuthError(error.message);
         } else if (data.user) {
-          // Successfully signed in
-          setIsSubscribed(true);
-          setShowPortal(true);
           setShowAuthForm(false);
           // Reset form
           setAuthForm({ email: '', password: '', confirmPassword: '' });
@@ -188,8 +182,7 @@ function App() {
   const handleLogout = () => {
     // Sign out from Supabase
     supabase.auth.signOut();
-    setShowPortal(false);
-    setIsSubscribed(false);
+    setSession(null);
   };
 
   const validateEmail = (email: string): boolean => {
@@ -413,8 +406,25 @@ function App() {
     validateCurrentStep();
   }, [currentStep]);
 
+  // Listen for authentication state changes
+  React.useEffect(() => {
+    // Get initial session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    // Listen for auth changes
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   // Show client portal if user is subscribed and wants to access it
-  if (showPortal && isSubscribed) {
+  if (session) {
     return <ClientPortal onLogout={handleLogout} />;
   }
   
