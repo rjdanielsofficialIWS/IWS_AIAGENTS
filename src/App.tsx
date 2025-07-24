@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Zap, Sparkles, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Brain, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Zap, ArrowRight, ArrowLeft } from 'lucide-react';
 
 interface FormData {
   name: string;
@@ -19,11 +19,6 @@ interface FormErrors {
   aiRequirements?: string;
 }
 
-interface EnhanceState {
-  isLoading: boolean;
-  error: string | null;
-}
-
 function App() {
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -37,10 +32,6 @@ function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
-  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
-    isLoading: false,
-    error: null
-  });
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -110,59 +101,6 @@ function App() {
     // Clear error when user starts typing
     if (errors[name as keyof FormErrors]) {
       setErrors(prev => ({ ...prev, [name]: undefined }));
-    }
-  };
-
-  const enhancePrompt = async () => {
-    if (!formData.aiRequirements.trim()) {
-      setEnhanceState({ isLoading: false, error: 'Please enter your AI requirements first' });
-      return;
-    }
-
-    setEnhanceState({ isLoading: true, error: null });
-
-    try {
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an expert AI consultant specializing in sales automation and AI agent development. Your task is to enhance and expand user requirements for AI sales agents to be more comprehensive, specific, and actionable. Do not include any conversational preambles or acknowledgments. Provide only the enhanced text directly.'
-            },
-            {
-              role: 'user',
-              content: `Please enhance and expand the following AI sales agent requirements to be more detailed, specific, and comprehensive. Include specific processes, scripts, target audience details, follow-up procedures, CRM integration needs, and any other relevant details that would help create a highly effective AI sales agent:\n\n"${formData.aiRequirements}"\n\nPlease provide a detailed, professional enhancement that covers all aspects of what makes an effective AI sales agent.`
-            }
-          ],
-          max_tokens: 1000,
-          temperature: 0.7
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to enhance prompt');
-      }
-
-      const data = await response.json();
-      const enhancedText = data.choices[0]?.message?.content;
-
-      if (enhancedText) {
-        setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
-        setEnhanceState({ isLoading: false, error: null });
-      } else {
-        throw new Error('No enhanced text received');
-      }
-    } catch (error) {
-      setEnhanceState({ 
-        isLoading: false, 
-        error: 'Failed to enhance prompt. Please try again or continue with your current text.' 
-      });
     }
   };
 
@@ -417,35 +355,6 @@ function App() {
                     } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
                     placeholder="Be specific about tasks, goals, processes, scripts, follow-up procedures, CRM integration needs, etc..."
                   />
-                  
-                  <div className="mt-3 flex flex-col sm:flex-row gap-3">
-                    <button
-                      type="button"
-                      onClick={enhancePrompt}
-                      disabled={enhanceState.isLoading || !formData.aiRequirements.trim()}
-                      className="flex items-center justify-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {enhanceState.isLoading ? (
-                        <>
-                          <Loader className="h-4 w-4 animate-spin" />
-                          <span>Enhancing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4" />
-                          <span>Enhance with AI</span>
-                        </>
-                      )}
-                    </button>
-                    
-                    <p className="text-sm text-gray-400 flex items-center">
-                      Let AI help you create a more detailed and effective prompt
-                    </p>
-                  </div>
-                  
-                  {enhanceState.error && (
-                    <p className="mt-2 text-sm text-red-400">{enhanceState.error}</p>
-                  )}
                   
                   {errors.aiRequirements && (
                     <p className="mt-2 text-sm text-red-400">{errors.aiRequirements}</p>
