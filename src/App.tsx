@@ -276,19 +276,6 @@ function App() {
     setEnhanceState({ isEnhancing: true, hasEnhanced: false });
 
     try {
-      // Create a comprehensive enhancement prompt
-      const enhancementPrompt = `Please enhance and expand this AI agent requirement description to be more detailed, specific, and actionable. The original request is: "${formData.aiRequirements}"
-
-Please expand it to include:
-- Specific tasks and workflows
-- Target audience details
-- Communication style preferences
-- Integration requirements
-- Success metrics
-- Follow-up procedures
-- Any relevant industry-specific considerations
-
-Make it comprehensive but keep it focused and practical. Return only the enhanced description without any additional commentary.`;
       // Create a task-focused enhancement prompt
       const enhancementPrompt = `Please enhance and expand only the specific tasks mentioned in this AI agent requirement: "${formData.aiRequirements}"
 
