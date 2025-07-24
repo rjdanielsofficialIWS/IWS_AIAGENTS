@@ -409,6 +409,33 @@ function App() {
     }
   };
 
+  const submitToWebhook = async (data: FormData): Promise<boolean> => {
+    try {
+      const WEBHOOK_URL = 'https://hook.us2.make.com/xbuqqbpezff1lsgmwqxjkdm3qpwl93qt';
+      
+      const response = await fetch(WEBHOOK_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: data.name,
+          email: data.email,
+          phone: data.phone,
+          business: data.business,
+          services: data.services,
+          aiRequirements: data.aiRequirements,
+          timestamp: new Date().toISOString()
+        })
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Error submitting to webhook:', error);
+      return false;
+    }
+  };
+
   const handleSubmit = async () => {
     if (!validateAllSteps()) {
       setSubmitStatus('error');
@@ -419,7 +446,7 @@ function App() {
     setSubmitStatus(null);
 
     try {
-      const success = await submitToGoogleSheets(formData);
+      const success = await submitToWebhook(formData);
       
       if (success) {
         setSubmitStatus('success');
