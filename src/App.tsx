@@ -295,14 +295,14 @@ function App() {
             Let our Agents handle the phone work and book meetings while you focus on closing more sales.
           </p>
 
-          <div className="mb-8">
-            <h3 className="text-3xl sm:text-4xl font-bold text-center bg-gradient-to-r from-green-400 to-blue-400 bg-clip-text text-transparent">
-              Create a FREE customized Demo AI Agent within 5 minutes!
-            </h3>
-          </div>
-
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
+            <div className="mb-8">
+              <h3 className="text-3xl sm:text-4xl font-bold text-center bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
+                Create a FREE customized Demo AI Agent within 5 minutes!
+              </h3>
+            </div>
+
             {/* Progress Indicator */}
             <div className="flex items-center justify-center mb-8">
               <div className="flex items-center space-x-4">
