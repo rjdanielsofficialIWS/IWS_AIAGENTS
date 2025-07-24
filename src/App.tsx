@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Brain, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
 import { supabase } from './services/blandAI';
@@ -11,11 +11,6 @@ interface FormData {
   business: string;
   services: string;
   aiRequirements: string;
-}
-
-interface EnhanceState {
-  isEnhancing: boolean;
-  hasEnhanced: boolean;
 }
 
 interface Question {
@@ -57,10 +52,6 @@ function App() {
   const [isStepValid, setIsStepValid] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
-  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
-    isEnhancing: false,
-    hasEnhanced: false
-  });
 
   const questions: Question[] = [
     {
@@ -266,46 +257,6 @@ function App() {
   const validatePhone = (phone: string): boolean => {
     const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
     return phoneRegex.test(phone.replace(/\s/g, ''));
-  };
-
-  const enhancePrompt = async () => {
-    if (!formData.aiRequirements.trim()) {
-      return;
-    }
-
-    setEnhanceState({ isEnhancing: true, hasEnhanced: false });
-
-    try {
-      // Task-focused local enhancement
-      const enhancedText = `${formData.aiRequirements}
-
-Enhanced task details:
-• Break down each task into specific, actionable steps
-• Define clear workflows and processes for each objective
-• Specify exact criteria for task completion
-• Add precision to any goals or outcomes mentioned
-• Include step-by-step procedures for complex tasks
-• Clarify any decision-making processes the AI should follow`;
-
-      setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
-      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
-    } catch (error) {
-      console.error('Error enhancing prompt:', error);
-      // Task-focused fallback enhancement
-      const fallbackEnhancement = `${formData.aiRequirements}
-
-Enhanced task details:
-• Break down each task into specific, actionable steps
-• Define clear workflows and processes for each objective
-• Specify exact criteria for task completion
-• Add precision to any goals or outcomes mentioned
-• Include step-by-step procedures for complex tasks
-• Clarify any decision-making processes the AI should follow`;
-
-      setFormData(prev => ({ ...prev, aiRequirements: fallbackEnhancement }));
-      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
-    }
-    validateCurrentStep();
   };
 
   const validateCurrentStep = (): boolean => {
@@ -586,40 +537,6 @@ Enhanced task details:
                           <question.icon className="inline h-4 w-4 mr-2" />
                           {question.label} *
                         </label>
-                      )}
-
-                      {/* Enhance Prompt Button for AI Requirements */}
-                      {question.id === 'aiRequirements' && (
-                        <div className="flex items-center justify-between mb-3">
-                          <button
-                            type="button"
-                            onClick={enhancePrompt}
-                            disabled={enhanceState.isEnhancing || !formData.aiRequirements.trim()}
-                            className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {enhanceState.isEnhancing ? (
-                              <>
-                                <Loader className="h-3 w-3 animate-spin" />
-                                <span>Enhancing...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Zap className="h-3 w-3" />
-                                <span>Enhance Prompt</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Enhanced Prompt Status */}
-                      {question.id === 'aiRequirements' && enhanceState.hasEnhanced && (
-                        <div className="mb-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
-                          <p className="text-sm text-green-300 flex items-center">
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            Prompt enhanced! Review and edit as needed.
-                          </p>
-                        </div>
                       )}
 
                       {/* Input Field */}
