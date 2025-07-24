@@ -360,6 +360,16 @@ function App() {
             </h1>
           </div>
           <p className="text-center text-blue-300 mt-2 text-base sm:text-lg">AI Agents</p>
+          
+          {/* Spline 3D Viewer */}
+          <div className="flex justify-center mt-8">
+            <div className="w-full max-w-2xl h-96 rounded-2xl overflow-hidden border border-gray-700/50 bg-gray-900/30 backdrop-blur-xl">
+              <spline-viewer 
+                url="https://prod.spline.design/x1CNqCjPiH9W-SXo/scene.splinecode"
+                style={{ width: '100%', height: '100%' }}
+              />
+            </div>
+          </div>
         </div>
       </header>
 
