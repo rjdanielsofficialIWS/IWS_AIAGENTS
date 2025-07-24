@@ -377,16 +377,6 @@ function App() {
             Let our Agents handle the phone work and book meetings while you focus on closing more sales.
           </p>
 
-          {/* Get Started Button */}
-          <div className="mb-16">
-            <button
-              onClick={handleSubscribe}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/25 text-lg"
-            >
-              Get Started
-            </button>
-          </div>
-
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
             <div className="text-center mb-12">
