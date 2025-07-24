@@ -3,7 +3,7 @@ import {
   Brain, Settings, User, LogOut, Save, Play, Pause, Edit3, Trash2, Plus,
   CheckCircle, AlertCircle, Loader, Volume2, Mic, Zap, Target, Users
 } from 'lucide-react';
-import { blandAI, AIAgent } from '../services/blandAI';
+import { blandAI, AIAgent, PhoneNumber } from '../services/blandAI';
 
 interface ClientPortalProps {
   onLogout: () => void;
@@ -11,6 +11,8 @@ interface ClientPortalProps {
 
 export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
   const [agents, setAgents] = useState<AIAgent[]>([]);
+  const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<PhoneNumber[]>([]);
+  const [phoneNumbersLoading, setPhoneNumbersLoading] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const [selectedAgent, setSelectedAgent] = useState<AIAgent | null>(null);
@@ -38,6 +40,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
   // Load agents on component mount
   useEffect(() => {
     loadAgents();
+    loadPhoneNumbers();
   }, []);
 
   const loadAgents = async () => {
@@ -49,6 +52,18 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
       console.error('Failed to load agents:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadPhoneNumbers = async () => {
+    try {
+      setPhoneNumbersLoading(true);
+      const phoneNumbers = await blandAI.getAvailablePhoneNumbers();
+      setAvailablePhoneNumbers(phoneNumbers);
+    } catch (err) {
+      console.error('Failed to load phone numbers:', err);
+    } finally {
+      setPhoneNumbersLoading(false);
     }
   };
 
@@ -286,13 +301,26 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
 
                       <div>
                         <label className="block text-sm font-medium text-gray-300 mb-2">Phone Number (Optional)</label>
-                        <input
-                          type="tel"
+                        <select
                           value={agentConfig.phone_number}
                           onChange={(e) => setAgentConfig({...agentConfig, phone_number: e.target.value})}
-                          className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400"
-                          placeholder="+1 (555) 123-4567"
-                        />
+                          className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
+                          disabled={phoneNumbersLoading}
+                        >
+                          <option value="">
+                            {phoneNumbersLoading ? 'Loading phone numbers...' : 'Choose a phone number (optional)'}
+                          </option>
+                          {availablePhoneNumbers.map(phoneNumber => (
+                            <option key={phoneNumber.id} value={phoneNumber.number}>
+                              {phoneNumber.formatted} ({phoneNumber.country}) - {phoneNumber.type}
+                            </option>
+                          ))}
+                        </select>
+                        {availablePhoneNumbers.length === 0 && !phoneNumbersLoading && (
+                          <p className="text-xs text-gray-400 mt-2">
+                            💡 No phone numbers available. You may need to purchase phone numbers from your Bland AI dashboard first.
+                          </p>
+                        )}
                       </div>
 
                       <div>

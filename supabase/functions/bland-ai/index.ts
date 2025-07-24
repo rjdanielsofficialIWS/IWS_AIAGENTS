@@ -340,6 +340,58 @@ serve(async (req) => {
       )
     }
 
+    // Route: GET /bland-ai/phone-numbers - Get available phone numbers from Bland AI
+    if (path === '/bland-ai/phone-numbers' && req.method === 'GET') {
+      const authHeader = req.headers.get('Authorization')
+      if (!authHeader) {
+        return new Response(
+          JSON.stringify({ error: 'Missing authorization header' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      const token = authHeader.replace('Bearer ', '')
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token)
+      
+      if (authError || !user) {
+        return new Response(
+          JSON.stringify({ error: 'Invalid authentication' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+
+      try {
+        // Fetch available phone numbers from Bland AI
+        const blandResponse = await fetch('https://api.bland.ai/v1/phone-numbers', {
+          headers: {
+            'Authorization': `Bearer ${Deno.env.get('BLAND_AI_API_KEY')}`,
+          },
+        })
+
+        if (!blandResponse.ok) {
+          const errorText = await blandResponse.text()
+          console.error('Bland AI phone numbers API error:', errorText)
+          return new Response(
+            JSON.stringify({ error: 'Failed to fetch phone numbers', details: errorText }),
+            { status: blandResponse.status, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          )
+        }
+
+        const phoneNumbersData = await blandResponse.json()
+
+        return new Response(
+          JSON.stringify(phoneNumbersData),
+          { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      } catch (error) {
+        console.error('Error fetching phone numbers:', error)
+        return new Response(
+          JSON.stringify({ error: 'Failed to fetch phone numbers', details: error.message }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        )
+      }
+    }
+
     return new Response(
       JSON.stringify({ error: 'Route not found' }),
       { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

@@ -75,6 +75,15 @@ export interface CallRecord {
   updated_at: string;
 }
 
+export interface PhoneNumber {
+  id: string;
+  number: string;
+  formatted: string;
+  country: string;
+  type: 'local' | 'toll-free';
+  status: 'available' | 'assigned' | 'pending';
+}
+
 class BlandAIService {
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
     const baseUrl = `${supabaseUrl}/functions/v1/bland-ai`;
@@ -154,6 +163,18 @@ class BlandAIService {
   async getCall(callId: string): Promise<CallRecord> {
     const data = await this.makeRequest(`/call/${callId}`);
     return data;
+  }
+
+  // Phone Number Management
+  async getAvailablePhoneNumbers(): Promise<PhoneNumber[]> {
+    try {
+      const data = await this.makeRequest('/phone-numbers');
+      return data.phone_numbers || data || [];
+    } catch (error) {
+      console.error('Failed to fetch phone numbers:', error);
+      // Return empty array if API fails, so UI doesn't break
+      return [];
+    }
   }
 
   // Prompt enhancement (placeholder implementation)
