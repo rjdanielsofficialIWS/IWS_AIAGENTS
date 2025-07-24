@@ -36,6 +36,9 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
 
   const [isCreatingAgent, setIsCreatingAgent] = useState(false);
   const [showForm, setShowForm] = useState(false);
+  const [testPhoneNumber, setTestPhoneNumber] = useState('');
+  const [isTestCalling, setIsTestCalling] = useState(false);
+  const [testCallStatus, setTestCallStatus] = useState<string>('');
 
   // Load agents on component mount
   useEffect(() => {
@@ -176,6 +179,41 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
     setSelectedAgent(null);
     setShowForm(false);
     resetAgentConfig();
+    setTestPhoneNumber('');
+    setTestCallStatus('');
+  };
+
+  const handleTestCall = async () => {
+    if (!testPhoneNumber.trim()) {
+      setTestCallStatus('Please enter a phone number to test');
+      return;
+    }
+
+    setIsTestCalling(true);
+    setTestCallStatus('');
+
+    try {
+      const callRequest = {
+        phone_number: testPhoneNumber,
+        task: agentConfig.prompt_instructions,
+        voice_id: agentConfig.voice_id,
+        agent_id: selectedAgent?.id,
+        reduce_latency: true,
+        record: true,
+        metadata: {
+          test_call: true,
+          agent_name: agentConfig.name || 'Test Agent'
+        }
+      };
+
+      const result = await blandAI.initiateCall(callRequest);
+      setTestCallStatus(`✅ Test call initiated successfully! Call ID: ${result.call_id}`);
+    } catch (error) {
+      console.error('Test call failed:', error);
+      setTestCallStatus(`❌ Failed to initiate test call: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsTestCalling(false);
+    }
   };
 
   if (loading) {
@@ -456,6 +494,51 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
                 </div>
               </div>
 
+              {/* Test Agent Section */}
+              <div className="mt-8 pt-8 border-t border-gray-700/50">
+                <h4 className="text-lg font-semibold mb-4 flex items-center">
+                  <Phone className="h-5 w-5 mr-2 text-green-400" />
+                  Test Your AI Agent
+                </h4>
+                <p className="text-gray-400 text-sm mb-6">
+                  Test your AI agent configuration by making a real call. Make sure to use a valid phone number.
+                </p>
+                
+                <div className="bg-gray-900/30 rounded-xl p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-300 mb-2">
+                      Test Phone Number *
+                    </label>
+                    <input
+                      type="tel"
+                      value={testPhoneNumber}
+                      onChange={(e) => setTestPhoneNumber(e.target.value)}
+                      className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-400/50 focus:border-green-400 transition-all"
+                      placeholder="+1 (555) 123-4567"
+                      disabled={isTestCalling}
+                    />
+                    <p className="text-xs text-gray-400 mt-2">
+                      💡 Enter the phone number you want the AI agent to call for testing
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={handleTestCall}
+                    disabled={isTestCalling || !testPhoneNumber.trim() || !agentConfig.name.trim() || !agentConfig.prompt_instructions.trim()}
+                    className="w-full bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2"
+                  >
+                    {isTestCalling ? (
+                      <>
+                        <Loader className="h-5 w-5 animate-spin" />
+                        <span>Initiating Test Call...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Phone className="h-5 w-5" />
+                        <span>Start Test Call</span>
+                      </>
+                    )}
+                  </button>
               {/* Form Actions */}
               <div className="flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-gray-700/50">
                 <button
@@ -485,6 +568,22 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
             </div>
           )}
 
+                  {testCallStatus && (
+                    <div className={`p-4 rounded-lg border ${
+                      testCallStatus.includes('✅') 
+                        ? 'bg-green-500/10 border-green-500/50 text-green-300' 
+                        : 'bg-red-500/10 border-red-500/50 text-red-300'
+                    }`}>
+                      <p className="text-sm font-medium">{testCallStatus}</p>
+                      {testCallStatus.includes('✅') && (
+                        <p className="text-xs mt-2 opacity-80">
+                          The call has been initiated. You can monitor its progress in your call history.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
           {/* Existing Agents List */}
           {!showForm && (
             <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
