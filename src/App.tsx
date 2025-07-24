@@ -558,10 +558,12 @@ function App() {
 
                     <div className="space-y-4">
                       {question.type !== 'multi-input' && (
-                        <label className="block text-sm font-medium text-gray-300 mb-3">
-                          <question.icon className="inline h-4 w-4 mr-2" />
-                          {question.label} *
-                        </label>
+                        question.label && (
+                          <label className="block text-sm font-medium text-gray-300 mb-3">
+                            <question.icon className="inline h-4 w-4 mr-2" />
+                            {question.label} *
+                          </label>
+                        )
                       )}
 
                       {/* Enhance Prompt Button for AI Requirements */}
