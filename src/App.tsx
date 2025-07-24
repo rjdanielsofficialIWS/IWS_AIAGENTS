@@ -44,6 +44,7 @@ function App() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '' });
   const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -130,13 +131,65 @@ function App() {
 
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthError('');
     setAuthLoading(true);
-    // Add auth logic here
-    setAuthLoading(false);
+    
+    try {
+      if (isSignUp) {
+        // Validate passwords match
+        if (authForm.password !== authForm.confirmPassword) {
+          setAuthError('Passwords do not match');
+          setAuthLoading(false);
+          return;
+        }
+        
+        // Sign up new user
+        const { data, error } = await supabase.auth.signUp({
+          email: authForm.email,
+          password: authForm.password,
+        });
+        
+        if (error) {
+          setAuthError(error.message);
+        } else if (data.user) {
+          // Successfully signed up
+          setIsSubscribed(true);
+          setShowPortal(true);
+          setShowAuthForm(false);
+          // Reset form
+          setAuthForm({ email: '', password: '', confirmPassword: '' });
+        }
+      } else {
+        // Sign in existing user
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email: authForm.email,
+          password: authForm.password,
+        });
+        
+        if (error) {
+          setAuthError(error.message);
+        } else if (data.user) {
+          // Successfully signed in
+          setIsSubscribed(true);
+          setShowPortal(true);
+          setShowAuthForm(false);
+          // Reset form
+          setAuthForm({ email: '', password: '', confirmPassword: '' });
+        }
+      }
+    } catch (error) {
+      setAuthError('An unexpected error occurred. Please try again.');
+      console.error('Auth error:', error);
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   const handleLogout = () => {
+    // Sign out from Supabase
+    supabase.auth.signOut();
     setShowPortal(false);
+    setIsSubscribed(false);
   };
 
   const validateEmail = (email: string): boolean => {
@@ -435,6 +488,12 @@ function App() {
                   required
                   minLength={6}
                 />
+              </div>
+            )}
+
+            {authError && (
+              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
+                <p className="text-red-400 text-sm">{authError}</p>
               </div>
             )}
 
