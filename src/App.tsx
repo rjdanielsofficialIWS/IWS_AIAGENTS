@@ -334,18 +334,28 @@ Enhanced details to consider:
   };
 
   const validateCurrentStep = (): boolean => {
-    const currentQuestion = questions[currentStep];
-    const value = formData[currentQuestion.id];
     let error = '';
     let isValid = false;
 
-    if (!value.trim()) {
-      error = `${currentQuestion.label} is required`;
+    if (currentStep < 3) {
+      // Validate individual questions for steps 0-2
+      const currentQuestion = questions[currentStep];
+      const value = formData[currentQuestion.id];
+      
+      if (!value.trim()) {
+        error = `${currentQuestion.label} is required`;
+      } else {
+        isValid = true;
+      }
     } else {
-      // Additional validation for specific fields
-      if (currentQuestion.id === 'email' && !validateEmail(value)) {
+      // Validate contact information for step 3
+      if (!formData.email.trim()) {
+        error = 'Email is required';
+      } else if (!validateEmail(formData.email)) {
         error = 'Please enter a valid email address';
-      } else if (currentQuestion.id === 'phone' && !validatePhone(value)) {
+      } else if (!formData.phone.trim()) {
+        error = 'Phone number is required';
+      } else if (!validatePhone(formData.phone)) {
         error = 'Please enter a valid phone number';
       } else {
         isValid = true;
@@ -358,15 +368,18 @@ Enhanced details to consider:
   };
 
   const validateAllSteps = (): boolean => {
-    for (let i = 0; i < questions.length; i++) {
+    // Validate first 3 questions
+    for (let i = 0; i < 3; i++) {
       const question = questions[i];
       const value = formData[question.id];
       
       if (!value.trim()) return false;
-      
-      if (question.id === 'email' && !validateEmail(value)) return false;
-      if (question.id === 'phone' && !validatePhone(value)) return false;
     }
+    
+    // Validate contact information
+    if (!formData.email.trim() || !validateEmail(formData.email)) return false;
+    if (!formData.phone.trim() || !validatePhone(formData.phone)) return false;
+    
     return true;
   };
 
@@ -382,7 +395,7 @@ Enhanced details to consider:
 
   const handleNext = () => {
     if (validateCurrentStep()) {
-      if (currentStep < questions.length - 1) {
+      if (currentStep < 3) {
         setCurrentStep(currentStep + 1);
         setCurrentError('');
         // Validate the new step
@@ -534,7 +547,7 @@ Enhanced details to consider:
             {/* Progress Indicator */}
             <div className="mb-12">
               <div className="flex items-center justify-center space-x-4 mb-6">
-                {questions.map((_, index) => (
+                {[0, 1, 2, 3].map((index) => (
                   <React.Fragment key={index}>
                     <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
                       index < currentStep 
@@ -549,7 +562,7 @@ Enhanced details to consider:
                         index + 1
                       )}
                     </div>
-                    {index < questions.length - 1 && (
+                    {index < 3 && (
                       <div className={`w-8 h-1 transition-all duration-300 ${
                         index < currentStep ? 'bg-green-500' : 'bg-gray-600'
                       }`}></div>
@@ -558,7 +571,7 @@ Enhanced details to consider:
                 ))}
               </div>
               <p className="text-center text-gray-400 text-sm">
-                Step {currentStep + 1} of {questions.length}
+                Step {currentStep + 1} of 4
               </p>
             </div>
 
