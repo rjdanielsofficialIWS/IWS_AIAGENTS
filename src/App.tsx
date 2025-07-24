@@ -333,16 +333,6 @@ Enhanced details to consider:
     validateCurrentStep();
   };
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  const validatePhone = (phone: string): boolean => {
-    const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
-    return phoneRegex.test(phone.replace(/\s/g, ''));
-  };
-
   const validateCurrentStep = (): boolean => {
     const currentQuestion = questions[currentStep];
     const value = formData[currentQuestion.id];
