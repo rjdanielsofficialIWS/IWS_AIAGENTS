@@ -66,7 +66,6 @@ function App() {
     {
       id: 'business',
       title: 'What\'s your company name?',
-      label: 'Your Company Name',
       type: 'textarea',
       placeholder: 'Enter your company name...',
       rows: 4,
@@ -76,7 +75,6 @@ function App() {
     {
       id: 'services',
       title: 'What services do you provide?',
-      label: 'What services do you provide?',
       type: 'textarea',
       placeholder: 'List your main services, products, or offerings...',
       rows: 4,
@@ -86,7 +84,6 @@ function App() {
     {
       id: 'aiRequirements',
       title: 'What exactly do you want your AI Sales Agent to do for you?',
-      label: 'What exactly do you want your AI Sales Agent to do for you?',
       type: 'textarea',
       placeholder: 'Be specific about tasks, goals, processes, scripts, target audience, follow-up procedures, CRM integration needs, etc. The more detailed, the better we can customize your AI agent...',
       rows: 6,
