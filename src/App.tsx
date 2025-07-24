@@ -322,19 +322,6 @@ Do NOT add information about target audience, communication style, integration r
       }
     } catch (error) {
       console.error('Error enhancing prompt:', error);
-      // Fallback enhancement for demo purposes
-      const fallbackEnhancement = `${formData.aiRequirements}
-
-Enhanced details to consider:
-• Target audience: [Specify your ideal customer profile]
-• Communication style: [Professional, friendly, consultative, etc.]
-• Key objectives: [Lead qualification, appointment setting, follow-up, etc.]
-• Integration needs: [CRM system, calendar booking, email sequences]
-• Success metrics: [Conversion rates, response times, meeting bookings]
-• Follow-up procedures: [Automated sequences, escalation protocols]
-• Industry-specific requirements: [Compliance, terminology, processes]
-• Preferred response times and availability windows
-• Escalation criteria for complex inquiries`;
       // Task-focused fallback enhancement
       const fallbackEnhancement = `${formData.aiRequirements}
 
