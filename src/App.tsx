@@ -1,9 +1,6 @@
 import React, { useState } from 'react';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
-import { ClientPortal } from './components/ClientPortal';
-import { supabase } from './services/blandAI';
-import type { Session } from '@supabase/supabase-js';
 
 interface FormData {
   name: string;
@@ -39,13 +36,6 @@ interface Question {
 }
 
 function App() {
-  const [showPortal, setShowPortal] = useState(false);
-  const [session, setSession] = useState<Session | null>(null);
-  const [showAuthForm, setShowAuthForm] = useState(false);
-  const [isSignUp, setIsSignUp] = useState(false);
-  const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '' });
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState('');
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -126,63 +116,8 @@ function App() {
   ];
 
   const handleSubscribe = () => {
-    setShowAuthForm(true);
-  };
-
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthError('');
-    setAuthLoading(true);
-    
-    try {
-      if (isSignUp) {
-        // Validate passwords match
-        if (authForm.password !== authForm.confirmPassword) {
-          setAuthError('Passwords do not match');
-          setAuthLoading(false);
-          return;
-        }
-        
-        // Sign up new user
-        const { data, error } = await supabase.auth.signUp({
-          email: authForm.email,
-          password: authForm.password,
-        });
-        
-        if (error) {
-          setAuthError(error.message);
-        } else if (data.user) {
-          setShowAuthForm(false);
-          // Reset form
-          setAuthForm({ email: '', password: '', confirmPassword: '' });
-        }
-      } else {
-        // Sign in existing user
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email: authForm.email,
-          password: authForm.password,
-        });
-        
-        if (error) {
-          setAuthError(error.message);
-        } else if (data.user) {
-          setShowAuthForm(false);
-          // Reset form
-          setAuthForm({ email: '', password: '', confirmPassword: '' });
-        }
-      }
-    } catch (error) {
-      setAuthError('An unexpected error occurred. Please try again.');
-      console.error('Auth error:', error);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleLogout = () => {
-    // Sign out from Supabase
-    supabase.auth.signOut();
-    setSession(null);
+    // Handle subscription logic here
+    console.log('Subscription requested');
   };
 
   const validateEmail = (email: string): boolean => {
@@ -406,144 +341,6 @@ function App() {
     validateCurrentStep();
   }, [currentStep]);
 
-  // Listen for authentication state changes
-  React.useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-    });
-
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  // Show client portal if user is subscribed and wants to access it
-  if (session) {
-    return <ClientPortal onLogout={handleLogout} />;
-  }
-  
-  // Show authentication form
-  if (showAuthForm) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center px-4">
-        <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md">
-          <div className="text-center mb-8">
-            <div className="flex items-center justify-center space-x-3 mb-4">
-              <Brain className="h-8 w-8 text-yellow-400" />
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-                Infinite Wealth Solutions
-              </h1>
-            </div>
-            <h2 className="text-xl font-semibold mb-2">
-              {isSignUp ? 'Create Account' : 'Sign In'}
-            </h2>
-            <p className="text-gray-400">
-              {isSignUp ? 'Get started with your AI agent' : 'Access your AI agent dashboard'}
-            </p>
-          </div>
-
-          <form onSubmit={handleAuth} className="space-y-6">
-            <div>
-              <label htmlFor="auth-email" className="block text-sm font-medium text-gray-300 mb-2">
-                <Mail className="inline h-4 w-4 mr-2" />
-                Email
-              </label>
-              <input
-                type="email"
-                id="auth-email"
-                value={authForm.email}
-                onChange={(e) => setAuthForm(prev => ({ ...prev, email: e.target.value }))}
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
-                placeholder="your@email.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label htmlFor="auth-password" className="block text-sm font-medium text-gray-300 mb-2">
-                <Lock className="inline h-4 w-4 mr-2" />
-                Password
-              </label>
-              <input
-                type="password"
-                id="auth-password"
-                value={authForm.password}
-                onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
-                placeholder="Enter your password"
-                required
-                minLength={6}
-              />
-            </div>
-
-            {isSignUp && (
-              <div>
-                <label htmlFor="auth-confirm-password" className="block text-sm font-medium text-gray-300 mb-2">
-                  <Lock className="inline h-4 w-4 mr-2" />
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  id="auth-confirm-password"
-                  value={authForm.confirmPassword}
-                  onChange={(e) => setAuthForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
-                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
-                  placeholder="Confirm your password"
-                  required
-                  minLength={6}
-                />
-              </div>
-            )}
-
-            {authError && (
-              <div className="mb-6 p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
-                <p className="text-red-400 text-sm">{authError}</p>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
-              {authLoading ? (
-                <span className="flex items-center justify-center space-x-2">
-                  <Loader className="h-5 w-5 animate-spin" />
-                  <span>{isSignUp ? 'Creating Account...' : 'Signing In...'}</span>
-                </span>
-              ) : (
-                isSignUp ? 'Create Account' : 'Sign In'
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setIsSignUp(!isSignUp)}
-              className="text-blue-400 hover:text-blue-300 transition-colors"
-            >
-              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-            </button>
-          </div>
-
-          <div className="mt-4 text-center">
-            <button
-              onClick={() => setShowAuthForm(false)}
-              className="text-gray-400 hover:text-gray-300 transition-colors text-sm"
-            >
-              ← Back to main page
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
@@ -584,15 +381,9 @@ function App() {
           <div className="mb-16">
             <button
               onClick={handleSubscribe}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/25 text-lg mr-4"
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-blue-500/25 text-lg"
             >
-              Get Started - Access AI Agent Studio
-            </button>
-            <button
-              onClick={() => setShowAuthForm(true)}
-              className="bg-transparent border-2 border-gray-600 hover:border-yellow-400 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 hover:bg-yellow-400/10 text-lg"
-            >
-              Login
+              Get Started
             </button>
           </div>
 
