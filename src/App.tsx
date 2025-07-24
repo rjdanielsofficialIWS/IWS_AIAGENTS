@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock } from 'lucide-react';
+import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
 import { supabase } from './services/blandAI';
@@ -13,18 +13,20 @@ interface FormData {
   aiRequirements: string;
 }
 
-interface FormErrors {
-  name?: string;
-  email?: string;
-  phone?: string;
-  business?: string;
-  services?: string;
-  aiRequirements?: string;
-}
-
 interface EnhanceState {
   isEnhancing: boolean;
   hasEnhanced: boolean;
+}
+
+interface Question {
+  id: keyof FormData;
+  title: string;
+  label: string;
+  type: 'input' | 'textarea';
+  placeholder: string;
+  rows?: number;
+  icon: React.ComponentType<any>;
+  required: boolean;
 }
 
 function App() {
@@ -34,6 +36,7 @@ function App() {
   const [isSignUp, setIsSignUp] = useState(false);
   const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '' });
   const [authLoading, setAuthLoading] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -42,13 +45,74 @@ function App() {
     services: '',
     aiRequirements: ''
   });
-  const [errors, setErrors] = useState<FormErrors>({});
+  const [currentError, setCurrentError] = useState<string>('');
+  const [isStepValid, setIsStepValid] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
   const [enhanceState, setEnhanceState] = useState<EnhanceState>({
     isEnhancing: false,
     hasEnhanced: false
   });
+
+  const questions: Question[] = [
+    {
+      id: 'business',
+      title: 'What\'s your company name?',
+      label: 'Your Company Name',
+      type: 'textarea',
+      placeholder: 'Enter your company name...',
+      rows: 4,
+      icon: Building,
+      required: true
+    },
+    {
+      id: 'services',
+      title: 'What services do you provide?',
+      label: 'What services do you provide?',
+      type: 'textarea',
+      placeholder: 'List your main services, products, or offerings...',
+      rows: 4,
+      icon: Briefcase,
+      required: true
+    },
+    {
+      id: 'aiRequirements',
+      title: 'What exactly do you want your AI Sales Agent to do for you?',
+      label: 'What exactly do you want your AI Sales Agent to do for you?',
+      type: 'textarea',
+      placeholder: 'Be specific about tasks, goals, processes, scripts, target audience, follow-up procedures, CRM integration needs, etc. The more detailed, the better we can customize your AI agent...',
+      rows: 6,
+      icon: MessageSquare,
+      required: true
+    },
+    {
+      id: 'name',
+      title: 'What\'s your name?',
+      label: 'Name',
+      type: 'input',
+      placeholder: 'Your full name',
+      icon: User,
+      required: true
+    },
+    {
+      id: 'email',
+      title: 'What\'s your email address?',
+      label: 'Email',
+      type: 'input',
+      placeholder: 'your@email.com',
+      icon: Mail,
+      required: true
+    },
+    {
+      id: 'phone',
+      title: 'What\'s your phone number?',
+      label: 'Phone Number',
+      type: 'input',
+      placeholder: '+1 (555) 123-4567',
+      icon: Phone,
+      required: true
+    }
+  ];
 
   const handleSubscribe = () => {
     setIsSubscribed(true);
@@ -266,50 +330,87 @@ Enhanced details to consider:
       setFormData(prev => ({ ...prev, aiRequirements: fallbackEnhancement }));
       setEnhanceState({ isEnhancing: false, hasEnhanced: true });
     }
+    validateCurrentStep();
   };
 
-  const validateForm = (): boolean => {
-    const newErrors: FormErrors = {};
+  const validateEmail = (email: string): boolean => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
 
-    if (!formData.name.trim()) {
-      newErrors.name = 'Name is required';
+  const validatePhone = (phone: string): boolean => {
+    const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
+    return phoneRegex.test(phone.replace(/\s/g, ''));
+  };
+
+  const validateCurrentStep = (): boolean => {
+    const currentQuestion = questions[currentStep];
+    const value = formData[currentQuestion.id];
+    let error = '';
+    let isValid = false;
+
+    if (!value.trim()) {
+      error = `${currentQuestion.label} is required`;
+    } else {
+      // Additional validation for specific fields
+      if (currentQuestion.id === 'email' && !validateEmail(value)) {
+        error = 'Please enter a valid email address';
+      } else if (currentQuestion.id === 'phone' && !validatePhone(value)) {
+        error = 'Please enter a valid phone number';
+      } else {
+        isValid = true;
+      }
     }
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!validateEmail(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
+    setCurrentError(error);
+    setIsStepValid(isValid);
+    return isValid;
+  };
 
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'Phone number is required';
-    } else if (!validatePhone(formData.phone)) {
-      newErrors.phone = 'Please enter a valid phone number';
+  const validateAllSteps = (): boolean => {
+    for (let i = 0; i < questions.length; i++) {
+      const question = questions[i];
+      const value = formData[question.id];
+      
+      if (!value.trim()) return false;
+      
+      if (question.id === 'email' && !validateEmail(value)) return false;
+      if (question.id === 'phone' && !validatePhone(value)) return false;
     }
-
-    if (!formData.business.trim()) {
-      newErrors.business = 'Business description is required';
-    }
-
-    if (!formData.services.trim()) {
-      newErrors.services = 'Services description is required';
-    }
-
-    if (!formData.aiRequirements.trim()) {
-      newErrors.aiRequirements = 'AI requirements description is required';
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return true;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     
-    // Clear error when user starts typing
-    if (errors[name as keyof FormErrors]) {
-      setErrors(prev => ({ ...prev, [name]: undefined }));
+    // Validate current step when user types
+    setTimeout(() => {
+      validateCurrentStep();
+    }, 100);
+  };
+
+  const handleNext = () => {
+    if (validateCurrentStep()) {
+      if (currentStep < questions.length - 1) {
+        setCurrentStep(currentStep + 1);
+        setCurrentError('');
+        // Validate the new step
+        setTimeout(() => {
+          validateCurrentStep();
+        }, 100);
+      }
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+      setCurrentError('');
+      // Validate the previous step
+      setTimeout(() => {
+        validateCurrentStep();
+      }, 100);
     }
   };
 
@@ -345,7 +446,7 @@ Enhanced details to consider:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm()) {
+    if (!validateAllSteps()) {
       return;
     }
 
@@ -375,6 +476,11 @@ Enhanced details to consider:
     }
   };
 
+  // Initialize validation on component mount
+  React.useEffect(() => {
+    validateCurrentStep();
+  }, [currentStep]);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
       {/* Animated Background Elements */}
@@ -399,24 +505,24 @@ Enhanced details to consider:
       {/* Hero Section */}
       <section className="relative z-10 py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-8 leading-tight">
             Cut costs, increase efficiency,{' '}
             <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
               generate more sales
             </span>
           </h2>
           
-          <p className="text-xl sm:text-2xl text-gray-300 mb-12 leading-relaxed">
+          <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
             Let our Agents handle the phone work and book meetings while you focus on closing more sales.
           </p>
 
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
             <div className="text-center mb-12">
-              <h3 className="text-3xl sm:text-4xl font-bold mb-4">
-                Ready to Transform Your Business?
+              <h3 className="text-2xl sm:text-3xl font-bold mb-4">
+                Create a FREE customized Demo AI Agent within 5 minutes!
               </h3>
-              <p className="text-gray-300 text-lg">
+              <p className="text-gray-300 text-base">
                 Tell us about your needs and let's create your perfect AI Sales Agent
               </p>
             </div>
@@ -435,178 +541,171 @@ Enhanced details to consider:
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-8">
-              <div>
-                <label htmlFor="business" className="block text-sm font-medium text-gray-300 mb-3">
-                  <Building className="inline h-4 w-4 mr-2" />
-                  Your Company Name *
-                </label>
-                <textarea
-                  id="business"
-                  name="business"
-                  value={formData.business}
-                  onChange={handleInputChange}
-                  rows={4}
-                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                    errors.business ? 'border-red-500' : 'border-gray-600'
-                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                  placeholder="Enter your company name..."
-                />
-                {errors.business && (
-                  <p className="mt-2 text-sm text-red-400">{errors.business}</p>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="services" className="block text-sm font-medium text-gray-300 mb-3">
-                  <Briefcase className="inline h-4 w-4 mr-2" />
-                  What services do you provide? *
-                </label>
-                <textarea
-                  id="services"
-                  name="services"
-                  value={formData.services}
-                  onChange={handleInputChange}
-                  rows={4}
-                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                    errors.services ? 'border-red-500' : 'border-gray-600'
-                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                  placeholder="List your main services, products, or offerings..."
-                />
-                {errors.services && (
-                  <p className="mt-2 text-sm text-red-400">{errors.services}</p>
-                )}
-              </div>
-
-              <div>
-                <label htmlFor="aiRequirements" className="block text-sm font-medium text-gray-300 mb-3">
-                  <MessageSquare className="inline h-4 w-4 mr-2" />
-                  What exactly do you want your AI Sales Agent to do for you? *
-                </label>
-                <div className="flex items-center justify-between mb-3">
-                  <button
-                    type="button"
-                    onClick={enhancePrompt}
-                    disabled={enhanceState.isEnhancing || !formData.aiRequirements.trim()}
-                    className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {enhanceState.isEnhancing ? (
-                      <>
-                        <Loader className="h-3 w-3 animate-spin" />
-                        <span>Enhancing...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="h-3 w-3" />
-                        <span>Enhance Prompt</span>
-                      </>
+            {/* Progress Indicator */}
+            <div className="mb-12">
+              <div className="flex items-center justify-center space-x-4 mb-6">
+                {questions.map((_, index) => (
+                  <React.Fragment key={index}>
+                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
+                      index < currentStep 
+                        ? 'bg-green-500 text-white shadow-lg shadow-green-500/50' 
+                        : index === currentStep 
+                        ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/50' 
+                        : 'bg-gray-600 text-gray-400'
+                    }`}>
+                      {index < currentStep ? (
+                        <CheckCircle className="h-6 w-6" />
+                      ) : (
+                        index + 1
+                      )}
+                    </div>
+                    {index < questions.length - 1 && (
+                      <div className={`w-8 h-1 transition-all duration-300 ${
+                        index < currentStep ? 'bg-green-500' : 'bg-gray-600'
+                      }`}></div>
                     )}
-                  </button>
-                </div>
-                {enhanceState.hasEnhanced && (
-                  <div className="mb-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
-                    <p className="text-sm text-green-300 flex items-center">
-                      <CheckCircle className="h-4 w-4 mr-2" />
-                      Prompt enhanced! Review and edit as needed.
-                    </p>
-                  </div>
-                )}
-                <textarea
-                  id="aiRequirements"
-                  name="aiRequirements"
-                  value={formData.aiRequirements}
-                  onChange={handleInputChange}
-                  rows={6}
-                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                    errors.aiRequirements ? 'border-red-500' : 'border-gray-600'
-                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                  placeholder="Be specific about tasks, goals, processes, scripts, target audience, follow-up procedures, CRM integration needs, etc. The more detailed, the better we can customize your AI agent..."
-                />
-                {errors.aiRequirements && (
-                  <p className="mt-2 text-sm text-red-400">{errors.aiRequirements}</p>
-                )}
+                  </React.Fragment>
+                ))}
               </div>
+              <p className="text-center text-gray-400 text-sm">
+                Step {currentStep + 1} of {questions.length}
+              </p>
+            </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-3">
-                    <User className="inline h-4 w-4 mr-2" />
-                    Name *
-                  </label>
-                  <input
-                    type="text"
-                    id="name"
-                    name="name"
-                    value={formData.name}
-                    onChange={handleInputChange}
-                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                      errors.name ? 'border-red-500' : 'border-gray-600'
-                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                    placeholder="Your full name"
-                  />
-                  {errors.name && (
-                    <p className="mt-2 text-sm text-red-400">{errors.name}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-3">
-                    <Mail className="inline h-4 w-4 mr-2" />
-                    Email *
-                  </label>
-                  <input
-                    type="email"
-                    id="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleInputChange}
-                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                      errors.email ? 'border-red-500' : 'border-gray-600'
-                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                    placeholder="your@email.com"
-                  />
-                  {errors.email && (
-                    <p className="mt-2 text-sm text-red-400">{errors.email}</p>
-                  )}
-                </div>
-              </div>
-
-              <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-3">
-                  <Phone className="inline h-4 w-4 mr-2" />
-                  Phone Number *
-                </label>
-                <input
-                  type="tel"
-                  id="phone"
-                  name="phone"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                    errors.phone ? 'border-red-500' : 'border-gray-600'
-                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                  placeholder="+1 (555) 123-4567"
-                />
-                {errors.phone && (
-                  <p className="mt-2 text-sm text-red-400">{errors.phone}</p>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            {/* Question Container */}
+            <div className="relative overflow-hidden">
+              <div 
+                className="flex transition-transform duration-500 ease-in-out"
+                style={{ transform: `translateX(-${currentStep * 100}%)` }}
               >
-                {isSubmitting ? (
-                  <span className="flex items-center justify-center space-x-2">
-                    <Loader className="h-5 w-5 animate-spin" />
-                    <span>Submitting...</span>
-                  </span>
-                ) : (
-                  'Get Your Custom AI Sales Agent'
-                )}
+                {questions.map((question, index) => (
+                  <div key={question.id} className="w-full flex-shrink-0 px-4">
+                    <div className="text-center mb-8">
+                      <h4 className="text-2xl sm:text-3xl font-bold mb-4">
+                        {question.title}
+                      </h4>
+                    </div>
+
+                    <div className="space-y-4">
+                      <label className="block text-sm font-medium text-gray-300 mb-3">
+                        <question.icon className="inline h-4 w-4 mr-2" />
+                        {question.label} *
+                      </label>
+
+                      {/* Enhance Prompt Button for AI Requirements */}
+                      {question.id === 'aiRequirements' && (
+                        <div className="flex items-center justify-between mb-3">
+                          <button
+                            type="button"
+                            onClick={enhancePrompt}
+                            disabled={enhanceState.isEnhancing || !formData.aiRequirements.trim()}
+                            className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {enhanceState.isEnhancing ? (
+                              <>
+                                <Loader className="h-3 w-3 animate-spin" />
+                                <span>Enhancing...</span>
+                              </>
+                            ) : (
+                              <>
+                                <Zap className="h-3 w-3" />
+                                <span>Enhance Prompt</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      )}
+
+                      {/* Enhanced Prompt Status */}
+                      {question.id === 'aiRequirements' && enhanceState.hasEnhanced && (
+                        <div className="mb-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                          <p className="text-sm text-green-300 flex items-center">
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Prompt enhanced! Review and edit as needed.
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Input Field */}
+                      {question.type === 'textarea' ? (
+                        <textarea
+                          id={question.id}
+                          name={question.id}
+                          value={formData[question.id]}
+                          onChange={handleInputChange}
+                          rows={question.rows || 4}
+                          className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                            currentError ? 'border-red-500' : 'border-gray-600'
+                          } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
+                          placeholder={question.placeholder}
+                        />
+                      ) : (
+                        <input
+                          type={question.id === 'email' ? 'email' : question.id === 'phone' ? 'tel' : 'text'}
+                          id={question.id}
+                          name={question.id}
+                          value={formData[question.id]}
+                          onChange={handleInputChange}
+                          className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                            currentError ? 'border-red-500' : 'border-gray-600'
+                          } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                          placeholder={question.placeholder}
+                        />
+                      )}
+
+                      {/* Error Message */}
+                      {currentError && index === currentStep && (
+                        <p className="mt-2 text-sm text-red-400">{currentError}</p>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Navigation Buttons */}
+            <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-700/50">
+              <button
+                type="button"
+                onClick={handlePrevious}
+                disabled={currentStep === 0}
+                className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all ${
+                  currentStep === 0 
+                    ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' 
+                    : 'bg-gray-600 text-white hover:bg-gray-700'
+                }`}
+              >
+                <ArrowLeft className="h-5 w-5" />
+                <span>Previous</span>
               </button>
-            </form>
+
+              {currentStep === questions.length - 1 ? (
+                <button
+                  onClick={handleSubmit}
+                  disabled={isSubmitting || !isStepValid}
+                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader className="h-5 w-5 animate-spin" />
+                      <span>Submitting...</span>
+                    </>
+                  ) : (
+                    <span>Get Your Custom AI Sales Agent</span>
+                  )}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  disabled={!isStepValid}
+                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2"
+                >
+                  <span>Next</span>
+                  <ArrowRight className="h-5 w-5" />
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
