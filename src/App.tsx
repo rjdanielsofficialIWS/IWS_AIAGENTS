@@ -174,6 +174,10 @@ function App() {
     try {
       const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
       
+      // Debug logging - REMOVE THIS AFTER DEBUGGING
+      console.log('OpenAI API Key from env:', apiKey ? 'Key is present' : 'Key is missing/undefined');
+      console.log('All env vars:', import.meta.env);
+      
       if (!apiKey) {
         throw new Error('OpenAI API key not configured');
       }
