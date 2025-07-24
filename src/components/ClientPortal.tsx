@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Brain, Settings, User, LogOut, Save, Play, Pause, Edit3, Trash2, Plus,
-  CheckCircle, AlertCircle, Loader, Volume2, Mic, Zap, Target, Users
+  CheckCircle, AlertCircle, Loader, Volume2, Mic, Zap, Target, Users, Phone
 } from 'lucide-react';
 import { blandAI, AIAgent, PhoneNumber } from '../services/blandAI';
 
@@ -539,6 +539,24 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
                       </>
                     )}
                   </button>
+
+                  {testCallStatus && (
+                    <div className={`p-4 rounded-lg border ${
+                      testCallStatus.includes('✅') 
+                        ? 'bg-green-500/10 border-green-500/50 text-green-300' 
+                        : 'bg-red-500/10 border-red-500/50 text-red-300'
+                    }`}>
+                      <p className="text-sm font-medium">{testCallStatus}</p>
+                      {testCallStatus.includes('✅') && (
+                        <p className="text-xs mt-2 opacity-80">
+                          The call has been initiated. You can monitor its progress in your call history.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Form Actions */}
               <div className="flex flex-col sm:flex-row gap-4 mt-8 pt-6 border-t border-gray-700/50">
                 <button
@@ -568,22 +586,6 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
             </div>
           )}
 
-                  {testCallStatus && (
-                    <div className={`p-4 rounded-lg border ${
-                      testCallStatus.includes('✅') 
-                        ? 'bg-green-500/10 border-green-500/50 text-green-300' 
-                        : 'bg-red-500/10 border-red-500/50 text-red-300'
-                    }`}>
-                      <p className="text-sm font-medium">{testCallStatus}</p>
-                      {testCallStatus.includes('✅') && (
-                        <p className="text-xs mt-2 opacity-80">
-                          The call has been initiated. You can monitor its progress in your call history.
-                        </p>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
           {/* Existing Agents List */}
           {!showForm && (
             <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
