@@ -87,7 +87,7 @@ function App() {
     },
     {
       id: 'name',
-      title: '',
+      title: 'What\'s your name?',
       label: 'Name',
       type: 'input',
       placeholder: 'Your full name',
@@ -570,13 +570,11 @@ Enhanced details to consider:
               >
                 {questions.map((question, index) => (
                   <div key={question.id} className="w-full flex-shrink-0 px-4">
-                    {question.title && (
-                      <div className="text-center mb-8">
-                        <h4 className="text-2xl sm:text-3xl font-bold mb-4">
-                          {question.title}
-                        </h4>
-                      </div>
-                    )}
+                    <div className="text-center mb-8">
+                      <h4 className="text-2xl sm:text-3xl font-bold mb-4">
+                        {question.title}
+                      </h4>
+                    </div>
 
                     <div className="space-y-4">
                       <label className="block text-sm font-medium text-gray-300 mb-3">
