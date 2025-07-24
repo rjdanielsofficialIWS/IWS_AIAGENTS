@@ -633,7 +633,7 @@ function App() {
                 type="button"
                 onClick={handlePrevious}
                 disabled={currentStep === 0}
-                className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all ${
+                className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
                   currentStep === 0 
                     ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' 
                     : 'bg-gray-600 text-white hover:bg-gray-700'
@@ -647,15 +647,19 @@ function App() {
                 <button
                   onClick={handleSubmit}
                   disabled={isSubmitting || !isStepValid}
-                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2"
+                   className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-center flex-shrink-0 min-w-0"
                 >
                   {isSubmitting ? (
                     <>
                       <Loader className="h-5 w-5 animate-spin" />
-                      <span>Submitting...</span>
+                       <span className="hidden sm:inline">Submitting...</span>
+                       <span className="sm:hidden">Submitting</span>
                     </>
                   ) : (
-                    <span>Get Your Custom AI Sales Agent</span>
+                     <>
+                       <span className="hidden sm:inline">Get Your Custom AI Sales Agent</span>
+                       <span className="sm:hidden">Get AI Agent</span>
+                     </>
                   )}
                 </button>
               ) : (
@@ -663,7 +667,7 @@ function App() {
                   type="button"
                   onClick={handleNext}
                   disabled={!isStepValid}
-                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2"
+                   className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 flex-shrink-0"
                 >
                   <span>Next</span>
                   <ArrowRight className="h-5 w-5" />
