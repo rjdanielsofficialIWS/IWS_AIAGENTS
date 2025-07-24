@@ -19,14 +19,22 @@ interface EnhanceState {
 }
 
 interface Question {
-  id: keyof FormData;
+  id: keyof FormData | 'contactInfo';
   title: string;
-  label: string;
-  type: 'input' | 'textarea';
-  placeholder: string;
+  label?: string;
+  type: 'input' | 'textarea' | 'multi-input';
+  placeholder?: string;
   rows?: number;
-  icon: React.ComponentType<any>;
-  required: boolean;
+  icon?: React.ComponentType<any>;
+  required?: boolean;
+  fields?: {
+    id: keyof FormData;
+    label: string;
+    type: 'input' | 'email' | 'tel';
+    placeholder: string;
+    icon: React.ComponentType<any>;
+    required: boolean;
+  }[];
 }
 
 function App() {
@@ -86,31 +94,35 @@ function App() {
       required: true
     },
     {
-      id: 'name',
-      title: 'What\'s your name?',
-      label: 'Name',
-      type: 'input',
-      placeholder: 'Your full name',
-      icon: User,
-      required: true
-    },
-    {
-      id: 'email',
-      title: 'What\'s your email address?',
-      label: 'Email',
-      type: 'input',
-      placeholder: 'your@email.com',
-      icon: Mail,
-      required: true
-    },
-    {
-      id: 'phone',
-      title: 'What\'s your phone number?',
-      label: 'Phone Number',
-      type: 'input',
-      placeholder: '+1 (555) 123-4567',
-      icon: Phone,
-      required: true
+      id: 'contactInfo',
+      title: '',
+      type: 'multi-input',
+      fields: [
+        {
+          id: 'name',
+          label: 'Name',
+          type: 'input',
+          placeholder: 'Your full name',
+          icon: User,
+          required: true
+        },
+        {
+          id: 'email',
+          label: 'Email',
+          type: 'email',
+          placeholder: 'your@email.com',
+          icon: Mail,
+          required: true
+        },
+        {
+          id: 'phone',
+          label: 'Phone Number',
+          type: 'tel',
+          placeholder: '+1 (555) 123-4567',
+          icon: Phone,
+          required: true
+        }
+      ]
     }
   ];
 
@@ -335,20 +347,39 @@ Enhanced details to consider:
 
   const validateCurrentStep = (): boolean => {
     const currentQuestion = questions[currentStep];
-    const value = formData[currentQuestion.id];
     let error = '';
-    let isValid = false;
+    let isValid = true;
 
-    if (!value.trim()) {
-      error = `${currentQuestion.label} is required`;
+    if (currentQuestion.type === 'multi-input') {
+      // Validate all fields in the multi-input step
+      for (const field of currentQuestion.fields || []) {
+        const value = formData[field.id];
+        if (!value.trim()) {
+          isValid = false;
+          error = `${field.label} is required`;
+          break;
+        } else if (field.id === 'email' && !validateEmail(value)) {
+          isValid = false;
+          error = 'Please enter a valid email address';
+          break;
+        } else if (field.id === 'phone' && !validatePhone(value)) {
+          isValid = false;
+          error = 'Please enter a valid phone number';
+          break;
+        }
+      }
     } else {
-      // Additional validation for specific fields
-      if (currentQuestion.id === 'email' && !validateEmail(value)) {
+      // Validate single field step
+      const value = formData[currentQuestion.id as keyof FormData];
+      if (!value.trim()) {
+        isValid = false;
+        error = `${currentQuestion.label} is required`;
+      } else if (currentQuestion.id === 'email' && !validateEmail(value)) {
+        isValid = false;
         error = 'Please enter a valid email address';
       } else if (currentQuestion.id === 'phone' && !validatePhone(value)) {
+        isValid = false;
         error = 'Please enter a valid phone number';
-      } else {
-        isValid = true;
       }
     }
 
@@ -360,12 +391,20 @@ Enhanced details to consider:
   const validateAllSteps = (): boolean => {
     for (let i = 0; i < questions.length; i++) {
       const question = questions[i];
-      const value = formData[question.id];
       
-      if (!value.trim()) return false;
-      
-      if (question.id === 'email' && !validateEmail(value)) return false;
-      if (question.id === 'phone' && !validatePhone(value)) return false;
+      if (question.type === 'multi-input') {
+        for (const field of question.fields || []) {
+          const value = formData[field.id];
+          if (!value.trim()) return false;
+          if (field.id === 'email' && !validateEmail(value)) return false;
+          if (field.id === 'phone' && !validatePhone(value)) return false;
+        }
+      } else {
+        const value = formData[question.id as keyof FormData];
+        if (!value.trim()) return false;
+        if (question.id === 'email' && !validateEmail(value)) return false;
+        if (question.id === 'phone' && !validatePhone(value)) return false;
+      }
     }
     return true;
   };
@@ -570,17 +609,21 @@ Enhanced details to consider:
               >
                 {questions.map((question, index) => (
                   <div key={question.id} className="w-full flex-shrink-0 px-4">
-                    <div className="text-center mb-8">
-                      <h4 className="text-2xl sm:text-3xl font-bold mb-4">
-                        {question.title}
-                      </h4>
-                    </div>
+                    {question.title && (
+                      <div className="text-center mb-8">
+                        <h4 className="text-2xl sm:text-3xl font-bold mb-4">
+                          {question.title}
+                        </h4>
+                      </div>
+                    )}
 
                     <div className="space-y-4">
-                      <label className="block text-sm font-medium text-gray-300 mb-3">
-                        <question.icon className="inline h-4 w-4 mr-2" />
-                        {question.label} *
-                      </label>
+                      {question.type !== 'multi-input' && (
+                        <label className="block text-sm font-medium text-gray-300 mb-3">
+                          <question.icon className="inline h-4 w-4 mr-2" />
+                          {question.label} *
+                        </label>
+                      )}
 
                       {/* Enhance Prompt Button for AI Requirements */}
                       {question.id === 'aiRequirements' && (
@@ -617,11 +660,33 @@ Enhanced details to consider:
                       )}
 
                       {/* Input Field */}
-                      {question.type === 'textarea' ? (
+                      {question.type === 'multi-input' ? (
+                        <div className="space-y-6">
+                          {question.fields?.map(field => (
+                            <div key={field.id}>
+                              <label className="block text-sm font-medium text-gray-300 mb-3">
+                                <field.icon className="inline h-4 w-4 mr-2" />
+                                {field.label} *
+                              </label>
+                              <input
+                                type={field.type}
+                                id={field.id}
+                                name={field.id}
+                                value={formData[field.id]}
+                                onChange={handleInputChange}
+                                className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                                  currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
+                                } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                placeholder={field.placeholder}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      ) : question.type === 'textarea' ? (
                         <textarea
-                          id={question.id}
-                          name={question.id}
-                          value={formData[question.id]}
+                          id={question.id as string}
+                          name={question.id as string}
+                          value={formData[question.id as keyof FormData]}
                           onChange={handleInputChange}
                           rows={question.rows || 4}
                           className={`w-full px-4 py-3 bg-gray-900/50 border ${
@@ -631,15 +696,15 @@ Enhanced details to consider:
                         />
                       ) : (
                         <input
-                          type={question.id === 'email' ? 'email' : question.id === 'phone' ? 'tel' : 'text'}
-                          id={question.id}
-                          name={question.id}
-                          value={formData[question.id]}
+                          type="text"
+                          id={question.id as string}
+                          name={question.id as string}
+                          value={formData[question.id as keyof FormData]}
                           onChange={handleInputChange}
                           className={`w-full px-4 py-3 bg-gray-900/50 border ${
                             currentError ? 'border-red-500' : 'border-gray-600'
                           } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                          placeholder={question.placeholder}
+                          placeholder={question.placeholder || ''}
                         />
                       )}
 
