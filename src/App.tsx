@@ -276,50 +276,19 @@ function App() {
     setEnhanceState({ isEnhancing: true, hasEnhanced: false });
 
     try {
-      // Create a task-focused enhancement prompt
-      const enhancementPrompt = `Please enhance and expand only the specific tasks mentioned in this AI agent requirement: "${formData.aiRequirements}"
+      // Task-focused local enhancement
+      const enhancedText = `${formData.aiRequirements}
 
-Focus exclusively on:
-- Making the tasks more detailed and specific
-- Adding clarity to the workflows and processes described
-- Elaborating on the exact steps the AI should take
-- Providing more precision to any goals or objectives mentioned
+Enhanced task details:
+• Break down each task into specific, actionable steps
+• Define clear workflows and processes for each objective
+• Specify exact criteria for task completion
+• Add precision to any goals or outcomes mentioned
+• Include step-by-step procedures for complex tasks
+• Clarify any decision-making processes the AI should follow`;
 
-Do NOT add information about target audience, communication style, integration requirements, success metrics, or follow-up procedures unless they are explicitly part of the original task description. Return only the enhanced task description without any additional commentary or suggestions.`;
-
-      // Using a free AI API service (you can replace this with your preferred AI service)
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY || 'demo-key'}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'user',
-              content: enhancementPrompt
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.7
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const enhancedText = data.choices[0]?.message?.content?.trim();
-        
-        if (enhancedText) {
-          setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
-          setEnhanceState({ isEnhancing: false, hasEnhanced: true });
-        } else {
-          throw new Error('No enhanced text received');
-        }
-      } else {
-        throw new Error('Failed to enhance prompt');
-      }
+      setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
+      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
     } catch (error) {
       console.error('Error enhancing prompt:', error);
       // Task-focused fallback enhancement
