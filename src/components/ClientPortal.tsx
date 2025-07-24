@@ -39,6 +39,11 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
   const [testPhoneNumber, setTestPhoneNumber] = useState('');
   const [isTestCalling, setIsTestCalling] = useState(false);
   const [testCallStatus, setTestCallStatus] = useState<string>('');
+  
+  // Simulation states
+  const [simulatedConversation, setSimulatedConversation] = useState<Array<{ sender: 'user' | 'agent', text: string, timestamp: Date }>>([]);
+  const [userInput, setUserInput] = useState('');
+  const [isSimulating, setIsSimulating] = useState(false);
 
   // Load agents on component mount
   useEffect(() => {
