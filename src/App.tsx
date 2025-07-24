@@ -85,7 +85,7 @@ function App() {
       id: 'aiRequirements',
       title: 'What exactly do you want your AI Sales Agent to do for you?',
       type: 'textarea',
-      placeholder: 'Be specific about tasks, goals, processes, scripts, target audience, follow-up procedures, CRM integration needs, etc. The more detailed, the better we can customize your AI agent...',
+      placeholder: 'Be specific about tasks, goals, processes, follow-up procedures, CRM integration needs, etc...',
       rows: 6,
       icon: MessageSquare,
       required: true
