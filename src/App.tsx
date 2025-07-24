@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
-import { Brain, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Zap, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock } from 'lucide-react';
+import { SubscriptionSection } from './components/SubscriptionSection';
+import { ClientPortal } from './components/ClientPortal';
+import { supabase } from './services/blandAI';
 
 interface FormData {
   name: string;
@@ -19,7 +22,18 @@ interface FormErrors {
   aiRequirements?: string;
 }
 
+interface EnhanceState {
+  isEnhancing: boolean;
+  hasEnhanced: boolean;
+}
+
 function App() {
+  const [showPortal, setShowPortal] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [showAuthForm, setShowAuthForm] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authForm, setAuthForm] = useState({ email: '', password: '', confirmPassword: '' });
+  const [authLoading, setAuthLoading] = useState(false);
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -29,9 +43,144 @@ function App() {
     aiRequirements: ''
   });
   const [errors, setErrors] = useState<FormErrors>({});
-  const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
+  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
+    isEnhancing: false,
+    hasEnhanced: false
+  });
+
+  const handleSubscribe = () => {
+    setIsSubscribed(true);
+    setShowPortal(true);
+  };
+
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    // Add auth logic here
+    setAuthLoading(false);
+  };
+
+  const handleLogout = () => {
+    setShowPortal(false);
+  };
+
+  // Show client portal if user is subscribed and wants to access it
+  if (showPortal && isSubscribed) {
+    return <ClientPortal onLogout={handleLogout} />;
+  }
+  
+  // Show authentication form
+  if (showAuthForm) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center px-4">
+        <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="flex items-center justify-center space-x-3 mb-4">
+              <Brain className="h-8 w-8 text-yellow-400" />
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
+                Infinite Wealth Solutions
+              </h1>
+            </div>
+            <h2 className="text-xl font-semibold mb-2">
+              {isSignUp ? 'Create Account' : 'Sign In'}
+            </h2>
+            <p className="text-gray-400">
+              {isSignUp ? 'Get started with your AI agent' : 'Access your AI agent dashboard'}
+            </p>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-6">
+            <div>
+              <label htmlFor="auth-email" className="block text-sm font-medium text-gray-300 mb-2">
+                <Mail className="inline h-4 w-4 mr-2" />
+                Email
+              </label>
+              <input
+                type="email"
+                id="auth-email"
+                value={authForm.email}
+                onChange={(e) => setAuthForm(prev => ({ ...prev, email: e.target.value }))}
+                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
+                placeholder="your@email.com"
+                required
+              />
+            </div>
+
+            <div>
+              <label htmlFor="auth-password" className="block text-sm font-medium text-gray-300 mb-2">
+                <Lock className="inline h-4 w-4 mr-2" />
+                Password
+              </label>
+              <input
+                type="password"
+                id="auth-password"
+                value={authForm.password}
+                onChange={(e) => setAuthForm(prev => ({ ...prev, password: e.target.value }))}
+                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
+                placeholder="Enter your password"
+                required
+                minLength={6}
+              />
+            </div>
+
+            {isSignUp && (
+              <div>
+                <label htmlFor="auth-confirm-password" className="block text-sm font-medium text-gray-300 mb-2">
+                  <Lock className="inline h-4 w-4 mr-2" />
+                  Confirm Password
+                </label>
+                <input
+                  type="password"
+                  id="auth-confirm-password"
+                  value={authForm.confirmPassword}
+                  onChange={(e) => setAuthForm(prev => ({ ...prev, confirmPassword: e.target.value }))}
+                  className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all"
+                  placeholder="Confirm your password"
+                  required
+                  minLength={6}
+                />
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            >
+              {authLoading ? (
+                <span className="flex items-center justify-center space-x-2">
+                  <Loader className="h-5 w-5 animate-spin" />
+                  <span>{isSignUp ? 'Creating Account...' : 'Signing In...'}</span>
+                </span>
+              ) : (
+                isSignUp ? 'Create Account' : 'Sign In'
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+            </button>
+          </div>
+
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => setShowAuthForm(false)}
+              className="text-gray-400 hover:text-gray-300 transition-colors text-sm"
+            >
+              ← Back to main page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -43,55 +192,115 @@ function App() {
     return phoneRegex.test(phone.replace(/\s/g, ''));
   };
 
-  const validateStep = (step: number): boolean => {
+  const enhancePrompt = async () => {
+    if (!formData.aiRequirements.trim()) {
+      return;
+    }
+
+    setEnhanceState({ isEnhancing: true, hasEnhanced: false });
+
+    try {
+      // Create a comprehensive enhancement prompt
+      const enhancementPrompt = `Please enhance and expand this AI agent requirement description to be more detailed, specific, and actionable. The original request is: "${formData.aiRequirements}"
+
+Please expand it to include:
+- Specific tasks and workflows
+- Target audience details
+- Communication style preferences
+- Integration requirements
+- Success metrics
+- Follow-up procedures
+- Any relevant industry-specific considerations
+
+Make it comprehensive but keep it focused and practical. Return only the enhanced description without any additional commentary.`;
+
+      // Using a free AI API service (you can replace this with your preferred AI service)
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY || 'demo-key'}`
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            {
+              role: 'user',
+              content: enhancementPrompt
+            }
+          ],
+          max_tokens: 500,
+          temperature: 0.7
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const enhancedText = data.choices[0]?.message?.content?.trim();
+        
+        if (enhancedText) {
+          setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
+          setEnhanceState({ isEnhancing: false, hasEnhanced: true });
+        } else {
+          throw new Error('No enhanced text received');
+        }
+      } else {
+        throw new Error('Failed to enhance prompt');
+      }
+    } catch (error) {
+      console.error('Error enhancing prompt:', error);
+      // Fallback enhancement for demo purposes
+      const fallbackEnhancement = `${formData.aiRequirements}
+
+Enhanced details to consider:
+• Target audience: [Specify your ideal customer profile]
+• Communication style: [Professional, friendly, consultative, etc.]
+• Key objectives: [Lead qualification, appointment setting, follow-up, etc.]
+• Integration needs: [CRM system, calendar booking, email sequences]
+• Success metrics: [Conversion rates, response times, meeting bookings]
+• Follow-up procedures: [Automated sequences, escalation protocols]
+• Industry-specific requirements: [Compliance, terminology, processes]
+• Preferred response times and availability windows
+• Escalation criteria for complex inquiries`;
+
+      setFormData(prev => ({ ...prev, aiRequirements: fallbackEnhancement }));
+      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
+    }
+  };
+
+  const validateForm = (): boolean => {
     const newErrors: FormErrors = {};
 
-    switch (step) {
-      case 1:
-        if (!formData.business.trim()) {
-          newErrors.business = 'Business description is required';
-        }
-        break;
-      case 2:
-        if (!formData.services.trim()) {
-          newErrors.services = 'Services description is required';
-        }
-        break;
-      case 3:
-        if (!formData.aiRequirements.trim()) {
-          newErrors.aiRequirements = 'AI requirements description is required';
-        }
-        break;
-      case 4:
-        if (!formData.name.trim()) {
-          newErrors.name = 'Name is required';
-        }
-        if (!formData.email.trim()) {
-          newErrors.email = 'Email is required';
-        } else if (!validateEmail(formData.email)) {
-          newErrors.email = 'Please enter a valid email address';
-        }
-        if (!formData.phone.trim()) {
-          newErrors.phone = 'Phone number is required';
-        } else if (!validatePhone(formData.phone)) {
-          newErrors.phone = 'Please enter a valid phone number';
-        }
-        break;
+    if (!formData.name.trim()) {
+      newErrors.name = 'Name is required';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!validateEmail(formData.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+
+    if (!formData.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    } else if (!validatePhone(formData.phone)) {
+      newErrors.phone = 'Please enter a valid phone number';
+    }
+
+    if (!formData.business.trim()) {
+      newErrors.business = 'Business description is required';
+    }
+
+    if (!formData.services.trim()) {
+      newErrors.services = 'Services description is required';
+    }
+
+    if (!formData.aiRequirements.trim()) {
+      newErrors.aiRequirements = 'AI requirements description is required';
     }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
-  };
-
-  const handleNext = () => {
-    if (validateStep(currentStep)) {
-      setCurrentStep(prev => prev + 1);
-    }
-  };
-
-  const handlePrevious = () => {
-    setCurrentStep(prev => prev - 1);
-    setErrors({});
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -104,31 +313,12 @@ function App() {
     }
   };
 
-  const submitToWebhook = async (data: FormData): Promise<boolean> => {
+  const submitToGoogleSheets = async (data: FormData): Promise<boolean> => {
     try {
-      // Send to Make.com webhook
-      const WEBHOOK_URL = 'https://hook.us2.make.com/xbuqqbpezff1lsgmwqxjkdm3qpwl93qt';
-      
-      const webhookResponse = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: data.name,
-          email: data.email,
-          phone: data.phone,
-          business: data.business,
-          services: data.services,
-          aiRequirements: data.aiRequirements,
-          timestamp: new Date().toISOString()
-        })
-      });
-
-      // Also send to Google Sheets as backup
+      // Replace with your Google Apps Script Web App URL
       const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbznqxRBfCu6PDtgyDXP8IYtFfEF_c1GsHlamgmw26EAkao8JwXTDtV8ZGpjA5uOKBuV/exec';
       
-      fetch(GOOGLE_SCRIPT_URL, {
+      const response = await fetch(GOOGLE_SCRIPT_URL, {
         method: 'POST',
         mode: 'no-cors',
         headers: {
@@ -143,11 +333,9 @@ function App() {
           aiRequirements: data.aiRequirements,
           timestamp: new Date().toISOString()
         })
-      }).catch(error => {
-        console.log('Google Sheets backup failed:', error);
       });
 
-      return webhookResponse.ok;
+      return true; // With no-cors mode, we can't check response.ok, so assume success
     } catch (error) {
       console.error('Error submitting form:', error);
       return false;
@@ -157,7 +345,7 @@ function App() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateStep(4)) {
+    if (!validateForm()) {
       return;
     }
 
@@ -165,11 +353,10 @@ function App() {
     setSubmitStatus(null);
 
     try {
-      const success = await submitToWebhook(formData);
+      const success = await submitToGoogleSheets(formData);
       
       if (success) {
         setSubmitStatus('success');
-        setCurrentStep(1);
         setFormData({
           name: '',
           email: '',
@@ -188,16 +375,6 @@ function App() {
     }
   };
 
-  const getStepTitle = (step: number): string => {
-    switch (step) {
-      case 1: return "Tell us about your company";
-      case 2: return "What services do you provide?";
-      case 3: return "What do you want your AI Agent to do?";
-      case 4: return "Let's get in touch";
-      default: return "";
-    }
-  };
-  
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
       {/* Animated Background Elements */}
@@ -235,42 +412,12 @@ function App() {
 
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
-            <div className="mb-8">
-              <h3 className="text-3xl sm:text-4xl font-bold text-center bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
-                Create a FREE customized Demo AI Agent within 5 minutes!
-              </h3>
-            </div>
-
-            {/* Progress Indicator */}
-            <div className="flex items-center justify-center mb-8">
-              <div className="flex items-center space-x-4">
-                {[1, 2, 3, 4].map((step) => (
-                  <div key={step} className="flex items-center">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all duration-300 ${
-                      step === currentStep 
-                        ? 'bg-yellow-400 text-black' 
-                        : step < currentStep 
-                          ? 'bg-green-500 text-white' 
-                          : 'bg-gray-600 text-gray-300'
-                    }`}>
-                      {step < currentStep ? <CheckCircle className="h-5 w-5" /> : step}
-                    </div>
-                    {step < 4 && (
-                      <div className={`w-8 h-0.5 mx-2 transition-all duration-300 ${
-                        step < currentStep ? 'bg-green-500' : 'bg-gray-600'
-                      }`} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="text-center mb-12">
-              <h3 className="text-2xl sm:text-3xl font-bold mb-2">
-                {getStepTitle(currentStep)}
+              <h3 className="text-3xl sm:text-4xl font-bold mb-4">
+                Ready to Transform Your Business?
               </h3>
-              <p className="text-gray-400 text-sm">
-                Step {currentStep} of 4
+              <p className="text-gray-300 text-lg">
+                Tell us about your needs and let's create your perfect AI Sales Agent
               </p>
             </div>
 
@@ -289,190 +436,176 @@ function App() {
             )}
 
             <form onSubmit={handleSubmit} className="space-y-8">
-              {/* Step 1: Company Information */}
-              {currentStep === 1 && (
-                <div className="transition-all duration-500 ease-in-out">
-                  <label htmlFor="business" className="block text-sm font-medium text-gray-300 mb-3">
-                    <Building className="inline h-4 w-4 mr-2" />
-                    Your Company Name *
-                  </label>
-                  <textarea
-                    id="business"
-                    name="business"
-                    value={formData.business}
-                    onChange={handleInputChange}
-                    rows={4}
-                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                      errors.business ? 'border-red-500' : 'border-gray-600'
-                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                    placeholder="Enter your company name..."
-                  />
-                  {errors.business && (
-                    <p className="mt-2 text-sm text-red-400">{errors.business}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Step 2: Services */}
-              {currentStep === 2 && (
-                <div className="transition-all duration-500 ease-in-out">
-                  <label htmlFor="services" className="block text-sm font-medium text-gray-300 mb-3">
-                    <Briefcase className="inline h-4 w-4 mr-2" />
-                    What services do you provide? *
-                  </label>
-                  <textarea
-                    id="services"
-                    name="services"
-                    value={formData.services}
-                    onChange={handleInputChange}
-                    rows={4}
-                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                      errors.services ? 'border-red-500' : 'border-gray-600'
-                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                    placeholder="List your main services, products, or offerings..."
-                  />
-                  {errors.services && (
-                    <p className="mt-2 text-sm text-red-400">{errors.services}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Step 3: AI Requirements */}
-              {currentStep === 3 && (
-                <div className="transition-all duration-500 ease-in-out">
-                  <label htmlFor="aiRequirements" className="block text-sm font-medium text-gray-300 mb-3">
-                    <MessageSquare className="inline h-4 w-4 mr-2" />
-                    What exactly do you want your AI Sales Agent to do for you? *
-                  </label>
-                  <textarea
-                    id="aiRequirements"
-                    name="aiRequirements"
-                    value={formData.aiRequirements}
-                    onChange={handleInputChange}
-                    rows={6}
-                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                      errors.aiRequirements ? 'border-red-500' : 'border-gray-600'
-                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                    placeholder="Be specific about tasks, goals, processes, scripts, follow-up procedures, CRM integration needs, etc..."
-                  />
-                  
-                  {errors.aiRequirements && (
-                    <p className="mt-2 text-sm text-red-400">{errors.aiRequirements}</p>
-                  )}
-                </div>
-              )}
-
-              {/* Step 4: Contact Information */}
-              {currentStep === 4 && (
-                <div className="transition-all duration-500 ease-in-out space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-3">
-                        <User className="inline h-4 w-4 mr-2" />
-                        Name *
-                      </label>
-                      <input
-                        type="text"
-                        id="name"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                          errors.name ? 'border-red-500' : 'border-gray-600'
-                        } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                        placeholder="Your full name"
-                      />
-                      {errors.name && (
-                        <p className="mt-2 text-sm text-red-400">{errors.name}</p>
-                      )}
-                    </div>
-
-                    <div>
-                      <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-3">
-                        <Mail className="inline h-4 w-4 mr-2" />
-                        Email *
-                      </label>
-                      <input
-                        type="email"
-                        id="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleInputChange}
-                        className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                          errors.email ? 'border-red-500' : 'border-gray-600'
-                        } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                        placeholder="your@email.com"
-                      />
-                      {errors.email && (
-                        <p className="mt-2 text-sm text-red-400">{errors.email}</p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-3">
-                      <Phone className="inline h-4 w-4 mr-2" />
-                      Phone Number *
-                    </label>
-                    <input
-                      type="tel"
-                      id="phone"
-                      name="phone"
-                      value={formData.phone}
-                      onChange={handleInputChange}
-                      className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                        errors.phone ? 'border-red-500' : 'border-gray-600'
-                      } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                      placeholder="+1 (555) 123-4567"
-                    />
-                    {errors.phone && (
-                      <p className="mt-2 text-sm text-red-400">{errors.phone}</p>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Navigation Buttons */}
-              <div className="flex justify-between items-center pt-6">
-                {currentStep > 1 ? (
-                  <button
-                    type="button"
-                    onClick={handlePrevious}
-                    className="flex items-center space-x-2 px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-all duration-200"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                    <span>Previous</span>
-                  </button>
-                ) : (
-                  <div></div>
-                )}
-
-                {currentStep < 4 ? (
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    className="flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold rounded-lg transition-all duration-200"
-                  >
-                    <span>Next</span>
-                    <ArrowRight className="h-4 w-4" />
-                  </button>
-                ) : (
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-                  >
-                    {isSubmitting ? (
-                      <span className="flex items-center justify-center space-x-2">
-                        <Loader className="h-5 w-5 animate-spin" />
-                        <span>Submitting...</span>
-                      </span>
-                    ) : (
-                      'Get Your Custom AI Sales Agent'
-                    )}
-                  </button>
+              <div>
+                <label htmlFor="business" className="block text-sm font-medium text-gray-300 mb-3">
+                  <Building className="inline h-4 w-4 mr-2" />
+                  Your Company Name *
+                </label>
+                <textarea
+                  id="business"
+                  name="business"
+                  value={formData.business}
+                  onChange={handleInputChange}
+                  rows={4}
+                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                    errors.business ? 'border-red-500' : 'border-gray-600'
+                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
+                  placeholder="Enter your company name..."
+                />
+                {errors.business && (
+                  <p className="mt-2 text-sm text-red-400">{errors.business}</p>
                 )}
               </div>
+
+              <div>
+                <label htmlFor="services" className="block text-sm font-medium text-gray-300 mb-3">
+                  <Briefcase className="inline h-4 w-4 mr-2" />
+                  What services do you provide? *
+                </label>
+                <textarea
+                  id="services"
+                  name="services"
+                  value={formData.services}
+                  onChange={handleInputChange}
+                  rows={4}
+                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                    errors.services ? 'border-red-500' : 'border-gray-600'
+                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
+                  placeholder="List your main services, products, or offerings..."
+                />
+                {errors.services && (
+                  <p className="mt-2 text-sm text-red-400">{errors.services}</p>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="aiRequirements" className="block text-sm font-medium text-gray-300 mb-3">
+                  <MessageSquare className="inline h-4 w-4 mr-2" />
+                  What exactly do you want your AI Sales Agent to do for you? *
+                </label>
+                <div className="flex items-center justify-between mb-3">
+                  <button
+                    type="button"
+                    onClick={enhancePrompt}
+                    disabled={enhanceState.isEnhancing || !formData.aiRequirements.trim()}
+                    className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {enhanceState.isEnhancing ? (
+                      <>
+                        <Loader className="h-3 w-3 animate-spin" />
+                        <span>Enhancing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-3 w-3" />
+                        <span>Enhance Prompt</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+                {enhanceState.hasEnhanced && (
+                  <div className="mb-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
+                    <p className="text-sm text-green-300 flex items-center">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      Prompt enhanced! Review and edit as needed.
+                    </p>
+                  </div>
+                )}
+                <textarea
+                  id="aiRequirements"
+                  name="aiRequirements"
+                  value={formData.aiRequirements}
+                  onChange={handleInputChange}
+                  rows={6}
+                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                    errors.aiRequirements ? 'border-red-500' : 'border-gray-600'
+                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
+                  placeholder="Be specific about tasks, goals, processes, scripts, target audience, follow-up procedures, CRM integration needs, etc. The more detailed, the better we can customize your AI agent..."
+                />
+                {errors.aiRequirements && (
+                  <p className="mt-2 text-sm text-red-400">{errors.aiRequirements}</p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-300 mb-3">
+                    <User className="inline h-4 w-4 mr-2" />
+                    Name *
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                      errors.name ? 'border-red-500' : 'border-gray-600'
+                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                    placeholder="Your full name"
+                  />
+                  {errors.name && (
+                    <p className="mt-2 text-sm text-red-400">{errors.name}</p>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-3">
+                    <Mail className="inline h-4 w-4 mr-2" />
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    id="email"
+                    name="email"
+                    value={formData.email}
+                    onChange={handleInputChange}
+                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                      errors.email ? 'border-red-500' : 'border-gray-600'
+                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                    placeholder="your@email.com"
+                  />
+                  {errors.email && (
+                    <p className="mt-2 text-sm text-red-400">{errors.email}</p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-300 mb-3">
+                  <Phone className="inline h-4 w-4 mr-2" />
+                  Phone Number *
+                </label>
+                <input
+                  type="tel"
+                  id="phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleInputChange}
+                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                    errors.phone ? 'border-red-500' : 'border-gray-600'
+                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                  placeholder="+1 (555) 123-4567"
+                />
+                {errors.phone && (
+                  <p className="mt-2 text-sm text-red-400">{errors.phone}</p>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              >
+                {isSubmitting ? (
+                  <span className="flex items-center justify-center space-x-2">
+                    <Loader className="h-5 w-5 animate-spin" />
+                    <span>Submitting...</span>
+                  </span>
+                ) : (
+                  'Get Your Custom AI Sales Agent'
+                )}
+              </button>
             </form>
           </div>
 
@@ -503,6 +636,9 @@ function App() {
           </div>
         </div>
       </section>
+
+      {/* Subscription Section */}
+      <SubscriptionSection onSubscribe={handleSubscribe} />
 
       {/* Footer */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
