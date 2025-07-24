@@ -165,32 +165,6 @@ class BlandAIService {
     return data;
   }
 
-  // Prompt Enhancement
-  async enhancePrompt(text: string): Promise<string> {
-    const { data: { session } } = await supabase.auth.getSession();
-    
-    if (!session) {
-      throw new Error('Authentication required');
-    }
-
-    const response = await fetch(`${supabase.supabaseUrl}/functions/v1/bland-ai/enhance-prompt`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${session.access_token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ text }),
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || 'Failed to enhance prompt');
-    }
-
-    const data = await response.json();
-    return data.enhancedText;
-  }
-
   // Utility methods
   async getCallAnalytics(dateRange?: { start: string; end: string }) {
     const calls = await this.getCalls();

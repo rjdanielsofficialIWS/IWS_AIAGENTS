@@ -276,19 +276,42 @@ function App() {
     setEnhanceState({ isEnhancing: true, hasEnhanced: false });
 
     try {
-      const enhancedText = await blandAI.enhancePrompt(formData.aiRequirements);
+      // Task-focused local enhancement
+      const enhancedText = `${formData.aiRequirements}
+
+Enhanced task details:
+• Break down each task into specific, actionable steps
+• Define clear workflows and processes for each objective
+• Specify exact criteria for task completion
+• Add precision to any goals or outcomes mentioned
+• Include step-by-step procedures for complex tasks
+• Clarify any decision-making processes the AI should follow`;
+
       setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
       setEnhanceState({ isEnhancing: false, hasEnhanced: true });
     } catch (error) {
-      setEnhanceState({ isEnhancing: false, hasEnhanced: false });
-      setCurrentError('Failed to enhance prompt. Please try again.');
+      console.error('Error enhancing prompt:', error);
+      // Task-focused fallback enhancement
+      const fallbackEnhancement = `${formData.aiRequirements}
+
+Enhanced task details:
+• Break down each task into specific, actionable steps
+• Define clear workflows and processes for each objective
+• Specify exact criteria for task completion
+• Add precision to any goals or outcomes mentioned
+• Include step-by-step procedures for complex tasks
+• Clarify any decision-making processes the AI should follow`;
+
+      setFormData(prev => ({ ...prev, aiRequirements: fallbackEnhancement }));
+      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
     }
+    validateCurrentStep();
   };
 
   const validateCurrentStep = (): boolean => {
     const currentQuestion = questions[currentStep];
-    let isValid = true;
     let error = '';
+    let isValid = true;
 
     if (currentQuestion.type === 'multi-input') {
       // Validate all fields in the multi-input step
@@ -405,16 +428,17 @@ function App() {
         })
       });
 
-      return true;
+      return true; // With no-cors mode, we can't check response.ok, so assume success
     } catch (error) {
-      console.error('Error submitting to Google Sheets:', error);
+      console.error('Error submitting form:', error);
       return false;
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
     if (!validateAllSteps()) {
-      setSubmitStatus('error');
       return;
     }
 
@@ -426,7 +450,6 @@ function App() {
       
       if (success) {
         setSubmitStatus('success');
-        // Reset form
         setFormData({
           name: '',
           email: '',
@@ -435,12 +458,10 @@ function App() {
           services: '',
           aiRequirements: ''
         });
-        setCurrentStep(0);
       } else {
         setSubmitStatus('error');
       }
     } catch (error) {
-      console.error('Submission error:', error);
       setSubmitStatus('error');
     } finally {
       setIsSubmitting(false);
