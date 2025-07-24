@@ -77,45 +77,33 @@ export interface CallRecord {
 
 class BlandAIService {
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
-    // For now, we'll mock the API responses to test the UI
-    // In production, this would make actual requests to your backend
+    const baseUrl = `${supabaseUrl}/functions/v1/bland-ai`;
+    const url = `${baseUrl}${endpoint}`;
+
+    // Get the current user's session token
+    const { data: { session } } = await supabase.auth.getSession();
     
-    // Simulate network delay
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    if (endpoint === '/agents' && options.method === 'POST') {
-      const body = JSON.parse(options.body as string);
-      return {
-        agent: {
-          id: `agent_${Date.now()}`,
-          user_id: 'mock_user',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          ...body
-        }
-      };
+    if (!session?.access_token) {
+      throw new Error('User not authenticated');
     }
-    
-    if (endpoint === '/agents') {
-      return { agents: [] };
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+      ...options.headers,
+    };
+
+    const response = await fetch(url, {
+      ...options,
+      headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API request failed: ${response.status} ${errorText}`);
     }
-    
-    if (endpoint.startsWith('/agents/') && options.method === 'DELETE') {
-      return { success: true };
-    }
-    
-    if (endpoint === '/call' && options.method === 'POST') {
-      return {
-        call_id: `call_${Date.now()}`,
-        status: 'initiated'
-      };
-    }
-    
-    if (endpoint === '/calls') {
-      return { calls: [] };
-    }
-    
-    return {};
+
+    return await response.json();
   }
 
   // AI Agent Management
@@ -137,7 +125,7 @@ class BlandAIService {
 
   async getAgents(): Promise<AIAgent[]> {
     const data = await this.makeRequest('/agents');
-    return data.agents;
+    return data.agents || [];
   }
 
   async deleteAgent(agentId: string): Promise<void> {
@@ -152,17 +140,27 @@ class BlandAIService {
       method: 'POST',
       body: JSON.stringify(callRequest),
     });
-    return data;
+    return {
+      call_id: data.call_id,
+      status: data.status || 'initiated'
+    };
   }
 
   async getCalls(): Promise<CallRecord[]> {
     const data = await this.makeRequest('/calls');
-    return data.calls;
+    return data.calls || [];
   }
 
   async getCall(callId: string): Promise<CallRecord> {
     const data = await this.makeRequest(`/call/${callId}`);
     return data;
+  }
+
+  // Prompt enhancement (placeholder implementation)
+  async enhancePrompt(prompt: string): Promise<string> {
+    // For now, return the original prompt
+    // In the future, this could call an AI service to enhance the prompt
+    return prompt;
   }
 
   // Utility methods
