@@ -3,7 +3,8 @@ import {
   Brain, Settings, User, LogOut, Save, Play, Pause, Edit3, Trash2, Plus,
   CheckCircle, AlertCircle, Loader, Volume2, Mic, Zap, Target, Users, Phone,
   MessageSquare, Send, Bot
-} from '../services/blandAI';
+} from 'lucide-react';
+import { blandAI, AIAgent, PhoneNumber } from '../services/blandAI';
 
 interface ClientPortalProps {
   onLogout: () => void;
