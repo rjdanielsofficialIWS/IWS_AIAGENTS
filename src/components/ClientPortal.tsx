@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Brain, Settings, User, LogOut, Save, Play, Pause, Edit3, Trash2, Plus,
-  CheckCircle, AlertCircle, Loader, Volume2, Mic, Zap, Target, Users, Phone
+  CheckCircle, AlertCircle, Loader, Volume2, Mic, Zap, Target, Users, Phone,
   MessageSquare, Send, Bot
-import { blandAI, AIAgent, PhoneNumber } from '../services/blandAI';
+} from '../services/blandAI';
 
 interface ClientPortalProps {
   onLogout: () => void;
@@ -39,11 +39,6 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
   const [testPhoneNumber, setTestPhoneNumber] = useState('');
   const [isTestCalling, setIsTestCalling] = useState(false);
   const [testCallStatus, setTestCallStatus] = useState<string>('');
-  
-  // Simulation states
-  const [simulatedConversation, setSimulatedConversation] = useState<Array<{ sender: 'user' | 'agent', text: string, timestamp: Date }>>([]);
-  const [userInput, setUserInput] = useState('');
-  const [isSimulating, setIsSimulating] = useState(false);
 
   // Load agents on component mount
   useEffect(() => {
@@ -186,8 +181,6 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
     resetAgentConfig();
     setTestPhoneNumber('');
     setTestCallStatus('');
-    setSimulatedConversation([]);
-    setUserInput('');
   };
 
   const handleTestCall = async () => {
@@ -295,117 +288,7 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
               </button>
             )}
           </div>
-            {/* Simulation Section */}
-            <div className="mt-8 pt-8 border-t border-gray-700/50">
-              <h4 className="text-lg font-semibold mb-4 flex items-center">
-                <MessageSquare className="h-5 w-5 mr-2 text-purple-400" />
-                Simulate Agent Conversation
-              </h4>
-              <p className="text-gray-400 text-sm mb-6">
-                Test your agent's prompt instructions in a simulated text conversation. This gives you a preview of how your agent might respond based on your instructions.
-              </p>
-              
-              <div className="bg-gray-900/30 rounded-xl p-6 space-y-4">
-                {simulatedConversation.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Bot className="h-12 w-12 mx-auto mb-4 text-gray-500" />
-                    <p className="text-gray-400 mb-4">Start a simulated conversation to test your agent's responses</p>
-                    <button
-                      onClick={startNewSimulation}
-                      disabled={!agentConfig.prompt_instructions.trim()}
-                      className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 mx-auto"
-                    >
-                      <MessageSquare className="h-4 w-4" />
-                      <span>Start Simulation</span>
-                    </button>
-                  </div>
-                ) : (
-                  <>
-                    {/* Conversation Display */}
-                    <div className="bg-gray-800/50 rounded-lg p-4 max-h-80 overflow-y-auto space-y-3">
-                      {simulatedConversation.map((message, index) => (
-                        <div key={index} className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-                          <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                            message.sender === 'user' 
-                              ? 'bg-blue-500 text-white' 
-                              : 'bg-gray-700 text-gray-100'
-                          }`}>
-                            <div className="flex items-center space-x-2 mb-1">
-                              {message.sender === 'agent' ? (
-                                <Bot className="h-4 w-4 text-purple-400" />
-                              ) : (
-                                <User className="h-4 w-4 text-blue-200" />
-                              )}
-                              <span className="text-xs opacity-75">
-                                {message.sender === 'agent' ? 'AI Agent' : 'You'}
-                              </span>
-                            </div>
-                            <p className="text-sm">{message.text}</p>
-                          </div>
-                        </div>
-                      ))}
-                      {isSimulating && (
-                        <div className="flex justify-start">
-                          <div className="bg-gray-700 text-gray-100 max-w-xs lg:max-w-md px-4 py-2 rounded-lg">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <Bot className="h-4 w-4 text-purple-400" />
-                              <span className="text-xs opacity-75">AI Agent</span>
-                            </div>
-                            <div className="flex items-center space-x-1">
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-100"></div>
-                              <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce delay-200"></div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
 
-                    {/* Input Area */}
-                    <div className="flex space-x-3">
-                      <input
-                        type="text"
-                        value={userInput}
-                        onChange={(e) => setUserInput(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && !isSimulating && handleSimulateMessage()}
-                        className="flex-1 px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-400/50 focus:border-purple-400 transition-all"
-                        placeholder="Type your response as a potential customer..."
-                        disabled={isSimulating}
-                      />
-                      <button
-                        onClick={handleSimulateMessage}
-                        disabled={isSimulating || !userInput.trim()}
-                        className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-bold py-3 px-4 rounded-lg transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-purple-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center"
-                      >
-                        <Send className="h-5 w-5" />
-                      </button>
-                    </div>
-
-                    {/* Reset Button */}
-                    <div className="flex justify-center pt-2">
-                      <button
-                        onClick={startNewSimulation}
-                        className="text-sm text-gray-400 hover:text-gray-300 transition-colors"
-                      >
-                        Reset Conversation
-                      </button>
-                    </div>
-                  </>
-                )}
-                
-                <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4 mt-4">
-                  <div className="flex items-start space-x-3">
-                    <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-yellow-400 font-medium text-sm mb-1">Simulation Limitations</p>
-                      <p className="text-yellow-300 text-xs">
-                        This is a simplified simulation based on your prompt instructions. The actual AI agent will be more sophisticated and may respond differently. For accurate testing, use the "Test Your AI Agent" feature above.
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
           {/* Agent Configuration Form */}
           {showForm && (
             <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 max-w-4xl mx-auto">
