@@ -349,7 +349,7 @@ function App() {
                   className={`w-full px-4 py-3 bg-gray-900/50 border ${
                     errors.aiRequirements ? 'border-red-500' : 'border-gray-600'
                   } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                  placeholder="Be specific about tasks, goals, processes, scripts, target audience, follow-up procedures, CRM integration needs, etc. The more detailed, the better we can customize your AI agent..."
+                  placeholder="Be specific about tasks, goals, processes, scripts, follow-up procedures, CRM integration needs, etc..."
                 />
                 
                 <div className="mt-3 flex flex-col sm:flex-row gap-3">
