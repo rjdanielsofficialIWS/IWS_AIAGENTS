@@ -568,38 +568,6 @@ function App() {
                       )}
 
                       {/* Enhance Prompt Button for AI Requirements */}
-                      {question.id === 'aiRequirements' && (
-                        <div className="flex items-center justify-between mb-3">
-                          <button
-                            type="button"
-                            onClick={enhancePrompt}
-                            disabled={enhanceState.isEnhancing || !formData.aiRequirements.trim()}
-                            className="flex items-center space-x-2 px-3 py-1 bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white text-sm font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {enhanceState.isEnhancing ? (
-                              <>
-                                <Loader className="h-3 w-3 animate-spin" />
-                                <span>Enhancing...</span>
-                              </>
-                            ) : (
-                              <>
-                                <Zap className="h-3 w-3" />
-                                <span>Enhance Prompt</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      )}
-
-                      {/* Enhanced Prompt Status */}
-                      {question.id === 'aiRequirements' && enhanceState.hasEnhanced && (
-                        <div className="mb-3 p-2 bg-green-500/10 border border-green-500/30 rounded-lg">
-                          <p className="text-sm text-green-300 flex items-center">
-                            <CheckCircle className="h-4 w-4 mr-2" />
-                            Prompt enhanced! Review and edit as needed.
-                          </p>
-                        </div>
-                      )}
 
                       {/* Input Field */}
                       {question.type === 'multi-input' ? (
