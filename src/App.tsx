@@ -276,44 +276,7 @@ function App() {
     setEnhanceState({ isEnhancing: true, hasEnhanced: false });
 
     try {
-      // Task-focused local enhancement
-      const enhancedText = `${formData.aiRequirements}
-
-Enhanced task details:
-• Break down each task into specific, actionable steps
-• Define clear workflows and processes for each objective
-• Specify exact criteria for task completion
-• Add precision to any goals or outcomes mentioned
-• Include step-by-step procedures for complex tasks
-• Clarify any decision-making processes the AI should follow`;
-
-      setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
-      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
-    } catch (error) {
-      console.error('Error enhancing prompt:', error);
-      // Task-focused fallback enhancement
-      const fallbackEnhancement = `${formData.aiRequirements}
-
-Enhanced task details:
-• Break down each task into specific, actionable steps
-• Define clear workflows and processes for each objective
-• Specify exact criteria for task completion
-• Add precision to any goals or outcomes mentioned
-• Include step-by-step procedures for complex tasks
-• Clarify any decision-making processes the AI should follow`;
-
-      setFormData(prev => ({ ...prev, aiRequirements: fallbackEnhancement }));
-      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
-    }
-    validateCurrentStep();
-  };
-
-  const validateCurrentStep = (): boolean => {
-    const currentQuestion = questions[currentStep];
-    let error = '';
-    let isValid = true;
-
-    if (currentQuestion.type === 'multi-input') {
+      const enhancedText = await blandAI.enhancePrompt(formData.aiRequirements);
       // Validate all fields in the multi-input step
       for (const field of currentQuestion.fields || []) {
         const value = formData[field.id];
@@ -428,46 +391,7 @@ Enhanced task details:
         })
       });
 
-      return true; // With no-cors mode, we can't check response.ok, so assume success
-    } catch (error) {
-      console.error('Error submitting form:', error);
-      return false;
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!validateAllSteps()) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    setSubmitStatus(null);
-
-    try {
-      const success = await submitToGoogleSheets(formData);
-      
-      if (success) {
-        setSubmitStatus('success');
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          business: '',
-          services: '',
-          aiRequirements: ''
-        });
-      } else {
-        setSubmitStatus('error');
-      }
-    } catch (error) {
-      setSubmitStatus('error');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
+      setCurrentError('Failed to enhance prompt. Please try again.');
   // Initialize validation on component mount
   React.useEffect(() => {
     validateCurrentStep();
