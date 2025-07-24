@@ -186,6 +186,8 @@ export const ClientPortal: React.FC<ClientPortalProps> = ({ onLogout }) => {
     resetAgentConfig();
     setTestPhoneNumber('');
     setTestCallStatus('');
+    setSimulatedConversation([]);
+    setUserInput('');
   };
 
   const handleTestCall = async () => {
