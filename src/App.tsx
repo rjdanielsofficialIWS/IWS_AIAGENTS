@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Zap, ArrowRight, ArrowLeft, Sparkles } from 'lucide-react';
+import { Brain, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Zap, ArrowRight, ArrowLeft } from 'lucide-react';
 
 interface FormData {
   name: string;
@@ -19,11 +19,6 @@ interface FormErrors {
   aiRequirements?: string;
 }
 
-interface EnhanceState {
-  isLoading: boolean;
-  error: string | null;
-}
-
 function App() {
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -37,10 +32,6 @@ function App() {
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
-  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
-    isLoading: false,
-    error: null
-  });
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -160,70 +151,6 @@ function App() {
     } catch (error) {
       console.error('Error submitting form:', error);
       return false;
-    }
-  };
-
-  const enhancePrompt = async () => {
-    if (!formData.aiRequirements.trim()) {
-      setEnhanceState({ isLoading: false, error: 'Please enter your AI requirements first' });
-      return;
-    }
-
-    setEnhanceState({ isLoading: true, error: null });
-
-    try {
-      const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
-      
-      // Debug logging - REMOVE THIS AFTER DEBUGGING
-      console.log('OpenAI API Key from env:', apiKey ? 'Key is present' : 'Key is missing/undefined');
-      console.log('All env vars:', import.meta.env);
-      
-      if (!apiKey) {
-        throw new Error('OpenAI API key not configured');
-      }
-
-      const response = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: 'gpt-3.5-turbo',
-          messages: [
-            {
-              role: 'system',
-              content: 'You are an AI assistant helping to enhance and clarify business requirements for AI agent development. Take the user\'s input and make it more detailed, specific, and actionable while maintaining their original intent. Focus on practical implementation details, specific tasks, and clear objectives.'
-            },
-            {
-              role: 'user',
-              content: `Please enhance and expand on these AI agent requirements to be more detailed and specific: "${formData.aiRequirements}"`
-            }
-          ],
-          max_tokens: 500,
-          temperature: 0.7
-        })
-      });
-
-      if (!response.ok) {
-        throw new Error(`OpenAI API error: ${response.status}`);
-      }
-
-      const data = await response.json();
-      const enhancedText = data.choices[0]?.message?.content;
-
-      if (enhancedText) {
-        setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
-        setEnhanceState({ isLoading: false, error: null });
-      } else {
-        throw new Error('No enhanced text received');
-      }
-    } catch (error) {
-      console.error('Enhancement error:', error);
-      setEnhanceState({ 
-        isLoading: false, 
-        error: error instanceof Error ? error.message : 'Failed to enhance text' 
-      });
     }
   };
 
@@ -428,37 +355,6 @@ function App() {
                     } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
                     placeholder="Be specific about tasks, goals, processes, scripts, follow-up procedures, CRM integration needs, etc..."
                   />
-                  
-                  <div className="mt-4 space-y-3">
-                    <button
-                      type="button"
-                      onClick={enhancePrompt}
-                      disabled={enhanceState.isLoading || !formData.aiRequirements.trim()}
-                      className="w-full flex items-center justify-center space-x-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-medium rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {enhanceState.isLoading ? (
-                        <>
-                          <Loader className="h-4 w-4 animate-spin" />
-                          <span>Enhancing...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4" />
-                          <span>Enhance with AI</span>
-                        </>
-                      )}
-                    </button>
-                    
-                    <p className="text-sm text-gray-400 text-center">
-                      Let AI help make your requirements more detailed and specific
-                    </p>
-                    
-                    {enhanceState.error && (
-                      <div className="p-3 bg-red-500/10 border border-red-500/50 rounded-lg">
-                        <p className="text-red-300 text-sm">{enhanceState.error}</p>
-                      </div>
-                    )}
-                  </div>
                   
                   {errors.aiRequirements && (
                     <p className="mt-2 text-sm text-red-400">{errors.aiRequirements}</p>
