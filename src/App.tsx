@@ -277,6 +277,20 @@ function App() {
 
     try {
       const enhancedText = await blandAI.enhancePrompt(formData.aiRequirements);
+      setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
+      setEnhanceState({ isEnhancing: false, hasEnhanced: true });
+    } catch (error) {
+      setEnhanceState({ isEnhancing: false, hasEnhanced: false });
+      setCurrentError('Failed to enhance prompt. Please try again.');
+    }
+  };
+
+  const validateCurrentStep = (): boolean => {
+    const currentQuestion = questions[currentStep];
+    let isValid = true;
+    let error = '';
+
+    if (currentQuestion.type === 'multi-input') {
       // Validate all fields in the multi-input step
       for (const field of currentQuestion.fields || []) {
         const value = formData[field.id];
@@ -391,7 +405,48 @@ function App() {
         })
       });
 
-      setCurrentError('Failed to enhance prompt. Please try again.');
+      return true;
+    } catch (error) {
+      console.error('Error submitting to Google Sheets:', error);
+      return false;
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!validateAllSteps()) {
+      setSubmitStatus('error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitStatus(null);
+
+    try {
+      const success = await submitToGoogleSheets(formData);
+      
+      if (success) {
+        setSubmitStatus('success');
+        // Reset form
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          business: '',
+          services: '',
+          aiRequirements: ''
+        });
+        setCurrentStep(0);
+      } else {
+        setSubmitStatus('error');
+      }
+    } catch (error) {
+      console.error('Submission error:', error);
+      setSubmitStatus('error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   // Initialize validation on component mount
   React.useEffect(() => {
     validateCurrentStep();
