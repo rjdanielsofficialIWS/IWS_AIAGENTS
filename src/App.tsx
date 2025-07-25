@@ -208,11 +208,11 @@ function App() {
   // Fetch user membership status
   const fetchUserMembershipStatus = async (userId: string) => {
     try {
-      const { data, error } = await supabase
+      // First, try to get the profile
+      let { data, error } = await supabase
         .from('profiles')
         .select('membership_status')
-        .eq('id', userId)
-        .single();
+        .eq('id', userId);
 
       if (error) {
         console.error('Error fetching membership status:', error);
@@ -220,7 +220,24 @@ function App() {
         return;
       }
 
-      setUserMembershipStatus(data?.membership_status || 'free');
+      // If no profile exists, create one
+      if (!data || data.length === 0) {
+        const { data: insertData, error: insertError } = await supabase
+          .from('profiles')
+          .insert([{ id: userId, membership_status: 'free' }])
+          .select('membership_status')
+          .single();
+
+        if (insertError) {
+          console.error('Error creating profile:', insertError);
+          setUserMembershipStatus('free');
+          return;
+        }
+
+        setUserMembershipStatus(insertData?.membership_status || 'free');
+      } else {
+        setUserMembershipStatus(data[0]?.membership_status || 'free');
+      }
     } catch (error) {
       console.error('Error fetching membership status:', error);
       setUserMembershipStatus('free');
