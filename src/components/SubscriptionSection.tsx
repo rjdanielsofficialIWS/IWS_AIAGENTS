@@ -59,7 +59,9 @@ export const SubscriptionSection: React.FC = () => {
 
           <div className="text-center">
             <a
-              href="/onboarding-booking"
+              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+              target="_blank"
+              rel="noopener noreferrer"
               className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-12 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 text-lg mb-6 inline-flex items-center justify-center space-x-2"
             >
               <span>Book Your Onboarding Call</span>

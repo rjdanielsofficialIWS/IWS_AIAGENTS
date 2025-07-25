@@ -71,7 +71,7 @@ function App() {
 
   // Navigate to booking page
   const handleNavigateToBooking = () => {
-    window.location.pathname = '/onboarding-booking';
+    window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
   };
 
   const questions: Question[] = [
@@ -487,7 +487,7 @@ function App() {
           
           <div className="space-y-4">
             <button
-              onClick={handleNavigateToBooking}
+              onClick={() => window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding'}
               className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-2"
             >
               <span>Book Your Onboarding Call</span>
@@ -955,13 +955,15 @@ function App() {
             <p className="text-lg text-gray-300 mb-8">
               Ready to implement AI agents for your specific use case?
             </p>
-            <button
-              onClick={handleNavigateToBooking}
+            <a
+              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+              target="_blank"
+              rel="noopener noreferrer"
               className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center space-x-3 mx-auto"
             >
               <Brain className="h-6 w-6" />
               <span>Get Started with AI Agents</span>
-            </button>
+            </a>
           </div>
         </div>
       </section>
