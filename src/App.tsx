@@ -638,28 +638,7 @@ function App() {
             </div>
             
             {!session && (
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={() => {
-                    setShowAuthForm(true);
-                    setIsSignUp(false);
-                    setAuthError('');
-                  }}
-                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-all transform hover:scale-[1.02]"
-                >
-                  Sign In
-                </button>
-                <button
-                  onClick={() => {
-                    setShowAuthForm(true);
-                    setIsSignUp(true);
-                    setAuthError('');
-                  }}
-                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-2 px-6 rounded-lg transition-all transform hover:scale-[1.02] hover:shadow-lg hover:shadow-yellow-400/25"
-                >
-                  Get Started
-                </button>
-              </div>
+              <div></div>
             )}
           </div>
         </div>
