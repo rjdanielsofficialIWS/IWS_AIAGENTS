@@ -126,11 +126,11 @@ export const OnboardingBookingPage: React.FC = () => {
           </div>
 
           {/* Calendly Embed */}
-          <div className="bg-gray-900/50 border border-gray-600 rounded-xl overflow-hidden">
+          <div className="bg-white border border-gray-600 rounded-xl overflow-hidden">
             <div 
               className="calendly-inline-widget"
               data-url="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              style={{ minWidth: '320px', height: '700px' }}
+              style={{ minWidth: '320px', height: '700px', width: '100%' }}
             ></div>
           </div>
 
