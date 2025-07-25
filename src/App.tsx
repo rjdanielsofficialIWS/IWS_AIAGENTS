@@ -3,6 +3,7 @@ import { createClient, Session } from '@supabase/supabase-js';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight, Target, Calendar } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
+import { OnboardingBookingPage } from './components/OnboardingBookingPage';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -44,11 +45,13 @@ interface Question {
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [userMembershipStatus, setUserMembershipStatus] = useState<'unknown' | 'free' | 'premium' | 'cancelled'>('unknown');
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -66,6 +69,48 @@ function App() {
     isEnhancing: false,
     hasEnhanced: false
   });
+
+  // Centralized Stripe checkout handler
+  const handleInitiateStripeCheckout = async () => {
+    setIsCheckoutLoading(true);
+    
+    try {
+      // Check if user is authenticated
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        setShowAuthForm(true);
+        return;
+      }
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/stripe-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          success_url: `${window.location.origin}/onboarding-booking`,
+          cancel_url: `${window.location.origin}/cancel`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create checkout session');
+      }
+
+      const { checkout_url } = await response.json();
+      
+      // Redirect to Stripe Checkout
+      window.location.href = checkout_url;
+      
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Failed to start checkout process. Please try again.');
+    } finally {
+      setIsCheckoutLoading(false);
+    }
+  };
 
   const questions: Question[] = [
     {
@@ -160,10 +205,37 @@ function App() {
     await supabase.auth.signOut();
   };
 
+  // Fetch user membership status
+  const fetchUserMembershipStatus = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('membership_status')
+        .eq('id', userId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching membership status:', error);
+        setUserMembershipStatus('free');
+        return;
+      }
+
+      setUserMembershipStatus(data?.membership_status || 'free');
+    } catch (error) {
+      console.error('Error fetching membership status:', error);
+      setUserMembershipStatus('free');
+    }
+  };
+
   // Check for existing session on mount
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
+      if (session?.user?.id) {
+        fetchUserMembershipStatus(session.user.id);
+      } else {
+        setUserMembershipStatus('free');
+      }
     });
 
     const {
@@ -172,6 +244,11 @@ function App() {
       setSession(session);
       if (session) {
         setShowAuthForm(false);
+        if (session.user?.id) {
+          fetchUserMembershipStatus(session.user.id);
+        }
+      } else {
+        setUserMembershipStatus('free');
       }
     });
 
@@ -399,9 +476,74 @@ function App() {
     validateCurrentStep();
   }, [currentStep]);
 
+  // Handle routing for onboarding booking page
+  if (window.location.pathname === '/onboarding-booking') {
+    return <OnboardingBookingPage />;
+  }
+
   // If user is logged in, show the ClientPortal
-  if (session) {
+  if (session && userMembershipStatus === 'premium') {
     return <ClientPortal onLogout={handleLogout} />;
+  }
+
+  // If user is logged in but doesn't have premium membership
+  if (session && userMembershipStatus !== 'unknown' && userMembershipStatus !== 'premium') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
+        {/* Animated Background Elements */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
+          <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
+        </div>
+
+        <div className="relative z-10 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md mx-4 text-center">
+          <Brain className="h-16 w-16 text-yellow-400 mx-auto mb-6" />
+          <h2 className="text-3xl font-bold mb-4">
+            Premium Membership Required
+          </h2>
+          <p className="text-gray-300 mb-8">
+            You need an active premium membership to access the AI Agent Studio. 
+            Upgrade now to start creating and managing your AI agents.
+          </p>
+          
+          <div className="space-y-4">
+            <button
+              onClick={handleInitiateStripeCheckout}
+              disabled={isCheckoutLoading}
+              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2"
+            >
+              {isCheckoutLoading ? (
+                <>
+                  <Loader className="h-5 w-5 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <span>Upgrade to Premium</span>
+              )}
+            </button>
+            
+            <button
+              onClick={handleLogout}
+              className="w-full text-gray-400 hover:text-gray-300 transition-colors text-sm"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state while checking membership
+  if (session && userMembershipStatus === 'unknown') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+          <p className="text-gray-300">Checking your membership status...</p>
+        </div>
+      </div>
+    );
   }
 
   // If showing auth form, render authentication UI
@@ -541,11 +683,21 @@ function App() {
           {/* Client Portal Access Button */}
           <div className="mb-12">
             <button
-              onClick={() => setShowAuthForm(true)}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-xl transition-all transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/25 flex items-center space-x-3 mx-auto"
+              onClick={handleInitiateStripeCheckout}
+              disabled={isCheckoutLoading}
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-xl transition-all transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/25 flex items-center space-x-3 mx-auto disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <Brain className="h-6 w-6" />
-              <span>Access AI Agent Studio</span>
+              {isCheckoutLoading ? (
+                <>
+                  <Loader className="h-6 w-6 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <>
+                  <Brain className="h-6 w-6" />
+                  <span>Access AI Agent Studio</span>
+                </>
+              )}
             </button>
           </div>
 
@@ -852,17 +1004,30 @@ function App() {
               Ready to implement AI agents for your specific use case?
             </p>
             <button
-              onClick={() => setShowAuthForm(true)}
-              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center space-x-3 mx-auto"
+              onClick={handleInitiateStripeCheckout}
+              disabled={isCheckoutLoading}
+              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center space-x-3 mx-auto disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
             >
-              <Brain className="h-6 w-6" />
-              <span>Get Started with AI Agents</span>
+              {isCheckoutLoading ? (
+                <>
+                  <Loader className="h-6 w-6 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : (
+                <>
+                  <Brain className="h-6 w-6" />
+                  <span>Get Started with AI Agents</span>
+                </>
+              )}
             </button>
           </div>
         </div>
       </section>
       {/* Subscription Section */}
-      <SubscriptionSection onSubscribe={() => setShowAuthForm(true)} />
+      <SubscriptionSection 
+        onInitiateCheckout={handleInitiateStripeCheckout} 
+        isCheckoutLoading={isCheckoutLoading} 
+      />
 
       {/* Footer */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
