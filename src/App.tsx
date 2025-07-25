@@ -1,6 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createClient, Session } from '@supabase/supabase-js';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
+import { ClientPortal } from './components/ClientPortal';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface FormData {
   name: string;
@@ -36,6 +43,12 @@ interface Question {
 }
 
 function App() {
+  const [session, setSession] = useState<Session | null>(null);
+  const [showAuthForm, setShowAuthForm] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [authForm, setAuthForm] = useState({ email: '', password: '' });
+  const [authLoading, setAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState('');
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -115,10 +128,55 @@ function App() {
     }
   ];
 
-  const handleSubscribe = () => {
-    // Handle subscription logic here
-    console.log('Subscription requested');
+  // Authentication functions
+  const handleAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError('');
+
+    try {
+      if (isSignUp) {
+        const { error } = await supabase.auth.signUp({
+          email: authForm.email,
+          password: authForm.password,
+        });
+        if (error) throw error;
+        setAuthError('Check your email for the confirmation link!');
+      } else {
+        const { error } = await supabase.auth.signInWithPassword({
+          email: authForm.email,
+          password: authForm.password,
+        });
+        if (error) throw error;
+      }
+    } catch (error: any) {
+      setAuthError(error.message);
+    } finally {
+      setAuthLoading(false);
+    }
   };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
+
+  // Check for existing session on mount
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        setShowAuthForm(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -341,6 +399,109 @@ function App() {
     validateCurrentStep();
   }, [currentStep]);
 
+  // If user is logged in, show the ClientPortal
+  if (session) {
+    return <ClientPortal onLogout={handleLogout} />;
+  }
+
+  // If showing auth form, render authentication UI
+  if (showAuthForm) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
+        {/* Animated Background Elements */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
+          <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
+        </div>
+
+        <div className="relative z-10 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md mx-4">
+          <div className="text-center mb-8">
+            <Brain className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+            <h2 className="text-3xl font-bold mb-2">
+              {isSignUp ? 'Create Account' : 'Welcome Back'}
+            </h2>
+            <p className="text-gray-300">
+              {isSignUp ? 'Sign up to access your AI Agent Studio' : 'Sign in to manage your AI agents'}
+            </p>
+          </div>
+
+          <form onSubmit={handleAuth} className="space-y-6">
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                <Mail className="inline h-4 w-4 mr-2" />
+                Email Address
+              </label>
+              <input
+                type="email"
+                value={authForm.email}
+                onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400"
+                placeholder="your@email.com"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                <Lock className="inline h-4 w-4 mr-2" />
+                Password
+              </label>
+              <input
+                type="password"
+                value={authForm.password}
+                onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
+                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400"
+                placeholder="••••••••"
+                required
+              />
+            </div>
+
+            {authError && (
+              <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
+                <p className="text-red-300 text-sm">{authError}</p>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={authLoading}
+              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2"
+            >
+              {authLoading ? (
+                <>
+                  <Loader className="h-5 w-5 animate-spin" />
+                  <span>{isSignUp ? 'Creating Account...' : 'Signing In...'}</span>
+                </>
+              ) : (
+                <span>{isSignUp ? 'Create Account' : 'Sign In'}</span>
+              )}
+            </button>
+          </form>
+
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => {
+                setIsSignUp(!isSignUp);
+                setAuthError('');
+              }}
+              className="text-yellow-400 hover:text-yellow-300 transition-colors"
+            >
+              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+            </button>
+          </div>
+
+          <div className="mt-6 text-center">
+            <button
+              onClick={() => setShowAuthForm(false)}
+              className="text-gray-400 hover:text-gray-300 transition-colors text-sm"
+            >
+              ← Back to main page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
@@ -376,6 +537,17 @@ function App() {
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
             Let our Agents handle the phone work and book meetings while you focus on closing more sales.
           </p>
+
+          {/* Client Portal Access Button */}
+          <div className="mb-12">
+            <button
+              onClick={() => setShowAuthForm(true)}
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-xl transition-all transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/25 flex items-center space-x-3 mx-auto"
+            >
+              <Brain className="h-6 w-6" />
+              <span>Access AI Agent Studio</span>
+            </button>
+          </div>
 
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
@@ -598,7 +770,7 @@ function App() {
       </section>
 
       {/* Subscription Section */}
-      <SubscriptionSection onSubscribe={handleSubscribe} />
+      <SubscriptionSection onSubscribe={() => setShowAuthForm(true)} />
 
       {/* Footer */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
