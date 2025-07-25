@@ -1,7 +1,29 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Calendar, CheckCircle, Brain, ArrowRight, Clock, Users, Phone } from 'lucide-react';
 
 export const OnboardingBookingPage: React.FC = () => {
+  useEffect(() => {
+    // Check if Calendly script is already loaded
+    if (document.querySelector('script[src*="calendly.com"]')) {
+      return;
+    }
+
+    // Create and append Calendly script
+    const script = document.createElement('script');
+    script.src = 'https://assets.calendly.com/assets/external/widget.js';
+    script.type = 'text/javascript';
+    script.async = true;
+    document.body.appendChild(script);
+
+    // Cleanup function to remove script when component unmounts
+    return () => {
+      const existingScript = document.querySelector('script[src*="calendly.com"]');
+      if (existingScript) {
+        document.body.removeChild(existingScript);
+      }
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white">
       {/* Animated Background Elements */}
