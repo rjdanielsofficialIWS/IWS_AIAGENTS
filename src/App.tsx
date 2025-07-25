@@ -671,13 +671,42 @@ function App() {
       {/* Header */}
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-center space-x-3 text-center">
-            <Brain className="h-10 w-10 text-yellow-400" />
-            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-              Infinite Wealth Solutions
-            </h1>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Brain className="h-10 w-10 text-yellow-400" />
+              <div>
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
+                  Infinite Wealth Solutions
+                </h1>
+                <p className="text-blue-300 text-base sm:text-lg">AI Agents</p>
+              </div>
+            </div>
+            
+            {!session && (
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => {
+                    setShowAuthForm(true);
+                    setIsSignUp(false);
+                    setAuthError('');
+                  }}
+                  className="px-4 py-2 text-gray-300 hover:text-white transition-colors font-medium"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => {
+                    setShowAuthForm(true);
+                    setIsSignUp(true);
+                    setAuthError('');
+                  }}
+                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-2 px-6 rounded-lg transition-all transform hover:scale-[1.02] hover:shadow-lg hover:shadow-yellow-400/25"
+                >
+                  Sign Up
+                </button>
+              </div>
+            )}
           </div>
-          <p className="text-center text-blue-300 mt-2 text-base sm:text-lg">AI Agents</p>
         </div>
       </header>
 
