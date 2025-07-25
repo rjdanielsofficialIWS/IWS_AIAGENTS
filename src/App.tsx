@@ -872,7 +872,7 @@ function App() {
               </div>
               <h3 className="text-2xl font-bold mb-4 text-center">Outbound Sales & Appointment Booking</h3>
               <p className="text-gray-400 text-center leading-relaxed">
-                AI agents make proactive outbound calls to qualify leads, answer initial questions, and seamlessly book appointments for your sales team, focusing on industries like Life Insurance.
+                AI agents make proactive outbound calls to qualify leads, answer initial questions, and seamlessly book appointments for your sales team.
               </p>
               <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
                 <div className="flex items-center space-x-1">
@@ -891,9 +891,9 @@ function App() {
               <div className="bg-blue-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-400/20 transition-colors">
                 <Building className="h-10 w-10 text-blue-400" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Inbound Restaurant Inquiries</h3>
+              <h3 className="text-2xl font-bold mb-4 text-center">Inbound Retail Inquiries</h3>
               <p className="text-gray-400 text-center leading-relaxed">
-                Automate your restaurant's phone lines with AI agents handling reservations, taking food orders, providing menu details, and answering general customer questions 24/7.
+                Automate your stores phone lines with AI agents handling reservations, taking orders, providing details, and answering general customer questions 24/7.
               </p>
               <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
                 <div className="flex items-center space-x-1">
