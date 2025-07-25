@@ -62,7 +62,7 @@ export const SubscriptionSection: React.FC<SubscriptionSectionProps> = ({ onSubs
 
           <div className="text-center">
             <p className="text-sm text-gray-400 mt-4">
-              Cancel anytime • 30-day money-back guarantee
+              $249.99 set up fee 249.99 first month
             </p>
           </div>
         </div>
