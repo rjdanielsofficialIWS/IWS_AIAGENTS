@@ -671,8 +671,8 @@ function App() {
       {/* Header */}
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
+          <div className="flex flex-col items-center text-center">
+            <div className="flex items-center space-x-3 mb-6">
               <Brain className="h-10 w-10 text-yellow-400" />
               <div>
                 <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
@@ -690,7 +690,7 @@ function App() {
                     setIsSignUp(false);
                     setAuthError('');
                   }}
-                  className="px-4 py-2 text-gray-300 hover:text-white transition-colors font-medium"
+                  className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-lg transition-all transform hover:scale-[1.02]"
                 >
                   Sign In
                 </button>
@@ -702,7 +702,7 @@ function App() {
                   }}
                   className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-2 px-6 rounded-lg transition-all transform hover:scale-[1.02] hover:shadow-lg hover:shadow-yellow-400/25"
                 >
-                  Sign Up
+                  Get Started
                 </button>
               </div>
             )}
