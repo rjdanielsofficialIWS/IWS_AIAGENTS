@@ -72,6 +72,12 @@ function App() {
 
   // Centralized Stripe checkout handler
   const handleInitiateStripeCheckout = async () => {
+    // Check if user is authenticated
+    if (!session?.access_token) {
+      alert('Please sign in to access premium features.');
+      return;
+    }
+
     setIsCheckoutLoading(true);
     
     try {
@@ -79,6 +85,7 @@ function App() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           success_url: `${window.location.origin}/onboarding-booking`,
