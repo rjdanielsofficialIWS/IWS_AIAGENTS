@@ -362,7 +362,7 @@ serve(async (req) => {
 
       try {
         // Fetch available phone numbers from Bland AI
-        const blandResponse = await fetch('https://api.bland.ai/v1/phone-numbers', {
+        const blandResponse = await fetch('https://api.bland.ai/v1/phone_numbers', {
           headers: {
             'Authorization': `Bearer ${Deno.env.get('BLAND_AI_API_KEY')}`,
           },
