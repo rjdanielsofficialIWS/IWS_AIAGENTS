@@ -697,27 +697,6 @@ function App() {
             Let our Agents handle the phone work and book meetings while you focus on closing more sales.
           </p>
 
-          {/* Client Portal Access Button */}
-          <div className="mb-12">
-            <button
-              onClick={handleInitiateStripeCheckout}
-              disabled={isCheckoutLoading}
-              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white font-bold py-4 px-8 rounded-xl transition-all transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-blue-500/25 flex items-center space-x-3 mx-auto disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
-              {isCheckoutLoading ? (
-                <>
-                  <Loader className="h-6 w-6 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <>
-                  <Brain className="h-6 w-6" />
-                  <span>Access AI Agent Studio</span>
-                </>
-              )}
-            </button>
-          </div>
-
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
             <div className="text-center mb-12">
@@ -907,32 +886,6 @@ function App() {
                   <ArrowRight className="h-5 w-5" />
                 </button>
               )}
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-16">
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-6 hover:border-yellow-400/50 transition-all duration-300 group">
-              <div className="bg-yellow-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-yellow-400/20 transition-colors">
-                <TrendingUp className="h-8 w-8 text-yellow-400" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Cut Costs</h3>
-              <p className="text-gray-400">Reduce operational expenses with intelligent automation</p>
-            </div>
-            
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-6 hover:border-blue-400/50 transition-all duration-300 group">
-              <div className="bg-blue-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-400/20 transition-colors">
-                <Zap className="h-8 w-8 text-blue-400" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Increase Efficiency</h3>
-              <p className="text-gray-400">Streamline processes with AI-powered solutions</p>
-            </div>
-            
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-6 hover:border-yellow-400/50 transition-all duration-300 group">
-              <div className="bg-yellow-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-yellow-400/20 transition-colors">
-                <Phone className="h-8 w-8 text-yellow-400" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">Generate Sales</h3>
-              <p className="text-gray-400">Book more meetings and close more deals</p>
             </div>
           </div>
         </div>
