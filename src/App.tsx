@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createClient, Session } from '@supabase/supabase-js';
-import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight } from 'lucide-react';
+import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight, Target, Calendar } from 'lucide-react';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
 
@@ -769,6 +769,98 @@ function App() {
         </div>
       </section>
 
+      {/* AI Agent Use Cases Section */}
+      <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl sm:text-5xl font-bold mb-6">
+              AI Agent <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">Use Cases</span>
+            </h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
+              Discover how AI agents can transform different aspects of your business operations
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            {/* Use Case 1: Outbound Sales */}
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
+              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
+                <Target className="h-10 w-10 text-yellow-400" />
+              </div>
+              <h3 className="text-2xl font-bold mb-4 text-center">Outbound Sales & Appointment Booking</h3>
+              <p className="text-gray-400 text-center leading-relaxed">
+                AI agents make proactive outbound calls to qualify leads, answer initial questions, and seamlessly book appointments for your sales team, focusing on industries like Life Insurance.
+              </p>
+              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
+                <div className="flex items-center space-x-1">
+                  <Phone className="h-4 w-4" />
+                  <span>Outbound Calls</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <Calendar className="h-4 w-4" />
+                  <span>Booking</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Use Case 2: Restaurant Inquiries */}
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-blue-400/50 transition-all duration-300 group">
+              <div className="bg-blue-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-400/20 transition-colors">
+                <Building className="h-10 w-10 text-blue-400" />
+              </div>
+              <h3 className="text-2xl font-bold mb-4 text-center">Inbound Restaurant Inquiries</h3>
+              <p className="text-gray-400 text-center leading-relaxed">
+                Automate your restaurant's phone lines with AI agents handling reservations, taking food orders, providing menu details, and answering general customer questions 24/7.
+              </p>
+              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
+                <div className="flex items-center space-x-1">
+                  <MessageSquare className="h-4 w-4" />
+                  <span>Reservations</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <Briefcase className="h-4 w-4" />
+                  <span>Orders</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Use Case 3: AI Receptionist */}
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-green-400/50 transition-all duration-300 group">
+              <div className="bg-green-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-green-400/20 transition-colors">
+                <User className="h-10 w-10 text-green-400" />
+              </div>
+              <h3 className="text-2xl font-bold mb-4 text-center">AI Receptionist</h3>
+              <p className="text-gray-400 text-center leading-relaxed">
+                An AI agent acts as your virtual receptionist, greeting callers, directing them to the correct department or individual, taking messages, and handling appointment bookings, changes, and cancellations, ensuring no call goes unanswered.
+              </p>
+              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
+                <div className="flex items-center space-x-1">
+                  <Phone className="h-4 w-4" />
+                  <span>Call Routing</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <Calendar className="h-4 w-4" />
+                  <span>Appointments</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Call-to-Action */}
+          <div className="text-center mt-16">
+            <p className="text-lg text-gray-300 mb-8">
+              Ready to implement AI agents for your specific use case?
+            </p>
+            <button
+              onClick={() => setShowAuthForm(true)}
+              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center space-x-3 mx-auto"
+            >
+              <Brain className="h-6 w-6" />
+              <span>Get Started with AI Agents</span>
+            </button>
+          </div>
+        </div>
+      </section>
       {/* Subscription Section */}
       <SubscriptionSection onSubscribe={() => setShowAuthForm(true)} />
 

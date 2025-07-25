@@ -1,11 +1,18 @@
 import React from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { Check, Zap, Brain, Settings, BarChart3, Phone, MessageSquare, Calendar, Shield } from 'lucide-react';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface SubscriptionSectionProps {
   onSubscribe: () => void;
 }
 
 export const SubscriptionSection: React.FC<SubscriptionSectionProps> = ({ onSubscribe }) => {
+  const [isLoading, setIsLoading] = React.useState(false);
+
   const features = [
     { icon: Brain, text: "Custom AI Agent Development" },
     { icon: Settings, text: "Advanced Configuration Dashboard" },
@@ -16,6 +23,47 @@ export const SubscriptionSection: React.FC<SubscriptionSectionProps> = ({ onSubs
     { icon: Zap, text: "CRM Integration & Automation" },
     { icon: Shield, text: "Priority Support & Maintenance" }
   ];
+
+  const handleStripeCheckout = async () => {
+    setIsLoading(true);
+    
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session?.access_token) {
+        // If user is not authenticated, call the original onSubscribe to show auth form
+        onSubscribe();
+        return;
+      }
+
+      const response = await fetch(`${supabaseUrl}/functions/v1/stripe-checkout`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          success_url: `${window.location.origin}/success`,
+          cancel_url: `${window.location.origin}/cancel`,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create checkout session');
+      }
+
+      const { checkout_url } = await response.json();
+      
+      // Redirect to Stripe Checkout
+      window.location.href = checkout_url;
+      
+    } catch (error) {
+      console.error('Checkout error:', error);
+      alert('Failed to start checkout process. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-gray-900/50 to-black/50">
@@ -39,7 +87,7 @@ export const SubscriptionSection: React.FC<SubscriptionSectionProps> = ({ onSubs
             
             <div className="mb-6">
               <span className="text-6xl sm:text-7xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-                $499
+                $399
               </span>
               <span className="text-2xl text-gray-400 ml-2">/month</span>
             </div>
@@ -61,8 +109,16 @@ export const SubscriptionSection: React.FC<SubscriptionSectionProps> = ({ onSubs
           </div>
 
           <div className="text-center">
+            <button
+              onClick={handleStripeCheckout}
+              disabled={isLoading}
+              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-12 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-lg mb-6"
+            >
+              {isLoading ? 'Processing...' : 'Start Your Premium Plan'}
+            </button>
+            
             <p className="text-sm text-gray-400 mt-4">
-              $249.99 set up fee 249.99 first month
+              $199.99 setup fee + $199.99 first month, then $399.99/month
             </p>
           </div>
         </div>
