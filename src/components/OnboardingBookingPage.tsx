@@ -26,7 +26,7 @@ export const OnboardingBookingPage: React.FC = () => {
     script.onload = () => {
       if (window.Calendly) {
         window.Calendly.initInlineWidget({
-          url: 'https://calendly.com/infinitewealthsolutions?hide_landing_page_details=1',
+          url: 'https://calendly.com/infinitewealthsolutions',
           parentElement: document.querySelector('.calendly-inline-widget')
         });
       }
@@ -43,7 +43,7 @@ export const OnboardingBookingPage: React.FC = () => {
 
   const openCalendlyPopup = () => {
     if (window.Calendly) {
-      window.Calendly.initPopupWidget({ url: 'https://calendly.com/infinitewealthsolutions?hide_landing_page_details=1' });
+      window.Calendly.initPopupWidget({ url: 'https://calendly.com/infinitewealthsolutions' });
     }
   };
 
@@ -154,7 +154,7 @@ export const OnboardingBookingPage: React.FC = () => {
             <div className="bg-white border border-gray-600 rounded-xl overflow-hidden">
               <div 
                 className="calendly-inline-widget"
-                data-url="https://calendly.com/infinitewealthsolutions?hide_landing_page_details=1"
+                data-url="https://calendly.com/infinitewealthsolutions"
                 style={{ minWidth: '320px', height: '700px', width: '100%' }}
               ></div>
             </div>
