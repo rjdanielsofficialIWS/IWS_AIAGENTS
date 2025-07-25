@@ -1,6 +1,13 @@
 import React, { useEffect } from 'react';
 import { Calendar, CheckCircle, Brain, ArrowRight, Clock, Users, Phone } from 'lucide-react';
 
+// Declare Calendly global variable for TypeScript
+declare global {
+  interface Window {
+    Calendly: any;
+  }
+}
+
 export const OnboardingBookingPage: React.FC = () => {
   useEffect(() => {
     // Check if Calendly script is already loaded
@@ -15,6 +22,16 @@ export const OnboardingBookingPage: React.FC = () => {
     script.async = true;
     document.body.appendChild(script);
 
+    // Initialize Calendly when script loads
+    script.onload = () => {
+      if (window.Calendly) {
+        window.Calendly.initInlineWidget({
+          url: 'https://calendly.com/infinitewealthsolutions?hide_landing_page_details=1',
+          parentElement: document.querySelector('.calendly-inline-widget')
+        });
+      }
+    };
+
     // Cleanup function to remove script when component unmounts
     return () => {
       const existingScript = document.querySelector('script[src*="calendly.com"]');
@@ -23,6 +40,12 @@ export const OnboardingBookingPage: React.FC = () => {
       }
     };
   }, []);
+
+  const openCalendlyPopup = () => {
+    if (window.Calendly) {
+      window.Calendly.initPopupWidget({ url: 'https://calendly.com/infinitewealthsolutions?hide_landing_page_details=1' });
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white">
@@ -125,13 +148,29 @@ export const OnboardingBookingPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Calendly Embed */}
-          <div className="bg-white border border-gray-600 rounded-xl overflow-hidden">
+          {/* Calendly Embed - Try both inline and popup options */}
+          <div className="space-y-6">
+            {/* Inline Widget Container */}
+            <div className="bg-white border border-gray-600 rounded-xl overflow-hidden">
+              <div 
+                className="calendly-inline-widget"
+                data-url="https://calendly.com/infinitewealthsolutions?hide_landing_page_details=1"
+                style={{ minWidth: '320px', height: '700px', width: '100%' }}
+              ></div>
+            </div>
+            
+            {/* Fallback: Popup Button */}
             <div 
-              className="calendly-inline-widget"
-             data-url="https://calendly.com/infinitewealthsolutions?hide_landing_page_details=1"
-             style={{ minWidth: '320px', height: '700px', width: '100%' }}
-            ></div>
+              className="text-center p-6 bg-gray-800/50 rounded-xl border border-gray-600"
+            >
+              <p className="text-gray-300 mb-4">Having trouble with the calendar above?</p>
+              <button
+                onClick={openCalendlyPopup}
+                className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
+              >
+                Open Calendar in Popup
+              </button>
+            </div>
           </div>
 
           {/* What to Expect */}
