@@ -1,15 +1,7 @@
 import React from 'react';
 import { Check, Zap, Brain, Settings, BarChart3, Phone, MessageSquare, Calendar, Shield, Loader } from 'lucide-react';
 
-interface SubscriptionSectionProps {
-  onInitiateCheckout: () => Promise<void>;
-  isCheckoutLoading: boolean;
-}
-
-export const SubscriptionSection: React.FC<SubscriptionSectionProps> = ({ 
-  onInitiateCheckout, 
-  isCheckoutLoading 
-}) => {
+export const SubscriptionSection: React.FC = () => {
 
   const features = [
     { icon: Brain, text: "Custom AI Agent Development" },
@@ -66,23 +58,15 @@ export const SubscriptionSection: React.FC<SubscriptionSectionProps> = ({
           </div>
 
           <div className="text-center">
-            <button
-              onClick={onInitiateCheckout}
-              disabled={isCheckoutLoading}
-              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-12 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none text-lg mb-6 flex items-center justify-center space-x-2"
+            <a
+              href="/onboarding-booking"
+              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-12 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 text-lg mb-6 inline-flex items-center justify-center space-x-2"
             >
-              {isCheckoutLoading ? (
-                <>
-                  <Loader className="h-5 w-5 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <span>Start Your Premium Plan</span>
-              )}
-            </button>
+              <span>Book Your Onboarding Call</span>
+            </a>
             
             <p className="text-sm text-gray-400 mt-4">
-              $199 setup fee + $399/month subscription
+              Schedule your personalized setup session
             </p>
           </div>
         </div>

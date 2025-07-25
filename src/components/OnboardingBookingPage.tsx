@@ -25,17 +25,16 @@ export const OnboardingBookingPage: React.FC = () => {
 
       {/* Main Content */}
       <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        {/* Success Message */}
+        {/* Booking Header */}
         <div className="text-center mb-12">
-          <div className="bg-green-500/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
-            <CheckCircle className="h-12 w-12 text-green-400" />
+          <div className="bg-yellow-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
+            <Calendar className="h-12 w-12 text-yellow-400" />
           </div>
           <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-            Welcome to the Premium Plan!
+            Book Your Onboarding & Setup Call
           </h2>
           <p className="text-xl text-gray-300 mb-8 leading-relaxed">
-            Thank you for subscribing! Your payment has been processed successfully. 
-            Now let's get your AI agents set up and running.
+            Schedule your personalized onboarding session and get your AI agents configured perfectly for your business needs.
           </p>
         </div>
 
@@ -82,11 +81,10 @@ export const OnboardingBookingPage: React.FC = () => {
         <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
           <div className="text-center mb-8">
             <h3 className="text-3xl font-bold mb-4">
-              Book Your Onboarding Call
+              Schedule Your Session
             </h3>
             <p className="text-gray-300 mb-6">
-              Schedule your personalized setup session with our AI specialist. 
-              We'll walk you through the entire process and get your agents configured perfectly.
+              Book your personalized setup session with our AI specialist and complete your payment to get started.
             </p>
             
             <div className="flex items-center justify-center space-x-6 text-sm text-gray-400 mb-8">
@@ -105,28 +103,13 @@ export const OnboardingBookingPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Calendly Embed Placeholder */}
-          <div className="bg-gray-900/50 border border-gray-600 rounded-xl p-8 text-center">
-            <Calendar className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
-            <h4 className="text-xl font-semibold mb-4">Calendar Integration Coming Soon</h4>
-            <p className="text-gray-400 mb-6">
-              We're setting up your personalized booking calendar. In the meantime, 
-              please contact us directly to schedule your onboarding call.
-            </p>
-            
-            <div className="space-y-4">
-              <a
-                href="mailto:support@infinitewealthsolutions.com?subject=Onboarding Call Request&body=Hi, I just subscribed to the Premium Plan and would like to schedule my onboarding call."
-                className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 inline-flex items-center space-x-2"
-              >
-                <span>Email Us to Schedule</span>
-                <ArrowRight className="h-5 w-5" />
-              </a>
-              
-              <p className="text-sm text-gray-500">
-                Or call us at: <span className="text-yellow-400 font-medium">(555) 123-4567</span>
-              </p>
-            </div>
+          {/* Calendly Embed */}
+          <div className="bg-gray-900/50 border border-gray-600 rounded-xl overflow-hidden">
+            <div 
+              className="calendly-inline-widget" 
+              data-url="YOUR_CALENDLY_EVENT_LINK"
+              style={{ minWidth: '320px', height: '700px' }}
+            ></div>
           </div>
 
           {/* What to Expect */}

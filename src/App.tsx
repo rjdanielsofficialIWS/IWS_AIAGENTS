@@ -51,7 +51,6 @@ function App() {
   const [authForm, setAuthForm] = useState({ email: '', password: '' });
   const [authLoading, setAuthLoading] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -70,44 +69,9 @@ function App() {
     hasEnhanced: false
   });
 
-  // Centralized Stripe checkout handler
-  const handleInitiateStripeCheckout = async () => {
-    // Check if user is authenticated
-    if (!session?.access_token) {
-      alert('Please sign in to access premium features.');
-      return;
-    }
-
-    setIsCheckoutLoading(true);
-    
-    try {
-      const response = await fetch(`${supabaseUrl}/functions/v1/stripe-checkout`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          success_url: `${window.location.origin}/onboarding-booking`,
-          cancel_url: `${window.location.origin}/cancel`,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create checkout session');
-      }
-
-      const { checkout_url } = await response.json();
-      
-      // Redirect to Stripe Checkout
-      window.location.href = checkout_url;
-      
-    } catch (error) {
-      console.error('Checkout error:', error);
-      alert('Failed to start checkout process. Please try again.');
-    } finally {
-      setIsCheckoutLoading(false);
-    }
+  // Navigate to booking page
+  const handleNavigateToBooking = () => {
+    window.location.pathname = '/onboarding-booking';
   };
 
   const questions: Question[] = [
@@ -523,18 +487,10 @@ function App() {
           
           <div className="space-y-4">
             <button
-              onClick={handleInitiateStripeCheckout}
-              disabled={isCheckoutLoading}
-              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2"
+              onClick={handleNavigateToBooking}
+              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-2"
             >
-              {isCheckoutLoading ? (
-                <>
-                  <Loader className="h-5 w-5 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <span>Upgrade to Premium</span>
-              )}
+              <span>Book Your Onboarding Call</span>
             </button>
             
             <button
@@ -1000,30 +956,17 @@ function App() {
               Ready to implement AI agents for your specific use case?
             </p>
             <button
-              onClick={handleInitiateStripeCheckout}
-              disabled={isCheckoutLoading}
-              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center space-x-3 mx-auto disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+              onClick={handleNavigateToBooking}
+              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center space-x-3 mx-auto"
             >
-              {isCheckoutLoading ? (
-                <>
-                  <Loader className="h-6 w-6 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <>
-                  <Brain className="h-6 w-6" />
-                  <span>Get Started with AI Agents</span>
-                </>
-              )}
+              <Brain className="h-6 w-6" />
+              <span>Get Started with AI Agents</span>
             </button>
           </div>
         </div>
       </section>
       {/* Subscription Section */}
-      <SubscriptionSection 
-        onInitiateCheckout={handleInitiateStripeCheckout} 
-        isCheckoutLoading={isCheckoutLoading} 
-      />
+      <SubscriptionSection />
 
       {/* Footer */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
