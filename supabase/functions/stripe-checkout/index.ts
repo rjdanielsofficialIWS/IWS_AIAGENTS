@@ -62,16 +62,15 @@ Deno.serve(async (req: Request) => {
     });
 
     // Create Checkout Session
-    // Note: You'll need to replace these price IDs with your actual Stripe Price IDs
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
-          price: 'price_setup_fee_199', // Replace with your actual setup fee price ID
+          price: 'price_1RooXG2ayBXZURgpKWuZm0td', // $199 setup fee
           quantity: 1,
         },
         {
-          price: 'price_monthly_399', // Replace with your actual monthly subscription price ID
+          price: 'price_1RooYO2ayBXZURgpsEDRwVOE', // $399 monthly subscription
           quantity: 1,
         },
       ],
@@ -80,8 +79,8 @@ Deno.serve(async (req: Request) => {
       cancel_url: cancel_url,
       metadata: {
         plan: 'premium',
-        setup_fee: '199.99',
-        monthly_fee: '399.99',
+        setup_fee: '199',
+        monthly_fee: '399',
       },
       subscription_data: {
         metadata: {
