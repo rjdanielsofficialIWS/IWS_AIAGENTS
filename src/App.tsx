@@ -75,19 +75,10 @@ function App() {
     setIsCheckoutLoading(true);
     
     try {
-      // Check if user is authenticated
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session?.access_token) {
-        setShowAuthForm(true);
-        return;
-      }
-
       const response = await fetch(`${supabaseUrl}/functions/v1/stripe-checkout`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
           success_url: `${window.location.origin}/onboarding-booking`,
