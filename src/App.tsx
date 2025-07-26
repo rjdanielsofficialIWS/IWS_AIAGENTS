@@ -438,7 +438,7 @@ function App() {
           services: '',
           aiRequirements: ''
         });
-        setCurrentStep(0);
+        // Keep current step to show thank you message in place
       } else {
         setSubmitStatus('error');
       }
@@ -683,171 +683,190 @@ function App() {
               </div>
             )}
 
-            {/* Progress Indicator */}
-            <div className="mb-12">
-              <div className="flex items-center justify-center space-x-4 mb-6">
-                {questions.map((_, index) => (
-                  <React.Fragment key={index}>
-                    <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
-                      index < currentStep 
-                        ? 'bg-green-500 text-white shadow-lg shadow-green-500/50' 
-                        : index === currentStep 
-                        ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/50' 
-                        : 'bg-gray-600 text-gray-400'
-                    }`}>
-                      {index < currentStep ? (
-                        <CheckCircle className="h-6 w-6" />
-                      ) : (
-                        index + 1
-                      )}
-                    </div>
-                    {index < questions.length - 1 && (
-                      <div className={`w-8 h-1 transition-all duration-300 ${
-                        index < currentStep ? 'bg-green-500' : 'bg-gray-600'
-                      }`}></div>
-                    )}
-                  </React.Fragment>
-                ))}
-              </div>
-              <p className="text-center text-gray-400 text-sm">
-                Step {currentStep + 1} of {questions.length}
-              </p>
-            </div>
-
-            {/* Question Container */}
-            <div className="relative overflow-hidden">
-              <div 
-                className="flex transition-transform duration-500 ease-in-out"
-                style={{ transform: `translateX(-${currentStep * 100}%)` }}
-              >
-                {questions.map((question, index) => (
-                  <div key={question.id} className="w-full flex-shrink-0 px-4">
-                    {question.title && (
-                      <div className="text-center mb-8">
-                        <h4 className="text-2xl sm:text-3xl font-bold mb-4">
-                          {question.title}
-                        </h4>
+            {/* Progress Indicator - Hide when form is successfully submitted */}
+            {submitStatus !== 'success' && (
+              <div className="mb-12">
+                <div className="flex items-center justify-center space-x-4 mb-6">
+                  {questions.map((_, index) => (
+                    <React.Fragment key={index}>
+                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
+                        index < currentStep 
+                          ? 'bg-green-500 text-white shadow-lg shadow-green-500/50' 
+                          : index === currentStep 
+                          ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/50' 
+                          : 'bg-gray-600 text-gray-400'
+                      }`}>
+                        {index < currentStep ? (
+                          <CheckCircle className="h-6 w-6" />
+                        ) : (
+                          index + 1
+                        )}
                       </div>
-                    )}
-
-                    <div className="space-y-4">
-                      {question.type !== 'multi-input' && (
-                        question.label && (
-                          <label className="block text-sm font-medium text-gray-300 mb-3">
-                            <question.icon className="inline h-4 w-4 mr-2" />
-                            {question.label} *
-                          </label>
-                        )
+                      {index < questions.length - 1 && (
+                        <div className={`w-8 h-1 transition-all duration-300 ${
+                          index < currentStep ? 'bg-green-500' : 'bg-gray-600'
+                        }`}></div>
                       )}
-
-                      {/* Enhance Prompt Button for AI Requirements */}
-
-                      {/* Input Field */}
-                      {question.type === 'multi-input' ? (
-                        <div className="space-y-6">
-                          {question.fields?.map(field => (
-                            <div key={field.id}>
-                              <label className="block text-sm font-medium text-gray-300 mb-3">
-                                <field.icon className="inline h-4 w-4 mr-2" />
-                                {field.label} *
-                              </label>
-                              <input
-                                type={field.type}
-                                id={field.id}
-                                name={field.id}
-                                value={formData[field.id]}
-                                onChange={handleInputChange}
-                                className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                                  currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                                placeholder={field.placeholder}
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      ) : question.type === 'textarea' ? (
-                        <textarea
-                          id={question.id as string}
-                          name={question.id as string}
-                          value={formData[question.id as keyof FormData]}
-                          onChange={handleInputChange}
-                          rows={question.rows || 4}
-                          className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                            currentError ? 'border-red-500' : 'border-gray-600'
-                          } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                          placeholder={question.placeholder}
-                        />
-                      ) : (
-                        <input
-                          type="text"
-                          id={question.id as string}
-                          name={question.id as string}
-                          value={formData[question.id as keyof FormData]}
-                          onChange={handleInputChange}
-                          className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                            currentError ? 'border-red-500' : 'border-gray-600'
-                          } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                          placeholder={question.placeholder || ''}
-                        />
-                      )}
-
-                      {/* Error Message */}
-                      {currentError && index === currentStep && (
-                        <p className="mt-2 text-sm text-red-400">{currentError}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                    </React.Fragment>
+                  ))}
+                </div>
+                <p className="text-center text-gray-400 text-sm">
+                  Step {currentStep + 1} of {questions.length}
+                </p>
               </div>
-            </div>
+            )}
 
-            {/* Navigation Buttons */}
-            <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-700/50">
-              <button
-                type="button"
-                onClick={handlePrevious}
-                disabled={currentStep === 0}
-                className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
-                  currentStep === 0 
-                    ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' 
-                    : 'bg-gray-600 text-white hover:bg-gray-700'
-                }`}
-              >
-                <ArrowLeft className="h-5 w-5" />
-                <span>Previous</span>
-              </button>
-
-              {currentStep === questions.length - 1 ? (
-                <button
-                  onClick={handleSubmit}
-                  disabled={isSubmitting || !isStepValid}
-                   className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-center flex-shrink-0 min-w-0"
+            {/* Question Container or Thank You Message */}
+            {submitStatus === 'success' ? (
+              <div className="text-center py-12">
+                <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <CheckCircle className="h-12 w-12 text-green-400" />
+                </div>
+                <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
+                <p className="text-xl text-gray-300 mb-6">
+                  Your submission has been received successfully.
+                </p>
+                <p className="text-gray-400">
+                  We'll be in touch soon to discuss your custom AI Sales Agent.
+                </p>
+              </div>
+            ) : (
+              <div className="relative overflow-hidden">
+                <div 
+                  className="flex transition-transform duration-500 ease-in-out"
+                  style={{ transform: `translateX(-${currentStep * 100}%)` }}
                 >
-                  {isSubmitting ? (
-                    <>
-                      <Loader className="h-5 w-5 animate-spin" />
-                       <span className="hidden sm:inline">Submitting...</span>
-                       <span className="sm:hidden">Submitting</span>
-                    </>
-                  ) : (
-                     <>
-                       <span className="hidden sm:inline">Get Your Custom AI Sales Agent</span>
-                       <span className="sm:hidden">Get AI Agent</span>
-                     </>
-                  )}
-                </button>
-              ) : (
+                  {questions.map((question, index) => (
+                    <div key={question.id} className="w-full flex-shrink-0 px-4">
+                      {question.title && (
+                        <div className="text-center mb-8">
+                          <h4 className="text-2xl sm:text-3xl font-bold mb-4">
+                            {question.title}
+                          </h4>
+                        </div>
+                      )}
+
+                      <div className="space-y-4">
+                        {question.type !== 'multi-input' && (
+                          question.label && (
+                            <label className="block text-sm font-medium text-gray-300 mb-3">
+                              <question.icon className="inline h-4 w-4 mr-2" />
+                              {question.label} *
+                            </label>
+                          )
+                        )}
+
+                        {/* Enhance Prompt Button for AI Requirements */}
+
+                        {/* Input Field */}
+                        {question.type === 'multi-input' ? (
+                          <div className="space-y-6">
+                            {question.fields?.map(field => (
+                              <div key={field.id}>
+                                <label className="block text-sm font-medium text-gray-300 mb-3">
+                                  <field.icon className="inline h-4 w-4 mr-2" />
+                                  {field.label} *
+                                </label>
+                                <input
+                                  type={field.type}
+                                  id={field.id}
+                                  name={field.id}
+                                  value={formData[field.id]}
+                                  onChange={handleInputChange}
+                                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                                    currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
+                                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                  placeholder={field.placeholder}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : question.type === 'textarea' ? (
+                          <textarea
+                            id={question.id as string}
+                            name={question.id as string}
+                            value={formData[question.id as keyof FormData]}
+                            onChange={handleInputChange}
+                            rows={question.rows || 4}
+                            className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                              currentError ? 'border-red-500' : 'border-gray-600'
+                            } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
+                            placeholder={question.placeholder}
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            id={question.id as string}
+                            name={question.id as string}
+                            value={formData[question.id as keyof FormData]}
+                            onChange={handleInputChange}
+                            className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                              currentError ? 'border-red-500' : 'border-gray-600'
+                            } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                            placeholder={question.placeholder || ''}
+                          />
+                        )}
+
+                        {/* Error Message */}
+                        {currentError && index === currentStep && (
+                          <p className="mt-2 text-sm text-red-400">{currentError}</p>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Navigation Buttons - Hide when form is successfully submitted */}
+            {submitStatus !== 'success' && (
+              <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-700/50">
                 <button
                   type="button"
-                  onClick={handleNext}
-                  disabled={!isStepValid}
-                   className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 flex-shrink-0"
+                  onClick={handlePrevious}
+                  disabled={currentStep === 0}
+                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
+                    currentStep === 0 
+                      ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' 
+                      : 'bg-gray-600 text-white hover:bg-gray-700'
+                  }`}
                 >
-                  <span>Next</span>
-                  <ArrowRight className="h-5 w-5" />
+                  <ArrowLeft className="h-5 w-5" />
+                  <span>Previous</span>
                 </button>
-              )}
-            </div>
+
+                {currentStep === questions.length - 1 ? (
+                  <button
+                    onClick={handleSubmit}
+                    disabled={isSubmitting || !isStepValid}
+                     className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-center flex-shrink-0 min-w-0"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader className="h-5 w-5 animate-spin" />
+                         <span className="hidden sm:inline">Submitting...</span>
+                         <span className="sm:hidden">Submitting</span>
+                      </>
+                    ) : (
+                       <>
+                         <span className="hidden sm:inline">Get Your Custom AI Sales Agent</span>
+                         <span className="sm:hidden">Get AI Agent</span>
+                       </>
+                    )}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleNext}
+                    disabled={!isStepValid}
+                     className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 flex-shrink-0"
+                  >
+                    <span>Next</span>
+                    <ArrowRight className="h-5 w-5" />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </section>
