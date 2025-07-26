@@ -661,7 +661,7 @@ function App() {
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
             <div className="text-center mb-12">
-              <h3 className="text-2xl sm:text-3xl font-bold mb-4">
+              <h3 className="text-2xl sm:text-3xl font-bold mb-4 text-blue-400">
                 Create a FREE customized Demo AI Agent within 5 minutes!
               </h3>
               <p className="text-gray-300 text-base">
