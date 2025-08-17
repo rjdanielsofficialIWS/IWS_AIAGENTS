@@ -969,7 +969,7 @@ function App() {
 
       {/* AI Sales Call Demo Section */}
       <AISalesCallPlayer
-        audioUrl="https://example.com/demo-call.mp3"
+        audioUrl="https://rjdanielsofficialIWS.github.io/ai-agent-assets/recording_e79e27e4-0e1f-4731-8a1c-10dbe2889c73.wav"
         title="Hear Our AI Agent in Action"
         description="Listen to a real conversation between our AI sales agent and a potential customer. Notice how naturally the AI handles objections, asks qualifying questions, and guides the conversation toward booking a meeting."
         transcript={[
