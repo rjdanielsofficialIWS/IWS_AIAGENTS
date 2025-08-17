@@ -4,6 +4,7 @@ import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, Message
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { ClientPortal } from './components/ClientPortal';
 import { OnboardingBookingPage } from './components/OnboardingBookingPage';
+import { AISalesCallPlayer } from './components/AISalesCallPlayer';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -965,6 +966,46 @@ function App() {
           </div>
         </div>
       </section>
+
+      {/* AI Sales Call Demo Section */}
+      <AISalesCallPlayer
+        audioUrl="https://example.com/demo-call.mp3"
+        title="Hear Our AI Agent in Action"
+        description="Listen to a real conversation between our AI sales agent and a potential customer. Notice how naturally the AI handles objections, asks qualifying questions, and guides the conversation toward booking a meeting."
+        transcript={[
+          {
+            speaker: 'AI',
+            text: 'Hi, this is Sarah from Infinite Wealth Solutions. I hope I\'m catching you at a good time. I\'m calling because you expressed interest in learning more about AI automation for your business. Is this still something you\'d like to explore?',
+            start_time: 0,
+            end_time: 8
+          },
+          {
+            speaker: 'User',
+            text: 'Oh yes, hi Sarah. Yes, I\'m definitely interested. I\'ve been looking into ways to automate some of our customer service processes.',
+            start_time: 8.5,
+            end_time: 15
+          },
+          {
+            speaker: 'AI',
+            text: 'That\'s fantastic! Customer service automation is one of our specialties. Can you tell me a bit about your current setup? What kind of volume are you handling, and what are the main pain points you\'re experiencing?',
+            start_time: 15.5,
+            end_time: 25
+          },
+          {
+            speaker: 'User',
+            text: 'Well, we get about 200 calls a day, and most of them are basic questions about our services, pricing, and availability. My team spends so much time on these repetitive calls.',
+            start_time: 25.5,
+            end_time: 35
+          },
+          {
+            speaker: 'AI',
+            text: 'I completely understand. Those repetitive inquiries are exactly what our AI agents excel at handling. They can manage those 200 daily calls, answer pricing questions, check availability, and even book appointments - all while maintaining a professional, friendly tone. Would you like to see how this could work for your specific business?',
+            start_time: 35.5,
+            end_time: 50
+          }
+        ]}
+      />
+
       {/* Subscription Section */}
       <SubscriptionSection />
 
