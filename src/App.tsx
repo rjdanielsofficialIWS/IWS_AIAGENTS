@@ -243,7 +243,7 @@ function App() {
   };
 
   const validatePhone = (phone: string): boolean => {
-    const phoneRegex = /^[\d\s\-\(\)]{10,}$/;
+    const phoneRegex = /^[\d\s\-\(\)]{7,15}$/;
     return phoneRegex.test(phone.replace(/\s/g, ''));
   };
 
@@ -818,7 +818,7 @@ function App() {
                                       className={`flex-1 px-4 py-3 bg-gray-900/50 border ${
                                         currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
                                       } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                                      placeholder={field.placeholder}
+                                      placeholder="555-123-4567"
                                     />
                                   </div>
                                 ) : (
