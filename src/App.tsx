@@ -15,6 +15,7 @@ interface FormData {
   name: string;
   email: string;
   phone: string;
+  countryCode: string;
   business: string;
   services: string;
   aiRequirements: string;
@@ -57,6 +58,7 @@ function App() {
     name: '',
     email: '',
     phone: '',
+    countryCode: '+1',
     business: '',
     services: '',
     aiRequirements: ''
@@ -128,7 +130,7 @@ function App() {
           id: 'phone',
           label: 'Phone Number',
           type: 'tel',
-          placeholder: '+1 (555) 123-4567',
+          placeholder: '(555) 123-4567',
           icon: Phone,
           required: true
         }
@@ -241,7 +243,7 @@ function App() {
   };
 
   const validatePhone = (phone: string): boolean => {
-    const phoneRegex = /^\+?[\d\s\-\(\)]{10,}$/;
+    const phoneRegex = /^[\d\s\-\(\)]{10,}$/;
     return phoneRegex.test(phone.replace(/\s/g, ''));
   };
 
@@ -281,7 +283,7 @@ function App() {
           break;
         } else if (field.id === 'phone' && !validatePhone(value)) {
           isValid = false;
-          error = 'Please enter a valid phone number';
+          error = 'Please enter a valid phone number (digits only)';
           break;
         }
       }
@@ -336,6 +338,14 @@ function App() {
     }, 100);
   };
 
+  const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFormData(prev => ({ ...prev, countryCode: e.target.value }));
+    // Validate current step when country code changes
+    setTimeout(() => {
+      validateCurrentStep();
+    }, 100);
+  };
+
   const handleNext = () => {
     if (validateCurrentStep()) {
       if (currentStep < questions.length - 1) {
@@ -374,7 +384,7 @@ function App() {
         body: JSON.stringify({
           name: data.name,
           email: data.email,
-          phone: data.phone,
+          phone: data.countryCode.replace('+', '') + data.phone,
           business: data.business,
           services: data.services,
           aiRequirements: data.aiRequirements,
@@ -401,7 +411,7 @@ function App() {
         body: JSON.stringify({
           name: data.name,
           email: data.email,
-          phone: data.phone,
+          phone: data.countryCode.replace('+', '') + data.phone,
           business: data.business,
           services: data.services,
           aiRequirements: data.aiRequirements,
@@ -435,6 +445,7 @@ function App() {
           name: '',
           email: '',
           phone: '',
+          countryCode: '+1',
           business: '',
           services: '',
           aiRequirements: ''
@@ -768,17 +779,61 @@ function App() {
                                   <field.icon className="inline h-4 w-4 mr-2" />
                                   {field.label} *
                                 </label>
-                                <input
-                                  type={field.type}
-                                  id={field.id}
-                                  name={field.id}
-                                  value={formData[field.id]}
-                                  onChange={handleInputChange}
-                                  className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                                    currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                  } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                                  placeholder={field.placeholder}
-                                />
+                                {field.id === 'phone' ? (
+                                  <div className="flex">
+                                    <select
+                                      value={formData.countryCode}
+                                      onChange={handleCountryCodeChange}
+                                      className={`px-3 py-3 bg-gray-900/50 border ${
+                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
+                                      } border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                    >
+                                      <option value="+1">🇨🇦 +1</option>
+                                      <option value="+1">🇺🇸 +1</option>
+                                      <option value="+44">🇬🇧 +44</option>
+                                      <option value="+33">🇫🇷 +33</option>
+                                      <option value="+49">🇩🇪 +49</option>
+                                      <option value="+61">🇦🇺 +61</option>
+                                      <option value="+81">🇯🇵 +81</option>
+                                      <option value="+86">🇨🇳 +86</option>
+                                      <option value="+91">🇮🇳 +91</option>
+                                      <option value="+55">🇧🇷 +55</option>
+                                      <option value="+52">🇲🇽 +52</option>
+                                      <option value="+34">🇪🇸 +34</option>
+                                      <option value="+39">🇮🇹 +39</option>
+                                      <option value="+31">🇳🇱 +31</option>
+                                      <option value="+46">🇸🇪 +46</option>
+                                      <option value="+47">🇳🇴 +47</option>
+                                      <option value="+45">🇩🇰 +45</option>
+                                      <option value="+41">🇨🇭 +41</option>
+                                      <option value="+43">🇦🇹 +43</option>
+                                      <option value="+32">🇧🇪 +32</option>
+                                    </select>
+                                    <input
+                                      type={field.type}
+                                      id={field.id}
+                                      name={field.id}
+                                      value={formData[field.id]}
+                                      onChange={handleInputChange}
+                                      className={`flex-1 px-4 py-3 bg-gray-900/50 border ${
+                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
+                                      } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                      placeholder={field.placeholder}
+                                    />
+                                  </div>
+                                ) : (
+                                  <input
+                                    type={field.type}
+                                    id={field.id}
+                                    name={field.id}
+                                    value={formData[field.id]}
+                                    onChange={handleInputChange}
+                                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                                      currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
+                                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                    placeholder={field.placeholder}
+                                  />
+                                )}
                               </div>
                             ))}
                           </div>
