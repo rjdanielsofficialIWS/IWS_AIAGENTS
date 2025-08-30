@@ -593,11 +593,18 @@ function AppContent() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
               <button
                 onClick={() => {
-                  // Trigger the Vapi widget if needed
-                  const widget = document.querySelector('vapi-widget');
-                  if (widget) {
-                    // The widget should handle its own click events
-                    console.log('Free Demo clicked');
+                  // Trigger the Vapi widget to start a web call
+                  const widget = document.querySelector('vapi-widget') as any;
+                  if (widget && typeof widget.start === 'function') {
+                    widget.start();
+                  } else {
+                    // Fallback: try to trigger click event on the widget
+                    const vapiButton = document.querySelector('vapi-widget button') || 
+                                    document.querySelector('[data-vapi-button]') ||
+                                    widget;
+                    if (vapiButton) {
+                      (vapiButton as HTMLElement).click();
+                    }
                   }
                 }}
                 className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center space-x-3"
