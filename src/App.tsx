@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { createClient, Session } from '@supabase/supabase-js';
+import { Session } from '@supabase/supabase-js';
 import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight, Target, Calendar } from 'lucide-react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthGuard } from './components/auth/AuthGuard';
+import { LoginForm } from './components/auth/LoginForm';
+import { RegisterForm } from './components/auth/RegisterForm';
+import { DashboardLayout } from './components/dashboard/DashboardLayout';
+import { DashboardOverview } from './components/dashboard/DashboardOverview';
+import { AssistantsList } from './components/assistants/AssistantsList';
+import { AssistantBuilder } from './components/assistants/AssistantBuilder';
 import { SubscriptionSection } from './components/SubscriptionSection';
-import { ClientPortal } from './components/ClientPortal';
 import { OnboardingBookingPage } from './components/OnboardingBookingPage';
-import { AISalesCallPlayer } from './components/AISalesCallPlayer';
-
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+import { VapiAssistant } from './types/vapi';
+import { supabase } from './services/vapiAI';
 
 interface FormData {
   name: string;
@@ -45,14 +48,13 @@ interface Question {
   }[];
 }
 
-function App() {
-  const [session, setSession] = useState<Session | null>(null);
-  const [userMembershipStatus, setUserMembershipStatus] = useState<'unknown' | 'free' | 'premium' | 'cancelled'>('unknown');
+function AppContent() {
+  const { user, loading } = useAuth();
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const [authForm, setAuthForm] = useState({ email: '', password: '' });
-  const [authLoading, setAuthLoading] = useState(false);
-  const [authError, setAuthError] = useState('');
+  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentAssistant, setCurrentAssistant] = useState<VapiAssistant | null>(null);
+  const [showAssistantBuilder, setShowAssistantBuilder] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -71,11 +73,6 @@ function App() {
     isEnhancing: false,
     hasEnhanced: false
   });
-
-  // Navigate to booking page
-  const handleNavigateToBooking = () => {
-    window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
-  };
 
   const questions: Question[] = [
     {
@@ -138,105 +135,6 @@ function App() {
     }
   ];
 
-  // Authentication functions
-  const handleAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setAuthLoading(true);
-    setAuthError('');
-
-    try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email: authForm.email,
-          password: authForm.password,
-        });
-        if (error) throw error;
-        setAuthError('Check your email for the confirmation link!');
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: authForm.email,
-          password: authForm.password,
-        });
-        if (error) throw error;
-      }
-    } catch (error: any) {
-      setAuthError(error.message);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-  };
-
-  // Fetch user membership status
-  const fetchUserMembershipStatus = async (userId: string) => {
-    try {
-      // First, try to get the profile
-      let { data, error } = await supabase
-        .from('profiles')
-        .select('membership_status')
-        .eq('id', userId);
-
-      if (error) {
-        console.error('Error fetching membership status:', error);
-        setUserMembershipStatus('free');
-        return;
-      }
-
-      // If no profile exists, create one
-      if (!data || data.length === 0) {
-        const { data: insertData, error: insertError } = await supabase
-          .from('profiles')
-          .insert([{ id: userId, membership_status: 'free' }])
-          .select('membership_status')
-          .single();
-
-        if (insertError) {
-          console.error('Error creating profile:', insertError);
-          setUserMembershipStatus('free');
-          return;
-        }
-
-        setUserMembershipStatus(insertData?.membership_status || 'free');
-      } else {
-        setUserMembershipStatus(data[0]?.membership_status || 'free');
-      }
-    } catch (error) {
-      console.error('Error fetching membership status:', error);
-      setUserMembershipStatus('free');
-    }
-  };
-
-  // Check for existing session on mount
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      if (session?.user?.id) {
-        fetchUserMembershipStatus(session.user.id);
-      } else {
-        setUserMembershipStatus('free');
-      }
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session) {
-        setShowAuthForm(false);
-        if (session.user?.id) {
-          fetchUserMembershipStatus(session.user.id);
-        }
-      } else {
-        setUserMembershipStatus('free');
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
   const validateEmail = (email: string): boolean => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
@@ -255,7 +153,8 @@ function App() {
     setEnhanceState({ isEnhancing: true, hasEnhanced: false });
 
     try {
-      const enhancedText = await blandAI.enhancePrompt(formData.aiRequirements);
+      // For now, just return the original text
+      const enhancedText = formData.aiRequirements;
       setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
       setEnhanceState({ isEnhancing: false, hasEnhanced: true });
     } catch (error) {
@@ -467,18 +366,111 @@ function App() {
     validateCurrentStep();
   }, [currentStep]);
 
+  // Assistant management functions
+  const handleCreateAssistant = () => {
+    setCurrentAssistant(null);
+    setShowAssistantBuilder(true);
+  };
+
+  const handleEditAssistant = (assistant: VapiAssistant) => {
+    setCurrentAssistant(assistant);
+    setShowAssistantBuilder(true);
+  };
+
+  const handleSaveAssistant = (assistant: VapiAssistant) => {
+    setShowAssistantBuilder(false);
+    setCurrentAssistant(null);
+    // Refresh assistants list if needed
+  };
+
+  const handleBackFromBuilder = () => {
+    setShowAssistantBuilder(false);
+    setCurrentAssistant(null);
+  };
+
   // Handle routing for onboarding booking page
   if (window.location.pathname === '/onboarding-booking') {
     return <OnboardingBookingPage />;
   }
 
-  // If user is logged in, show the ClientPortal
-  if (session && userMembershipStatus === 'premium') {
-    return <ClientPortal onLogout={handleLogout} />;
+  // If user is logged in and has premium access, show the dashboard
+  if (user && (user.membership_status === 'premium' || user.membership_status === 'enterprise')) {
+    if (showAssistantBuilder) {
+      return (
+        <DashboardLayout currentPage="assistants" onPageChange={setCurrentPage}>
+          <AssistantBuilder
+            assistantId={currentAssistant?.id}
+            onBack={handleBackFromBuilder}
+            onSave={handleSaveAssistant}
+          />
+        </DashboardLayout>
+      );
+    }
+
+    return (
+      <DashboardLayout currentPage={currentPage} onPageChange={setCurrentPage}>
+        {currentPage === 'dashboard' && <DashboardOverview />}
+        {currentPage === 'assistants' && (
+          <AssistantsList
+            onCreateNew={handleCreateAssistant}
+            onEdit={handleEditAssistant}
+          />
+        )}
+        {currentPage === 'phone-numbers' && (
+          <div className="text-center py-12">
+            <Phone className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Phone Numbers</h3>
+            <p className="text-gray-500">Phone number management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'calls' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Call Logs</h3>
+            <p className="text-gray-500">Call management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'webhooks' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Webhooks</h3>
+            <p className="text-gray-500">Webhook management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'team' && (
+          <div className="text-center py-12">
+            <User className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Team Management</h3>
+            <p className="text-gray-500">Team features coming soon</p>
+          </div>
+        )}
+        {currentPage === 'billing' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Billing</h3>
+            <p className="text-gray-500">Billing management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'api-keys' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">API Keys</h3>
+            <p className="text-gray-500">API key management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'settings' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Settings</h3>
+            <p className="text-gray-500">Settings management coming soon</p>
+          </div>
+        )}
+      </DashboardLayout>
+    );
   }
 
   // If user is logged in but doesn't have premium membership
-  if (session && userMembershipStatus !== 'unknown' && userMembershipStatus !== 'premium') {
+  if (user && user.membership_status !== 'premium' && user.membership_status !== 'enterprise') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
         {/* Animated Background Elements */}
@@ -500,16 +492,16 @@ function App() {
           <div className="space-y-4">
             <button
               onClick={() => window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding'}
-              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-2"
+              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
             >
-              <span>Book Your Onboarding Call</span>
+              Book Your Onboarding Call
             </button>
             
             <button
-              onClick={handleLogout}
+              onClick={() => setShowAuthForm(false)}
               className="w-full text-gray-400 hover:text-gray-300 transition-colors text-sm"
             >
-              Sign out
+              Back to main page
             </button>
           </div>
         </div>
@@ -517,13 +509,13 @@ function App() {
     );
   }
 
-  // Show loading state while checking membership
-  if (session && userMembershipStatus === 'unknown') {
+  // Show loading state
+  if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
-          <p className="text-gray-300">Checking your membership status...</p>
+          <p className="text-gray-300">Loading...</p>
         </div>
       </div>
     );
@@ -539,91 +531,17 @@ function App() {
           <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
         </div>
 
-        <div className="relative z-10 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md mx-4">
-          <div className="text-center mb-8">
-            <Brain className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
-            <h2 className="text-3xl font-bold mb-2">
-              {isSignUp ? 'Create Account' : 'Welcome Back'}
-            </h2>
-            <p className="text-gray-300">
-              {isSignUp ? 'Sign up to access your AI Agent Studio' : 'Sign in to manage your AI agents'}
-            </p>
-          </div>
-
-          <form onSubmit={handleAuth} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                <Mail className="inline h-4 w-4 mr-2" />
-                Email Address
-              </label>
-              <input
-                type="email"
-                value={authForm.email}
-                onChange={(e) => setAuthForm({ ...authForm, email: e.target.value })}
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400"
-                placeholder="your@email.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-300 mb-2">
-                <Lock className="inline h-4 w-4 mr-2" />
-                Password
-              </label>
-              <input
-                type="password"
-                value={authForm.password}
-                onChange={(e) => setAuthForm({ ...authForm, password: e.target.value })}
-                className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-
-            {authError && (
-              <div className="p-4 bg-red-500/10 border border-red-500/50 rounded-lg">
-                <p className="text-red-300 text-sm">{authError}</p>
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={authLoading}
-              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center space-x-2"
-            >
-              {authLoading ? (
-                <>
-                  <Loader className="h-5 w-5 animate-spin" />
-                  <span>{isSignUp ? 'Creating Account...' : 'Signing In...'}</span>
-                </>
-              ) : (
-                <span>{isSignUp ? 'Create Account' : 'Sign In'}</span>
-              )}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => {
-                setIsSignUp(!isSignUp);
-                setAuthError('');
-              }}
-              className="text-yellow-400 hover:text-yellow-300 transition-colors"
-            >
-              {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
-            </button>
-          </div>
-
-          <div className="mt-6 text-center">
-            <button
-              onClick={() => setShowAuthForm(false)}
-              className="text-gray-400 hover:text-gray-300 transition-colors text-sm"
-            >
-              ← Back to main page
-            </button>
-          </div>
-        </div>
+        {isSignUp ? (
+          <RegisterForm
+            onSwitchToLogin={() => setIsSignUp(false)}
+            onBack={() => setShowAuthForm(false)}
+          />
+        ) : (
+          <LoginForm
+            onSwitchToRegister={() => setIsSignUp(true)}
+            onBack={() => setShowAuthForm(false)}
+          />
+        )}
       </div>
     );
   }
@@ -649,7 +567,30 @@ function App() {
               </div>
             </div>
             
-            {!session && (
+            {!user && (
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => {
+                    setIsSignUp(false);
+                    setShowAuthForm(true);
+                  }}
+                  className="px-6 py-2 text-gray-300 hover:text-white transition-colors font-medium"
+                >
+                  Sign In
+                </button>
+                <button
+                  onClick={() => {
+                    setIsSignUp(true);
+                    setShowAuthForm(true);
+                  }}
+                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-2 px-6 rounded-lg hover:from-yellow-500 hover:to-yellow-600 transition-all"
+                >
+                  Get Started
+                </button>
+              </div>
+            )}
+            
+            {user && (
               <div></div>
             )}
           </div>
@@ -1041,6 +982,14 @@ function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
