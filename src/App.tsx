@@ -567,50 +567,6 @@ function AppContent() {
               </div>
             </div>
             
-            {!user && (
-              <div className="flex items-center space-x-4">
-                <button
-                  onClick={() => {
-                    setIsSignUp(false);
-                    setShowAuthForm(true);
-                  }}
-                  className="px-6 py-2 text-gray-300 hover:text-white transition-colors font-medium"
-                >
-                  Sign In
-                </button>
-                <button
-                  onClick={() => {
-                    setIsSignUp(true);
-                    setShowAuthForm(true);
-                  }}
-                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-2 px-6 rounded-lg hover:from-yellow-500 hover:to-yellow-600 transition-all"
-                >
-                  Get Started
-                </button>
-                <button
-                  onClick={() => {
-                    // Bypass login for testing - simulate a premium user
-                    const mockUser = {
-                      id: 'test-user-123',
-                      email: 'test@example.com',
-                      role: 'admin' as const,
-                      membership_status: 'premium' as const,
-                      first_name: 'Test',
-                      last_name: 'User',
-                      created_at: new Date().toISOString(),
-                      updated_at: new Date().toISOString()
-                    };
-                    // Simulate setting the user in auth context
-                    // This is a temporary bypass for testing
-                    window.localStorage.setItem('bypass-auth', JSON.stringify(mockUser));
-                    window.location.reload();
-                  }}
-                  className="bg-gradient-to-r from-purple-500 to-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm"
-                >
-                  🚀 Bypass Login
-                </button>
-              </div>
-            )}
             
             {user && (
               <div></div>
