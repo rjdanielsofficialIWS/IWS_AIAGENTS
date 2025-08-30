@@ -7,14 +7,18 @@
     <link rel="icon" type="image/png" sizes="48x48" href="/Favicon-48.48.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Infinite Wealth Solutions - AI Agents Website</title>
+    <script
+      src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"
+      type="text/javascript">
+    </script>
   </head>
   <body>
     <div id="root"></div>
+    <vapi-widget 
+      assistant-id="4010a25a-e42e-4654-be7b-15e0229fdab8" 
+      public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+      type="floating">
+    </vapi-widget>
     <script type="module" src="/src/main.tsx"></script>
-    <script
-      src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"
-      async
-      type="text/javascript"
-    ></script>
   </body>
 </html>

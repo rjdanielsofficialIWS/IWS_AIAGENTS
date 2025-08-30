@@ -570,62 +570,6 @@ function AppContent() {
         </div>
       </header>
 
-      {/* Vapi AI Widget Section */}
-      <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 mb-8">
-            <h3 className="text-2xl sm:text-3xl font-bold mb-6">
-              Try Our AI Agent Live Demo
-            </h3>
-            <p className="text-gray-300 mb-8 text-lg">
-              Experience the power of our AI sales agent. Click the button below to start a live conversation.
-            </p>
-            
-            {/* Vapi Widget Container */}
-            <div className="mb-8">
-              <vapi-widget 
-                assistant-id="4010a25a-e42e-4654-be7b-15e0229fdab8" 
-                public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-              ></vapi-widget>
-            </div>
-            
-            {/* CTA Buttons */}
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <button
-                onClick={() => {
-                  // Trigger the Vapi widget to start a web call
-                  const widget = document.querySelector('vapi-widget') as any;
-                  if (widget && typeof widget.start === 'function') {
-                    widget.start();
-                  } else {
-                    // Fallback: try to trigger click event on the widget
-                    const vapiButton = document.querySelector('vapi-widget button') || 
-                                    document.querySelector('[data-vapi-button]') ||
-                                    widget;
-                    if (vapiButton) {
-                      (vapiButton as HTMLElement).click();
-                    }
-                  }
-                }}
-                className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
-              >
-                <Phone className="h-6 w-6" />
-                <span>Free Demo</span>
-              </button>
-              
-              <a
-                href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3"
-              >
-                <Calendar className="h-6 w-6" />
-                <span>Get Started</span>
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
 
       {/* Hero Section */}
       <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
@@ -638,8 +582,21 @@ function AppContent() {
           </h2>
           
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            Let our Agents handle the phone work and book meetings while you focus on closing more sales.
+            Let our Agents handle the phone work and book meetings while you focus on closing more sales. Click the floating AI icon to try our demo!
           </p>
+
+          {/* Single CTA Button */}
+          <div className="text-center mb-12">
+            <a
+              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 inline-flex items-center justify-center space-x-3"
+            >
+              <Calendar className="h-6 w-6" />
+              <span>Get Started</span>
+            </a>
+          </div>
 
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
