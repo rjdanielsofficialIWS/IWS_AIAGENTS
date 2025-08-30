@@ -142,6 +142,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = async () => {
     try {
       setLoading(true);
+      // Clear bypass auth if it exists
+      localStorage.removeItem('bypass-auth');
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       setUser(null);
@@ -214,6 +216,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   };
 
   useEffect(() => {
+    // Check for bypass auth first (for testing purposes)
+    const bypassAuth = localStorage.getItem('bypass-auth');
+    if (bypassAuth) {
+      try {
+        const mockUser = JSON.parse(bypassAuth);
+        setUser(mockUser);
+        setLoading(false);
+        return;
+      } catch (error) {
+        localStorage.removeItem('bypass-auth');
+      }
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) {

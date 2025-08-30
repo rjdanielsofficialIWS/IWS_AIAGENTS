@@ -587,6 +587,28 @@ function AppContent() {
                 >
                   Get Started
                 </button>
+                <button
+                  onClick={() => {
+                    // Bypass login for testing - simulate a premium user
+                    const mockUser = {
+                      id: 'test-user-123',
+                      email: 'test@example.com',
+                      role: 'admin' as const,
+                      membership_status: 'premium' as const,
+                      first_name: 'Test',
+                      last_name: 'User',
+                      created_at: new Date().toISOString(),
+                      updated_at: new Date().toISOString()
+                    };
+                    // Simulate setting the user in auth context
+                    // This is a temporary bypass for testing
+                    window.localStorage.setItem('bypass-auth', JSON.stringify(mockUser));
+                    window.location.reload();
+                  }}
+                  className="bg-gradient-to-r from-purple-500 to-purple-600 text-white font-bold py-2 px-4 rounded-lg hover:from-purple-600 hover:to-purple-700 transition-all text-sm"
+                >
+                  🚀 Bypass Login
+                </button>
               </div>
             )}
             
