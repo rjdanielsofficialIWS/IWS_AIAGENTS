@@ -582,16 +582,38 @@ function AppContent() {
           </h2>
           
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            Let our Agents handle the phone work and book meetings while you focus on closing more sales. Click the floating AI icon to try our demo!
+            Let our Agents handle the phone work and book meetings while you focus on closing more sales.
           </p>
 
-          {/* Single CTA Button */}
-          <div className="text-center mb-12">
+          {/* CTA Buttons */}
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
+            <button
+              onClick={() => {
+                // Trigger the Vapi widget to start a web call
+                const widget = document.querySelector('vapi-widget') as any;
+                if (widget && typeof widget.start === 'function') {
+                  widget.start();
+                } else {
+                  // Fallback: try to trigger click event on the widget
+                  const vapiButton = document.querySelector('vapi-widget button') || 
+                                  document.querySelector('[data-vapi-button]') ||
+                                  widget;
+                  if (vapiButton) {
+                    (vapiButton as HTMLElement).click();
+                  }
+                }
+              }}
+              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
+            >
+              <Phone className="h-6 w-6" />
+              <span>Free Demo</span>
+            </button>
+            
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 inline-flex items-center justify-center space-x-3"
+              className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-400/25 flex items-center justify-center space-x-3"
             >
               <Calendar className="h-6 w-6" />
               <span>Get Started</span>
