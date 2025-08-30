@@ -578,11 +578,34 @@ function AppContent() {
               Try Our AI Agent Live Demo
             </h3>
             <p className="text-gray-300 mb-8 text-lg">
-              Experience the power of our AI sales agent. Click the floating icon to start a live conversation.
+              Experience the power of our AI sales agent. Click the button below to start a live conversation.
             </p>
             
+            {/* Vapi Widget Container */}
+            <div className="mb-8">
+              <vapi-widget 
+                assistant-id="4010a25a-e42e-4654-be7b-15e0229fdab8" 
+                public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+              ></vapi-widget>
+            </div>
+            
             {/* CTA Buttons */}
-            <div className="flex justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
+              <button
+                onClick={() => {
+                  // Trigger the Vapi widget if needed
+                  const widget = document.querySelector('vapi-widget');
+                  if (widget) {
+                    // The widget should handle its own click events
+                    console.log('Free Demo clicked');
+                  }
+                }}
+                className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center space-x-3"
+              >
+                <Phone className="h-6 w-6" />
+                <span>Free Demo</span>
+              </button>
+              
               <a
                 href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
                 target="_blank"
@@ -981,13 +1004,6 @@ function AppContent() {
           </p>
         </div>
       </footer>
-
-      {/* Floating Vapi Widget */}
-      <vapi-widget 
-        type="floating"
-        assistant-id="4010a25a-e42e-4654-be7b-15e0229fdab8" 
-        public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-      ></vapi-widget>
     </div>
   );
 }
