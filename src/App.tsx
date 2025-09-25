@@ -21,7 +21,8 @@ interface FormData {
   countryCode: string;
   business: string;
   services: string;
-  aiRequirements: string;
+  serviceInterest: string;
+  projectRequirements: string;
 }
 
 interface EnhanceState {
@@ -33,11 +34,12 @@ interface Question {
   id: keyof FormData | 'contactInfo';
   title: string;
   label?: string;
-  type: 'input' | 'textarea' | 'multi-input';
+  type: 'input' | 'textarea' | 'multi-input' | 'select';
   placeholder?: string;
   rows?: number;
   icon?: React.ComponentType<any>;
   required?: boolean;
+  options?: { value: string; label: string }[];
   fields?: {
     id: keyof FormData;
     label: string;
@@ -63,7 +65,8 @@ function AppContent() {
     countryCode: '+1',
     business: '',
     services: '',
-    aiRequirements: ''
+    serviceInterest: '',
+    projectRequirements: ''
   });
   const [currentError, setCurrentError] = useState<string>('');
   const [isStepValid, setIsStepValid] = useState(false);
@@ -75,6 +78,19 @@ function AppContent() {
   });
 
   const questions: Question[] = [
+    {
+      id: 'serviceInterest',
+      title: 'Which service are you interested in?',
+      type: 'select',
+      icon: Target,
+      required: true,
+      options: [
+        { value: '', label: 'Select a service...' },
+        { value: 'ai-agents', label: 'AI Voice Agents - Automate calls and bookings' },
+        { value: 'product-animations', label: 'Product Animations - Turn images into compelling videos' },
+        { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' }
+      ]
+    },
     {
       id: 'business',
       title: 'What\'s your company name?',
@@ -94,10 +110,10 @@ function AppContent() {
       required: true
     },
     {
-      id: 'aiRequirements',
-      title: 'What exactly do you want your AI Sales Agent to do for you?',
+      id: 'projectRequirements',
+      title: 'Tell us about your project requirements',
       type: 'textarea',
-      placeholder: 'Be specific about tasks, goals, processes, follow-up procedures, CRM integration needs, etc...',
+      placeholder: 'Describe your specific needs, goals, timeline, and any special requirements...',
       rows: 6,
       icon: MessageSquare,
       required: true
@@ -146,7 +162,7 @@ function AppContent() {
   };
 
   const enhancePrompt = async () => {
-    if (!formData.aiRequirements.trim()) {
+    if (!formData.projectRequirements.trim()) {
       return;
     }
 
@@ -154,8 +170,8 @@ function AppContent() {
 
     try {
       // For now, just return the original text
-      const enhancedText = formData.aiRequirements;
-      setFormData(prev => ({ ...prev, aiRequirements: enhancedText }));
+      const enhancedText = formData.projectRequirements;
+      setFormData(prev => ({ ...prev, projectRequirements: enhancedText }));
       setEnhanceState({ isEnhancing: false, hasEnhanced: true });
     } catch (error) {
       setEnhanceState({ isEnhancing: false, hasEnhanced: false });
@@ -185,6 +201,13 @@ function AppContent() {
           error = 'Please enter a valid phone number (digits only)';
           break;
         }
+      }
+    } else if (currentQuestion.type === 'select') {
+      // Validate select field
+      const value = formData[currentQuestion.id as keyof FormData];
+      if (!value || value.trim() === '') {
+        isValid = false;
+        error = 'Please select an option';
       }
     } else {
       // Validate single field step
@@ -217,6 +240,9 @@ function AppContent() {
           if (field.id === 'email' && !validateEmail(value)) return false;
           if (field.id === 'phone' && !validatePhone(value)) return false;
         }
+      } else if (question.type === 'select') {
+        const value = formData[question.id as keyof FormData];
+        if (!value || value.trim() === '') return false;
       } else {
         const value = formData[question.id as keyof FormData];
         if (!value.trim()) return false;
@@ -237,6 +263,15 @@ function AppContent() {
     }, 100);
   };
 
+  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Validate current step when selection changes
+    setTimeout(() => {
+      validateCurrentStep();
+    }, 100);
+  };
   const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, countryCode: e.target.value }));
     // Validate current step when country code changes
@@ -286,7 +321,8 @@ function AppContent() {
           phone: data.countryCode.replace('+', '') + data.phone,
           business: data.business,
           services: data.services,
-          aiRequirements: data.aiRequirements,
+          serviceInterest: data.serviceInterest,
+          projectRequirements: data.projectRequirements,
           timestamp: new Date().toISOString()
         })
       });
@@ -313,7 +349,8 @@ function AppContent() {
           phone: data.countryCode.replace('+', '') + data.phone,
           business: data.business,
           services: data.services,
-          aiRequirements: data.aiRequirements,
+          serviceInterest: data.serviceInterest,
+          projectRequirements: data.projectRequirements,
           timestamp: new Date().toISOString()
         })
       });
@@ -347,7 +384,8 @@ function AppContent() {
           countryCode: '+1',
           business: '',
           services: '',
-          aiRequirements: ''
+          serviceInterest: '',
+          projectRequirements: ''
         });
         // Keep current step to show thank you message in place
       } else {
@@ -485,8 +523,8 @@ function AppContent() {
             Premium Membership Required
           </h2>
           <p className="text-gray-300 mb-8">
-            You need an active premium membership to access the AI Agent Studio. 
-            Upgrade now to start creating and managing your AI agents.
+            You need an active premium membership to access our premium services. 
+            Upgrade now to start using our advanced tools and features.
           </p>
           
           <div className="space-y-4">
@@ -563,7 +601,7 @@ function AppContent() {
                 <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
                   Infinite Wealth Solutions
                 </h1>
-                <p className="text-blue-300 text-base sm:text-lg">AI Agents</p>
+                <p className="text-blue-300 text-base sm:text-lg">Digital Innovation Studio</p>
               </div>
             </div>
           </div>
@@ -575,14 +613,14 @@ function AppContent() {
       <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-8 leading-tight">
-            Cut costs, increase efficiency,{' '}
+            Transform Your Business with{' '}
             <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-              generate more sales
+              Cutting-Edge Digital Solutions
             </span>
           </h2>
           
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            Let our Agents handle the phone work and book meetings while you focus on closing more sales.
+            From AI-powered voice agents to stunning product animations and custom websites - we deliver premium digital solutions that drive results.
           </p>
 
           {/* CTA Buttons */}
@@ -606,7 +644,7 @@ function AppContent() {
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
             >
               <Phone className="h-6 w-6" />
-              <span>Free Demo</span>
+              <span>Try AI Agent Demo</span>
             </button>
             
             <a
@@ -620,14 +658,46 @@ function AppContent() {
             </a>
           </div>
 
+          {/* Services Overview */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-xl p-6 hover:border-yellow-400/50 transition-all group">
+              <div className="bg-yellow-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-yellow-400/20 transition-colors">
+                <Brain className="h-8 w-8 text-yellow-400" />
+              </div>
+              <h3 className="text-xl font-bold mb-3">AI Voice Agents</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Automate calls, bookings, and customer interactions with intelligent AI agents that sound completely human.
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-xl p-6 hover:border-blue-400/50 transition-all group">
+              <div className="bg-blue-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-400/20 transition-colors">
+                <Zap className="h-8 w-8 text-blue-400" />
+              </div>
+              <h3 className="text-xl font-bold mb-3">Product Animations</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Transform static product images into compelling, professional-grade animated videos that captivate your audience.
+              </p>
+            </div>
+
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-xl p-6 hover:border-green-400/50 transition-all group">
+              <div className="bg-green-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-green-400/20 transition-colors">
+                <TrendingUp className="h-8 w-8 text-green-400" />
+              </div>
+              <h3 className="text-xl font-bold mb-3">Custom Websites</h3>
+              <p className="text-gray-400 text-sm leading-relaxed">
+                Get a unique, professionally designed website built from scratch - no templates, no cookie-cutter designs.
+              </p>
+            </div>
+          </div>
           {/* Form Section */}
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
             <div className="text-center mb-12">
               <h3 className="text-2xl sm:text-3xl font-bold mb-4">
-                Create a FREE customized Demo AI Agent within 5 minutes!
+                Get Your Custom Solution Quote
               </h3>
               <p className="text-gray-300 text-base">
-                Tell us about your needs and let's create your perfect AI Sales Agent
+                Tell us about your project and we'll create the perfect solution for your business
               </p>
             </div>
 
@@ -689,7 +759,7 @@ function AppContent() {
                   Your submission has been received successfully.
                 </p>
                 <p className="text-gray-400">
-                  We'll be in touch soon to discuss your custom AI Sales Agent.
+                  We'll be in touch soon to discuss your custom solution.
                 </p>
               </div>
             ) : (
@@ -787,6 +857,22 @@ function AppContent() {
                               </div>
                             ))}
                           </div>
+                        ) else if (question.type === 'select') {
+                          <select
+                            id={question.id as string}
+                            name={question.id as string}
+                            value={formData[question.id as keyof FormData]}
+                            onChange={handleSelectChange}
+                            className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                              currentError ? 'border-red-500' : 'border-gray-600'
+                            } rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                          >
+                            {question.options?.map(option => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
                         ) : question.type === 'textarea' ? (
                           <textarea
                             id={question.id as string}
@@ -855,8 +941,8 @@ function AppContent() {
                       </>
                     ) : (
                        <>
-                         <span className="hidden sm:inline">Get Your Custom AI Sales Agent</span>
-                         <span className="sm:hidden">Get AI Agent</span>
+                         <span className="hidden sm:inline">Get Your Custom Solution</span>
+                         <span className="sm:hidden">Get Quote</span>
                        </>
                     )}
                   </button>
@@ -877,78 +963,78 @@ function AppContent() {
         </div>
       </section>
 
-      {/* AI Agent Use Cases Section */}
+      {/* Detailed Services Section */}
       <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-              AI Agent <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">Use Cases</span>
+              Our <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">Premium Services</span>
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Discover how AI agents can transform different aspects of your business operations
+              Professional digital solutions designed to elevate your business and drive real results
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {/* Use Case 1: Outbound Sales */}
+            {/* Service 1: AI Voice Agents */}
             <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
               <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
-                <Target className="h-10 w-10 text-yellow-400" />
+                <Brain className="h-10 w-10 text-yellow-400" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Outbound Sales & Appointment Booking</h3>
+              <h3 className="text-2xl font-bold mb-4 text-center">AI Voice Agents</h3>
               <p className="text-gray-400 text-center leading-relaxed">
-                AI agents make proactive outbound calls to qualify leads, answer initial questions, and seamlessly book appointments for your sales team.
+                Intelligent AI agents that handle calls, bookings, customer service, and sales conversations with human-like natural speech and understanding.
               </p>
               <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
                 <div className="flex items-center space-x-1">
                   <Phone className="h-4 w-4" />
-                  <span>Outbound Calls</span>
+                  <span>24/7 Availability</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <Calendar className="h-4 w-4" />
-                  <span>Booking</span>
+                  <span>Auto Booking</span>
                 </div>
               </div>
             </div>
 
-            {/* Use Case 2: Restaurant Inquiries */}
+            {/* Service 2: Product Animations */}
             <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-blue-400/50 transition-all duration-300 group">
               <div className="bg-blue-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-400/20 transition-colors">
-                <Building className="h-10 w-10 text-blue-400" />
+                <Zap className="h-10 w-10 text-blue-400" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Inbound Retail Inquiries</h3>
+              <h3 className="text-2xl font-bold mb-4 text-center">Product Animations</h3>
               <p className="text-gray-400 text-center leading-relaxed">
-                Automate your stores phone lines with AI agents handling reservations, taking orders, providing details, and answering general customer questions 24/7.
+                Transform static product images into dynamic, professional-grade animated videos that showcase your products in the most compelling way possible.
               </p>
               <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
                 <div className="flex items-center space-x-1">
-                  <MessageSquare className="h-4 w-4" />
-                  <span>Reservations</span>
+                  <TrendingUp className="h-4 w-4" />
+                  <span>High Quality</span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  <Briefcase className="h-4 w-4" />
-                  <span>Orders</span>
+                  <Target className="h-4 w-4" />
+                  <span>Compelling</span>
                 </div>
               </div>
             </div>
 
-            {/* Use Case 3: AI Receptionist */}
+            {/* Service 3: Custom Websites */}
             <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-green-400/50 transition-all duration-300 group">
               <div className="bg-green-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-green-400/20 transition-colors">
-                <User className="h-10 w-10 text-green-400" />
+                <TrendingUp className="h-10 w-10 text-green-400" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">AI Receptionist</h3>
+              <h3 className="text-2xl font-bold mb-4 text-center">Custom Website Development</h3>
               <p className="text-gray-400 text-center leading-relaxed">
-                An AI agent acts as your virtual receptionist, greeting callers, directing them to the correct department or individual, taking messages, and handling appointment bookings, changes, and cancellations, ensuring no call goes unanswered.
+                Unique, professionally designed websites built from scratch with no templates. Get a website that truly represents your brand and converts visitors.
               </p>
               <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
                 <div className="flex items-center space-x-1">
-                  <Phone className="h-4 w-4" />
-                  <span>Call Routing</span>
+                  <Building className="h-4 w-4" />
+                  <span>Custom Design</span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>Appointments</span>
+                  <Zap className="h-4 w-4" />
+                  <span>High Performance</span>
                 </div>
               </div>
             </div>
@@ -957,7 +1043,7 @@ function AppContent() {
           {/* Call-to-Action */}
           <div className="text-center mt-16">
             <p className="text-lg text-gray-300 mb-8">
-              Ready to implement AI agents for your specific use case?
+              Ready to transform your business with our premium digital solutions?
             </p>
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
@@ -965,8 +1051,8 @@ function AppContent() {
               rel="noopener noreferrer"
               className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3 mx-auto"
             >
-              <Brain className="h-6 w-6" />
-              <span>Get Started with AI Agents</span>
+              <Calendar className="h-6 w-6" />
+              <span>Schedule Your Consultation</span>
             </a>
           </div>
         </div>
@@ -980,13 +1066,13 @@ function AppContent() {
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
         <div className="max-w-7xl mx-auto text-center">
           <div className="flex items-center justify-center space-x-3 mb-4">
-            <Brain className="h-8 w-8 text-yellow-400" />
+            <Zap className="h-8 w-8 text-yellow-400" />
             <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
               Infinite Wealth Solutions
             </h3>
           </div>
           <p className="text-gray-400">
-            © 2024 Infinite Wealth Solutions. Transforming businesses with AI-powered solutions.
+            © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
           </p>
         </div>
       </footer>
