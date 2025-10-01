@@ -857,7 +857,7 @@ function AppContent() {
                               </div>
                             ))}
                           </div>
-                        ) else if (question.type === 'select') {
+                        ) : question.type === 'select' ? (
                           <select
                             id={question.id as string}
                             name={question.id as string}
@@ -873,7 +873,7 @@ function AppContent() {
                               </option>
                             ))}
                           </select>
-                        ) : question.type === 'textarea' ? (
+                        ) : (
                           <textarea
                             id={question.id as string}
                             name={question.id as string}
@@ -884,18 +884,6 @@ function AppContent() {
                               currentError ? 'border-red-500' : 'border-gray-600'
                             } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
                             placeholder={question.placeholder}
-                          />
-                        ) : (
-                          <input
-                            type="text"
-                            id={question.id as string}
-                            name={question.id as string}
-                            value={formData[question.id as keyof FormData]}
-                            onChange={handleInputChange}
-                            className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                              currentError ? 'border-red-500' : 'border-gray-600'
-                            } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                            placeholder={question.placeholder || ''}
                           />
                         )}
 
