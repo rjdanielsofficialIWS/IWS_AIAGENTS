@@ -14,11 +14,29 @@
   </head>
   <body>
     <div id="root"></div>
-    <vapi-widget 
-      assistant-id="4010a25a-e42e-4654-be7b-15e0229fdab8" 
+    <vapi-widget
       public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-      mode="call">
-    </vapi-widget>
+      assistant-id="91943856-9764-44e1-9ffa-412c28e2b256"
+      mode="voice"
+      theme="dark"
+      base-bg-color="#000000"
+      accent-color="#14B8A6"
+      cta-button-color="#000000"
+      cta-button-text-color="#ffffff"
+      border-radius="large"
+      size="full"
+      position="bottom-right"
+      title="Try Our AI Phone Agent"
+      start-button-text="Start"
+      end-button-text="End Call"
+      chat-first-message="Hey, How can I help you today?"
+      chat-placeholder="Type your message..."
+      voice-show-transcript="true"
+      consent-required="true"
+      consent-title="Terms and conditions"
+      consent-content="By clicking "Agree," and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as otherwise described in our Terms of Service."
+      consent-storage-key="vapi_widget_consent"
+    ></vapi-widget>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
