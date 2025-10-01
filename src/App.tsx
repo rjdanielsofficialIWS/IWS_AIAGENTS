@@ -627,37 +627,48 @@ function AppContent() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <button
               onClick={() => {
-                // Trigger the Vapi widget to start a voice call
+                console.log('Demo button clicked');
                 const widget = document.querySelector('vapi-widget') as any;
-                console.log('Vapi widget found:', widget);
+                console.log('Widget element found:', widget);
                 
                 if (widget) {
-                  // Try multiple methods to trigger the widget
-                  if (typeof widget.start === 'function') {
-                    console.log('Calling widget.start()');
-                    widget.start();
-                  } else if (typeof widget.open === 'function') {
-                    console.log('Calling widget.open()');
-                    widget.open();
-                  } else if (typeof widget.show === 'function') {
+                  console.log('Widget methods available:', Object.getOwnPropertyNames(widget));
+                  
+                  // Try the standard Vapi widget methods
+                  if (widget.show && typeof widget.show === 'function') {
                     console.log('Calling widget.show()');
                     widget.show();
+                  } else if (widget.open && typeof widget.open === 'function') {
+                    console.log('Calling widget.open()');
+                    widget.open();
+                  } else if (widget.start && typeof widget.start === 'function') {
+                    console.log('Calling widget.start()');
+                    widget.start();
                   } else {
-                    console.log('Trying to click the widget');
-                    // Fallback: try to trigger click event on the widget
-                    const vapiButton = widget.querySelector('button') || 
-                                    document.querySelector('vapi-widget button') || 
-                                    document.querySelector('[data-vapi-button]');
-                    if (vapiButton) {
-                      console.log('Clicking vapi button:', vapiButton);
-                      (vapiButton as HTMLElement).click();
+                    console.log('Trying to trigger widget via click or custom event');
+                    // Try to find and click the widget's internal button
+                    const shadowRoot = widget.shadowRoot;
+                    if (shadowRoot) {
+                      const button = shadowRoot.querySelector('button');
+                      if (button) {
+                        console.log('Clicking shadow DOM button');
+                        button.click();
+                      }
                     } else {
-                      console.log('No clickable element found, dispatching click event on widget');
-                      widget.dispatchEvent(new Event('click', { bubbles: true }));
+                      // Fallback: dispatch a custom event or click
+                      console.log('Dispatching click event on widget');
+                      widget.click();
                     }
                   }
                 } else {
-                  console.error('Vapi widget not found');
+                  console.error('Vapi widget element not found in DOM');
+                  // Try to initialize widget if it's not found
+                  setTimeout(() => {
+                    const retryWidget = document.querySelector('vapi-widget') as any;
+                    if (retryWidget && retryWidget.show) {
+                      retryWidget.show();
+                    }
+                  }, 1000);
                 }
               }}
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
