@@ -691,7 +691,7 @@ function AppContent() {
             </div>
           </div>
           {/* Form Section */}
-          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
+          <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
             <div className="text-center mb-12">
               <h3 className="text-2xl sm:text-3xl font-bold mb-4">
                 Get Your Custom Solution Quote
