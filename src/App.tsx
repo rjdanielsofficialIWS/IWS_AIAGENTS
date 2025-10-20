@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Session } from '@supabase/supabase-js';
-import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight, Target, Calendar } from 'lucide-react';
+import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight, Target, Calendar, Users } from 'lucide-react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { AuthGuard } from './components/auth/AuthGuard';
 import { LoginForm } from './components/auth/LoginForm';
@@ -21,7 +21,7 @@ interface FormData {
   countryCode: string;
   business: string;
   services: string;
-  serviceInterest: string;
+  serviceInterest: string[];
   projectRequirements: string;
 }
 
@@ -34,7 +34,7 @@ interface Question {
   id: keyof FormData | 'contactInfo';
   title: string;
   label?: string;
-  type: 'input' | 'textarea' | 'multi-input' | 'select' | 'radio';
+  type: 'input' | 'textarea' | 'multi-input' | 'select' | 'radio' | 'checkbox';
   placeholder?: string;
   rows?: number;
   icon?: React.ComponentType<any>;
@@ -65,7 +65,7 @@ function AppContent() {
     countryCode: '+1',
     business: '',
     services: '',
-    serviceInterest: '',
+    serviceInterest: [],
     projectRequirements: ''
   });
   const [currentError, setCurrentError] = useState<string>('');
@@ -80,13 +80,13 @@ function AppContent() {
   const questions: Question[] = [
     {
       id: 'serviceInterest',
-      title: 'Which service are you interested in?',
-      type: 'radio',
+      title: 'Which services are you interested in? (Select all that apply)',
+      type: 'checkbox',
       icon: Target,
       required: true,
       options: [
         { value: 'ai-agents', label: 'AI Voice Agents - Automate calls and bookings' },
-        { value: 'product-animations', label: 'Product Animations - Turn images into compelling videos' },
+        { value: 'lead-generation', label: 'Lead Generation - Social media marketing, content creation, and customer acquisition' },
         { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' }
       ]
     },
@@ -208,6 +208,13 @@ function AppContent() {
         isValid = false;
         error = 'Please select an option';
       }
+    } else if (currentQuestion.type === 'checkbox') {
+      // Validate checkbox field
+      const value = formData[currentQuestion.id as keyof FormData] as string[];
+      if (!value || value.length === 0) {
+        isValid = false;
+        error = 'Please select at least one option';
+      }
     } else {
       // Validate single field step
       const value = formData[currentQuestion.id as keyof FormData];
@@ -242,6 +249,9 @@ function AppContent() {
       } else if (question.type === 'select' || question.type === 'radio') {
         const value = formData[question.id as keyof FormData];
         if (!value || value.trim() === '') return false;
+      } else if (question.type === 'checkbox') {
+        const value = formData[question.id as keyof FormData] as string[];
+        if (!value || value.length === 0) return false;
       } else {
         const value = formData[question.id as keyof FormData];
         if (!value.trim()) return false;
@@ -254,7 +264,20 @@ function AppContent() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    
+    if (e.target.type === 'checkbox') {
+      const checkboxValue = (e.target as HTMLInputElement).value;
+      const isChecked = (e.target as HTMLInputElement).checked;
+      
+      setFormData(prev => ({
+        ...prev,
+        [name]: isChecked 
+          ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
+          : (prev[name as keyof FormData] as string[]).filter(item => item !== checkboxValue)
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
     
     // Validate current step when user types
     setTimeout(() => {
@@ -320,7 +343,7 @@ function AppContent() {
           phone: data.countryCode.replace('+', '') + data.phone,
           business: data.business,
           services: data.services,
-          serviceInterest: data.serviceInterest,
+          serviceInterest: Array.isArray(data.serviceInterest) ? data.serviceInterest.join(', ') : data.serviceInterest,
           projectRequirements: data.projectRequirements,
           timestamp: new Date().toISOString()
         })
@@ -348,7 +371,7 @@ function AppContent() {
           phone: data.countryCode.replace('+', '') + data.phone,
           business: data.business,
           services: data.services,
-          serviceInterest: data.serviceInterest,
+          serviceInterest: Array.isArray(data.serviceInterest) ? data.serviceInterest.join(', ') : data.serviceInterest,
           projectRequirements: data.projectRequirements,
           timestamp: new Date().toISOString()
         })
@@ -383,7 +406,7 @@ function AppContent() {
           countryCode: '+1',
           business: '',
           services: '',
-          serviceInterest: '',
+          serviceInterest: [],
           projectRequirements: ''
         });
         // Keep current step to show thank you message in place
@@ -641,7 +664,6 @@ function AppContent() {
                   });
                 }
               }}
-              className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3"
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
             >
               <MessageSquare className="h-6 w-6" />
@@ -673,11 +695,11 @@ function AppContent() {
 
             <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-xl p-6 hover:border-blue-400/50 transition-all group">
               <div className="bg-blue-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-400/20 transition-colors">
-                <Zap className="h-8 w-8 text-blue-400" />
+                <TrendingUp className="h-8 w-8 text-blue-400" />
               </div>
-              <h3 className="text-xl font-bold mb-3">Product Animations</h3>
+              <h3 className="text-xl font-bold mb-3">Lead Generation</h3>
               <p className="text-gray-400 text-sm leading-relaxed">
-                Transform static product images into compelling, professional-grade animated videos that captivate your audience.
+                Drive qualified leads through strategic social media marketing, content creation, and targeted customer acquisition campaigns.
               </p>
             </div>
 
@@ -897,6 +919,29 @@ function AppContent() {
                               </label>
                             ))}
                           </div>
+                        ) : question.type === 'checkbox' ? (
+                          <div className="space-y-4">
+                            {question.options?.map(option => (
+                              <label
+                                key={option.value}
+                                className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-yellow-400/30 transition-all group"
+                              >
+                                <input
+                                  type="checkbox"
+                                  name={question.id as string}
+                                  value={option.value}
+                                  checked={(formData[question.id as keyof FormData] as string[])?.includes(option.value) || false}
+                                  onChange={handleInputChange}
+                                  className="mt-1 w-5 h-5 text-yellow-400 bg-gray-900 border-gray-600 rounded focus:ring-yellow-400 focus:ring-2"
+                                />
+                                <div className="flex-1">
+                                  <span className="text-white font-medium group-hover:text-yellow-400 transition-colors">
+                                    {option.label}
+                                  </span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
                         ) : (
                           <textarea
                             id={question.id as string}
@@ -1009,23 +1054,23 @@ function AppContent() {
               </div>
             </div>
 
-            {/* Service 2: Product Animations */}
+            {/* Service 2: Lead Generation */}
             <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-blue-400/50 transition-all duration-300 group">
               <div className="bg-blue-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-400/20 transition-colors">
-                <Zap className="h-10 w-10 text-blue-400" />
+                <TrendingUp className="h-10 w-10 text-blue-400" />
               </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Product Animations</h3>
+              <h3 className="text-2xl font-bold mb-4 text-center">Lead Generation</h3>
               <p className="text-gray-400 text-center leading-relaxed">
-                Transform static product images into dynamic, professional-grade animated videos that showcase your products in the most compelling way possible.
+                Drive qualified leads and grow your customer base through strategic social media marketing, targeted advertising, content creation, and comprehensive digital marketing campaigns.
               </p>
               <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
                 <div className="flex items-center space-x-1">
-                  <TrendingUp className="h-4 w-4" />
-                  <span>High Quality</span>
+                  <Users className="h-4 w-4" />
+                  <span>Targeted Audience</span>
                 </div>
                 <div className="flex items-center space-x-1">
-                  <Target className="h-4 w-4" />
-                  <span>Compelling</span>
+                  <TrendingUp className="h-4 w-4" />
+                  <span>Growth Focused</span>
                 </div>
               </div>
             </div>
