@@ -33,6 +33,7 @@ interface EnhanceState {
 interface Question {
   id: keyof FormData | 'contactInfo';
   title: string;
+  subtitle?: string;
   label?: string;
   type: 'input' | 'textarea' | 'multi-input' | 'select' | 'radio' | 'checkbox';
   placeholder?: string;
@@ -80,7 +81,8 @@ function AppContent() {
   const questions: Question[] = [
     {
       id: 'serviceInterest',
-      title: 'Which services are you interested in? (Select all that apply)',
+      title: 'Which services are you interested in?',
+      subtitle: '(Select all that apply)',
       type: 'checkbox',
       icon: Target,
       required: true,
@@ -797,6 +799,11 @@ function AppContent() {
                         <div className="text-center mb-8">
                           <h4 className="text-2xl sm:text-3xl font-bold mb-4">
                             {question.title}
+                            {question.subtitle && (
+                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">
+                                {question.subtitle}
+                              </span>
+                            )}
                           </h4>
                         </div>
                       )}
