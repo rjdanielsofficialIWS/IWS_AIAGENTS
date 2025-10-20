@@ -644,7 +644,7 @@ function AppContent() {
           </h2>
           
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            From AI-powered voice agents to stunning product animations and custom websites - we deliver premium digital solutions that drive results.
+            From AI-powered voice agents to high volume lead generation, and custom websites - we deliver premium digital solutions that drive results.
           </p>
 
           {/* CTA Buttons */}
