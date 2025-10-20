@@ -626,45 +626,55 @@ function AppContent() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <button
               onClick={() => {
-                // Find the Vapi widget element
-                const widget = document.querySelector('vapi-widget');
+                console.log('Try AI Agent Demo button clicked - waiting for vapi-widget to be defined');
                 
-                if (widget) {
-                  // Try to find the widget's button in shadow DOM
-                  const shadowRoot = (widget as any).shadowRoot;
-                  if (shadowRoot) {
-                    const widgetButton = shadowRoot.querySelector('button') || 
-                                       shadowRoot.querySelector('[role="button"]') ||
-                                       shadowRoot.querySelector('.vapi-btn') ||
-                                       shadowRoot.querySelector('[data-testid*="button"]');
+                // Wait for the vapi-widget custom element to be fully defined
+                window.customElements.whenDefined('vapi-widget').then(() => {
+                  console.log('vapi-widget is now defined, attempting to trigger it');
+                  
+                  const widget = document.querySelector('vapi-widget') as any;
+                  
+                  if (widget) {
+                    console.log('Found vapi-widget element:', widget);
                     
-                    if (widgetButton) {
-                      (widgetButton as HTMLElement).click();
-                      return;
+                    // Try to call the start() method if it exists
+                    if (widget.start && typeof widget.start === 'function') {
+                      console.log('Calling widget.start() method');
+                      widget.start();
+                    } else if (widget.show && typeof widget.show === 'function') {
+                      console.log('Calling widget.show() method');
+                      widget.show();
+                    } else if (widget.open && typeof widget.open === 'function') {
+                      console.log('Calling widget.open() method');
+                      widget.open();
+                    } else {
+                      console.log('No standard methods found, trying click simulation');
+                      
+                      // Fallback: simulate a click on the widget element
+                      widget.click();
+                      
+                      // Additional fallback: dispatch a proper click event
+                      widget.dispatchEvent(new MouseEvent('click', {
+                        bubbles: true,
+                        cancelable: true,
+                        view: window
+                      }));
                     }
+                  } else {
+                    console.error('vapi-widget element not found in DOM after being defined');
                   }
+                }).catch((error) => {
+                  console.error('Error waiting for vapi-widget to be defined:', error);
                   
-                  // Fallback: try clicking the widget element directly
-                  (widget as HTMLElement).click();
-                  
-                  // Additional fallback: dispatch a click event
-                  widget.dispatchEvent(new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                  }));
-                } else {
-                  // Widget not found, try to scroll to where it should be
-                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                  
-                  // Retry after a short delay
-                  setTimeout(() => {
-                    const retryWidget = document.querySelector('vapi-widget');
-                    if (retryWidget) {
-                      (retryWidget as HTMLElement).click();
-                    }
-                  }, 500);
-                }
+                  // Fallback: try to find and trigger the widget anyway
+                  const widget = document.querySelector('vapi-widget') as any;
+                  if (widget) {
+                    console.log('Fallback: Found widget, attempting to trigger');
+                    widget.click();
+                  } else {
+                    console.error('Fallback failed: No vapi-widget found');
+                  }
+                });
               }}
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
             >
