@@ -34,7 +34,7 @@ interface Question {
   id: keyof FormData | 'contactInfo';
   title: string;
   label?: string;
-  type: 'input' | 'textarea' | 'multi-input' | 'select';
+  type: 'input' | 'textarea' | 'multi-input' | 'select' | 'radio';
   placeholder?: string;
   rows?: number;
   icon?: React.ComponentType<any>;
@@ -81,11 +81,10 @@ function AppContent() {
     {
       id: 'serviceInterest',
       title: 'Which service are you interested in?',
-      type: 'select',
+      type: 'radio',
       icon: Target,
       required: true,
       options: [
-        { value: '', label: 'Select a service...' },
         { value: 'ai-agents', label: 'AI Voice Agents - Automate calls and bookings' },
         { value: 'product-animations', label: 'Product Animations - Turn images into compelling videos' },
         { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' }
@@ -202,7 +201,7 @@ function AppContent() {
           break;
         }
       }
-    } else if (currentQuestion.type === 'select') {
+    } else if (currentQuestion.type === 'select' || currentQuestion.type === 'radio') {
       // Validate select field
       const value = formData[currentQuestion.id as keyof FormData];
       if (!value || value.trim() === '') {
@@ -240,7 +239,7 @@ function AppContent() {
           if (field.id === 'email' && !validateEmail(value)) return false;
           if (field.id === 'phone' && !validatePhone(value)) return false;
         }
-      } else if (question.type === 'select') {
+      } else if (question.type === 'select' || question.type === 'radio') {
         const value = formData[question.id as keyof FormData];
         if (!value || value.trim() === '') return false;
       } else {
@@ -899,6 +898,29 @@ function AppContent() {
                               </option>
                             ))}
                           </select>
+                        ) : question.type === 'radio' ? (
+                          <div className="space-y-4">
+                            {question.options?.map(option => (
+                              <label
+                                key={option.value}
+                                className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-yellow-400/30 transition-all group"
+                              >
+                                <input
+                                  type="radio"
+                                  name={question.id as string}
+                                  value={option.value}
+                                  checked={formData[question.id as keyof FormData] === option.value}
+                                  onChange={handleInputChange}
+                                  className="mt-1 w-5 h-5 text-yellow-400 bg-gray-900 border-gray-600 focus:ring-yellow-400 focus:ring-2"
+                                />
+                                <div className="flex-1">
+                                  <span className="text-white font-medium group-hover:text-yellow-400 transition-colors">
+                                    {option.label}
+                                  </span>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
                         ) : (
                           <textarea
                             id={question.id as string}
