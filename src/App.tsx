@@ -626,60 +626,25 @@ function AppContent() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <button
               onClick={() => {
-                console.log('Try AI Agent Demo button clicked - waiting for vapi-widget to be defined');
-                
-                // Wait for the vapi-widget custom element to be fully defined
-                window.customElements.whenDefined('vapi-widget').then(() => {
-                  console.log('vapi-widget is now defined, attempting to trigger it');
-                  
-                  const widget = document.querySelector('vapi-widget') as any;
-                  
-                  if (widget) {
-                    console.log('Found vapi-widget element:', widget);
-                    
-                    // Try to call the start() method if it exists
-                    if (widget.start && typeof widget.start === 'function') {
-                      console.log('Calling widget.start() method');
-                      widget.start();
-                    } else if (widget.show && typeof widget.show === 'function') {
-                      console.log('Calling widget.show() method');
-                      widget.show();
-                    } else if (widget.open && typeof widget.open === 'function') {
-                      console.log('Calling widget.open() method');
-                      widget.open();
-                    } else {
-                      console.log('No standard methods found, trying click simulation');
-                      
-                      // Fallback: simulate a click on the widget element
-                      widget.click();
-                      
-                      // Additional fallback: dispatch a proper click event
-                      widget.dispatchEvent(new MouseEvent('click', {
-                        bubbles: true,
-                        cancelable: true,
-                        view: window
-                      }));
-                    }
-                  } else {
-                    console.error('vapi-widget element not found in DOM after being defined');
-                  }
-                }).catch((error) => {
-                  console.error('Error waiting for vapi-widget to be defined:', error);
-                  
-                  // Fallback: try to find and trigger the widget anyway
-                  const widget = document.querySelector('vapi-widget') as any;
-                  if (widget) {
-                    console.log('Fallback: Found widget, attempting to trigger');
-                    widget.click();
-                  } else {
-                    console.error('Fallback failed: No vapi-widget found');
-                  }
-                });
+                // Scroll to the lead capture section
+                const leadCaptureSection = document.getElementById('lead-capture');
+                if (leadCaptureSection) {
+                  leadCaptureSection.scrollIntoView({ 
+                    behavior: 'smooth',
+                    block: 'start'
+                  });
+                } else {
+                  // Fallback: scroll to bottom of page where the form likely is
+                  window.scrollTo({ 
+                    top: document.body.scrollHeight, 
+                    behavior: 'smooth' 
+                  });
+                }
               }}
-              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
+              className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3"
             >
-              <Phone className="h-6 w-6" />
-              <span>Try AI Agent Demo</span>
+              <MessageSquare className="h-6 w-6" />
+              <span>Get a Package Quote</span>
             </button>
             
             <a
