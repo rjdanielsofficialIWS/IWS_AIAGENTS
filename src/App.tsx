@@ -93,24 +93,6 @@ function AppContent() {
       ]
     },
     {
-      id: 'business',
-      title: 'What\'s your company name?',
-      type: 'textarea',
-      placeholder: 'Enter your company name...',
-      rows: 4,
-      icon: Building,
-      required: true
-    },
-    {
-      id: 'services',
-      title: 'What services do you provide?',
-      type: 'textarea',
-      placeholder: 'List your main services, products, or offerings...',
-      rows: 4,
-      icon: Briefcase,
-      required: true
-    },
-    {
       id: 'projectRequirements',
       title: 'Tell us about your project requirements',
       type: 'textarea',
