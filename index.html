@@ -7,10 +7,6 @@
     <link rel="icon" type="image/png" sizes="48x48" href="/Favicon-48.48.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Infinite Wealth Solutions - AI Agents Website</title>
-    <script
-      src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js"
-      type="text/javascript">
-    </script>
   </head>
   <body>
     <div id="root"></div>
@@ -20,23 +16,22 @@
       mode="voice"
       theme="dark"
       base-bg-color="#000000"
-      accent-color="#2b8f1d"
-      cta-button-color="#ebbd0c"
-      cta-button-text-color="#ffffff"
-      border-radius="large"
-      size="full"
+      accent-color="#000000"
+      cta-button-color="#c7a317"
+      cta-button-text-color="#000000"
+      border-radius="medium"
+      size="compact"
       position="bottom-right"
       title="Try Our AI Phone Agent"
       start-button-text="Start"
       end-button-text="End Call"
-      chat-first-message="Hey, How can I help you today?"
-      chat-placeholder="Type your message..."
+      cta-subtitle="Initiate a Webcall"
+      chat-first-message="Infinite Wealth Solutions AI.. Avery speaking, how can I assist you?"
+      chat-placeholder=""
       voice-show-transcript="true"
-      consent-required="true"
-      consent-title="Terms and conditions"
-      consent-content="By clicking &quot;Agree,&quot; and each time I interact with this AI agent, I consent to the recording, storage, and sharing of my communications with third-party service providers, and as otherwise described in our Terms of Service."
-      consent-storage-key="vapi_widget_consent"
+      consent-required="false"
     ></vapi-widget>
+    <script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
