@@ -665,38 +665,6 @@ function AppContent() {
             </a>
           </div>
 
-          {/* Services Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-xl p-6 hover:border-yellow-400/50 transition-all group">
-              <div className="bg-yellow-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-yellow-400/20 transition-colors">
-                <Brain className="h-8 w-8 text-yellow-400" />
-              </div>
-              <h3 className="text-xl font-bold mb-3">AI Voice Agents</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Automate calls, bookings, and customer interactions with intelligent AI agents that sound completely human.
-              </p>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-xl p-6 hover:border-blue-400/50 transition-all group">
-              <div className="bg-blue-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-blue-400/20 transition-colors">
-                <TrendingUp className="h-8 w-8 text-blue-400" />
-              </div>
-              <h3 className="text-xl font-bold mb-3">Lead Generation</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Drive qualified leads through strategic social media marketing, content creation, and targeted customer acquisition campaigns.
-              </p>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-xl p-6 hover:border-green-400/50 transition-all group">
-              <div className="bg-green-400/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-4 group-hover:bg-green-400/20 transition-colors">
-                <TrendingUp className="h-8 w-8 text-green-400" />
-              </div>
-              <h3 className="text-xl font-bold mb-3">Custom Websites</h3>
-              <p className="text-gray-400 text-sm leading-relaxed">
-                Get a unique, professionally designed website built from scratch - no templates, no cookie-cutter designs.
-              </p>
-            </div>
-          </div>
           {/* Form Section */}
           <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
             <div className="text-center mb-12">
