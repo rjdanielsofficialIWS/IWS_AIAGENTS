@@ -1,5 +1,18 @@
-import React from 'react';
-import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, ArrowLeft, ArrowRight, Target, Calendar } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Session } from '@supabase/supabase-js';
+import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, Briefcase, MessageSquare, CheckCircle, AlertCircle, Loader, Lock, ArrowLeft, ArrowRight, Target, Calendar, Users } from 'lucide-react';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { AuthGuard } from './components/auth/AuthGuard';
+import { LoginForm } from './components/auth/LoginForm';
+import { RegisterForm } from './components/auth/RegisterForm';
+import { DashboardLayout } from './components/dashboard/DashboardLayout';
+import { DashboardOverview } from './components/dashboard/DashboardOverview';
+import { AssistantsList } from './components/assistants/AssistantsList';
+import { AssistantBuilder } from './components/assistants/AssistantBuilder';
+import { SubscriptionSection } from './components/SubscriptionSection';
+import { OnboardingBookingPage } from './components/OnboardingBookingPage';
+import { VapiAssistant } from './types/vapi';
+import { supabase } from './services/vapiAI';
 
 interface FormData {
   name: string;
@@ -38,9 +51,15 @@ interface Question {
   }[];
 }
 
-function App() {
-  const [currentStep, setCurrentStep] = React.useState(0);
-  const [formData, setFormData] = React.useState<FormData>({
+function AppContent() {
+  const { user, loading } = useAuth();
+  const [showAuthForm, setShowAuthForm] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentAssistant, setCurrentAssistant] = useState<VapiAssistant | null>(null);
+  const [showAssistantBuilder, setShowAssistantBuilder] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
     phone: '',
@@ -50,11 +69,11 @@ function App() {
     serviceInterest: [],
     projectRequirements: ''
   });
-  const [currentError, setCurrentError] = React.useState<string>('');
-  const [isStepValid, setIsStepValid] = React.useState(false);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [submitStatus, setSubmitStatus] = React.useState<'success' | 'error' | null>(null);
-  const [enhanceState, setEnhanceState] = React.useState<EnhanceState>({
+  const [currentError, setCurrentError] = useState<string>('');
+  const [isStepValid, setIsStepValid] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
+  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
     isEnhancing: false,
     hasEnhanced: false
   });
@@ -229,31 +248,42 @@ function App() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-
+    
     if (e.target.type === 'checkbox') {
       const checkboxValue = (e.target as HTMLInputElement).value;
       const isChecked = (e.target as HTMLInputElement).checked;
-
-      setFormData(prev => {
-        const newData = {
-          ...prev,
-          [name]: isChecked
-            ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
-            : (prev[name as keyof FormData] as string[]).filter(item => item !== checkboxValue)
-        };
-        return newData;
-      });
+      
+      setFormData(prev => ({
+        ...prev,
+        [name]: isChecked 
+          ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
+          : (prev[name as keyof FormData] as string[]).filter(item => item !== checkboxValue)
+      }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
+    
+    // Validate current step when user types
+    setTimeout(() => {
+      validateCurrentStep();
+    }, 100);
   };
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+    
+    // Validate current step when selection changes
+    setTimeout(() => {
+      validateCurrentStep();
+    }, 100);
   };
   const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, countryCode: e.target.value }));
+    // Validate current step when country code changes
+    setTimeout(() => {
+      validateCurrentStep();
+    }, 100);
   };
 
   const handleNext = () => {
@@ -375,10 +405,190 @@ function App() {
     }
   };
 
-  // Initialize validation on component mount and when formData changes
+  // Initialize validation on component mount
   React.useEffect(() => {
     validateCurrentStep();
-  }, [currentStep, formData]);
+  }, [currentStep]);
+
+  // Assistant management functions
+  const handleCreateAssistant = () => {
+    setCurrentAssistant(null);
+    setShowAssistantBuilder(true);
+  };
+
+  const handleEditAssistant = (assistant: VapiAssistant) => {
+    setCurrentAssistant(assistant);
+    setShowAssistantBuilder(true);
+  };
+
+  const handleSaveAssistant = (assistant: VapiAssistant) => {
+    setShowAssistantBuilder(false);
+    setCurrentAssistant(null);
+    // Refresh assistants list if needed
+  };
+
+  const handleBackFromBuilder = () => {
+    setShowAssistantBuilder(false);
+    setCurrentAssistant(null);
+  };
+
+  // Handle routing for onboarding booking page
+  if (window.location.pathname === '/onboarding-booking') {
+    return <OnboardingBookingPage />;
+  }
+
+  // If user is logged in and has premium access, show the dashboard
+  if (user && (user.membership_status === 'premium' || user.membership_status === 'enterprise')) {
+    if (showAssistantBuilder) {
+      return (
+        <DashboardLayout currentPage="assistants" onPageChange={setCurrentPage}>
+          <AssistantBuilder
+            assistantId={currentAssistant?.id}
+            onBack={handleBackFromBuilder}
+            onSave={handleSaveAssistant}
+          />
+        </DashboardLayout>
+      );
+    }
+
+    return (
+      <DashboardLayout currentPage={currentPage} onPageChange={setCurrentPage}>
+        {currentPage === 'dashboard' && <DashboardOverview />}
+        {currentPage === 'assistants' && (
+          <AssistantsList
+            onCreateNew={handleCreateAssistant}
+            onEdit={handleEditAssistant}
+          />
+        )}
+        {currentPage === 'phone-numbers' && (
+          <div className="text-center py-12">
+            <Phone className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Phone Numbers</h3>
+            <p className="text-gray-500">Phone number management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'calls' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Call Logs</h3>
+            <p className="text-gray-500">Call management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'webhooks' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Webhooks</h3>
+            <p className="text-gray-500">Webhook management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'team' && (
+          <div className="text-center py-12">
+            <User className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Team Management</h3>
+            <p className="text-gray-500">Team features coming soon</p>
+          </div>
+        )}
+        {currentPage === 'billing' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Billing</h3>
+            <p className="text-gray-500">Billing management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'api-keys' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">API Keys</h3>
+            <p className="text-gray-500">API key management coming soon</p>
+          </div>
+        )}
+        {currentPage === 'settings' && (
+          <div className="text-center py-12">
+            <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+            <h3 className="text-xl font-semibold mb-2 text-gray-400">Settings</h3>
+            <p className="text-gray-500">Settings management coming soon</p>
+          </div>
+        )}
+      </DashboardLayout>
+    );
+  }
+
+  // If user is logged in but doesn't have premium membership
+  if (user && user.membership_status !== 'premium' && user.membership_status !== 'enterprise') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
+        {/* Animated Background Elements */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
+          <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
+        </div>
+
+        <div className="relative z-10 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md mx-4 text-center">
+          <Brain className="h-16 w-16 text-yellow-400 mx-auto mb-6" />
+          <h2 className="text-3xl font-bold mb-4">
+            Premium Membership Required
+          </h2>
+          <p className="text-gray-300 mb-8">
+            You need an active premium membership to access our premium services. 
+            Upgrade now to start using our advanced tools and features.
+          </p>
+          
+          <div className="space-y-4">
+            <button
+              onClick={() => window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding'}
+              className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
+            >
+              Book Your Onboarding Call
+            </button>
+            
+            <button
+              onClick={() => setShowAuthForm(false)}
+              className="w-full text-gray-400 hover:text-gray-300 transition-colors text-sm"
+            >
+              Back to main page
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+          <p className="text-gray-300">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // If showing auth form, render authentication UI
+  if (showAuthForm) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
+        {/* Animated Background Elements */}
+        <div className="fixed inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
+          <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
+        </div>
+
+        {isSignUp ? (
+          <RegisterForm
+            onSwitchToLogin={() => setIsSignUp(false)}
+            onBack={() => setShowAuthForm(false)}
+          />
+        ) : (
+          <LoginForm
+            onSwitchToRegister={() => setIsSignUp(true)}
+            onBack={() => setShowAuthForm(false)}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
@@ -881,6 +1091,14 @@ function App() {
         </div>
       </footer>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 
