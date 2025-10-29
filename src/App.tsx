@@ -97,7 +97,7 @@ function AppContent() {
       title: 'Tell us about your project requirements',
       type: 'textarea',
       placeholder: 'Describe your specific needs, goals, timeline, and any special requirements...',
-      rows: 6,
+      rows: 4,
       icon: MessageSquare,
       required: true
     },
@@ -790,7 +790,7 @@ function AppContent() {
                         </div>
                       )}
 
-                      <div className="space-y-4">
+                      <div className="space-y-2 sm:space-y-4">
                         {question.type !== 'multi-input' && (
                           question.label && (
                             <label className="block text-sm font-medium text-gray-300 mb-3">
@@ -804,7 +804,7 @@ function AppContent() {
 
                         {/* Input Field */}
                         {question.type === 'multi-input' ? (
-                          <div className="space-y-6">
+                          <div className="space-y-4 sm:space-y-6">
                             {question.fields?.map(field => (
                               <div key={field.id}>
                                 <label className="block text-sm font-medium text-gray-300 mb-3">
@@ -958,7 +958,7 @@ function AppContent() {
 
             {/* Navigation Buttons - Hide when form is successfully submitted */}
             {submitStatus !== 'success' && (
-              <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-700/50">
+              <div className="flex justify-between items-center mt-4 pt-4 sm:mt-8 sm:pt-6 border-t border-gray-700/50">
                 <button
                   type="button"
                   onClick={handlePrevious}
