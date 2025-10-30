@@ -22,13 +22,19 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
   const handleEnhancePrompt = async () => {
     if (!prompt.trim()) return;
 
+    const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
+    if (!apiKey) {
+      alert('OpenAI API key is not configured. Please check your environment variables.');
+      return;
+    }
+
     setIsEnhancing(true);
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_OPENAI_API_KEY}`
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
           model: 'gpt-4',
@@ -47,12 +53,20 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
         })
       });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `API Error: ${response.status} ${response.statusText}`);
+      }
+
       const data = await response.json();
       if (data.choices && data.choices[0]?.message?.content) {
         setPrompt(data.choices[0].message.content);
+      } else {
+        throw new Error('Invalid response format from OpenAI API');
       }
     } catch (error) {
       console.error('Error enhancing prompt:', error);
+      alert(`Failed to enhance prompt: ${error instanceof Error ? error.message : 'Unknown error'}. Please try again.`);
     } finally {
       setIsEnhancing(false);
     }
@@ -82,8 +96,8 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
             ]
           },
           voice: {
-            provider: 'playht',
-            voiceId: 'jennifer'
+            provider: 'vapi',
+            voiceId: 'paige'
           },
           firstMessage: 'Hello! How can I help you today?'
         })
@@ -126,8 +140,8 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
             ]
           },
           voice: {
-            provider: 'playht',
-            voiceId: 'jennifer'
+            provider: 'vapi',
+            voiceId: 'paige'
           },
           firstMessage: 'Hello! How can I help you today?'
         })

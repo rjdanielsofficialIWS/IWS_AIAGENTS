@@ -18,8 +18,8 @@ export const AssistantBuilder: React.FC<AssistantBuilderProps> = ({ assistantId,
     systemPrompt: '',
     model: 'gpt-3.5-turbo',
     voice: {
-      provider: 'playht',
-      voiceId: 'jennifer'
+      provider: 'vapi',
+      voiceId: 'paige'
     }
   });
 
@@ -40,7 +40,7 @@ export const AssistantBuilder: React.FC<AssistantBuilderProps> = ({ assistantId,
         firstMessage: assistant.firstMessage || '',
         systemPrompt: assistant.model?.systemPrompt || '',
         model: assistant.model?.model || 'gpt-3.5-turbo',
-        voice: assistant.voice || { provider: 'playht', voiceId: 'jennifer' }
+        voice: assistant.voice || { provider: 'vapi', voiceId: 'paige' }
       });
     } catch (err: any) {
       alert('Failed to load assistant: ' + err.message);
