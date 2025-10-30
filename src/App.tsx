@@ -248,42 +248,28 @@ function AppContent() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
-    
+
     if (e.target.type === 'checkbox') {
       const checkboxValue = (e.target as HTMLInputElement).value;
       const isChecked = (e.target as HTMLInputElement).checked;
-      
+
       setFormData(prev => ({
         ...prev,
-        [name]: isChecked 
+        [name]: isChecked
           ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
           : (prev[name as keyof FormData] as string[]).filter(item => item !== checkboxValue)
       }));
     } else {
       setFormData(prev => ({ ...prev, [name]: value }));
     }
-    
-    // Validate current step when user types
-    setTimeout(() => {
-      validateCurrentStep();
-    }, 100);
   };
 
   const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
-    
-    // Validate current step when selection changes
-    setTimeout(() => {
-      validateCurrentStep();
-    }, 100);
   };
   const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, countryCode: e.target.value }));
-    // Validate current step when country code changes
-    setTimeout(() => {
-      validateCurrentStep();
-    }, 100);
   };
 
   const handleNext = () => {
@@ -291,10 +277,6 @@ function AppContent() {
       if (currentStep < questions.length - 1) {
         setCurrentStep(currentStep + 1);
         setCurrentError('');
-        // Validate the new step
-        setTimeout(() => {
-          validateCurrentStep();
-        }, 100);
       }
     }
   };
@@ -303,10 +285,6 @@ function AppContent() {
     if (currentStep > 0) {
       setCurrentStep(currentStep - 1);
       setCurrentError('');
-      // Validate the previous step
-      setTimeout(() => {
-        validateCurrentStep();
-      }, 100);
     }
   };
 
@@ -405,10 +383,10 @@ function AppContent() {
     }
   };
 
-  // Initialize validation on component mount
+  // Initialize validation on component mount and when formData changes
   React.useEffect(() => {
     validateCurrentStep();
-  }, [currentStep]);
+  }, [currentStep, formData]);
 
   // Assistant management functions
   const handleCreateAssistant = () => {
