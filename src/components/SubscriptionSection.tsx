@@ -1,5 +1,5 @@
 import React from 'react';
-import { Zap, Brain, Settings, BarChart3, Phone, MessageSquare, Calendar, Shield } from 'lucide-react';
+import { Check, Zap, Brain, Settings, BarChart3, Phone, MessageSquare, Calendar, Shield, Loader } from 'lucide-react';
 
 export const SubscriptionSection: React.FC = () => {
 
@@ -22,7 +22,7 @@ export const SubscriptionSection: React.FC = () => {
             Ready to Scale Your Business?
           </h2>
           <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-            Join our premium subscription and get access to advanced AI agent management,
+            Join our premium subscription and get access to advanced AI agent management, 
             unlimited usage, and priority support.
           </p>
         </div>
@@ -33,14 +33,14 @@ export const SubscriptionSection: React.FC = () => {
               <Zap className="h-5 w-5 text-yellow-400" />
               <span className="text-yellow-400 font-medium">Premium Plan</span>
             </div>
-
+            
             <div className="mb-6">
               <span className="text-6xl sm:text-7xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
                 $399
               </span>
               <span className="text-2xl text-gray-400 ml-2">/month</span>
             </div>
-
+            
             <p className="text-lg text-gray-300 mb-8">
               Everything you need to automate your sales process and scale your business
             </p>
@@ -66,7 +66,7 @@ export const SubscriptionSection: React.FC = () => {
             >
               <span>Book Your Onboarding Call</span>
             </a>
-
+            
             <p className="text-sm text-gray-400 mt-4">
               Schedule your personalized setup session
             </p>
