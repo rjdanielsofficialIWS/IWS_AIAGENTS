@@ -2,18 +2,22 @@ import React, { useState } from 'react';
 import { Brain, Sparkles, Phone, MessageSquare, ArrowLeft, Loader, CheckCircle, Play, Calendar, Edit3 } from 'lucide-react';
 import { WebCallInterface } from './WebCallInterface';
 import { WebChatInterface } from './WebChatInterface';
+import { vapiAI } from '../services/vapiAI';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AgentBuilderPageProps {
   onBack: () => void;
 }
 
 export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) => {
+  const { user } = useAuth();
   const [agentName, setAgentName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [agentCreated, setAgentCreated] = useState(false);
   const [vapiAssistantId, setVapiAssistantId] = useState<string | null>(null);
+  const [databaseAgentId, setDatabaseAgentId] = useState<string | null>(null);
   const [showWebCall, setShowWebCall] = useState(false);
   const [showWebChat, setShowWebChat] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -67,7 +71,7 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer b561d669-07ff-479e-a5f0-fcb94111d2fc`
+          'Authorization': `Bearer ${import.meta.env.VITE_VAPI_API_KEY}`
         },
         body: JSON.stringify({
           name: agentName,
@@ -94,9 +98,27 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
         setVapiAssistantId(data.id);
         setAgentCreated(true);
         setIsEditing(false);
+
+        if (user) {
+          try {
+            const dbAgent = await vapiAI.saveAgentToDatabase({
+              name: agentName,
+              prompt: prompt,
+              vapi_assistant_id: data.id,
+              voice_provider: 'playht',
+              voice_id: 'jennifer',
+              model: 'gpt-4',
+              first_message: 'Hello! How can I help you today?'
+            });
+            setDatabaseAgentId(dbAgent.id);
+          } catch (dbError) {
+            console.error('Error saving to database:', dbError);
+          }
+        }
       }
     } catch (error) {
       console.error('Error creating agent:', error);
+      alert('Failed to create agent. Please check your API key and try again.');
     } finally {
       setIsCreating(false);
     }
@@ -111,7 +133,7 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer b561d669-07ff-479e-a5f0-fcb94111d2fc`
+          'Authorization': `Bearer ${import.meta.env.VITE_VAPI_API_KEY}`
         },
         body: JSON.stringify({
           name: agentName,
@@ -135,6 +157,17 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
 
       if (response.ok) {
         setIsEditing(false);
+
+        if (user && databaseAgentId) {
+          try {
+            await vapiAI.updateAgentInDatabase(databaseAgentId, {
+              name: agentName,
+              prompt: prompt
+            });
+          } catch (dbError) {
+            console.error('Error updating database:', dbError);
+          }
+        }
       }
     } catch (error) {
       console.error('Error updating agent:', error);
@@ -370,14 +403,14 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
                 {showWebCall && (
                   <WebCallInterface
                     assistantId={vapiAssistantId}
-                    publicKey="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+                    publicKey={import.meta.env.VITE_VAPI_PUBLIC_KEY}
                   />
                 )}
 
                 {showWebChat && (
                   <WebChatInterface
                     assistantId={vapiAssistantId}
-                    publicKey="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+                    publicKey={import.meta.env.VITE_VAPI_PUBLIC_KEY}
                   />
                 )}
               </>

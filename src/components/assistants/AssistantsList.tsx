@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Brain, Plus, Edit, Trash, Phone } from 'lucide-react';
+import { Brain, Plus, Edit, Trash, Phone, MessageSquare, X } from 'lucide-react';
 import { vapiAI } from '../../services/vapiAI';
 import { VapiAssistant } from '../../types/vapi';
+import { WebCallInterface } from '../WebCallInterface';
+import { WebChatInterface } from '../WebChatInterface';
 
 interface AssistantsListProps {
   onCreateNew: () => void;
@@ -12,6 +14,8 @@ export const AssistantsList: React.FC<AssistantsListProps> = ({ onCreateNew, onE
   const [assistants, setAssistants] = useState<VapiAssistant[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [testingAssistant, setTestingAssistant] = useState<VapiAssistant | null>(null);
+  const [testMode, setTestMode] = useState<'call' | 'chat'>('call');
 
   useEffect(() => {
     loadAssistants();
@@ -63,6 +67,15 @@ export const AssistantsList: React.FC<AssistantsListProps> = ({ onCreateNew, onE
     );
   }
 
+  const handleTestAssistant = (assistant: VapiAssistant) => {
+    setTestingAssistant(assistant);
+    setTestMode('call');
+  };
+
+  const closeTestModal = () => {
+    setTestingAssistant(null);
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-8">
@@ -106,12 +119,14 @@ export const AssistantsList: React.FC<AssistantsListProps> = ({ onCreateNew, onE
                   <button
                     onClick={() => onEdit(assistant)}
                     className="p-2 hover:bg-gray-700/50 rounded-lg transition-colors"
+                    title="Edit"
                   >
                     <Edit className="h-4 w-4 text-gray-400" />
                   </button>
                   <button
                     onClick={() => handleDelete(assistant.id)}
                     className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
+                    title="Delete"
                   >
                     <Trash className="h-4 w-4 text-red-400" />
                   </button>
@@ -121,12 +136,78 @@ export const AssistantsList: React.FC<AssistantsListProps> = ({ onCreateNew, onE
               <p className="text-sm text-gray-400 mb-4 line-clamp-2">
                 {assistant.firstMessage || 'No description'}
               </p>
-              <div className="flex items-center space-x-2 text-xs text-gray-500">
-                <Phone className="h-3 w-3" />
-                <span>Voice: {assistant.voice?.provider || 'Default'}</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2 text-xs text-gray-500">
+                  <Phone className="h-3 w-3" />
+                  <span>Voice: {assistant.voice?.provider || 'Default'}</span>
+                </div>
+                <button
+                  onClick={() => handleTestAssistant(assistant)}
+                  className="bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 font-medium px-3 py-1 rounded-lg transition-all text-xs"
+                >
+                  Test Agent
+                </button>
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {testingAssistant && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden border border-gray-700 shadow-2xl">
+            <div className="p-6 border-b border-gray-700 flex justify-between items-center">
+              <div>
+                <h3 className="text-2xl font-bold">Test Your Agent</h3>
+                <p className="text-gray-400 text-sm mt-1">{testingAssistant.name}</p>
+              </div>
+              <button
+                onClick={closeTestModal}
+                className="p-2 hover:bg-gray-700/50 rounded-lg transition-colors"
+              >
+                <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+              <div className="mb-6 flex space-x-4">
+                <button
+                  onClick={() => setTestMode('call')}
+                  className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all flex items-center justify-center space-x-2 ${
+                    testMode === 'call'
+                      ? 'bg-blue-500/30 border-2 border-blue-400 text-blue-400'
+                      : 'bg-gray-800/50 border border-gray-700 hover:border-blue-400/50 text-gray-400'
+                  }`}
+                >
+                  <Phone className="h-5 w-5" />
+                  <span>Web Call</span>
+                </button>
+                <button
+                  onClick={() => setTestMode('chat')}
+                  className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all flex items-center justify-center space-x-2 ${
+                    testMode === 'chat'
+                      ? 'bg-green-500/30 border-2 border-green-400 text-green-400'
+                      : 'bg-gray-800/50 border border-gray-700 hover:border-green-400/50 text-gray-400'
+                  }`}
+                >
+                  <MessageSquare className="h-5 w-5" />
+                  <span>Web Chat</span>
+                </button>
+              </div>
+
+              {testMode === 'call' ? (
+                <WebCallInterface
+                  assistantId={testingAssistant.id}
+                  publicKey={import.meta.env.VITE_VAPI_PUBLIC_KEY}
+                />
+              ) : (
+                <WebChatInterface
+                  assistantId={testingAssistant.id}
+                  publicKey={import.meta.env.VITE_VAPI_PUBLIC_KEY}
+                />
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

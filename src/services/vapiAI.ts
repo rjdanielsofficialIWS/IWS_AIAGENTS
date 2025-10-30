@@ -300,16 +300,137 @@ class VapiAIService {
     });
   }
 
+  // Database Operations for User Agents
+  async saveAgentToDatabase(agentData: {
+    name: string;
+    prompt: string;
+    vapi_assistant_id: string;
+    enhanced_prompt?: string;
+    voice_provider?: string;
+    voice_id?: string;
+    model?: string;
+    first_message?: string;
+  }): Promise<any> {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User must be authenticated to save agents');
+    }
+
+    const { data, error } = await supabase
+      .from('user_agents')
+      .insert({
+        user_id: user.id,
+        name: agentData.name,
+        prompt: agentData.prompt,
+        vapi_assistant_id: agentData.vapi_assistant_id,
+        enhanced_prompt: agentData.enhanced_prompt,
+        voice_provider: agentData.voice_provider || 'playht',
+        voice_id: agentData.voice_id,
+        model: agentData.model || 'gpt-4',
+        first_message: agentData.first_message || 'Hello! How can I help you today?',
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to save agent to database: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async getAgentFromDatabase(agentId: string): Promise<any> {
+    const { data, error } = await supabase
+      .from('user_agents')
+      .select('*')
+      .eq('id', agentId)
+      .maybeSingle();
+
+    if (error) {
+      throw new Error(`Failed to get agent from database: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async getUserAgentsFromDatabase(): Promise<any[]> {
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      throw new Error('User must be authenticated');
+    }
+
+    const { data, error } = await supabase
+      .from('user_agents')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      throw new Error(`Failed to get user agents: ${error.message}`);
+    }
+
+    return data || [];
+  }
+
+  async updateAgentInDatabase(agentId: string, updates: any): Promise<any> {
+    const { data, error } = await supabase
+      .from('user_agents')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', agentId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to update agent in database: ${error.message}`);
+    }
+
+    return data;
+  }
+
+  async deleteAgentFromDatabase(agentId: string): Promise<void> {
+    const { error } = await supabase
+      .from('user_agents')
+      .update({ is_active: false, updated_at: new Date().toISOString() })
+      .eq('id', agentId);
+
+    if (error) {
+      throw new Error(`Failed to delete agent from database: ${error.message}`);
+    }
+  }
+
+  async incrementTestCallCount(agentId: string): Promise<void> {
+    const { error } = await supabase.rpc('increment', {
+      row_id: agentId,
+      x: 1
+    });
+
+    if (error) {
+      await supabase
+        .from('user_agents')
+        .update({
+          test_calls_count: supabase.raw('test_calls_count + 1'),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', agentId);
+    }
+  }
+
   // Integration helpers
   formatPhoneNumber(number: string): string {
     // Remove all non-digit characters
     const cleaned = number.replace(/\D/g, '');
-    
+
     // Add + prefix if not present
     if (!cleaned.startsWith('1') && cleaned.length === 10) {
       return `+1${cleaned}`;
     }
-    
+
     return `+${cleaned}`;
   }
 
@@ -324,7 +445,7 @@ class VapiAIService {
 
   getCallDuration(call: VapiCall): number {
     if (!call.startedAt || !call.endedAt) return 0;
-    
+
     const start = new Date(call.startedAt);
     const end = new Date(call.endedAt);
     return Math.floor((end.getTime() - start.getTime()) / 1000);

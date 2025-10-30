@@ -67,8 +67,32 @@ export const AssistantBuilder: React.FC<AssistantBuilderProps> = ({ assistantId,
       let result;
       if (assistantId) {
         result = await vapiAI.updateAssistant(assistantId, assistantData);
+
+        const dbAgent = await vapiAI.getAgentFromDatabase(assistantId);
+        if (dbAgent) {
+          await vapiAI.updateAgentInDatabase(dbAgent.id, {
+            name: formData.name,
+            prompt: formData.systemPrompt,
+            first_message: formData.firstMessage,
+            model: formData.model,
+            voice_provider: formData.voice?.provider,
+            voice_id: formData.voice?.voiceId
+          });
+        }
       } else {
         result = await vapiAI.createAssistant(assistantData);
+
+        if (result.id) {
+          await vapiAI.saveAgentToDatabase({
+            name: formData.name,
+            prompt: formData.systemPrompt,
+            vapi_assistant_id: result.id,
+            voice_provider: formData.voice?.provider || 'playht',
+            voice_id: formData.voice?.voiceId,
+            model: formData.model,
+            first_message: formData.firstMessage
+          });
+        }
       }
 
       onSave(result);

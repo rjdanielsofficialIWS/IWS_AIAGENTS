@@ -52,11 +52,12 @@ export const WebChatInterface: React.FC<WebChatInterfaceProps> = ({
     };
 
     setMessages(prev => [...prev, userMessage]);
+    const currentMessage = inputMessage;
     setInputMessage('');
     setIsSending(true);
 
     try {
-      const response = await fetch('https://api.vapi.ai/call/web', {
+      const response = await fetch('https://api.vapi.ai/assistant/message', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -64,16 +65,23 @@ export const WebChatInterface: React.FC<WebChatInterfaceProps> = ({
         },
         body: JSON.stringify({
           assistantId: assistantId,
-          message: inputMessage
+          message: {
+            role: 'user',
+            content: currentMessage
+          }
         })
       });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`);
+      }
 
       const data = await response.json();
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.message || 'I received your message. How else can I help?',
+        content: data.message?.content || data.content || 'I received your message. How else can I help?',
         timestamp: new Date()
       };
 
@@ -83,7 +91,7 @@ export const WebChatInterface: React.FC<WebChatInterfaceProps> = ({
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'I apologize, but I encountered an error processing your message. Please try again.',
+        content: 'I apologize, but I encountered an error processing your message. The chat feature may not be available for this assistant. Please try using the Web Call feature instead.',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
