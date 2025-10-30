@@ -11,7 +11,7 @@ export interface VapiAssistant {
     systemMessage?: string;
   };
   voice: {
-    provider: 'elevenlabs' | 'playht' | 'rime-ai' | 'deepgram' | 'vapi';
+    provider: 'elevenlabs' | 'playht' | 'rime-ai' | 'deepgram';
     voiceId: string;
     stability?: number;
     similarityBoost?: number;

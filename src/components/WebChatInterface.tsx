@@ -56,31 +56,24 @@ export const WebChatInterface: React.FC<WebChatInterfaceProps> = ({
     setIsSending(true);
 
     try {
-      const response = await fetch('https://api.vapi.ai/assistant/message', {
+      const response = await fetch('https://api.vapi.ai/call/web', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${import.meta.env.VITE_VAPI_API_KEY}`
+          'Authorization': `Bearer ${publicKey}`
         },
         body: JSON.stringify({
           assistantId: assistantId,
-          message: {
-            role: 'user',
-            content: inputMessage
-          }
+          message: inputMessage
         })
       });
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status} ${response.statusText}`);
-      }
 
       const data = await response.json();
 
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: data.message?.content || data.response || 'I received your message. How else can I help?',
+        content: data.message || 'I received your message. How else can I help?',
         timestamp: new Date()
       };
 
@@ -90,7 +83,7 @@ export const WebChatInterface: React.FC<WebChatInterfaceProps> = ({
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `I apologize, but I encountered an error: ${error instanceof Error ? error.message : 'Please try again.'}`,
+        content: 'I apologize, but I encountered an error processing your message. Please try again.',
         timestamp: new Date()
       };
       setMessages(prev => [...prev, errorMessage]);
