@@ -55,7 +55,7 @@ function AppContent() {
   const { user, loading } = useAuth();
   const [showAuthForm, setShowAuthForm] = useState(false);
   const [isSignUp, setIsSignUp] = useState(false);
-  const [currentPage, setCurrentPage] = useState('dashboard');
+  const [currentPage, setCurrentPage] = useState('home');
   const [currentAssistant, setCurrentAssistant] = useState<VapiAssistant | null>(null);
   const [showAssistantBuilder, setShowAssistantBuilder] = useState(false);
   const [currentStep, setCurrentStep] = useState(0);
@@ -437,6 +437,24 @@ function AppContent() {
     return <OnboardingBookingPage />;
   }
 
+  // Handle agent builder for non-authenticated users
+  if (currentPage === 'agent-builder' && !user) {
+    // Import the agent builder page dynamically
+    const AgentBuilderPage = React.lazy(() => import('./components/AgentBuilderPage').then(module => ({ default: module.AgentBuilderPage })));
+    return (
+      <React.Suspense fallback={
+        <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-400 mx-auto mb-4"></div>
+            <p className="text-gray-300">Loading...</p>
+          </div>
+        </div>
+      }>
+        <AgentBuilderPage onBack={() => setCurrentPage('home')} />
+      </React.Suspense>
+    );
+  }
+
   // If user is logged in and has premium access, show the dashboard
   if (user && (user.membership_status === 'premium' || user.membership_status === 'enterprise')) {
     if (showAssistantBuilder) {
@@ -590,6 +608,11 @@ function AppContent() {
     );
   }
 
+  // Only show homepage if currentPage is 'home'
+  if (currentPage !== 'home' && !user) {
+    return null;
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
       {/* Animated Background Elements */}
@@ -632,26 +655,11 @@ function AppContent() {
           {/* CTA Buttons */}
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <button
-              onClick={() => {
-                // Scroll to the lead capture section
-                const leadCaptureSection = document.getElementById('lead-capture');
-                if (leadCaptureSection) {
-                  leadCaptureSection.scrollIntoView({ 
-                    behavior: 'smooth',
-                    block: 'start'
-                  });
-                } else {
-                  // Fallback: scroll to bottom of page where the form likely is
-                  window.scrollTo({ 
-                    top: document.body.scrollHeight, 
-                    behavior: 'smooth' 
-                  });
-                }
-              }}
+              onClick={() => setCurrentPage('agent-builder')}
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
             >
-              <MessageSquare className="h-6 w-6" />
-              <span>Get a Package Quote</span>
+              <Brain className="h-6 w-6" />
+              <span>Create your FREE AI Agent</span>
             </button>
             
             <a
