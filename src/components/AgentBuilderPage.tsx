@@ -1,19 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Brain, Sparkles, Phone, MessageSquare, ArrowLeft, Loader, CheckCircle, Play, Calendar, Edit3 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import { WebCallInterface } from './WebCallInterface';
 import { WebChatInterface } from './WebChatInterface';
+import { vapiAI, supabase } from '../services/vapiAI';
+import { useAuth } from '../contexts/AuthContext';
 
 interface AgentBuilderPageProps {
   onBack: () => void;
 }
 
 export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) => {
+  const { user } = useAuth();
   const [agentName, setAgentName] = useState('');
   const [prompt, setPrompt] = useState('');
   const [isEnhancing, setIsEnhancing] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [agentCreated, setAgentCreated] = useState(false);
   const [vapiAssistantId, setVapiAssistantId] = useState<string | null>(null);
+  const [userAgentId, setUserAgentId] = useState<string | null>(null);
   const [showWebCall, setShowWebCall] = useState(false);
   const [showWebChat, setShowWebChat] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -73,85 +78,136 @@ export const AgentBuilderPage: React.FC<AgentBuilderPageProps> = ({ onBack }) =>
   };
 
   const handleCreateAgent = async () => {
-    if (!agentName.trim() || !prompt.trim()) return;
+    if (!agentName.trim() || !prompt.trim()) {
+      toast.error('Please fill in both agent name and instructions');
+      return;
+    }
+
+    if (!user) {
+      toast.error('You must be logged in to create an agent');
+      return;
+    }
 
     setIsCreating(true);
+    const toastId = toast.loading('Creating your AI agent...');
+
     try {
-      const response = await fetch('https://api.vapi.ai/assistant', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer b561d669-07ff-479e-a5f0-fcb94111d2fc`
+      const vapiAssistant = await vapiAI.createAssistant({
+        name: agentName,
+        model: {
+          provider: 'openai',
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: prompt
+            }
+          ]
         },
-        body: JSON.stringify({
-          name: agentName,
-          model: {
-            provider: 'openai',
-            model: 'gpt-4',
-            messages: [
-              {
-                role: 'system',
-                content: prompt
-              }
-            ]
-          },
-          voice: {
-            provider: 'vapi',
-            voiceId: 'paige'
-          },
-          firstMessage: 'Hello! How can I help you today?'
-        })
+        voice: {
+          provider: 'playht',
+          voiceId: 'jennifer'
+        },
+        firstMessage: 'Hello! How can I help you today?'
       });
 
-      const data = await response.json();
-      if (data.id) {
-        setVapiAssistantId(data.id);
+      if (vapiAssistant.id) {
+        const { data: userAgent, error: dbError } = await supabase
+          .from('user_agents')
+          .insert({
+            user_id: user.id,
+            vapi_assistant_id: vapiAssistant.id,
+            name: agentName,
+            prompt: prompt,
+            voice_provider: 'playht',
+            voice_id: 'jennifer',
+            model: 'gpt-4',
+            first_message: 'Hello! How can I help you today?',
+            is_active: true
+          })
+          .select()
+          .single();
+
+        if (dbError) {
+          console.error('Database error:', dbError);
+          toast.error('Agent created in Vapi but failed to save to database', { id: toastId });
+          return;
+        }
+
+        setVapiAssistantId(vapiAssistant.id);
+        setUserAgentId(userAgent.id);
         setAgentCreated(true);
         setIsEditing(false);
+        toast.success('Agent created successfully!', { id: toastId });
       }
     } catch (error) {
       console.error('Error creating agent:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to create agent. Please try again.',
+        { id: toastId }
+      );
     } finally {
       setIsCreating(false);
     }
   };
 
   const handleUpdateAgent = async () => {
-    if (!vapiAssistantId || !agentName.trim() || !prompt.trim()) return;
+    if (!vapiAssistantId || !userAgentId || !agentName.trim() || !prompt.trim()) {
+      toast.error('Missing required information to update agent');
+      return;
+    }
+
+    if (!user) {
+      toast.error('You must be logged in to update an agent');
+      return;
+    }
 
     setIsUpdating(true);
+    const toastId = toast.loading('Updating your AI agent...');
+
     try {
-      const response = await fetch(`https://api.vapi.ai/assistant/${vapiAssistantId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer b561d669-07ff-479e-a5f0-fcb94111d2fc`
+      await vapiAI.updateAssistant(vapiAssistantId, {
+        name: agentName,
+        model: {
+          provider: 'openai',
+          model: 'gpt-4',
+          messages: [
+            {
+              role: 'system',
+              content: prompt
+            }
+          ]
         },
-        body: JSON.stringify({
-          name: agentName,
-          model: {
-            provider: 'openai',
-            model: 'gpt-4',
-            messages: [
-              {
-                role: 'system',
-                content: prompt
-              }
-            ]
-          },
-          voice: {
-            provider: 'vapi',
-            voiceId: 'paige'
-          },
-          firstMessage: 'Hello! How can I help you today?'
-        })
+        voice: {
+          provider: 'playht',
+          voiceId: 'jennifer'
+        },
+        firstMessage: 'Hello! How can I help you today?'
       });
 
-      if (response.ok) {
-        setIsEditing(false);
+      const { error: dbError } = await supabase
+        .from('user_agents')
+        .update({
+          name: agentName,
+          prompt: prompt,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userAgentId);
+
+      if (dbError) {
+        console.error('Database error:', dbError);
+        toast.error('Agent updated in Vapi but failed to save to database', { id: toastId });
+        return;
       }
+
+      setIsEditing(false);
+      toast.success('Agent updated successfully!', { id: toastId });
     } catch (error) {
       console.error('Error updating agent:', error);
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to update agent. Please try again.',
+        { id: toastId }
+      );
     } finally {
       setIsUpdating(false);
     }
