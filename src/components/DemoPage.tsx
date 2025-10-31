@@ -76,12 +76,19 @@ export function DemoPage() {
                 </ul>
               </div>
 
-              {/* Vapi Widget Placeholder - Phone */}
-              <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-                <div className="text-center">
-                  <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-500 text-sm">Vapi Voice Widget will be loaded here</p>
+              {/* Voice Widget Section - Paste your widget code in the div below */}
+              <div id="voice-widget-container" className="relative">
+                {/* PASTE YOUR VOICE WIDGET CODE BELOW THIS LINE */}
+
+                {/* Default placeholder - will be hidden when widget loads */}
+                <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                  <div className="text-center">
+                    <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                    <p className="text-gray-500 text-sm">Voice widget will appear here</p>
+                  </div>
                 </div>
+
+                {/* PASTE YOUR VOICE WIDGET CODE ABOVE THIS LINE */}
               </div>
             </div>
 
@@ -117,12 +124,19 @@ export function DemoPage() {
                 </ul>
               </div>
 
-              {/* Vapi Widget Placeholder - Chat */}
-              <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-                <div className="text-center">
-                  <MessageSquare className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-500 text-sm">Vapi Chat Widget will be loaded here</p>
+              {/* Chat Widget Section - Paste your widget code in the div below */}
+              <div id="chat-widget-container" className="relative">
+                {/* PASTE YOUR CHAT WIDGET CODE BELOW THIS LINE */}
+
+                {/* Default placeholder - will be hidden when widget loads */}
+                <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                  <div className="text-center">
+                    <MessageSquare className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                    <p className="text-gray-500 text-sm">Chat widget will appear here</p>
+                  </div>
                 </div>
+
+                {/* PASTE YOUR CHAT WIDGET CODE ABOVE THIS LINE */}
               </div>
             </div>
           </div>
@@ -140,15 +154,22 @@ export function DemoPage() {
             </div>
 
             <p className="text-gray-300 mb-6">
-              This section can be customized for industry-specific demos or advanced features. Add additional Vapi widgets here to showcase different use cases.
+              This section can be customized for industry-specific demos or advanced features. Add additional widgets here to showcase different use cases.
             </p>
 
-            {/* Additional Vapi Widget Placeholder */}
-            <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-              <div className="text-center">
-                <Brain className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                <p className="text-gray-500 text-sm">Additional Vapi Widget will be loaded here</p>
+            {/* Additional Widget Section - Paste your widget code in the div below */}
+            <div id="custom-widget-container" className="relative">
+              {/* PASTE YOUR CUSTOM WIDGET CODE BELOW THIS LINE */}
+
+              {/* Default placeholder - will be hidden when widget loads */}
+              <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                <div className="text-center">
+                  <Brain className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                  <p className="text-gray-500 text-sm">Custom widget will appear here</p>
+                </div>
               </div>
+
+              {/* PASTE YOUR CUSTOM WIDGET CODE ABOVE THIS LINE */}
             </div>
           </div>
 
