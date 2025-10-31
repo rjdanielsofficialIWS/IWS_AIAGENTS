@@ -1,5 +1,5 @@
 import React from 'react';
-import { Brain, Phone, MessageSquare, Users, CreditCard, Key, Settings, LogOut } from 'lucide-react';
+import { Brain, Phone, MessageSquare, Users, CreditCard, Key, Settings, LogOut, Code } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface DashboardLayoutProps {
@@ -14,6 +14,7 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: Brain },
     { id: 'assistants', label: 'Assistants', icon: Brain },
+    { id: 'widgets', label: 'Widget Manager', icon: Code },
     { id: 'phone-numbers', label: 'Phone Numbers', icon: Phone },
     { id: 'calls', label: 'Calls', icon: MessageSquare },
     { id: 'webhooks', label: 'Webhooks', icon: MessageSquare },

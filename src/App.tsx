@@ -9,6 +9,7 @@ import { DashboardLayout } from './components/dashboard/DashboardLayout';
 import { DashboardOverview } from './components/dashboard/DashboardOverview';
 import { AssistantsList } from './components/assistants/AssistantsList';
 import { AssistantBuilder } from './components/assistants/AssistantBuilder';
+import { WidgetManager } from './components/widgets/WidgetManager';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { OnboardingBookingPage } from './components/OnboardingBookingPage';
 import { DemoPage } from './components/DemoPage';
@@ -444,6 +445,7 @@ function AppContent() {
             onEdit={handleEditAssistant}
           />
         )}
+        {currentPage === 'widgets' && <WidgetManager />}
         {currentPage === 'phone-numbers' && (
           <div className="text-center py-12">
             <Phone className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />

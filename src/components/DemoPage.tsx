@@ -1,7 +1,85 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Brain, Phone, MessageSquare, ArrowLeft } from 'lucide-react';
+import { supabase } from '../services/vapiAI';
+
+interface Widget {
+  id: string;
+  widget_type: string;
+  widget_code: string;
+  is_active: boolean;
+}
 
 export function DemoPage() {
+  const [widgets, setWidgets] = useState<Widget[]>([]);
+  const [loading, setLoading] = useState(true);
+  const voiceRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const customRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetchWidgets();
+  }, []);
+
+  useEffect(() => {
+    if (widgets.length > 0) {
+      renderWidgets();
+    }
+  }, [widgets]);
+
+  const fetchWidgets = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('widgets')
+        .select('*')
+        .eq('is_active', true);
+
+      if (error) throw error;
+
+      if (data) {
+        setWidgets(data);
+      }
+    } catch (error) {
+      console.error('Error fetching widgets:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const renderWidgets = () => {
+    widgets.forEach((widget) => {
+      let containerRef: HTMLDivElement | null = null;
+
+      if (widget.widget_type === 'voice' && voiceRef.current) {
+        containerRef = voiceRef.current;
+      } else if (widget.widget_type === 'chat' && chatRef.current) {
+        containerRef = chatRef.current;
+      } else if (widget.widget_type === 'custom' && customRef.current) {
+        containerRef = customRef.current;
+      }
+
+      if (containerRef) {
+        containerRef.innerHTML = widget.widget_code;
+
+        const scripts = containerRef.querySelectorAll('script');
+        scripts.forEach((oldScript) => {
+          const newScript = document.createElement('script');
+          Array.from(oldScript.attributes).forEach((attr) => {
+            newScript.setAttribute(attr.name, attr.value);
+          });
+          if (oldScript.textContent) {
+            newScript.textContent = oldScript.textContent;
+          }
+          oldScript.parentNode?.replaceChild(newScript, oldScript);
+        });
+      }
+    });
+  };
+
+  const getWidgetByType = (type: string) => {
+    return widgets.find((w) => w.widget_type === type);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
       {/* Animated Background Elements */}
@@ -76,19 +154,21 @@ export function DemoPage() {
                 </ul>
               </div>
 
-              {/* Voice Widget Section - Paste your widget code in the div below */}
               <div id="voice-widget-container" className="relative">
-                {/* PASTE YOUR VOICE WIDGET CODE BELOW THIS LINE */}
-
-                {/* Default placeholder - will be hidden when widget loads */}
-                <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-                  <div className="text-center">
-                    <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                    <p className="text-gray-500 text-sm">Voice widget will appear here</p>
-                  </div>
+                <div ref={voiceRef}>
+                  {loading ? (
+                    <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-400"></div>
+                    </div>
+                  ) : !getWidgetByType('voice') ? (
+                    <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                      <div className="text-center">
+                        <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-500 text-sm">No voice widget configured</p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-
-                {/* PASTE YOUR VOICE WIDGET CODE ABOVE THIS LINE */}
               </div>
             </div>
 
@@ -124,19 +204,21 @@ export function DemoPage() {
                 </ul>
               </div>
 
-              {/* Chat Widget Section - Paste your widget code in the div below */}
               <div id="chat-widget-container" className="relative">
-                {/* PASTE YOUR CHAT WIDGET CODE BELOW THIS LINE */}
-
-                {/* Default placeholder - will be hidden when widget loads */}
-                <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-                  <div className="text-center">
-                    <MessageSquare className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                    <p className="text-gray-500 text-sm">Chat widget will appear here</p>
-                  </div>
+                <div ref={chatRef}>
+                  {loading ? (
+                    <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400"></div>
+                    </div>
+                  ) : !getWidgetByType('chat') ? (
+                    <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                      <div className="text-center">
+                        <MessageSquare className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-500 text-sm">No chat widget configured</p>
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
-
-                {/* PASTE YOUR CHAT WIDGET CODE ABOVE THIS LINE */}
               </div>
             </div>
           </div>
@@ -157,19 +239,21 @@ export function DemoPage() {
               This section can be customized for industry-specific demos or advanced features. Add additional widgets here to showcase different use cases.
             </p>
 
-            {/* Additional Widget Section - Paste your widget code in the div below */}
             <div id="custom-widget-container" className="relative">
-              {/* PASTE YOUR CUSTOM WIDGET CODE BELOW THIS LINE */}
-
-              {/* Default placeholder - will be hidden when widget loads */}
-              <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-                <div className="text-center">
-                  <Brain className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                  <p className="text-gray-500 text-sm">Custom widget will appear here</p>
-                </div>
+              <div ref={customRef}>
+                {loading ? (
+                  <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-400"></div>
+                  </div>
+                ) : !getWidgetByType('custom') ? (
+                  <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
+                    <div className="text-center">
+                      <Brain className="h-12 w-12 text-gray-600 mx-auto mb-4" />
+                      <p className="text-gray-500 text-sm">No custom widget configured</p>
+                    </div>
+                  </div>
+                ) : null}
               </div>
-
-              {/* PASTE YOUR CUSTOM WIDGET CODE ABOVE THIS LINE */}
             </div>
           </div>
 
