@@ -5,7 +5,7 @@ export function SubscriptionSection() {
   const plans = [
     {
       name: 'Starter',
-      price: '$99',
+      price: '$399',
       period: '/month',
       features: [
         'Up to 1,000 AI-powered calls per month',
@@ -16,7 +16,7 @@ export function SubscriptionSection() {
     },
     {
       name: 'Professional',
-      price: '$299',
+      price: '$499',
       period: '/month',
       features: [
         'Up to 5,000 AI-powered calls per month',
