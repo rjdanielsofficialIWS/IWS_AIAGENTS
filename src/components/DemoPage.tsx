@@ -266,7 +266,7 @@ export function DemoPage() {
                 className="w-full bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center space-x-2"
               >
                 <Code className="h-5 w-5" />
-                <span>Paste Widget Code</span>
+                <span>Add AI Agent</span>
               </button>
             </div>
           </div>
