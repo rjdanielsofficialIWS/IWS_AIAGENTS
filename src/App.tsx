@@ -11,6 +11,7 @@ import { AssistantsList } from './components/assistants/AssistantsList';
 import { AssistantBuilder } from './components/assistants/AssistantBuilder';
 import { SubscriptionSection } from './components/SubscriptionSection';
 import { OnboardingBookingPage } from './components/OnboardingBookingPage';
+import { DemoPage } from './components/DemoPage';
 import { VapiAssistant } from './types/vapi';
 import { supabase } from './services/vapiAI';
 
@@ -413,6 +414,11 @@ function AppContent() {
   // Handle routing for onboarding booking page
   if (window.location.pathname === '/onboarding-booking') {
     return <OnboardingBookingPage />;
+  }
+
+  // Handle routing for demo page
+  if (window.location.pathname === '/demo') {
+    return <DemoPage />;
   }
 
   // If user is logged in and has premium access, show the dashboard
@@ -1063,9 +1069,15 @@ function AppContent() {
               Infinite Wealth Solutions
             </h3>
           </div>
-          <p className="text-gray-400">
+          <p className="text-gray-400 mb-3">
             © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
           </p>
+          <a
+            href="/demo"
+            className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
+          >
+            Try AI Agent Demos
+          </a>
         </div>
       </footer>
     </div>
