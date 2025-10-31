@@ -204,7 +204,7 @@ export function DemoPage() {
                   <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
                     <div className="text-center">
                       <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                      <p className="text-gray-500 text-sm">No widget added yet</p>
+                      <p className="text-gray-500 text-sm">No agent added yet</p>
                     </div>
                   </div>
                 )}
