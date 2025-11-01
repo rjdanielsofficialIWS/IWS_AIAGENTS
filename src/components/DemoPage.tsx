@@ -204,7 +204,7 @@ export function DemoPage() {
 
       {showChatInput && (
         <WidgetInputModal
-          title="Add Chat Widget"
+          title="Add Chat Agent"
           code={chatCode}
           setCode={setChatCode}
           onSubmit={handleChatSubmit}
