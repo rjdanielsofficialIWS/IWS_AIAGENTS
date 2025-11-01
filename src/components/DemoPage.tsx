@@ -66,7 +66,7 @@ export function DemoPage() {
         </div>
 
         <p className="text-gray-400 mb-4 text-sm">
-          Paste your Vapi widget embed code below and click submit to display it.
+          Paste your agent embed code below and click submit to display it.
         </p>
 
         <textarea
