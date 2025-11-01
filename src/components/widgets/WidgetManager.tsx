@@ -217,7 +217,7 @@ export function WidgetManager() {
       <div>
         <h2 className="text-3xl font-bold text-white mb-2">Widget Manager</h2>
         <p className="text-gray-400">
-          Paste your Vapi widget embed codes below. They will appear on your demo page at{' '}
+          Paste your Agent embed codes below. They will appear on your demo page at{' '}
           <a href="/demo" target="_blank" className="text-yellow-400 hover:text-yellow-300">
             /demo
           </a>
@@ -246,7 +246,7 @@ export function WidgetManager() {
       <div className="grid grid-cols-1 gap-6">
         <WidgetSection
           title="Voice Agent Widget"
-          description="Paste the embed code for your voice AI agent"
+          description="Paste the Agent code for your voice AI agent"
           type="voice"
           code={voiceCode}
           setCode={setVoiceCode}
@@ -255,7 +255,7 @@ export function WidgetManager() {
 
         <WidgetSection
           title="Chat Agent Widget"
-          description="Paste the embed code for your chat AI agent"
+          description="Paste the Agent code for your chat AI agent"
           type="chat"
           code={chatCode}
           setCode={setChatCode}
@@ -264,7 +264,7 @@ export function WidgetManager() {
 
         <WidgetSection
           title="Custom Widget"
-          description="Paste any additional custom widget code"
+          description="Paste any additional custom Agent code"
           type="custom"
           code={customCode}
           setCode={setCustomCode}
