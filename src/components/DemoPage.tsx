@@ -5,14 +5,11 @@ import { Brain, Phone, MessageSquare, ArrowLeft, Code, X } from 'lucide-react';
 export function DemoPage() {
   const [voiceCode, setVoiceCode] = useState('');
   const [chatCode, setChatCode] = useState('');
-  const [customCode, setCustomCode] = useState('');
   const [showVoiceInput, setShowVoiceInput] = useState(false);
   const [showChatInput, setShowChatInput] = useState(false);
-  const [showCustomInput, setShowCustomInput] = useState(false);
 
   const voiceRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
-  const customRef = useRef<HTMLDivElement>(null);
 
   const renderWidget = (code: string, containerRef: React.RefObject<HTMLDivElement>) => {
     if (!containerRef.current || !code.trim()) return;
@@ -42,10 +39,6 @@ export function DemoPage() {
     setShowChatInput(false);
   };
 
-  const handleCustomSubmit = () => {
-    renderWidget(customCode, customRef);
-    setShowCustomInput(false);
-  };
 
   const WidgetInputModal = ({
     title,
@@ -124,15 +117,6 @@ export function DemoPage() {
         />
       )}
 
-      {showCustomInput && (
-        <WidgetInputModal
-          title="Add Custom Widget"
-          code={customCode}
-          setCode={setCustomCode}
-          onSubmit={handleCustomSubmit}
-          onClose={() => setShowCustomInput(false)}
-        />
-      )}
 
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
@@ -272,40 +256,6 @@ export function DemoPage() {
             </div>
           </div>
 
-          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
-            <div className="flex items-center space-x-4 mb-6">
-              <div className="bg-green-400/10 w-16 h-16 rounded-xl flex items-center justify-center">
-                <Brain className="h-8 w-8 text-green-400" />
-              </div>
-              <div>
-                <h3 className="text-2xl font-bold">Custom Agent</h3>
-                <p className="text-gray-400">Specialized AI assistant</p>
-              </div>
-            </div>
-
-            <p className="text-gray-300 mb-6">
-              Showcase industry-specific demos or advanced features with custom widgets.
-            </p>
-
-            <div ref={customRef} className="mb-4 min-h-[200px]">
-              {!customCode && (
-                <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-                  <div className="text-center">
-                    <Brain className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                    <p className="text-gray-500 text-sm">No agent added yet</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <button
-              onClick={() => setShowCustomInput(true)}
-              className="w-full bg-gradient-to-r from-green-400 to-green-500 hover:from-green-500 hover:to-green-600 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center space-x-2"
-            >
-              <Code className="h-5 w-5" />
-              <span>Add AI Agent</span>
-            </button>
-          </div>
 
           <div className="text-center mt-12">
             <p className="text-lg text-gray-300 mb-6">
