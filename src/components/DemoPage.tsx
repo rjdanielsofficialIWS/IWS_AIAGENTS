@@ -1,15 +1,58 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Brain, Phone, MessageSquare, ArrowLeft, Code, X } from 'lucide-react';
+import { supabase } from '../services/vapiAI';
 
 export function DemoPage() {
   const [voiceCode, setVoiceCode] = useState('');
   const [chatCode, setChatCode] = useState('');
   const [showVoiceInput, setShowVoiceInput] = useState(false);
   const [showChatInput, setShowChatInput] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const voiceRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    loadWidgets();
+  }, []);
+
+  const loadWidgets = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from('widgets')
+        .select('*')
+        .is('user_id', null)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error loading widgets:', error);
+        return;
+      }
+
+      if (data) {
+        const voiceWidget = data.find(w => w.widget_type === 'voice');
+        const chatWidget = data.find(w => w.widget_type === 'chat');
+
+        if (voiceWidget) {
+          setVoiceCode(voiceWidget.widget_code);
+          setTimeout(() => renderWidget(voiceWidget.widget_code, voiceRef), 100);
+        }
+
+        if (chatWidget) {
+          setChatCode(chatWidget.widget_code);
+          setTimeout(() => renderWidget(chatWidget.widget_code, chatRef), 100);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading widgets:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const renderWidget = (code: string, containerRef: React.RefObject<HTMLDivElement>) => {
     if (!containerRef.current || !code.trim()) return;
@@ -29,14 +72,66 @@ export function DemoPage() {
     });
   };
 
-  const handleVoiceSubmit = () => {
+  const handleVoiceSubmit = async () => {
+    await saveWidget('voice', voiceCode);
     renderWidget(voiceCode, voiceRef);
     setShowVoiceInput(false);
   };
 
-  const handleChatSubmit = () => {
+  const handleChatSubmit = async () => {
+    await saveWidget('chat', chatCode);
     renderWidget(chatCode, chatRef);
     setShowChatInput(false);
+  };
+
+  const saveWidget = async (type: string, code: string) => {
+    try {
+      setSaving(true);
+
+      const { data: existingWidgets, error: fetchError } = await supabase
+        .from('widgets')
+        .select('id')
+        .is('user_id', null)
+        .eq('widget_type', type)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (fetchError && fetchError.code !== 'PGRST116') {
+        console.error('Error checking existing widget:', fetchError);
+        return;
+      }
+
+      if (existingWidgets) {
+        const { error: updateError } = await supabase
+          .from('widgets')
+          .update({
+            widget_code: code,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', existingWidgets.id);
+
+        if (updateError) {
+          console.error('Error updating widget:', updateError);
+        }
+      } else {
+        const { error: insertError } = await supabase
+          .from('widgets')
+          .insert({
+            user_id: null,
+            widget_type: type,
+            widget_code: code,
+            is_active: true,
+          });
+
+        if (insertError) {
+          console.error('Error inserting widget:', insertError);
+        }
+      }
+    } catch (error) {
+      console.error('Error saving widget:', error);
+    } finally {
+      setSaving(false);
+    }
   };
 
 
@@ -79,10 +174,10 @@ export function DemoPage() {
         <div className="flex items-center space-x-3">
           <button
             onClick={onSubmit}
-            disabled={!code.trim()}
+            disabled={!code.trim() || saving}
             className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
-            Submit & Display Widget
+            {saving ? 'Saving...' : 'Submit & Display Widget'}
           </button>
           <button
             onClick={onClose}
