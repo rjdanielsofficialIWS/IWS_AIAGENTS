@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Brain, Phone, MessageSquare, ArrowLeft, Code, X } from 'lucide-react';
 
 export function DemoPage() {
@@ -141,13 +142,13 @@ export function DemoPage() {
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between">
-            <a
-              href="/"
+            <Link
+              to="/"
               className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors"
             >
               <ArrowLeft className="h-5 w-5" />
               <span>Back to Home</span>
-            </a>
+            </Link>
             <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
               Experience Our AI Agents
             </h1>

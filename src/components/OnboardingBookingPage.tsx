@@ -1,17 +1,18 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import { Calendar, ArrowLeft } from 'lucide-react';
 
 export function OnboardingBookingPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white">
       <div className="max-w-4xl mx-auto px-4 py-8">
-        <a
-          href="/"
+        <Link
+          to="/"
           className="inline-flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors mb-8"
         >
           <ArrowLeft className="h-5 w-5" />
           <span>Back to Home</span>
-        </a>
+        </Link>
 
         <div className="text-center mb-12">
           <h1 className="text-4xl font-bold mb-4">
