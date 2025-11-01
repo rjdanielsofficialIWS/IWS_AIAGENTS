@@ -1,22 +1,58 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Brain, Phone, MessageSquare, ArrowLeft, Code, X } from 'lucide-react';
-import { supabase } from '../services/vapiAI';
+import { Phone, MessageSquare, ArrowLeft } from 'lucide-react';
 
 export function DemoPage() {
-  const [voiceCode, setVoiceCode] = useState('');
-  const [chatCode, setChatCode] = useState('');
-  const [showVoiceInput, setShowVoiceInput] = useState(false);
-  const [showChatInput, setShowChatInput] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const voiceCode = `<vapi-widget
+  public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+  assistant-id="606bba60-26a5-4839-a79d-e9c82218e22b"
+  mode="voice"
+  theme="dark"
+  base-bg-color="#000000"
+  accent-color="#1da9e9"
+  cta-button-color="#000000"
+  cta-button-text-color="#ffffff"
+  border-radius="medium"
+  size="compact"
+  position="top-left"
+  title="AI Voice Agent"
+  start-button-text="Start"
+  end-button-text="End Call"
+  cta-subtitle="Tap to speak.."
+  chat-first-message="Hey John, hows it going?"
+  chat-placeholder="Type your message..."
+  voice-show-transcript="true"
+  consent-required="false"
+></vapi-widget>
+
+<script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
+
+  const chatCode = `<vapi-widget
+  public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+  assistant-id="606bba60-26a5-4839-a79d-e9c82218e22b"
+  mode="chat"
+  theme="dark"
+  base-bg-color="#000000"
+  accent-color="#1da9e9"
+  cta-button-color="#000000"
+  cta-button-text-color="#ffffff"
+  border-radius="medium"
+  size="compact"
+  position="top-left"
+  title="AI Chat Agent"
+  start-button-text="Start"
+  end-button-text="End Call"
+  cta-subtitle="Tap to chat.."
+  chat-first-message="Hey, John hows it going?"
+  chat-placeholder="Type your message..."
+  voice-show-transcript="true"
+  consent-required="false"
+></vapi-widget>
+
+<script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
 
   const voiceRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    loadWidgets();
-  }, []);
 
   useEffect(() => {
     if (voiceCode && voiceRef.current) {
@@ -29,40 +65,6 @@ export function DemoPage() {
       renderWidget(chatCode, chatRef);
     }
   }, [chatCode]);
-
-  const loadWidgets = async () => {
-    try {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from('widgets')
-        .select('*')
-        .is('user_id', null)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Error loading widgets:', error);
-        return;
-      }
-
-      if (data && data.length > 0) {
-        const voiceWidget = data.find(w => w.widget_type === 'voice');
-        const chatWidget = data.find(w => w.widget_type === 'chat');
-
-        if (voiceWidget) {
-          setVoiceCode(voiceWidget.widget_code);
-        }
-
-        if (chatWidget) {
-          setChatCode(chatWidget.widget_code);
-        }
-      }
-    } catch (error) {
-      console.error('Error loading widgets:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const renderWidget = (code: string, containerRef: React.RefObject<HTMLDivElement>) => {
     if (!containerRef.current || !code.trim()) return;
@@ -82,163 +84,8 @@ export function DemoPage() {
     });
   };
 
-  const handleVoiceSubmit = async () => {
-    const codeToSave = voiceCode;
-    await saveWidget('voice', codeToSave);
-    setVoiceCode(codeToSave);
-    setShowVoiceInput(false);
-  };
-
-  const handleChatSubmit = async () => {
-    const codeToSave = chatCode;
-    await saveWidget('chat', codeToSave);
-    setChatCode(codeToSave);
-    setShowChatInput(false);
-  };
-
-  const saveWidget = async (type: string, code: string) => {
-    try {
-      setSaving(true);
-
-      const { data: existingWidgets, error: fetchError } = await supabase
-        .from('widgets')
-        .select('id')
-        .is('user_id', null)
-        .eq('widget_type', type)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (fetchError && fetchError.code !== 'PGRST116') {
-        console.error('Error checking existing widget:', fetchError);
-        return;
-      }
-
-      if (existingWidgets) {
-        const { error: updateError } = await supabase
-          .from('widgets')
-          .update({
-            widget_code: code,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', existingWidgets.id);
-
-        if (updateError) {
-          console.error('Error updating widget:', updateError);
-        }
-      } else {
-        const { error: insertError } = await supabase
-          .from('widgets')
-          .insert({
-            user_id: null,
-            widget_type: type,
-            widget_code: code,
-            is_active: true,
-          });
-
-        if (insertError) {
-          console.error('Error inserting widget:', insertError);
-        }
-      }
-    } catch (error) {
-      console.error('Error saving widget:', error);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-
-  const WidgetInputModal = ({
-    title,
-    code,
-    setCode,
-    onSubmit,
-    onClose,
-  }: {
-    title: string;
-    code: string;
-    setCode: (code: string) => void;
-    onSubmit: () => void;
-    onClose: () => void;
-  }) => {
-    const [inputValue, setInputValue] = useState(code);
-
-    const handleSubmit = () => {
-      setCode(inputValue);
-      onSubmit();
-      setInputValue('');
-    };
-
-    return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-      <div className="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-gray-700/50 rounded-2xl p-6 w-full max-w-2xl">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-2xl font-bold text-white">{title}</h3>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-700/50 rounded-lg transition-colors"
-          >
-            <X className="h-5 w-5 text-gray-400" />
-          </button>
-        </div>
-
-        <p className="text-gray-400 mb-4 text-sm">
-          Paste your Vapi widget embed code below and click submit to display it.
-        </p>
-
-        <textarea
-          value={inputValue}
-          onChange={(e) => setInputValue(e.target.value)}
-          placeholder='Paste your widget embed code here (e.g., <script src="..."></script>)'
-          className="w-full h-64 px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-500 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical mb-4"
-        />
-
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={handleSubmit}
-            disabled={!inputValue.trim() || saving}
-            className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-          >
-            {saving ? 'Saving...' : 'Submit & Display Widget'}
-          </button>
-          <button
-            onClick={onClose}
-            className="px-6 py-3 bg-gray-700 hover:bg-gray-600 text-white font-medium rounded-xl transition-colors"
-          >
-            Cancel
-          </button>
-        </div>
-      </div>
-    </div>
-    );
-  };
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-      {showVoiceInput && (
-        <WidgetInputModal
-          title="Add Voice Agent"
-          code={voiceCode}
-          setCode={setVoiceCode}
-          onSubmit={handleVoiceSubmit}
-          onClose={() => {
-            setShowVoiceInput(false);
-          }}
-        />
-      )}
-
-      {showChatInput && (
-        <WidgetInputModal
-          title="Add Chat Agent"
-          code={chatCode}
-          setCode={setChatCode}
-          onSubmit={handleChatSubmit}
-          onClose={() => {
-            setShowChatInput(false);
-          }}
-        />
-      )}
-
-
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
         <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
@@ -269,7 +116,7 @@ export function DemoPage() {
               Try Our <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">AI Agents Live</span>
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              Paste your Vapi widget code and see it in action instantly. No login required.
+              Interact with our AI agents and see them in action instantly. No login required.
             </p>
           </div>
 
@@ -305,24 +152,7 @@ export function DemoPage() {
                 </ul>
               </div>
 
-              <div ref={voiceRef} className="mb-4 min-h-[200px]">
-                {!voiceCode && (
-                  <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-                    <div className="text-center">
-                      <Phone className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                      <p className="text-gray-500 text-sm">No agent added yet</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setShowVoiceInput(true)}
-                className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center space-x-2"
-              >
-                <Code className="h-5 w-5" />
-                <span>Add AI Agent</span>
-              </button>
+              <div ref={voiceRef} className="min-h-[200px]"></div>
             </div>
 
             <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
@@ -356,24 +186,7 @@ export function DemoPage() {
                 </ul>
               </div>
 
-              <div ref={chatRef} className="mb-4 min-h-[200px]">
-                {!chatCode && (
-                  <div className="bg-gray-900/50 border border-gray-700/50 rounded-xl p-8 min-h-[200px] flex items-center justify-center">
-                    <div className="text-center">
-                      <MessageSquare className="h-12 w-12 text-gray-600 mx-auto mb-4" />
-                      <p className="text-gray-500 text-sm">No agent added yet</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <button
-                onClick={() => setShowChatInput(true)}
-                className="w-full bg-gradient-to-r from-blue-400 to-blue-500 hover:from-blue-500 hover:to-blue-600 text-white font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center space-x-2"
-              >
-                <Code className="h-5 w-5" />
-                <span>Add AI Agent</span>
-              </button>
+              <div ref={chatRef} className="min-h-[200px]"></div>
             </div>
           </div>
 
