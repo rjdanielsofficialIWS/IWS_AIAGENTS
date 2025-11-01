@@ -18,6 +18,18 @@ export function DemoPage() {
     loadWidgets();
   }, []);
 
+  useEffect(() => {
+    if (voiceCode && voiceRef.current) {
+      renderWidget(voiceCode, voiceRef);
+    }
+  }, [voiceCode]);
+
+  useEffect(() => {
+    if (chatCode && chatRef.current) {
+      renderWidget(chatCode, chatRef);
+    }
+  }, [chatCode]);
+
   const loadWidgets = async () => {
     try {
       setLoading(true);
@@ -33,18 +45,16 @@ export function DemoPage() {
         return;
       }
 
-      if (data) {
+      if (data && data.length > 0) {
         const voiceWidget = data.find(w => w.widget_type === 'voice');
         const chatWidget = data.find(w => w.widget_type === 'chat');
 
         if (voiceWidget) {
           setVoiceCode(voiceWidget.widget_code);
-          setTimeout(() => renderWidget(voiceWidget.widget_code, voiceRef), 100);
         }
 
         if (chatWidget) {
           setChatCode(chatWidget.widget_code);
-          setTimeout(() => renderWidget(chatWidget.widget_code, chatRef), 100);
         }
       }
     } catch (error) {
@@ -73,14 +83,16 @@ export function DemoPage() {
   };
 
   const handleVoiceSubmit = async () => {
-    await saveWidget('voice', voiceCode);
-    renderWidget(voiceCode, voiceRef);
+    const codeToSave = voiceCode;
+    await saveWidget('voice', codeToSave);
+    setVoiceCode(codeToSave);
     setShowVoiceInput(false);
   };
 
   const handleChatSubmit = async () => {
-    await saveWidget('chat', chatCode);
-    renderWidget(chatCode, chatRef);
+    const codeToSave = chatCode;
+    await saveWidget('chat', codeToSave);
+    setChatCode(codeToSave);
     setShowChatInput(false);
   };
 
@@ -147,7 +159,16 @@ export function DemoPage() {
     setCode: (code: string) => void;
     onSubmit: () => void;
     onClose: () => void;
-  }) => (
+  }) => {
+    const [inputValue, setInputValue] = useState(code);
+
+    const handleSubmit = () => {
+      setCode(inputValue);
+      onSubmit();
+      setInputValue('');
+    };
+
+    return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="bg-gradient-to-br from-gray-800/95 to-gray-900/95 border border-gray-700/50 rounded-2xl p-6 w-full max-w-2xl">
         <div className="flex items-center justify-between mb-4">
@@ -165,16 +186,16 @@ export function DemoPage() {
         </p>
 
         <textarea
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
+          value={inputValue}
+          onChange={(e) => setInputValue(e.target.value)}
           placeholder='Paste your widget embed code here (e.g., <script src="..."></script>)'
           className="w-full h-64 px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-500 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical mb-4"
         />
 
         <div className="flex items-center space-x-3">
           <button
-            onClick={onSubmit}
-            disabled={!code.trim() || saving}
+            onClick={handleSubmit}
+            disabled={!inputValue.trim() || saving}
             className="flex-1 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
           >
             {saving ? 'Saving...' : 'Submit & Display Widget'}
@@ -188,7 +209,8 @@ export function DemoPage() {
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
@@ -198,7 +220,9 @@ export function DemoPage() {
           code={voiceCode}
           setCode={setVoiceCode}
           onSubmit={handleVoiceSubmit}
-          onClose={() => setShowVoiceInput(false)}
+          onClose={() => {
+            setShowVoiceInput(false);
+          }}
         />
       )}
 
@@ -208,7 +232,9 @@ export function DemoPage() {
           code={chatCode}
           setCode={setChatCode}
           onSubmit={handleChatSubmit}
-          onClose={() => setShowChatInput(false)}
+          onClose={() => {
+            setShowChatInput(false);
+          }}
         />
       )}
 
