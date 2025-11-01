@@ -19,20 +19,28 @@ export function DemoPage() {
   }, []);
 
   useEffect(() => {
-    if (voiceCode && voiceRef.current) {
-      renderWidget(voiceCode, voiceRef);
+    if (voiceCode && voiceRef.current && !loading) {
+      const timer = setTimeout(() => {
+        renderWidget(voiceCode, voiceRef);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [voiceCode]);
+  }, [voiceCode, loading]);
 
   useEffect(() => {
-    if (chatCode && chatRef.current) {
-      renderWidget(chatCode, chatRef);
+    if (chatCode && chatRef.current && !loading) {
+      const timer = setTimeout(() => {
+        renderWidget(chatCode, chatRef);
+      }, 100);
+      return () => clearTimeout(timer);
     }
-  }, [chatCode]);
+  }, [chatCode, loading]);
 
   const loadWidgets = async () => {
     try {
       setLoading(true);
+      console.log('Loading widgets from database...');
+
       const { data, error } = await supabase
         .from('widgets')
         .select('*')
@@ -42,20 +50,27 @@ export function DemoPage() {
 
       if (error) {
         console.error('Error loading widgets:', error);
+        setLoading(false);
         return;
       }
+
+      console.log('Loaded widgets:', data);
 
       if (data && data.length > 0) {
         const voiceWidget = data.find(w => w.widget_type === 'voice');
         const chatWidget = data.find(w => w.widget_type === 'chat');
 
-        if (voiceWidget) {
+        if (voiceWidget && voiceWidget.widget_code) {
+          console.log('Setting voice widget code');
           setVoiceCode(voiceWidget.widget_code);
         }
 
-        if (chatWidget) {
+        if (chatWidget && chatWidget.widget_code) {
+          console.log('Setting chat widget code');
           setChatCode(chatWidget.widget_code);
         }
+      } else {
+        console.log('No widgets found in database');
       }
     } catch (error) {
       console.error('Error loading widgets:', error);
@@ -65,21 +80,34 @@ export function DemoPage() {
   };
 
   const renderWidget = (code: string, containerRef: React.RefObject<HTMLDivElement>) => {
-    if (!containerRef.current || !code.trim()) return;
+    if (!containerRef.current || !code.trim()) {
+      console.log('Cannot render widget: missing ref or code');
+      return;
+    }
 
-    containerRef.current.innerHTML = code;
+    console.log('Rendering widget with code:', code.substring(0, 100) + '...');
 
-    const scripts = containerRef.current.querySelectorAll('script');
-    scripts.forEach((oldScript) => {
-      const newScript = document.createElement('script');
-      Array.from(oldScript.attributes).forEach((attr) => {
-        newScript.setAttribute(attr.name, attr.value);
+    try {
+      containerRef.current.innerHTML = code;
+
+      const scripts = containerRef.current.querySelectorAll('script');
+      console.log(`Found ${scripts.length} script tags to inject`);
+
+      scripts.forEach((oldScript) => {
+        const newScript = document.createElement('script');
+        Array.from(oldScript.attributes).forEach((attr) => {
+          newScript.setAttribute(attr.name, attr.value);
+        });
+        if (oldScript.textContent) {
+          newScript.textContent = oldScript.textContent;
+        }
+        oldScript.parentNode?.replaceChild(newScript, oldScript);
       });
-      if (oldScript.textContent) {
-        newScript.textContent = oldScript.textContent;
-      }
-      oldScript.parentNode?.replaceChild(newScript, oldScript);
-    });
+
+      console.log('Widget rendered successfully');
+    } catch (error) {
+      console.error('Error rendering widget:', error);
+    }
   };
 
   const handleVoiceSubmit = async () => {
