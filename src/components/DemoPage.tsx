@@ -29,7 +29,7 @@ export function DemoPage() {
 
   const chatCode = `<vapi-widget
   public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-  assistant-id="606bba60-26a5-4839-a79d-e9c82218e22b"
+  assistant-id="87ebaf38-118d-4a8e-bfbb-24ecd5216981"
   mode="chat"
   theme="dark"
   base-bg-color="#000000"
