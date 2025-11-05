@@ -4,22 +4,21 @@ import { Phone, MessageSquare, ArrowLeft } from 'lucide-react';
 
 export function DemoPage() {
   const voiceCode = `<vapi-widget
-  public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-  assistant-id="4766e8a7-f5c1-4bc7-a032-55fddc42996d"
+  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
+  assistant-id="1d709a13-73ab-4bff-82e9-f9411ab220f6"
   mode="voice"
   theme="dark"
   base-bg-color="#000000"
-  accent-color="#1da9e9"
+  accent-color="#14B8A6"
   cta-button-color="#000000"
   cta-button-text-color="#ffffff"
-  border-radius="medium"
-  size="compact"
-  position="top-right"
-  title="AI Voice Agent"
+  border-radius="large"
+  size="full"
+  position="bottom-right"
+  title="TALK WITH AI"
   start-button-text="Start"
   end-button-text="End Call"
-  cta-subtitle="Tap to speak.."
-  chat-first-message="Hey John, hows it going?"
+  chat-first-message="Hey, How can I help you today?"
   chat-placeholder="Type your message..."
   voice-show-transcript="true"
   consent-required="false"
@@ -28,8 +27,8 @@ export function DemoPage() {
 <script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
 
   const chatCode = `<vapi-widget
-  public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-  assistant-id="606bba60-26a5-4839-a79d-e9c82218e22b"
+  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
+  assistant-id="1d709a13-73ab-4bff-82e9-f9411ab220f6"
   mode="chat"
   theme="dark"
   base-bg-color="#000000"
