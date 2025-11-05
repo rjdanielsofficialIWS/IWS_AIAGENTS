@@ -4,7 +4,7 @@ import { Phone, MessageSquare, ArrowLeft } from 'lucide-react';
 
 export function DemoPage() {
   const voiceCode = `<vapi-widget
-  public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
   assistant-id="87ebaf38-118d-4a8e-bfbb-24ecd5216981"
   mode="voice"
   theme="dark"
@@ -19,7 +19,7 @@ export function DemoPage() {
   start-button-text="Start"
   end-button-text="End Call"
   cta-subtitle="Tap to speak.."
-  chat-first-message="Hey John, hows it going?"
+  chat-first-message="Hey, How can I help you today?"
   chat-placeholder="Type your message..."
   voice-show-transcript="true"
   consent-required="false"
