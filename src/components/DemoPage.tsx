@@ -19,7 +19,7 @@ export function DemoPage() {
   start-button-text="Start"
   end-button-text="End Call"
   cta-subtitle="Tap to speak.."
-  chat-first-message="Hey Terril, hows it going?"
+  chat-first-message="Hey, How can I help you today?"
   chat-placeholder="Type your message..."
   voice-show-transcript="true"
   consent-required="false"
