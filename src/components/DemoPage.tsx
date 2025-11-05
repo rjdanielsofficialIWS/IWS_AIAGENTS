@@ -4,7 +4,7 @@ import { Phone, MessageSquare, ArrowLeft } from 'lucide-react';
 
 export function DemoPage() {
   const voiceCode = `<vapi-widget
-  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
+  public-key="73e0a49b-0960-4670-8f3b-1bb58482954d"
   assistant-id="606bba60-26a5-4839-a79d-e9c82218e22b"
   mode="voice"
   theme="dark"
@@ -28,7 +28,7 @@ export function DemoPage() {
 <script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
 
   const chatCode = `<vapi-widget
-  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
+  public-key="73e0a49b-0960-4670-8f3b-1bb58482954d"
   assistant-id="606bba60-26a5-4839-a79d-e9c82218e22b"
   mode="chat"
   theme="dark"
