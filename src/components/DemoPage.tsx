@@ -27,7 +27,7 @@ export function DemoPage() {
 <script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
 
   const chatCode = `<vapi-widget
-  public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
   assistant-id="1d709a13-73ab-4bff-82e9-f9411ab220f6"
   mode="chat"
   theme="dark"
