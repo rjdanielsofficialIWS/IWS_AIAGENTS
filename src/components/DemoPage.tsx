@@ -28,7 +28,7 @@ export function DemoPage() {
 <script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
 
   const chatCode = `<vapi-widget
-  public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
   assistant-id="87ebaf38-118d-4a8e-bfbb-24ecd5216981"
   mode="chat"
   theme="dark"
@@ -39,11 +39,11 @@ export function DemoPage() {
   border-radius="medium"
   size="compact"
   position="top-right"
-  title="AI Chat Agent"
+  title="AI Voice Agent"
   start-button-text="Start"
   end-button-text="End Call"
   cta-subtitle="Tap to chat.."
-  chat-first-message="Hey, John hows it going?"
+  chat-first-message="Hey Terril, hows it going?"
   chat-placeholder="Type your message..."
   voice-show-transcript="true"
   consent-required="false"
