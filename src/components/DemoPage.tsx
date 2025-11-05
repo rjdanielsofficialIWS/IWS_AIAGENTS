@@ -39,7 +39,7 @@ export function DemoPage() {
   border-radius="medium"
   size="compact"
   position="top-right"
-  title="AI Voice Agent"
+  title="AI Chat Agent"
   start-button-text="Start"
   end-button-text="End Call"
   cta-subtitle="Tap to chat.."
