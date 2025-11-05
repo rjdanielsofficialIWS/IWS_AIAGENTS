@@ -5,7 +5,7 @@ import { Phone, MessageSquare, ArrowLeft } from 'lucide-react';
 export function DemoPage() {
   const voiceCode = `<vapi-widget
   public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-  assistant-id="23e99728-2994-4c85-bd55-6a426824172c"
+  assistant-id="4766e8a7-f5c1-4bc7-a032-55fddc42996d"
   mode="voice"
   theme="dark"
   base-bg-color="#000000"
