@@ -5,7 +5,7 @@ import { Phone, MessageSquare, ArrowLeft } from 'lucide-react';
 export function DemoPage() {
   const voiceCode = `<vapi-widget
   public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-  assistant-id="52fb6c35-c7ca-4902-ace8-bb30ed8bf2a8"
+  assistant-id="41d53961-c2dc-4a1f-a8b4-4afa4eca62f9"
   mode="voice"
   theme="dark"
   base-bg-color="#000000"
@@ -29,7 +29,7 @@ export function DemoPage() {
 
   const chatCode = `<vapi-widget
   public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-  assistant-id="52fb6c35-c7ca-4902-ace8-bb30ed8bf2a8"
+  assistant-id="41d53961-c2dc-4a1f-a8b4-4afa4eca62f9"
   mode="chat"
   theme="dark"
   base-bg-color="#000000"
