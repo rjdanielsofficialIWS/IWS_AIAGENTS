@@ -11,13 +11,8 @@ import { DashboardOverview } from './components/dashboard/DashboardOverview';
 import { AssistantsList } from './components/assistants/AssistantsList';
 import { AssistantBuilder } from './components/assistants/AssistantBuilder';
 import { WidgetManager } from './components/widgets/WidgetManager';
-import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { Brain, Phone, MessageSquare, User } from 'lucide-react';
 import { VapiAssistant } from './types/vapi';
-
-// ✅ Meta Pixel (no index.html needed)
-import { MetaPixel } from './components/MetaPixel';
-import { MetaPixelTracker } from './components/MetaPixelTracker';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -47,7 +42,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
         <div className="relative z-10 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md mx-4 text-center">
           <Brain className="h-16 w-16 text-yellow-400 mx-auto mb-6" />
-          <h2 className="text-3xl font-bold mb-4">Premium Membership Required</h2>
+          <h2 className="text-3xl font-bold mb-4">
+            Premium Membership Required
+          </h2>
           <p className="text-gray-300 mb-8">
             You need an active premium membership to access our premium services.
             Upgrade now to start using our advanced tools and features.
@@ -55,14 +52,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
           <div className="space-y-4">
             <button
-              onClick={() => (window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding')}
+              onClick={() => window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding'}
               className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
             >
               Book Your Onboarding Call
             </button>
 
             <button
-              onClick={() => (window.location.href = '/')}
+              onClick={() => window.location.href = '/'}
               className="w-full text-gray-400 hover:text-gray-300 transition-colors text-sm"
             >
               Back to main page
@@ -104,7 +101,11 @@ function Dashboard() {
   if (showAssistantBuilder) {
     return (
       <DashboardLayout currentPage="assistants" onPageChange={setCurrentPage}>
-        <AssistantBuilder assistantId={currentAssistant?.id} onBack={handleBackFromBuilder} onSave={handleSaveAssistant} />
+        <AssistantBuilder
+          assistantId={currentAssistant?.id}
+          onBack={handleBackFromBuilder}
+          onSave={handleSaveAssistant}
+        />
       </DashboardLayout>
     );
   }
@@ -112,9 +113,13 @@ function Dashboard() {
   return (
     <DashboardLayout currentPage={currentPage} onPageChange={setCurrentPage}>
       {currentPage === 'dashboard' && <DashboardOverview />}
-      {currentPage === 'assistants' && <AssistantsList onCreateNew={handleCreateAssistant} onEdit={handleEditAssistant} />}
+      {currentPage === 'assistants' && (
+        <AssistantsList
+          onCreateNew={handleCreateAssistant}
+          onEdit={handleEditAssistant}
+        />
+      )}
       {currentPage === 'widgets' && <WidgetManager />}
-
       {currentPage === 'phone-numbers' && (
         <div className="text-center py-12">
           <Phone className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -122,7 +127,6 @@ function Dashboard() {
           <p className="text-gray-500">Phone number management coming soon</p>
         </div>
       )}
-
       {currentPage === 'calls' && (
         <div className="text-center py-12">
           <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -130,7 +134,6 @@ function Dashboard() {
           <p className="text-gray-500">Call management coming soon</p>
         </div>
       )}
-
       {currentPage === 'webhooks' && (
         <div className="text-center py-12">
           <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -138,7 +141,6 @@ function Dashboard() {
           <p className="text-gray-500">Webhook management coming soon</p>
         </div>
       )}
-
       {currentPage === 'team' && (
         <div className="text-center py-12">
           <User className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -146,7 +148,6 @@ function Dashboard() {
           <p className="text-gray-500">Team features coming soon</p>
         </div>
       )}
-
       {currentPage === 'billing' && (
         <div className="text-center py-12">
           <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -154,7 +155,6 @@ function Dashboard() {
           <p className="text-gray-500">Billing management coming soon</p>
         </div>
       )}
-
       {currentPage === 'api-keys' && (
         <div className="text-center py-12">
           <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -162,7 +162,6 @@ function Dashboard() {
           <p className="text-gray-500">API key management coming soon</p>
         </div>
       )}
-
       {currentPage === 'settings' && (
         <div className="text-center py-12">
           <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -185,9 +184,15 @@ function AuthPage({ isSignUp }: { isSignUp: boolean }) {
       </div>
 
       {showSignUp ? (
-        <RegisterForm onSwitchToLogin={() => setShowSignUp(false)} onBack={() => (window.location.href = '/')} />
+        <RegisterForm
+          onSwitchToLogin={() => setShowSignUp(false)}
+          onBack={() => window.location.href = '/'}
+        />
       ) : (
-        <LoginForm onSwitchToRegister={() => setShowSignUp(true)} onBack={() => (window.location.href = '/')} />
+        <LoginForm
+          onSwitchToRegister={() => setShowSignUp(true)}
+          onBack={() => window.location.href = '/'}
+        />
       )}
     </div>
   );
@@ -195,30 +200,22 @@ function AuthPage({ isSignUp }: { isSignUp: boolean }) {
 
 function AppContent() {
   return (
-    <>
-      {/* ✅ Meta Pixel loads once */}
-      <MetaPixel />
-      {/* ✅ Fires PageView on every route change */}
-      <MetaPixelTracker />
-
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/demo" element={<DemoPage />} />
-        <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
-        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-        <Route path="/login" element={<AuthPage isSignUp={false} />} />
-        <Route path="/register" element={<AuthPage isSignUp={true} />} />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </>
+    <Routes>
+      <Route path="/" element={<HomePage />} />
+      <Route path="/demo" element={<DemoPage />} />
+      <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
+      <Route path="/login" element={<AuthPage isSignUp={false} />} />
+      <Route path="/register" element={<AuthPage isSignUp={true} />} />
+      <Route
+        path="/dashboard"
+        element={
+          <ProtectedRoute>
+            <Dashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }
 
