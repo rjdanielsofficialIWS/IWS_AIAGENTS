@@ -753,12 +753,21 @@ export function HomePage() {
           <p className="text-gray-400 mb-3">
             © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
           </p>
-          <Link
-            to="/demo"
-            className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-          >
-            Try AI Agent Demos
-          </Link>
+          <div className="flex items-center justify-center gap-6">
+  <Link
+    to="/demo"
+    className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
+  >
+    Try AI Agent Demos
+  </Link>
+
+  <Link
+    to="/privacy-policy"
+    className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
+  >
+    Privacy Policy
+  </Link>
+</div>
         </div>
       </footer>
     </div>
