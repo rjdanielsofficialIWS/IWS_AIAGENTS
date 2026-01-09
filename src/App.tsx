@@ -1,3 +1,5 @@
+import { MetaPixel } from './components/MetaPixel';
+import { MetaPixelTracker } from './components/MetaPixelTracker';
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
