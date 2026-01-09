@@ -11,6 +11,7 @@ import { DashboardOverview } from './components/dashboard/DashboardOverview';
 import { AssistantsList } from './components/assistants/AssistantsList';
 import { AssistantBuilder } from './components/assistants/AssistantBuilder';
 import { WidgetManager } from './components/widgets/WidgetManager';
+import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { Brain, Phone, MessageSquare, User } from 'lucide-react';
 import { VapiAssistant } from './types/vapi';
 
@@ -42,9 +43,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
         <div className="relative z-10 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md mx-4 text-center">
           <Brain className="h-16 w-16 text-yellow-400 mx-auto mb-6" />
-          <h2 className="text-3xl font-bold mb-4">
-            Premium Membership Required
-          </h2>
+          <h2 className="text-3xl font-bold mb-4">Premium Membership Required</h2>
           <p className="text-gray-300 mb-8">
             You need an active premium membership to access our premium services.
             Upgrade now to start using our advanced tools and features.
@@ -204,6 +203,7 @@ function AppContent() {
       <Route path="/" element={<HomePage />} />
       <Route path="/demo" element={<DemoPage />} />
       <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
       <Route path="/login" element={<AuthPage isSignUp={false} />} />
       <Route path="/register" element={<AuthPage isSignUp={true} />} />
       <Route
