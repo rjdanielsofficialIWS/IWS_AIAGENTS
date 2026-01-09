@@ -201,23 +201,31 @@ function AuthPage({ isSignUp }: { isSignUp: boolean }) {
 
 function AppContent() {
   return (
-    <Routes>
-      <Route path="/" element={<HomePage />} />
-      <Route path="/demo" element={<DemoPage />} />
-      <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
-      <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-      <Route path="/login" element={<AuthPage isSignUp={false} />} />
-      <Route path="/register" element={<AuthPage isSignUp={true} />} />
-      <Route
-        path="/dashboard"
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      {/* Meta Pixel base load */}
+      <MetaPixel />
+
+      {/* Tracks page views on route changes */}
+      <MetaPixelTracker />
+
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/demo" element={<DemoPage />} />
+        <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/login" element={<AuthPage isSignUp={false} />} />
+        <Route path="/register" element={<AuthPage isSignUp={true} />} />
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }
 
