@@ -252,7 +252,7 @@ export function HomePage() {
 
   const submitToWebhook = async (data: FormData): Promise<boolean> => {
     try {
-      const WEBHOOK_URL = 'https://hook.us2.make.com/1lrtc2jhahxcxf4jnhs0fcoegott5oqd';
+      const WEBHOOK_URL = 'https://hook.us2.make.com/278k1u1vit3mimed0gqe0uqlkw2d99yw';
 
       const response = await fetch(WEBHOOK_URL, {
         method: 'POST',
