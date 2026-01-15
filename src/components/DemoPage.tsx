@@ -16,10 +16,18 @@ declare global {
   }
 }
 
+interface VisitorData {
+  name: string;
+  assistant_id: string;
+  system_prompt: string;
+  first_message: string;
+}
+
 export function DemoPage() {
-  const [assistantId, setAssistantId] = useState<string>('{{YOUR_ASSISTANT_ID}}');
+  const [visitorData, setVisitorData] = useState<VisitorData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [vapiInstance, setVapiInstance] = useState<any>(null);
+  const [voiceVapi, setVoiceVapi] = useState<any>(null);
+  const [chatVapi, setChatVapi] = useState<any>(null);
 
   useEffect(() => {
     // Load Vapi SDK
@@ -28,8 +36,10 @@ export function DemoPage() {
     script.async = true;
     script.onload = () => {
       if (window.vapiSDK) {
-        const vapi = new window.vapiSDK.default(PUBLIC_KEY);
-        setVapiInstance(vapi);
+        const voiceInstance = new window.vapiSDK.default(PUBLIC_KEY);
+        const chatInstance = new window.vapiSDK.default(PUBLIC_KEY);
+        setVoiceVapi(voiceInstance);
+        setChatVapi(chatInstance);
       }
     };
     document.body.appendChild(script);
@@ -47,48 +57,73 @@ export function DemoPage() {
     try {
       const { data, error } = await supabase
         .from('visitors')
-        .select('*')
+        .select('name, assistant_id, system_prompt, first_message')
         .limit(1)
         .single();
 
       if (error) throw error;
 
-      if (data && data.assistant_id) {
-        setAssistantId(data.assistant_id);
+      if (data) {
+        setVisitorData({
+          name: data.name || 'Visitor',
+          assistant_id: data.assistant_id,
+          system_prompt: data.system_prompt,
+          first_message: data.first_message,
+        });
       }
     } catch (error) {
       console.error('Error fetching visitor data:', error);
+      setVisitorData({
+        name: 'Visitor',
+        assistant_id: '{{YOUR_ASSISTANT_ID}}',
+        system_prompt: '',
+        first_message: '',
+      });
     } finally {
       setLoading(false);
     }
   };
 
   const handleCallMe = () => {
-    if (!vapiInstance) {
+    if (!voiceVapi) {
       alert('Vapi SDK is still loading. Please try again in a moment.');
       return;
     }
 
-    if (assistantId === '{{YOUR_ASSISTANT_ID}}') {
+    if (!visitorData || visitorData.assistant_id === '{{YOUR_ASSISTANT_ID}}') {
       alert('Please configure your assistant ID in the database.');
       return;
     }
 
-    vapiInstance.start(assistantId);
+    voiceVapi.start(visitorData.assistant_id, {
+      messageConversationHistory: [
+        {
+          role: 'assistant',
+          message: visitorData.first_message,
+        },
+      ],
+    });
   };
 
-  const handleTestInBrowser = () => {
-    if (!vapiInstance) {
+  const handleTextMe = () => {
+    if (!chatVapi) {
       alert('Vapi SDK is still loading. Please try again in a moment.');
       return;
     }
 
-    if (assistantId === '{{YOUR_ASSISTANT_ID}}') {
+    if (!visitorData || visitorData.assistant_id === '{{YOUR_ASSISTANT_ID}}') {
       alert('Please configure your assistant ID in the database.');
       return;
     }
 
-    vapiInstance.start(assistantId);
+    chatVapi.start(visitorData.assistant_id, {
+      messageConversationHistory: [
+        {
+          role: 'assistant',
+          message: visitorData.first_message,
+        },
+      ],
+    });
   };
 
   if (loading) {
@@ -106,7 +141,7 @@ export function DemoPage() {
           {/* Hero Section */}
           <div className="space-y-6">
             <h1 className="text-5xl md:text-6xl font-bold text-white">
-              Hey Visitor,
+              Hey {visitorData?.name || 'Visitor'},
             </h1>
 
             <h2 className="text-3xl md:text-4xl font-semibold text-gray-300">
@@ -134,10 +169,10 @@ export function DemoPage() {
               </button>
 
               <button
-                onClick={handleTestInBrowser}
+                onClick={handleTextMe}
                 className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 px-12 rounded-lg transition-all duration-300 transform hover:scale-105 text-lg border border-gray-600"
               >
-                Test in Browser
+                Text Me
               </button>
             </div>
           </div>
