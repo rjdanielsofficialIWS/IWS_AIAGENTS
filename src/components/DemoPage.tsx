@@ -1,219 +1,148 @@
-import React, { useRef, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Phone, MessageSquare, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../services/vapiAI';
+
+// Update these variables:
+// <public_key> = {{YOUR_VAPI_PUBLIC_KEY}}
+// <assistant_ID> = {{YOUR_ASSISTANT_ID}}
+//
+// Note: Update only the specified variables in the provided webpage code,
+// ensuring that no other parts of the code, including structure, content, or functionality, are modified.
+
+const PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
+
+declare global {
+  interface Window {
+    vapiSDK?: any;
+  }
+}
 
 export function DemoPage() {
-  const voiceCode = `<vapi-widget
-  public-key="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-  assistant-id="91943856-9764-44e1-9ffa-412c28e2b256"
-  mode="voice"
-  theme="dark"
-  base-bg-color="#000000"
-  accent-color="#1da9e9"
-  cta-button-color="#000000"
-  cta-button-text-color="#ffffff"
-  border-radius="medium"
-  size="compact"
-  position="top-right"
-  title="AI Voice Agent"
-  start-button-text="Start"
-  end-button-text="End Call"
-  cta-subtitle="Tap to speak.."
-  chat-first-message="Hey John, hows it going?"
-  chat-placeholder="Type your message..."
-  voice-show-transcript="true"
-  consent-required="false"
-></vapi-widget>
-
-<script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
-
-  const chatCode = `<vapi-widget
-  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
-  assistant-id="fc1cbf90-77b3-40a6-96e2-8cce1f47206c"
-  mode="chat"
-  theme="dark"
-  base-bg-color="#000000"
-  accent-color="#1da9e9"
-  cta-button-color="#000000"
-  cta-button-text-color="#ffffff"
-  border-radius="medium"
-  size="compact"
-  position="top-right"
-  title="AI Chat Agent"
-  start-button-text="Start"
-  end-button-text="End Call"
-  cta-subtitle="Tap to chat.."
-  chat-first-message="Hey, John hows it going?"
-  chat-placeholder="Type your message..."
-  voice-show-transcript="true"
-  consent-required="false"
-></vapi-widget>
-
-<script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
-
-  const voiceRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<HTMLDivElement>(null);
+  const [assistantId, setAssistantId] = useState<string>('{{YOUR_ASSISTANT_ID}}');
+  const [loading, setLoading] = useState(true);
+  const [vapiInstance, setVapiInstance] = useState<any>(null);
 
   useEffect(() => {
-    if (voiceCode && voiceRef.current) {
-      renderWidget(voiceCode, voiceRef);
-    }
-  }, [voiceCode]);
-
-  useEffect(() => {
-    if (chatCode && chatRef.current) {
-      renderWidget(chatCode, chatRef);
-    }
-  }, [chatCode]);
-
-  const renderWidget = (code: string, containerRef: React.RefObject<HTMLDivElement>) => {
-    if (!containerRef.current || !code.trim()) return;
-
-    containerRef.current.innerHTML = code;
-
-    const scripts = containerRef.current.querySelectorAll('script');
-    scripts.forEach((oldScript) => {
-      const newScript = document.createElement('script');
-      Array.from(oldScript.attributes).forEach((attr) => {
-        newScript.setAttribute(attr.name, attr.value);
-      });
-      if (oldScript.textContent) {
-        newScript.textContent = oldScript.textContent;
+    // Load Vapi SDK
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@vapi-ai/web@2.3.11/dist/index.umd.min.js';
+    script.async = true;
+    script.onload = () => {
+      if (window.vapiSDK) {
+        const vapi = new window.vapiSDK.default(PUBLIC_KEY);
+        setVapiInstance(vapi);
       }
-      oldScript.parentNode?.replaceChild(newScript, oldScript);
-    });
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      document.body.removeChild(script);
+    };
+  }, []);
+
+  useEffect(() => {
+    fetchVisitorData();
+  }, []);
+
+  const fetchVisitorData = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('visitors')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (error) throw error;
+
+      if (data && data.assistant_id) {
+        setAssistantId(data.assistant_id);
+      }
+    } catch (error) {
+      console.error('Error fetching visitor data:', error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
-        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
+  const handleCallMe = () => {
+    if (!vapiInstance) {
+      alert('Vapi SDK is still loading. Please try again in a moment.');
+      return;
+    }
+
+    if (assistantId === '{{YOUR_ASSISTANT_ID}}') {
+      alert('Please configure your assistant ID in the database.');
+      return;
+    }
+
+    vapiInstance.start(assistantId);
+  };
+
+  const handleTestInBrowser = () => {
+    if (!vapiInstance) {
+      alert('Vapi SDK is still loading. Please try again in a moment.');
+      return;
+    }
+
+    if (assistantId === '{{YOUR_ASSISTANT_ID}}') {
+      alert('Please configure your assistant ID in the database.');
+      return;
+    }
+
+    vapiInstance.start(assistantId);
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
       </div>
+    );
+  }
 
-      <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between">
-            <Link
-              to="/"
-              className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              <span>Back to Home</span>
-            </Link>
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-              Experience Our AI Agents
+  return (
+    <div className="min-h-screen bg-black text-white">
+      <div className="max-w-4xl mx-auto px-6 py-20">
+        <div className="text-center space-y-12">
+          {/* Hero Section */}
+          <div className="space-y-6">
+            <h1 className="text-5xl md:text-6xl font-bold text-white">
+              Hey Visitor,
             </h1>
-            <div className="w-24"></div>
-          </div>
-        </div>
-      </header>
 
-      <section className="relative z-10 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              Try Our <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">AI Agents Live</span>
+            <h2 className="text-3xl md:text-4xl font-semibold text-gray-300">
+              I built a tool that answers your customer calls for you.
             </h2>
-            <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              Interact with our AI agents and see them in action instantly. No login required.
+
+            <p className="text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
+              It's an AI voice assistant that talks to your customers on the phone,
+              answers their questions, and helps them get what they need — automatically.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12">
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
-              <div className="flex items-center space-x-4 mb-6">
-                <div className="bg-yellow-400/10 w-16 h-16 rounded-xl flex items-center justify-center">
-                  <Phone className="h-8 w-8 text-yellow-400" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold">Voice Agent</h3>
-                  <p className="text-gray-400">AI phone assistant</p>
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <p className="text-gray-300 mb-4">
-                  Experience natural, human-like conversations with our AI voice agent.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-400">
-                  <li className="flex items-center space-x-2">
-                    <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></div>
-                    <span>Natural voice interactions</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></div>
-                    <span>Instant responses</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <div className="w-1.5 h-1.5 bg-yellow-400 rounded-full"></div>
-                    <span>24/7 availability</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div ref={voiceRef} className="min-h-[200px]"></div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
-              <div className="flex items-center space-x-4 mb-6">
-                <div className="bg-blue-400/10 w-16 h-16 rounded-xl flex items-center justify-center">
-                  <MessageSquare className="h-8 w-8 text-blue-400" />
-                </div>
-                <div>
-                  <h3 className="text-2xl font-bold">Chat Agent</h3>
-                  <p className="text-gray-400">AI chat assistant</p>
-                </div>
-              </div>
-
-              <div className="mb-6">
-                <p className="text-gray-300 mb-4">
-                  Interact with our intelligent chat agent for instant support.
-                </p>
-                <ul className="space-y-2 text-sm text-gray-400">
-                  <li className="flex items-center space-x-2">
-                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
-                    <span>Context-aware conversations</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
-                    <span>Multi-language support</span>
-                  </li>
-                  <li className="flex items-center space-x-2">
-                    <div className="w-1.5 h-1.5 bg-blue-400 rounded-full"></div>
-                    <span>Seamless integration</span>
-                  </li>
-                </ul>
-              </div>
-
-              <div ref={chatRef} className="min-h-[200px]"></div>
-            </div>
-          </div>
-
-
-          <div className="text-center mt-12">
-            <p className="text-lg text-gray-300 mb-6">
-              Impressed with what you've seen? Let's build a custom solution for your business.
+          {/* CTA Section */}
+          <div className="space-y-8 pt-12">
+            <p className="text-2xl text-gray-300 font-medium">
+              Choose how you'd like to try it:
             </p>
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center space-x-3 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
-            >
-              <span>Schedule a Consultation</span>
-            </a>
+
+            <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
+              <button
+                onClick={handleCallMe}
+                className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-4 px-12 rounded-lg transition-all duration-300 transform hover:scale-105 text-lg shadow-lg shadow-yellow-500/20"
+              >
+                Call Me
+              </button>
+
+              <button
+                onClick={handleTestInBrowser}
+                className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 px-12 rounded-lg transition-all duration-300 transform hover:scale-105 text-lg border border-gray-600"
+              >
+                Test in Browser
+              </button>
+            </div>
           </div>
         </div>
-      </section>
-
-      <footer className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-t border-gray-800 mt-12">
-        <div className="max-w-7xl mx-auto text-center">
-          <p className="text-gray-400 text-sm">
-            © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
-          </p>
-        </div>
-      </footer>
+      </div>
     </div>
   );
 }
