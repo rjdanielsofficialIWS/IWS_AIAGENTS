@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { supabase } from '../services/vapiAI';
 
 // Update these variables:
@@ -10,9 +11,25 @@ import { supabase } from '../services/vapiAI';
 
 const PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 
+const normalizeRouteName = (raw: string) => {
+  const decoded = decodeURIComponent(raw);
+  // Common patterns people type:
+  //  - /John-Doe  -> "John Doe"
+  //  - /john_doe  -> "john doe"
+  //  - /John%20Doe -> "John Doe"
+  return decoded.replace(/[-_]+/g, ' ').trim();
+};
+
 declare global {
   interface Window {
     vapiSDK?: any;
+  }
+
+  // TSX support for custom element
+  namespace JSX {
+    interface IntrinsicElements {
+      'vapi-widget': any;
+    }
   }
 }
 
@@ -24,22 +41,26 @@ interface VisitorData {
 }
 
 export function DemoPage() {
+  const params = useParams();
+  const routeName = useMemo(() => {
+    const raw = params?.name;
+    return raw ? normalizeRouteName(raw) : null;
+  }, [params]);
+
   const [visitorData, setVisitorData] = useState<VisitorData | null>(null);
   const [loading, setLoading] = useState(true);
   const [voiceVapi, setVoiceVapi] = useState<any>(null);
-  const [chatVapi, setChatVapi] = useState<any>(null);
+  const [chatWidgetReady, setChatWidgetReady] = useState(false);
 
   useEffect(() => {
-    // Load Vapi SDK
+    // Load Vapi SDK (for web voice calls)
     const script = document.createElement('script');
     script.src = 'https://cdn.jsdelivr.net/npm/@vapi-ai/web@2.3.11/dist/index.umd.min.js';
     script.async = true;
     script.onload = () => {
       if (window.vapiSDK) {
         const voiceInstance = new window.vapiSDK.default(PUBLIC_KEY);
-        const chatInstance = new window.vapiSDK.default(PUBLIC_KEY);
         setVoiceVapi(voiceInstance);
-        setChatVapi(chatInstance);
       }
     };
     document.body.appendChild(script);
@@ -51,24 +72,33 @@ export function DemoPage() {
 
   useEffect(() => {
     fetchVisitorData();
-  }, []);
+  }, [routeName]);
 
   const fetchVisitorData = async () => {
     try {
-      const { data, error } = await supabase
+      const query = supabase
         .from('visitors')
-        .select('name, assistant_id, system_prompt, first_message')
-        .limit(1)
-        .single();
+        .select('name, assistant_id, system_prompt, first_message');
+
+      // If visiting /:name, load the matching record.
+      // Otherwise, fall back to the first record (your default demo visitor).
+      const { data, error } = routeName
+        ? await query.ilike('name', routeName).limit(1).maybeSingle()
+        : await query.limit(1).single();
 
       if (error) throw error;
 
-      if (data) {
+      // If /:name doesn't exist, fall back to the first record.
+      const resolved = data
+        ? data
+        : (await query.limit(1).single()).data;
+
+      if (resolved) {
         setVisitorData({
-          name: data.name || 'Visitor',
-          assistant_id: data.assistant_id,
-          system_prompt: data.system_prompt,
-          first_message: data.first_message,
+          name: resolved.name || 'Visitor',
+          assistant_id: resolved.assistant_id,
+          system_prompt: resolved.system_prompt,
+          first_message: resolved.first_message,
         });
       }
     } catch (error) {
@@ -84,6 +114,27 @@ export function DemoPage() {
     }
   };
 
+  useEffect(() => {
+    // Load the Web Widget (chat UI)
+    const id = 'vapi-widget-script';
+    if (document.getElementById(id)) {
+      setChatWidgetReady(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = id;
+    script.src = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
+    script.async = true;
+    script.onload = () => setChatWidgetReady(true);
+    script.onerror = () => setChatWidgetReady(false);
+    document.body.appendChild(script);
+
+    return () => {
+      // Keep the widget script around so navigation between /:name routes doesn't reload it.
+    };
+  }, []);
+
   const handleCallMe = () => {
     if (!voiceVapi) {
       alert('Vapi SDK is still loading. Please try again in a moment.');
@@ -95,35 +146,48 @@ export function DemoPage() {
       return;
     }
 
-    voiceVapi.start(visitorData.assistant_id, {
-      messageConversationHistory: [
-        {
-          role: 'assistant',
-          message: visitorData.first_message,
-        },
-      ],
-    });
+    const assistantOverrides: Record<string, any> = {
+      firstMessage: visitorData.first_message || undefined,
+      model: visitorData.system_prompt
+        ? {
+            messages: [{ role: 'system', content: visitorData.system_prompt }],
+          }
+        : undefined,
+      // Handy for agents that use variables inside prompts / firstMessage.
+      variableValues: {
+        name: visitorData.name || 'Visitor',
+      },
+    };
+
+    voiceVapi.start(visitorData.assistant_id, assistantOverrides);
   };
 
   const handleTextMe = () => {
-    if (!chatVapi) {
-      alert('Vapi SDK is still loading. Please try again in a moment.');
-      return;
-    }
-
     if (!visitorData || visitorData.assistant_id === '{{YOUR_ASSISTANT_ID}}') {
       alert('Please configure your assistant ID in the database.');
       return;
     }
 
-    chatVapi.start(visitorData.assistant_id, {
-      messageConversationHistory: [
-        {
-          role: 'assistant',
-          message: visitorData.first_message,
-        },
-      ],
-    });
+    if (!chatWidgetReady) {
+      alert('Chat widget is still loading. Please try again in a moment.');
+      return;
+    }
+
+    // Try to programmatically open the widget.
+    // This is intentionally defensive because the widget renders inside a shadow DOM.
+    const widget = document.querySelector('vapi-widget') as any;
+    if (!widget) {
+      alert('Chat widget failed to initialize.');
+      return;
+    }
+
+    try {
+      // Most versions expose a clickable launcher button in shadow DOM.
+      const launcher = widget.shadowRoot?.querySelector('button');
+      launcher?.click();
+    } catch {
+      // If we can't open it programmatically, the user can still click the floating widget.
+    }
   };
 
   if (loading) {
@@ -136,6 +200,24 @@ export function DemoPage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
+      {/* Vapi Web Widget (Chat). Renders as a floating button; we open it via "Text Me". */}
+      <vapi-widget
+        public-key={PUBLIC_KEY}
+        assistant-id={visitorData?.assistant_id || ''}
+        mode="chat"
+        theme="dark"
+        size="full"
+        assistant-overrides={JSON.stringify({
+          variableValues: {
+            name: visitorData?.name || 'Visitor',
+            // Use these as {{system}} and {{firstMessage}} variables inside your Vapi assistant
+            // so the widget can be fully driven by the Supabase record.
+            system: visitorData?.system_prompt || '',
+            firstMessage: visitorData?.first_message || '',
+          },
+        })}
+      ></vapi-widget>
+
       <div className="max-w-4xl mx-auto px-6 py-20">
         <div className="text-center space-y-12">
           {/* Hero Section */}
