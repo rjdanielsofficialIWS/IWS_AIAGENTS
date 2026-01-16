@@ -205,10 +205,7 @@ function AuthPage({ isSignUp }: { isSignUp: boolean }) {
 function AppContent() {
   return (
     <>
-      {/* Meta Pixel base load */}
       <MetaPixel />
-
-      {/* Tracks page views on route changes */}
       <MetaPixelTracker />
 
       <Routes>
