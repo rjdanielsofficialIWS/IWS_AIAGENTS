@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { supabase } from "../services/vapiAI";
 
 const PUBLIC_KEY = "ebb2120b-ac56-4ce9-b1d5-17966931c665";
 
@@ -15,14 +14,6 @@ declare global {
   }
 }
 
-type VisitorRow = {
-  id: string;
-  name: string | null;
-  assistant_id: string | null;
-  system_prompt: string | null;
-  first_message: string | null;
-};
-
 const normalizeRouteName = (raw: string) => {
   const decoded = decodeURIComponent(raw);
   return decoded.replace(/[-_]+/g, " ").trim();
@@ -30,17 +21,16 @@ const normalizeRouteName = (raw: string) => {
 
 export function DemoPage() {
   const params = useParams();
-  const routeName = useMemo(() => {
+
+  const visitorName = useMemo(() => {
     const raw = params?.name;
-    return raw ? normalizeRouteName(raw) : null;
+    if (!raw) return "Visitor";
+    const n = normalizeRouteName(raw);
+    return n || "Visitor";
   }, [params]);
 
-  const [row, setRow] = useState<VisitorRow | null>(null);
-  const [loading, setLoading] = useState(true);
   const [voiceVapi, setVoiceVapi] = useState<any>(null);
-  const [chatWidgetReady, setChatWidgetReady] = useState(false);
 
-  // Load Vapi Web SDK for voice calls
   useEffect(() => {
     const script = document.createElement("script");
     script.src =
@@ -59,163 +49,37 @@ export function DemoPage() {
     };
   }, []);
 
-  // Load Vapi chat widget script once
-  useEffect(() => {
-    const id = "vapi-widget-script";
-    if (document.getElementById(id)) {
-      setChatWidgetReady(true);
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.id = id;
-    script.src =
-      "https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js";
-    script.async = true;
-    script.onload = () => setChatWidgetReady(true);
-    script.onerror = () => setChatWidgetReady(false);
-    document.body.appendChild(script);
-  }, []);
-
-  // Fetch the visitor record based on /:name
-  useEffect(() => {
-    const run = async () => {
-      setLoading(true);
-
-      try {
-        // 1) If we have /:name, try exact-ish match first (case-insensitive)
-        if (routeName) {
-          const { data, error } = await supabase
-            .from("visitors")
-            .select("id, name, assistant_id, system_prompt, first_message")
-            .ilike("name", routeName)
-            .limit(1)
-            .maybeSingle();
-
-          if (error) throw error;
-
-          if (data) {
-            setRow(data as VisitorRow);
-            setLoading(false);
-            return;
-          }
-        }
-
-        // 2) Fallback to your "Default Visitor" row if present
-        const { data: defaultData, error: defaultError } = await supabase
-          .from("visitors")
-          .select("id, name, assistant_id, system_prompt, first_message")
-          .ilike("name", "Default Visitor")
-          .limit(1)
-          .maybeSingle();
-
-        if (defaultError) throw defaultError;
-
-        if (defaultData) {
-          setRow(defaultData as VisitorRow);
-          setLoading(false);
-          return;
-        }
-
-        // 3) Final fallback: first record
-        const { data: firstData, error: firstError } = await supabase
-          .from("visitors")
-          .select("id, name, assistant_id, system_prompt, first_message")
-          .order("created_at", { ascending: true })
-          .limit(1)
-          .maybeSingle();
-
-        if (firstError) throw firstError;
-
-        setRow((firstData as VisitorRow) ?? null);
-      } catch (e) {
-        console.error("Supabase read failed (likely RLS):", e);
-        setRow(null);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    run();
-  }, [routeName]);
-
-  const name = row?.name?.trim() || "Visitor";
-  const assistantId = row?.assistant_id?.trim() || "";
-  const systemPrompt = row?.system_prompt || "";
-  const firstMessage = row?.first_message || "";
-
   const handleCallMe = () => {
-    if (!voiceVapi) {
-      alert("Voice is still loading. Try again in a second.");
-      return;
-    }
-    if (!assistantId) {
-      alert("No assistant_id found for this visitor record.");
-      return;
-    }
-
-    // Start Vapi voice call using the assistant + overrides
-    voiceVapi.start(assistantId, {
-      firstMessage: firstMessage || undefined,
-      model: systemPrompt
-        ? { messages: [{ role: "system", content: systemPrompt }] }
-        : undefined,
-      variableValues: {
-        name,
-        system: systemPrompt,
-        firstMessage,
-      },
-    });
+    alert(
+      `Call button works. Now we just need to decide which assistant ID should be used for "${visitorName}".`
+    );
   };
 
   const handleTextMe = () => {
-    if (!assistantId) {
-      alert("No assistant_id found for this visitor record.");
-      return;
-    }
-    if (!chatWidgetReady) {
-      alert("Chat widget is still loading. Try again in a second.");
-      return;
-    }
-
-    // Attempt to open widget programmatically (best effort)
+    // Opens the widget if possible (best effort)
     const widget = document.querySelector("vapi-widget") as any;
     if (!widget) {
       alert("Chat widget failed to initialize.");
       return;
     }
-
     try {
       const launcher = widget.shadowRoot?.querySelector("button");
       launcher?.click();
     } catch {
-      // User can click the floating widget manually if this fails
+      // user can click the floating widget manually
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Vapi chat widget */}
       <vapi-widget
         public-key={PUBLIC_KEY}
-        assistant-id={assistantId}
+        assistant-id=""   // <-- We can plug in a real assistant id later
         mode="chat"
         theme="dark"
         size="full"
         assistant-overrides={JSON.stringify({
-          variableValues: {
-            name,
-            system: systemPrompt,
-            firstMessage,
-          },
+          variableValues: { name: visitorName },
         })}
       ></vapi-widget>
 
@@ -223,7 +87,7 @@ export function DemoPage() {
         <div className="text-center space-y-12">
           <div className="space-y-6">
             <h1 className="text-5xl md:text-6xl font-bold text-white">
-              Hey {name},
+              Hey {visitorName},
             </h1>
 
             <h2 className="text-3xl md:text-4xl font-semibold text-gray-300">
@@ -257,15 +121,11 @@ export function DemoPage() {
                 Text Me
               </button>
             </div>
-          </div>
 
-          {/* Helpful debug line (remove later if you want) */}
-          {!assistantId && (
-            <p className="text-sm text-red-400">
-              No assistant_id loaded. This usually means your Supabase SELECT is
-              blocked by RLS or the row is missing assistant_id.
+            <p className="text-sm text-gray-500">
+              Current URL visitor: <span className="text-gray-300">{visitorName}</span>
             </p>
-          )}
+          </div>
         </div>
       </div>
     </div>
