@@ -22,12 +22,8 @@ export function DynamicDemoPage() {
 
   const widgetRef = useRef<HTMLDivElement>(null);
 
-  // Normalize slug from URL (fixes casing + whitespace issues)
-  const targetSlug = useMemo(() => {
-    return (slug || 'demo').trim().toLowerCase();
-  }, [slug]);
+  const targetSlug = useMemo(() => (slug || 'demo').trim().toLowerCase(), [slug]);
 
-  // Block reserved routes so nobody can accidentally create demo pages that conflict with real pages
   const reservedSlugs = useMemo(
     () =>
       new Set([
@@ -46,10 +42,7 @@ export function DynamicDemoPage() {
     const SCRIPT_ID = 'vapi-widget-script';
 
     return new Promise<void>((resolve, reject) => {
-      if (document.getElementById(SCRIPT_ID)) {
-        resolve();
-        return;
-      }
+      if (document.getElementById(SCRIPT_ID)) return resolve();
 
       const script = document.createElement('script');
       script.id = SCRIPT_ID;
@@ -67,7 +60,6 @@ export function DynamicDemoPage() {
   const renderWidget = async (page: DemoPage) => {
     if (!widgetRef.current) return;
 
-    // Prevent duplicate widgets on updates
     widgetRef.current.innerHTML = '';
 
     try {
@@ -112,8 +104,7 @@ export function DynamicDemoPage() {
         return;
       }
 
-      // ✅ IMPORTANT FIX:
-      // Use ilike() so "John" in DB will match "/john" in URL (case-insensitive)
+      // Case-insensitive exact match (works for "John" vs "/john")
       const { data, error: fetchError } = await supabase
         .from('demo_pages')
         .select('*')
@@ -146,35 +137,33 @@ export function DynamicDemoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetSlug]);
 
-  // Render widget when demoPage changes
+  // Render widget on change
   useEffect(() => {
     if (!demoPage) return;
     void renderWidget(demoPage);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [demoPage?.assistant_id, demoPage?.first_message, demoPage?.system_prompt]);
 
-  // ✅ REALTIME FIX:
-  // We subscribe to demo_pages changes WITHOUT slug filter,
-  // then match by lowercasing payload slug. This works even if DB slug is "John".
+  // ✅ Only start Realtime AFTER we successfully loaded a page.
+  // ✅ Subscribe ONLY to the specific slug (no table-wide spam).
   useEffect(() => {
+    if (!demoPage) return; // prevents websocket spam if fetch failed
     if (reservedSlugs.has(targetSlug)) return;
 
     const channel = supabase
-      .channel(`demo_pages:watch:${targetSlug}`)
+      .channel(`demo_pages:${demoPage.slug}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'demo_pages' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'demo_pages',
+          filter: `slug=eq.${demoPage.slug}`,
+        },
         (payload) => {
           const newRow = (payload.new ?? null) as DemoPage | null;
 
-          // If row is gone / deleted etc
-          if (!newRow) return;
-
-          const incomingSlug = (newRow.slug || '').trim().toLowerCase();
-          if (incomingSlug !== targetSlug) return;
-
-          // If it becomes inactive, show not found
-          if (newRow.is_active !== true) {
+          if (!newRow || newRow.is_active !== true) {
             setDemoPage(null);
             setError(`Demo page "${targetSlug}" not found`);
             return;
@@ -189,7 +178,7 @@ export function DynamicDemoPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [targetSlug, reservedSlugs]);
+  }, [demoPage, targetSlug, reservedSlugs]);
 
   if (loading) {
     return (
@@ -205,22 +194,15 @@ export function DynamicDemoPage() {
   if (error || !demoPage) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
-          <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
-        </div>
-
         <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
           <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between">
-              <Link
-                to="/"
-                className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5" />
-                <span>Back to Home</span>
-              </Link>
-            </div>
+            <Link
+              to="/"
+              className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5" />
+              <span>Back to Home</span>
+            </Link>
           </div>
         </header>
 
@@ -248,45 +230,24 @@ export function DynamicDemoPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
-        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
-      </div>
-
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between">
-            <Link
-              to="/"
-              className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              <span>Back to Home</span>
-            </Link>
-
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-              Experience Our AI Agent
-            </h1>
-
-            <div className="w-24" />
-          </div>
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <Link
+            to="/"
+            className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors"
+          >
+            <ArrowLeft className="h-5 w-5" />
+            <span>Back to Home</span>
+          </Link>
+          <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
+            Experience Our AI Agent
+          </h1>
+          <div className="w-24" />
         </div>
       </header>
 
       <section className="relative z-10 py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              Try Our{' '}
-              <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-                AI Agent Live
-              </span>
-            </h2>
-            <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              This page updates live when you edit the matching record in Supabase.
-            </p>
-          </div>
-
           <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
             {demoPage.system_prompt && (
               <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
@@ -297,30 +258,8 @@ export function DynamicDemoPage() {
 
             <div ref={widgetRef} className="min-h-[200px]" />
           </div>
-
-          <div className="text-center mt-12">
-            <p className="text-lg text-gray-300 mb-6">
-              Impressed with what you've seen? Let's build a custom solution for your business.
-            </p>
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center space-x-3 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
-            >
-              <span>Schedule a Consultation</span>
-            </a>
-          </div>
         </div>
       </section>
-
-      <footer className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-t border-gray-800 mt-12">
-        <div className="max-w-7xl mx-auto text-center">
-          <p className="text-gray-400 text-sm">
-            © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
-          </p>
-        </div>
-      </footer>
     </div>
   );
 }
