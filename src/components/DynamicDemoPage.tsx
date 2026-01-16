@@ -13,95 +13,11 @@ interface DemoPage {
   updated_at: string;
 }
 
-// Your Vapi Public Key
+// Use the same script URL your ZIP already uses in DemoPage.tsx
+const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
+
+// Your Vapi public key (keep your real one here)
 const VAPI_PUBLIC_KEY = '4481e2b6-4294-4cac-8a20-54d51f2e24dc';
-
-// ✅ Correct Vapi WEB widget script (this registers <vapi-widget/>)
-const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/web/dist/widget.js';
-
-function ensureVapiWidgetScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // Already registered
-    if (customElements.get('vapi-widget')) {
-      resolve();
-      return;
-    }
-
-    // Already injected
-    const existing = document.querySelector<HTMLScriptElement>(
-      `script[src="${VAPI_WIDGET_SRC}"]`
-    );
-    if (existing) {
-      // If it hasn't loaded yet, wait for load
-      if ((existing as any)._vapiLoaded) {
-        resolve();
-      } else {
-        existing.addEventListener('load', () => resolve(), { once: true });
-        existing.addEventListener('error', () => reject(new Error('Failed to load Vapi widget script')), {
-          once: true,
-        });
-      }
-      return;
-    }
-
-    // Inject script
-    const script = document.createElement('script');
-    script.src = VAPI_WIDGET_SRC;
-    script.async = true;
-
-    script.onload = () => {
-      (script as any)._vapiLoaded = true;
-
-      // Give the browser a tick to register the custom element
-      requestAnimationFrame(() => {
-        if (customElements.get('vapi-widget')) resolve();
-        else reject(new Error('Vapi widget script loaded but <vapi-widget> was not registered.'));
-      });
-    };
-
-    script.onerror = () => reject(new Error('Failed to load Vapi widget script'));
-    document.body.appendChild(script);
-  });
-}
-
-function createVapiWidgetEl(opts: {
-  mode: 'voice' | 'chat';
-  publicKey: string;
-  assistantId: string;
-  firstMessage?: string;
-}) {
-  const el = document.createElement('vapi-widget');
-
-  el.setAttribute('public-key', opts.publicKey);
-  el.setAttribute('assistant-id', opts.assistantId);
-  el.setAttribute('mode', opts.mode);
-
-  // Theme / styling
-  el.setAttribute('theme', 'dark');
-  el.setAttribute('base-bg-color', '#000000');
-  el.setAttribute('accent-color', '#007510');
-  el.setAttribute('cta-button-color', '#c7a317');
-  el.setAttribute('cta-button-text-color', '#000000');
-  el.setAttribute('border-radius', 'large');
-  el.setAttribute('size', 'compact');
-
-  // Try to prevent floating positioning
-  el.setAttribute('position', 'inline');
-
-  // Copy from DB
-  if (opts.firstMessage) el.setAttribute('chat-first-message', opts.firstMessage);
-
-  // Labels
-  el.setAttribute('title', opts.mode === 'voice' ? 'Voice Demo' : 'Chat Demo');
-  el.setAttribute('start-button-text', 'Start');
-  el.setAttribute('end-button-text', 'End');
-  el.setAttribute('cta-subtitle', opts.mode === 'voice' ? 'Tap to speak' : 'Tap to chat');
-  el.setAttribute('chat-placeholder', 'Type your message...');
-  el.setAttribute('voice-show-transcript', 'true');
-  el.setAttribute('consent-required', 'false');
-
-  return el;
-}
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -111,36 +27,27 @@ export function DynamicDemoPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [widgetReady, setWidgetReady] = useState(false);
-  const [widgetError, setWidgetError] = useState<string | null>(null);
+  const voiceRef = useRef<HTMLDivElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
 
-  const voiceMountRef = useRef<HTMLDivElement>(null);
-  const chatMountRef = useRef<HTMLDivElement>(null);
+  const renderWidget = (code: string, containerRef: React.RefObject<HTMLDivElement>) => {
+    if (!containerRef.current || !code.trim()) return;
 
-  // Load Vapi script (once)
-  useEffect(() => {
-    let cancelled = false;
+    containerRef.current.innerHTML = code;
 
-    (async () => {
-      try {
-        await ensureVapiWidgetScript();
-        if (!cancelled) {
-          setWidgetReady(true);
-          setWidgetError(null);
-        }
-      } catch (e: any) {
-        console.error(e);
-        if (!cancelled) {
-          setWidgetReady(false);
-          setWidgetError(e?.message || 'Vapi widgets failed to initialize.');
-        }
+    // IMPORTANT: force script tags to execute (same method as DemoPage.tsx)
+    const scripts = containerRef.current.querySelectorAll('script');
+    scripts.forEach((oldScript) => {
+      const newScript = document.createElement('script');
+      Array.from(oldScript.attributes).forEach((attr) => {
+        newScript.setAttribute(attr.name, attr.value);
+      });
+      if (oldScript.textContent) {
+        newScript.textContent = oldScript.textContent;
       }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+      oldScript.parentNode?.replaceChild(newScript, oldScript);
+    });
+  };
 
   // Fetch record for slug
   useEffect(() => {
@@ -224,37 +131,66 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Render Voice + Chat widgets centered whenever demoPage changes AND widgets are ready
+  // Build TWO centered widgets: voice + chat (both using record fields)
   useEffect(() => {
-    if (!widgetReady) return;
     if (!demoPage) return;
-    if (!voiceMountRef.current || !chatMountRef.current) return;
 
-    // Clear mounts to prevent duplicates on updates
-    voiceMountRef.current.innerHTML = '';
-    chatMountRef.current.innerHTML = '';
+    const assistantId = demoPage.assistant_id;
+    const firstMessage = (demoPage.first_message || '').replace(/"/g, '&quot;');
 
-    const firstMessage = (demoPage.first_message || '').toString();
+    const voiceCode = `<div class="w-full flex justify-center">
+  <vapi-widget
+    public-key="${VAPI_PUBLIC_KEY}"
+    assistant-id="${assistantId}"
+    mode="voice"
+    theme="dark"
+    base-bg-color="#000000"
+    accent-color="#007510"
+    cta-button-color="#c7a317"
+    cta-button-text-color="#000000"
+    border-radius="large"
+    size="compact"
+    title="AI Voice Agent"
+    start-button-text="Start"
+    end-button-text="End Call"
+    cta-subtitle="Tap to speak.."
+    chat-first-message="${firstMessage}"
+    chat-placeholder="Type your message..."
+    voice-show-transcript="true"
+    consent-required="false"
+  ></vapi-widget>
+</div>
 
-    // Voice widget
-    const voiceEl = createVapiWidgetEl({
-      mode: 'voice',
-      publicKey: VAPI_PUBLIC_KEY,
-      assistantId: demoPage.assistant_id,
-      firstMessage,
-    });
+<script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>`;
 
-    // Chat widget
-    const chatEl = createVapiWidgetEl({
-      mode: 'chat',
-      publicKey: VAPI_PUBLIC_KEY,
-      assistantId: demoPage.assistant_id,
-      firstMessage,
-    });
+    const chatCode = `<div class="w-full flex justify-center">
+  <vapi-widget
+    public-key="${VAPI_PUBLIC_KEY}"
+    assistant-id="${assistantId}"
+    mode="chat"
+    theme="dark"
+    base-bg-color="#000000"
+    accent-color="#007510"
+    cta-button-color="#c7a317"
+    cta-button-text-color="#000000"
+    border-radius="large"
+    size="compact"
+    title="AI Chat Agent"
+    start-button-text="Start"
+    end-button-text="End"
+    cta-subtitle="Tap to chat.."
+    chat-first-message="${firstMessage}"
+    chat-placeholder="Type your message..."
+    voice-show-transcript="true"
+    consent-required="false"
+  ></vapi-widget>
+</div>
 
-    voiceMountRef.current.appendChild(voiceEl);
-    chatMountRef.current.appendChild(chatEl);
-  }, [widgetReady, demoPage]);
+<script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>`;
+
+    renderWidget(voiceCode, voiceRef);
+    renderWidget(chatCode, chatRef);
+  }, [demoPage]);
 
   if (loading) {
     return (
@@ -323,7 +259,7 @@ export function DynamicDemoPage() {
 
       <main className="relative z-10 py-10 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
-          {/* Record preview so you can confirm the correct row is being used */}
+          {/* Show the record so you can confirm it matches the slug */}
           <div className="mb-8 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -337,33 +273,20 @@ export function DynamicDemoPage() {
               <div>
                 <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">System Prompt</div>
                 <div className="text-sm text-gray-200 line-clamp-3">{demoPage.system_prompt}</div>
-                <div className="text-xs text-gray-500 mt-2">
-                  Note: system_prompt is displayed here, but Vapi behavior changes only if the assistant’s prompt is updated in Vapi.
-                </div>
               </div>
             </div>
-
-            {widgetError && (
-              <div className="mt-6 p-4 border border-red-500/30 bg-red-500/10 rounded-xl text-sm text-red-200">
-                {widgetError}
-              </div>
-            )}
           </div>
 
-          {/* Centered widgets */}
+          {/* Two centered widgets */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
               <h2 className="text-lg font-semibold mb-4">Voice</h2>
-              <div className="flex justify-center">
-                <div ref={voiceMountRef} className="w-full flex justify-center" />
-              </div>
+              <div ref={voiceRef} className="w-full flex justify-center" />
             </div>
 
             <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
               <h2 className="text-lg font-semibold mb-4">Chat</h2>
-              <div className="flex justify-center">
-                <div ref={chatMountRef} className="w-full flex justify-center" />
-              </div>
+              <div ref={chatRef} className="w-full flex justify-center" />
             </div>
           </div>
 
