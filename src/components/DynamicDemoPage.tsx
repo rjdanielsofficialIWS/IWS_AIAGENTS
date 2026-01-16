@@ -15,116 +15,37 @@ interface DemoPage {
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
+
   const [demoPage, setDemoPage] = useState<DemoPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
   const widgetRef = useRef<HTMLDivElement>(null);
 
-  // Keep this list in sync with your explicit routes in App.tsx.
-  // Even though React Router will usually match explicit routes first,
-  // blocking these prevents confusion if someone creates a demo page with a reserved slug.
-  const reservedSlugs = useMemo(
-    () => new Set(['', 'demos', 'onboarding-booking', 'privacy-policy', 'login', 'register', 'dashboard']),
-    []
-  );
-
-  useEffect(() => {
-    fetchDemoPage();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Normalize slug from URL (fixes casing + whitespace issues)
+  const targetSlug = useMemo(() => {
+    return (slug || 'demo').trim().toLowerCase();
   }, [slug]);
 
-  useEffect(() => {
-    if (demoPage && widgetRef.current) {
-      void renderWidget();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoPage?.assistant_id, demoPage?.first_message, demoPage?.system_prompt]);
-
-  // Live updates: if you edit the row in Supabase, anyone on /:slug sees it instantly.
-  useEffect(() => {
-    const targetSlug = slug || 'demo';
-
-    // Block reserved slugs early.
-    if (reservedSlugs.has(targetSlug)) {
-      setDemoPage(null);
-      setLoading(false);
-      setError(`"${targetSlug}" is a reserved route and can't be used as a demo page slug.`);
-      return;
-    }
-
-    const channel = supabase
-      .channel(`demo_pages:${targetSlug}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'demo_pages',
-          filter: `slug=eq.${targetSlug}`,
-        },
-        (payload) => {
-          const newRow = (payload.new ?? null) as DemoPage | null;
-
-          // If deleted or becomes inactive, show not found.
-          if (!newRow || newRow.is_active !== true) {
-            setDemoPage(null);
-            setError(`Demo page "${targetSlug}" not found`);
-            return;
-          }
-
-          setError(null);
-          setDemoPage(newRow);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [slug, reservedSlugs]);
-
-  const fetchDemoPage = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      const targetSlug = slug || 'demo';
-
-      // Block reserved slugs early.
-      if (reservedSlugs.has(targetSlug)) {
-        setDemoPage(null);
-        setError(`"${targetSlug}" is a reserved route and can't be used as a demo page slug.`);
-        return;
-      }
-
-      const { data, error: fetchError } = await supabase
-        .from('demo_pages')
-        .select('*')
-        .eq('slug', targetSlug)
-        .eq('is_active', true)
-        .maybeSingle();
-
-      if (fetchError) throw fetchError;
-
-      if (!data) {
-        setError(`Demo page "${targetSlug}" not found`);
-        setDemoPage(null);
-      } else {
-        setDemoPage(data);
-      }
-    } catch (err) {
-      console.error('Error fetching demo page:', err);
-      setError('Failed to load demo page');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Block reserved routes so nobody can accidentally create demo pages that conflict with real pages
+  const reservedSlugs = useMemo(
+    () =>
+      new Set([
+        '',
+        'demos',
+        'onboarding-booking',
+        'privacy-policy',
+        'login',
+        'register',
+        'dashboard',
+      ]),
+    []
+  );
 
   const ensureVapiWidgetScriptLoaded = () => {
     const SCRIPT_ID = 'vapi-widget-script';
 
     return new Promise<void>((resolve, reject) => {
-      // Already loaded
       if (document.getElementById(SCRIPT_ID)) {
         resolve();
         return;
@@ -143,23 +64,22 @@ export function DynamicDemoPage() {
     });
   };
 
-  const renderWidget = async () => {
-    if (!widgetRef.current || !demoPage) return;
+  const renderWidget = async (page: DemoPage) => {
+    if (!widgetRef.current) return;
 
-    // Clear previous widget content to avoid duplicates during live updates.
+    // Prevent duplicate widgets on updates
     widgetRef.current.innerHTML = '';
 
     try {
       await ensureVapiWidgetScriptLoaded();
     } catch (e) {
       console.error(e);
-      // If script fails, we still show the page; widget area stays empty.
       return;
     }
 
     const widget = document.createElement('vapi-widget');
     widget.setAttribute('public-key', '4481e2b6-4294-4cac-8a20-54d51f2e24dc');
-    widget.setAttribute('assistant-id', demoPage.assistant_id);
+    widget.setAttribute('assistant-id', page.assistant_id);
     widget.setAttribute('mode', 'voice');
     widget.setAttribute('theme', 'dark');
     widget.setAttribute('base-bg-color', '#000000');
@@ -173,13 +93,103 @@ export function DynamicDemoPage() {
     widget.setAttribute('start-button-text', 'Start');
     widget.setAttribute('end-button-text', 'End Call');
     widget.setAttribute('cta-subtitle', 'Tap to speak..');
-    widget.setAttribute('chat-first-message', demoPage.first_message || '');
+    widget.setAttribute('chat-first-message', page.first_message || '');
     widget.setAttribute('chat-placeholder', 'Type your message...');
     widget.setAttribute('voice-show-transcript', 'true');
     widget.setAttribute('consent-required', 'false');
 
     widgetRef.current.appendChild(widget);
   };
+
+  const fetchDemoPage = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (reservedSlugs.has(targetSlug)) {
+        setDemoPage(null);
+        setError(`"${targetSlug}" is a reserved route and can't be used as a demo page slug.`);
+        return;
+      }
+
+      // ✅ IMPORTANT FIX:
+      // Use ilike() so "John" in DB will match "/john" in URL (case-insensitive)
+      const { data, error: fetchError } = await supabase
+        .from('demo_pages')
+        .select('*')
+        .ilike('slug', targetSlug)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      if (fetchError) throw fetchError;
+
+      if (!data) {
+        setDemoPage(null);
+        setError(`Demo page "${targetSlug}" not found`);
+        return;
+      }
+
+      setDemoPage(data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching demo page:', err);
+      setDemoPage(null);
+      setError('Failed to load demo page');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch on slug change
+  useEffect(() => {
+    void fetchDemoPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetSlug]);
+
+  // Render widget when demoPage changes
+  useEffect(() => {
+    if (!demoPage) return;
+    void renderWidget(demoPage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoPage?.assistant_id, demoPage?.first_message, demoPage?.system_prompt]);
+
+  // ✅ REALTIME FIX:
+  // We subscribe to demo_pages changes WITHOUT slug filter,
+  // then match by lowercasing payload slug. This works even if DB slug is "John".
+  useEffect(() => {
+    if (reservedSlugs.has(targetSlug)) return;
+
+    const channel = supabase
+      .channel(`demo_pages:watch:${targetSlug}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'demo_pages' },
+        (payload) => {
+          const newRow = (payload.new ?? null) as DemoPage | null;
+
+          // If row is gone / deleted etc
+          if (!newRow) return;
+
+          const incomingSlug = (newRow.slug || '').trim().toLowerCase();
+          if (incomingSlug !== targetSlug) return;
+
+          // If it becomes inactive, show not found
+          if (newRow.is_active !== true) {
+            setDemoPage(null);
+            setError(`Demo page "${targetSlug}" not found`);
+            return;
+          }
+
+          setError(null);
+          setDemoPage(newRow);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [targetSlug, reservedSlugs]);
 
   if (loading) {
     return (
@@ -221,7 +231,7 @@ export function DynamicDemoPage() {
             </div>
             <h2 className="text-3xl font-bold mb-4">Demo Page Not Found</h2>
             <p className="text-xl text-gray-300 mb-8">
-              {error || `The demo page "${slug}" does not exist or is not active.`}
+              {error || `The demo page "${targetSlug}" does not exist or is not active.`}
             </p>
             <Link
               to="/"
@@ -253,10 +263,12 @@ export function DynamicDemoPage() {
               <ArrowLeft className="h-5 w-5" />
               <span>Back to Home</span>
             </Link>
+
             <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
               Experience Our AI Agent
             </h1>
-            <div className="w-24"></div>
+
+            <div className="w-24" />
           </div>
         </div>
       </header>
@@ -271,7 +283,7 @@ export function DynamicDemoPage() {
               </span>
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              Interact with our AI agent and remember: this page updates live when you edit the record in Supabase.
+              This page updates live when you edit the matching record in Supabase.
             </p>
           </div>
 
@@ -283,7 +295,7 @@ export function DynamicDemoPage() {
               </div>
             )}
 
-            <div ref={widgetRef} className="min-h-[200px]"></div>
+            <div ref={widgetRef} className="min-h-[200px]" />
           </div>
 
           <div className="text-center mt-12">
