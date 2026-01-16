@@ -13,10 +13,10 @@ interface DemoPage {
   updated_at: string;
 }
 
-// ✅ Use the same script URL your project already uses (works reliably)
+// Widget script that already works in your project
 const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
 
-// ✅ Updated public key (your new one)
+// ✅ Your new public key
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 
 export function DynamicDemoPage() {
@@ -46,6 +46,61 @@ export function DynamicDemoPage() {
       oldScript.parentNode?.replaceChild(newScript, oldScript);
     });
   };
+
+  /**
+   * ✅ Removes any Vapi widgets that are NOT the two embedded ones.
+   * This kills the bottom-right floating widget on demo pages.
+   */
+  const removeNonEmbeddedVapiWidgets = () => {
+    const voiceContainer = voiceRef.current;
+    const chatContainer = chatRef.current;
+
+    const embedded = new Set<HTMLElement>();
+    if (voiceContainer) voiceContainer.querySelectorAll('vapi-widget').forEach((el) => embedded.add(el as HTMLElement));
+    if (chatContainer) chatContainer.querySelectorAll('vapi-widget').forEach((el) => embedded.add(el as HTMLElement));
+
+    // Remove any vapi-widget that isn't inside our two containers
+    document.querySelectorAll('vapi-widget').forEach((el) => {
+      if (!embedded.has(el as HTMLElement)) {
+        el.remove();
+      }
+    });
+
+    // Some widget builds wrap a fixed-position launcher.
+    // This removes common fixed launchers if present.
+    const maybeLaunchers = document.querySelectorAll(
+      '[class*="vapi"][class*="launcher"], [class*="Vapi"][class*="launcher"], [id*="vapi"], [data-vapi]'
+    );
+    maybeLaunchers.forEach((node) => {
+      // Only remove if it’s not inside our embedded containers
+      const insideVoice = voiceContainer ? voiceContainer.contains(node) : false;
+      const insideChat = chatContainer ? chatContainer.contains(node) : false;
+      if (!insideVoice && !insideChat) {
+        // Be conservative: only remove fixed-position elements that look like launchers
+        const style = window.getComputedStyle(node as Element);
+        if (style.position === 'fixed') (node as HTMLElement).remove();
+      }
+    });
+  };
+
+  // ✅ Add a small CSS guard for demo pages (extra protection)
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.setAttribute('data-demo-vapi-guard', 'true');
+    style.textContent = `
+      /* On demo pages, never show any fixed Vapi launcher/bubble */
+      body [style*="position: fixed"][class*="vapi"],
+      body [class*="vapi"][class*="launcher"],
+      body [class*="Vapi"][class*="launcher"] {
+        display: none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    return () => {
+      style.remove();
+    };
+  }, []);
 
   // Fetch record for slug
   useEffect(() => {
@@ -123,72 +178,89 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Render TWO widgets (voice + chat), centered + NOT floating
+  // Render two widgets (voice + chat) and FIX layout
   useEffect(() => {
     if (!demoPage) return;
 
     const assistantId = demoPage.assistant_id;
     const firstMessage = (demoPage.first_message || '').replace(/"/g, '&quot;');
 
-    // 🔥 Key fix: force INLINE position + disable floating CTA behavior on demo pages
-    // Different Vapi builds accept different attributes, but `position="inline"` + removing any "bottom-right" behavior
-    // prevents that yellow “Try Our AI Phone Agent” bubble.
+    // Clear mounts first
+    if (voiceRef.current) voiceRef.current.innerHTML = '';
+    if (chatRef.current) chatRef.current.innerHTML = '';
+
+    // ✅ Layout fix: force a safe max-width and prevent bleed outside cards
     const voiceCode = `
-      <div class="w-full flex justify-center overflow-visible">
-        <vapi-widget
-          public-key="${VAPI_PUBLIC_KEY}"
-          assistant-id="${assistantId}"
-          mode="voice"
-          position="inline"
-          theme="dark"
-          base-bg-color="#000000"
-          accent-color="#007510"
-          cta-button-color="#c7a317"
-          cta-button-text-color="#000000"
-          border-radius="large"
-          size="compact"
-          title="AI Voice Agent"
-          start-button-text="Start"
-          end-button-text="End Call"
-          cta-subtitle="Tap to speak.."
-          chat-first-message="${firstMessage}"
-          chat-placeholder="Type your message..."
-          voice-show-transcript="true"
-          consent-required="false"
-        ></vapi-widget>
+      <div style="width:100%; display:flex; justify-content:center;">
+        <div style="width:100%; max-width:420px; overflow:hidden; border-radius:16px;">
+          <vapi-widget
+            public-key="${VAPI_PUBLIC_KEY}"
+            assistant-id="${assistantId}"
+            mode="voice"
+            position="inline"
+            theme="dark"
+            base-bg-color="#000000"
+            accent-color="#007510"
+            cta-button-color="#c7a317"
+            cta-button-text-color="#000000"
+            border-radius="large"
+            size="compact"
+            title="AI Voice Agent"
+            start-button-text="Start"
+            end-button-text="End Call"
+            cta-subtitle="Tap to speak.."
+            chat-first-message="${firstMessage}"
+            chat-placeholder="Type your message..."
+            voice-show-transcript="true"
+            consent-required="false"
+          ></vapi-widget>
+        </div>
       </div>
       <script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>
     `;
 
     const chatCode = `
-      <div class="w-full flex justify-center overflow-visible">
-        <vapi-widget
-          public-key="${VAPI_PUBLIC_KEY}"
-          assistant-id="${assistantId}"
-          mode="chat"
-          position="inline"
-          theme="dark"
-          base-bg-color="#000000"
-          accent-color="#007510"
-          cta-button-color="#c7a317"
-          cta-button-text-color="#000000"
-          border-radius="large"
-          size="compact"
-          title="AI Chat Agent"
-          start-button-text="Start"
-          end-button-text="End"
-          cta-subtitle="Tap to chat.."
-          chat-first-message="${firstMessage}"
-          chat-placeholder="Type your message..."
-          voice-show-transcript="true"
-          consent-required="false"
-        ></vapi-widget>
+      <div style="width:100%; display:flex; justify-content:center;">
+        <div style="width:100%; max-width:420px; overflow:hidden; border-radius:16px;">
+          <vapi-widget
+            public-key="${VAPI_PUBLIC_KEY}"
+            assistant-id="${assistantId}"
+            mode="chat"
+            position="inline"
+            theme="dark"
+            base-bg-color="#000000"
+            accent-color="#007510"
+            cta-button-color="#c7a317"
+            cta-button-text-color="#000000"
+            border-radius="large"
+            size="compact"
+            title="AI Chat Agent"
+            start-button-text="Start"
+            end-button-text="End"
+            cta-subtitle="Tap to chat.."
+            chat-first-message="${firstMessage}"
+            chat-placeholder="Type your message..."
+            consent-required="false"
+          ></vapi-widget>
+        </div>
       </div>
       <script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>
     `;
 
     renderWidget(voiceCode, voiceRef);
     renderWidget(chatCode, chatRef);
+
+    // ✅ Kill the floating demo-page widget after scripts mount
+    // (Run a few times to catch late-injected launchers)
+    const t1 = window.setTimeout(removeNonEmbeddedVapiWidgets, 200);
+    const t2 = window.setTimeout(removeNonEmbeddedVapiWidgets, 800);
+    const t3 = window.setTimeout(removeNonEmbeddedVapiWidgets, 1600);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
   }, [demoPage]);
 
   if (loading) {
@@ -276,19 +348,19 @@ export function DynamicDemoPage() {
             </div>
           </div>
 
-          {/* ✅ Layout fix: give the widgets more room + allow overflow so nothing is clipped */}
+          {/* Widgets */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 overflow-visible">
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 overflow-hidden">
               <h2 className="text-lg font-semibold mb-4">Voice</h2>
-              <div className="w-full overflow-visible min-h-[520px] flex items-start justify-center">
-                <div ref={voiceRef} className="w-full flex justify-center overflow-visible" />
+              <div className="w-full min-h-[520px] flex items-start justify-center">
+                <div ref={voiceRef} className="w-full flex justify-center" />
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 overflow-visible">
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 overflow-hidden">
               <h2 className="text-lg font-semibold mb-4">Chat</h2>
-              <div className="w-full overflow-visible min-h-[520px] flex items-start justify-center">
-                <div ref={chatRef} className="w-full flex justify-center overflow-visible" />
+              <div className="w-full min-h-[520px] flex items-start justify-center">
+                <div ref={chatRef} className="w-full flex justify-center" />
               </div>
             </div>
           </div>
