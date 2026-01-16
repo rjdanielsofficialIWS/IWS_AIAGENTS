@@ -13,52 +13,54 @@ interface DemoPage {
   updated_at: string;
 }
 
-// Keep your existing key
+// Your Vapi Public Key
 const VAPI_PUBLIC_KEY = '4481e2b6-4294-4cac-8a20-54d51f2e24dc';
 
-// IMPORTANT: use the same widget script that previously worked for you.
-// If your project used a different URL before, swap it back here.
-const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
+// ✅ Correct Vapi WEB widget script (this registers <vapi-widget/>)
+const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/web/dist/widget.js';
 
 function ensureVapiWidgetScript(): Promise<void> {
   return new Promise((resolve, reject) => {
-    // If the custom element is already registered, we’re good.
+    // Already registered
     if (customElements.get('vapi-widget')) {
       resolve();
       return;
     }
 
-    // If script exists, wait a bit for it to register the element.
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${VAPI_WIDGET_SRC}"]`);
+    // Already injected
+    const existing = document.querySelector<HTMLScriptElement>(
+      `script[src="${VAPI_WIDGET_SRC}"]`
+    );
     if (existing) {
-      // Give it a moment to register
-      const start = Date.now();
-      const tick = () => {
-        if (customElements.get('vapi-widget')) return resolve();
-        if (Date.now() - start > 8000) return reject(new Error('Vapi widget script loaded but vapi-widget not registered.'));
-        requestAnimationFrame(tick);
-      };
-      tick();
+      // If it hasn't loaded yet, wait for load
+      if ((existing as any)._vapiLoaded) {
+        resolve();
+      } else {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => reject(new Error('Failed to load Vapi widget script')), {
+          once: true,
+        });
+      }
       return;
     }
 
-    const s = document.createElement('script');
-    s.src = VAPI_WIDGET_SRC;
-    s.async = true;
-    s.type = 'text/javascript';
+    // Inject script
+    const script = document.createElement('script');
+    script.src = VAPI_WIDGET_SRC;
+    script.async = true;
 
-    s.onload = () => {
-      const start = Date.now();
-      const tick = () => {
-        if (customElements.get('vapi-widget')) return resolve();
-        if (Date.now() - start > 8000) return reject(new Error('Vapi widget script loaded but vapi-widget not registered.'));
-        requestAnimationFrame(tick);
-      };
-      tick();
+    script.onload = () => {
+      (script as any)._vapiLoaded = true;
+
+      // Give the browser a tick to register the custom element
+      requestAnimationFrame(() => {
+        if (customElements.get('vapi-widget')) resolve();
+        else reject(new Error('Vapi widget script loaded but <vapi-widget> was not registered.'));
+      });
     };
 
-    s.onerror = () => reject(new Error('Failed to load Vapi widget script.'));
-    document.body.appendChild(s);
+    script.onerror = () => reject(new Error('Failed to load Vapi widget script'));
+    document.body.appendChild(script);
   });
 }
 
@@ -70,14 +72,11 @@ function createVapiWidgetEl(opts: {
 }) {
   const el = document.createElement('vapi-widget');
 
-  // Required
   el.setAttribute('public-key', opts.publicKey);
   el.setAttribute('assistant-id', opts.assistantId);
-
-  // Mode
   el.setAttribute('mode', opts.mode);
 
-  // Styling (center widgets, not floating)
+  // Theme / styling
   el.setAttribute('theme', 'dark');
   el.setAttribute('base-bg-color', '#000000');
   el.setAttribute('accent-color', '#007510');
@@ -86,14 +85,11 @@ function createVapiWidgetEl(opts: {
   el.setAttribute('border-radius', 'large');
   el.setAttribute('size', 'compact');
 
-  // IMPORTANT: this keeps it from trying to float bottom-right
-  // (some versions ignore position if embedded; safe to set a neutral value)
+  // Try to prevent floating positioning
   el.setAttribute('position', 'inline');
 
   // Copy from DB
-  if (opts.firstMessage) {
-    el.setAttribute('chat-first-message', opts.firstMessage);
-  }
+  if (opts.firstMessage) el.setAttribute('chat-first-message', opts.firstMessage);
 
   // Labels
   el.setAttribute('title', opts.mode === 'voice' ? 'Voice Demo' : 'Chat Demo');
@@ -116,23 +112,27 @@ export function DynamicDemoPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [widgetReady, setWidgetReady] = useState(false);
+  const [widgetError, setWidgetError] = useState<string | null>(null);
 
   const voiceMountRef = useRef<HTMLDivElement>(null);
   const chatMountRef = useRef<HTMLDivElement>(null);
 
-  // Load widget script and ensure vapi-widget is registered
+  // Load Vapi script (once)
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
         await ensureVapiWidgetScript();
-        if (!cancelled) setWidgetReady(true);
-      } catch (e) {
+        if (!cancelled) {
+          setWidgetReady(true);
+          setWidgetError(null);
+        }
+      } catch (e: any) {
         console.error(e);
         if (!cancelled) {
           setWidgetReady(false);
-          // Don’t hard-fail the page; we’ll show an error block below.
+          setWidgetError(e?.message || 'Vapi widgets failed to initialize.');
         }
       }
     })();
@@ -187,7 +187,7 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Realtime updates for this slug
+  // Realtime updates (edits in DB update page live)
   useEffect(() => {
     const channel = supabase
       .channel(`demo_pages:${targetSlug}`)
@@ -207,7 +207,6 @@ export function DynamicDemoPage() {
           }
 
           const next = payload.new as DemoPage | null;
-
           if (!next || !next.is_active) {
             setDemoPage(null);
             setError(`Demo page "${targetSlug}" does not exist or is not active.`);
@@ -225,14 +224,13 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Render Voice + Chat widgets in the center whenever record changes and script is ready
+  // Render Voice + Chat widgets centered whenever demoPage changes AND widgets are ready
   useEffect(() => {
     if (!widgetReady) return;
     if (!demoPage) return;
-
     if (!voiceMountRef.current || !chatMountRef.current) return;
 
-    // Clear mounts to avoid duplicates
+    // Clear mounts to prevent duplicates on updates
     voiceMountRef.current.innerHTML = '';
     chatMountRef.current.innerHTML = '';
 
@@ -325,7 +323,7 @@ export function DynamicDemoPage() {
 
       <main className="relative z-10 py-10 px-4 sm:px-6 lg:px-8">
         <div className="max-w-5xl mx-auto">
-          {/* Record preview so you can confirm it’s pulling the right row */}
+          {/* Record preview so you can confirm the correct row is being used */}
           <div className="mb-8 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -345,9 +343,9 @@ export function DynamicDemoPage() {
               </div>
             </div>
 
-            {!widgetReady && (
+            {widgetError && (
               <div className="mt-6 p-4 border border-red-500/30 bg-red-500/10 rounded-xl text-sm text-red-200">
-                Vapi widgets failed to initialize (script not ready). Check the widget script URL or console errors.
+                {widgetError}
               </div>
             )}
           </div>
