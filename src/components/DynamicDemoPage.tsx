@@ -13,11 +13,11 @@ interface DemoPage {
   updated_at: string;
 }
 
-// Use the same script URL your ZIP already uses in DemoPage.tsx
+// ✅ Use the same script URL your project already uses (works reliably)
 const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
 
-// Your Vapi public key (keep your real one here)
-const VAPI_PUBLIC_KEY = '4481e2b6-4294-4cac-8a20-54d51f2e24dc';
+// ✅ Updated public key (your new one)
+const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -30,21 +30,19 @@ export function DynamicDemoPage() {
   const voiceRef = useRef<HTMLDivElement>(null);
   const chatRef = useRef<HTMLDivElement>(null);
 
+  // Inject HTML + force <script> tags to execute
   const renderWidget = (code: string, containerRef: React.RefObject<HTMLDivElement>) => {
     if (!containerRef.current || !code.trim()) return;
 
     containerRef.current.innerHTML = code;
 
-    // IMPORTANT: force script tags to execute (same method as DemoPage.tsx)
     const scripts = containerRef.current.querySelectorAll('script');
     scripts.forEach((oldScript) => {
       const newScript = document.createElement('script');
       Array.from(oldScript.attributes).forEach((attr) => {
         newScript.setAttribute(attr.name, attr.value);
       });
-      if (oldScript.textContent) {
-        newScript.textContent = oldScript.textContent;
-      }
+      if (oldScript.textContent) newScript.textContent = oldScript.textContent;
       oldScript.parentNode?.replaceChild(newScript, oldScript);
     });
   };
@@ -88,24 +86,18 @@ export function DynamicDemoPage() {
     };
 
     fetchDemoPage();
-
     return () => {
       isMounted = false;
     };
   }, [targetSlug]);
 
-  // Realtime updates (edits in DB update page live)
+  // Realtime updates
   useEffect(() => {
     const channel = supabase
       .channel(`demo_pages:${targetSlug}`)
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'demo_pages',
-          filter: `slug=eq.${targetSlug}`,
-        },
+        { event: '*', schema: 'public', table: 'demo_pages', filter: `slug=eq.${targetSlug}` },
         (payload) => {
           if (payload.eventType === 'DELETE') {
             setDemoPage(null);
@@ -131,62 +123,69 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Build TWO centered widgets: voice + chat (both using record fields)
+  // Render TWO widgets (voice + chat), centered + NOT floating
   useEffect(() => {
     if (!demoPage) return;
 
     const assistantId = demoPage.assistant_id;
     const firstMessage = (demoPage.first_message || '').replace(/"/g, '&quot;');
 
-    const voiceCode = `<div class="w-full flex justify-center">
-  <vapi-widget
-    public-key="${VAPI_PUBLIC_KEY}"
-    assistant-id="${assistantId}"
-    mode="voice"
-    theme="dark"
-    base-bg-color="#000000"
-    accent-color="#007510"
-    cta-button-color="#c7a317"
-    cta-button-text-color="#000000"
-    border-radius="large"
-    size="compact"
-    title="AI Voice Agent"
-    start-button-text="Start"
-    end-button-text="End Call"
-    cta-subtitle="Tap to speak.."
-    chat-first-message="${firstMessage}"
-    chat-placeholder="Type your message..."
-    voice-show-transcript="true"
-    consent-required="false"
-  ></vapi-widget>
-</div>
+    // 🔥 Key fix: force INLINE position + disable floating CTA behavior on demo pages
+    // Different Vapi builds accept different attributes, but `position="inline"` + removing any "bottom-right" behavior
+    // prevents that yellow “Try Our AI Phone Agent” bubble.
+    const voiceCode = `
+      <div class="w-full flex justify-center overflow-visible">
+        <vapi-widget
+          public-key="${VAPI_PUBLIC_KEY}"
+          assistant-id="${assistantId}"
+          mode="voice"
+          position="inline"
+          theme="dark"
+          base-bg-color="#000000"
+          accent-color="#007510"
+          cta-button-color="#c7a317"
+          cta-button-text-color="#000000"
+          border-radius="large"
+          size="compact"
+          title="AI Voice Agent"
+          start-button-text="Start"
+          end-button-text="End Call"
+          cta-subtitle="Tap to speak.."
+          chat-first-message="${firstMessage}"
+          chat-placeholder="Type your message..."
+          voice-show-transcript="true"
+          consent-required="false"
+        ></vapi-widget>
+      </div>
+      <script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>
+    `;
 
-<script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>`;
-
-    const chatCode = `<div class="w-full flex justify-center">
-  <vapi-widget
-    public-key="${VAPI_PUBLIC_KEY}"
-    assistant-id="${assistantId}"
-    mode="chat"
-    theme="dark"
-    base-bg-color="#000000"
-    accent-color="#007510"
-    cta-button-color="#c7a317"
-    cta-button-text-color="#000000"
-    border-radius="large"
-    size="compact"
-    title="AI Chat Agent"
-    start-button-text="Start"
-    end-button-text="End"
-    cta-subtitle="Tap to chat.."
-    chat-first-message="${firstMessage}"
-    chat-placeholder="Type your message..."
-    voice-show-transcript="true"
-    consent-required="false"
-  ></vapi-widget>
-</div>
-
-<script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>`;
+    const chatCode = `
+      <div class="w-full flex justify-center overflow-visible">
+        <vapi-widget
+          public-key="${VAPI_PUBLIC_KEY}"
+          assistant-id="${assistantId}"
+          mode="chat"
+          position="inline"
+          theme="dark"
+          base-bg-color="#000000"
+          accent-color="#007510"
+          cta-button-color="#c7a317"
+          cta-button-text-color="#000000"
+          border-radius="large"
+          size="compact"
+          title="AI Chat Agent"
+          start-button-text="Start"
+          end-button-text="End"
+          cta-subtitle="Tap to chat.."
+          chat-first-message="${firstMessage}"
+          chat-placeholder="Type your message..."
+          voice-show-transcript="true"
+          consent-required="false"
+        ></vapi-widget>
+      </div>
+      <script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>
+    `;
 
     renderWidget(voiceCode, voiceRef);
     renderWidget(chatCode, chatRef);
@@ -258,8 +257,8 @@ export function DynamicDemoPage() {
       </header>
 
       <main className="relative z-10 py-10 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          {/* Show the record so you can confirm it matches the slug */}
+        <div className="max-w-6xl mx-auto">
+          {/* Record preview */}
           <div className="mb-8 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
@@ -277,16 +276,20 @@ export function DynamicDemoPage() {
             </div>
           </div>
 
-          {/* Two centered widgets */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+          {/* ✅ Layout fix: give the widgets more room + allow overflow so nothing is clipped */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 overflow-visible">
               <h2 className="text-lg font-semibold mb-4">Voice</h2>
-              <div ref={voiceRef} className="w-full flex justify-center" />
+              <div className="w-full overflow-visible min-h-[520px] flex items-start justify-center">
+                <div ref={voiceRef} className="w-full flex justify-center overflow-visible" />
+              </div>
             </div>
 
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 overflow-visible">
               <h2 className="text-lg font-semibold mb-4">Chat</h2>
-              <div ref={chatRef} className="w-full flex justify-center" />
+              <div className="w-full overflow-visible min-h-[520px] flex items-start justify-center">
+                <div ref={chatRef} className="w-full flex justify-center overflow-visible" />
+              </div>
             </div>
           </div>
 
