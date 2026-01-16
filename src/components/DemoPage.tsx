@@ -1,133 +1,288 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-
-const PUBLIC_KEY = "ebb2120b-ac56-4ce9-b1d5-17966931c665";
+import React from 'react';
+import { useParams } from 'react-router-dom';
+import { supabase } from '../services/vapiAI';
 
 declare global {
-  interface Window {
-    vapiSDK?: any;
-  }
   namespace JSX {
     interface IntrinsicElements {
-      "vapi-widget": any;
+      'vapi-widget': React.DetailedHTMLProps<React.HTMLAttributes<HTMLElement>, HTMLElement> & {
+        'public-key'?: string;
+        'assistant-id'?: string;
+        mode?: string;
+        theme?: string;
+        size?: string;
+        'assistant-overrides'?: string;
+        'empty-chat-message'?: string;
+        'empty-voice-message'?: string;
+      };
     }
   }
 }
 
-const normalizeRouteName = (raw: string) => {
-  const decoded = decodeURIComponent(raw);
-  return decoded.replace(/[-_]+/g, " ").trim();
+type VisitorRow = {
+  id?: string;
+  name: string | null;
+  assistant_id: string | null;
+  system_prompt: string | null;
+  first_message: string | null;
 };
 
+function normalizeUrlName(raw: string) {
+  const decoded = decodeURIComponent(raw).trim();
+
+  // Turn "CaliforniaPlumbing" into "California Plumbing"
+  const withSpaces = decoded.replace(/([a-z])([A-Z])/g, '$1 $2');
+
+  // Normalize dashes/underscores into spaces
+  const cleaned = withSpaces.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+  // Build a fuzzy ilike pattern: "%California%Plumbing%"
+  const parts = cleaned.split(' ').filter(Boolean);
+  const ilikePattern = `%${parts.join('%')}%`;
+
+  return { decoded, cleaned, ilikePattern };
+}
+
 export function DemoPage() {
-  const params = useParams();
+  const params = useParams<{ name?: string }>();
+  const urlName = params.name;
 
-  const visitorName = useMemo(() => {
-    const raw = params?.name;
-    if (!raw) return "Visitor";
-    const n = normalizeRouteName(raw);
-    return n || "Visitor";
-  }, [params]);
+  const VAPI_PUBLIC_KEY =
+    (import.meta.env.VITE_VAPI_PUBLIC_KEY as string | undefined) || '';
 
-  const [voiceVapi, setVoiceVapi] = useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
-  useEffect(() => {
-    const script = document.createElement("script");
-    script.src =
-      "https://cdn.jsdelivr.net/npm/@vapi-ai/web@2.3.11/dist/index.umd.min.js";
-    script.async = true;
-    script.onload = () => {
-      if (window.vapiSDK) {
-        const voiceInstance = new window.vapiSDK.default(PUBLIC_KEY);
-        setVoiceVapi(voiceInstance);
+  const [visitor, setVisitor] = React.useState<VisitorRow | null>(null);
+
+  const [widgetMode, setWidgetMode] = React.useState<'chat' | 'voice'>('chat');
+  const [autoOpenWidget, setAutoOpenWidget] = React.useState(false);
+  const widgetRef = React.useRef<HTMLElement | null>(null);
+
+  const assistantId = visitor?.assistant_id || '';
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      setLoading(true);
+      setError(null);
+
+      try {
+        let data: VisitorRow | null = null;
+
+        if (urlName) {
+          const { ilikePattern } = normalizeUrlName(urlName);
+
+          const res = await supabase
+            .from('visitors')
+            .select('id,name,assistant_id,system_prompt,first_message')
+            .ilike('name', ilikePattern)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (res.error) throw res.error;
+          data = (res.data as VisitorRow | null) ?? null;
+        } else {
+          // If no /:name, try a default row first, else just grab the newest row
+          const resDefault = await supabase
+            .from('visitors')
+            .select('id,name,assistant_id,system_prompt,first_message')
+            .eq('name', 'Default Visitor')
+            .limit(1)
+            .maybeSingle();
+
+          if (resDefault.error) throw resDefault.error;
+
+          data = (resDefault.data as VisitorRow | null) ?? null;
+
+          if (!data) {
+            const resNewest = await supabase
+              .from('visitors')
+              .select('id,name,assistant_id,system_prompt,first_message')
+              .order('updated_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (resNewest.error) throw resNewest.error;
+            data = (resNewest.data as VisitorRow | null) ?? null;
+          }
+        }
+
+        if (cancelled) return;
+
+        setVisitor(data);
+
+        // If you want: auto-switch to chat by default when page loads
+        setWidgetMode('chat');
+      } catch (e: any) {
+        if (cancelled) return;
+        setError(e?.message || 'Failed to load demo config from Supabase.');
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    };
-    document.body.appendChild(script);
+    }
 
+    load();
     return () => {
-      document.body.removeChild(script);
+      cancelled = true;
     };
-  }, []);
+  }, [urlName]);
 
-  const handleCallMe = () => {
-    alert(
-      `Call button works. Now we just need to decide which assistant ID should be used for "${visitorName}".`
-    );
-  };
+  // Attempt to auto-open the widget after we switch modes
+  React.useEffect(() => {
+    if (!autoOpenWidget) return;
+    if (!assistantId) return;
 
-  const handleTextMe = () => {
-    // Opens the widget if possible (best effort)
-    const widget = document.querySelector("vapi-widget") as any;
-    if (!widget) {
-      alert("Chat widget failed to initialize.");
+    const el = widgetRef.current;
+    if (!el) return;
+
+    const t = window.setTimeout(() => {
+      try {
+        // Try to click the widget's internal button (works in most builds)
+        const anyEl = el as any;
+        const shadow = anyEl.shadowRoot as ShadowRoot | undefined;
+        const btn = shadow?.querySelector('button') as HTMLButtonElement | null;
+
+        if (btn) {
+          btn.click();
+        } else {
+          // fallback
+          el.click();
+        }
+      } catch {
+        // worst case: user clicks widget bubble manually
+      } finally {
+        setAutoOpenWidget(false);
+      }
+    }, 50);
+
+    return () => window.clearTimeout(t);
+  }, [autoOpenWidget, assistantId, widgetMode]);
+
+  const displayName = visitor?.name || (urlName ? decodeURIComponent(urlName) : 'there');
+
+  const firstMessage = visitor?.first_message || 'Hey! How can I help you today?';
+
+  const assistantOverrides = JSON.stringify({
+    variableValues: {
+      visitor_name: displayName,
+      system_prompt: visitor?.system_prompt || '',
+      first_message: visitor?.first_message || '',
+    },
+  });
+
+  const handleCall = () => {
+    if (!assistantId) {
+      alert(`No assistant_id loaded for "${urlName || 'this visitor'}". Add assistant_id in Supabase.`);
       return;
     }
-    try {
-      const launcher = widget.shadowRoot?.querySelector("button");
-      launcher?.click();
-    } catch {
-      // user can click the floating widget manually
+    if (!VAPI_PUBLIC_KEY) {
+      alert('Missing VITE_VAPI_PUBLIC_KEY env var.');
+      return;
     }
+
+    setWidgetMode('voice');
+    setAutoOpenWidget(true);
+  };
+
+  const handleText = () => {
+    if (!assistantId) {
+      alert(`No assistant_id loaded for "${urlName || 'this visitor'}". Add assistant_id in Supabase.`);
+      return;
+    }
+    if (!VAPI_PUBLIC_KEY) {
+      alert('Missing VITE_VAPI_PUBLIC_KEY env var.');
+      return;
+    }
+
+    setWidgetMode('chat');
+    setAutoOpenWidget(true);
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <vapi-widget
-        public-key={PUBLIC_KEY}
-        assistant-id=""   // <-- We can plug in a real assistant id later
-        mode="chat"
-        theme="dark"
-        size="full"
-        assistant-overrides={JSON.stringify({
-          variableValues: { name: visitorName },
-        })}
-      ></vapi-widget>
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-br from-gray-900 via-black to-gray-900" />
 
-      <div className="max-w-4xl mx-auto px-6 py-20">
-        <div className="text-center space-y-12">
-          <div className="space-y-6">
-            <h1 className="text-5xl md:text-6xl font-bold text-white">
-              Hey {visitorName},
-            </h1>
+      <div className="relative z-10 max-w-5xl mx-auto px-6 py-16">
+        <div className="text-center mb-10">
+          <h1 className="text-4xl md:text-6xl font-extrabold tracking-tight">
+            Hey {displayName},
+          </h1>
 
-            <h2 className="text-3xl md:text-4xl font-semibold text-gray-300">
-              I built a tool that answers your customer calls for you.
-            </h2>
+          <p className="text-gray-300 text-lg md:text-xl mt-4">
+            I built a tool that answers your customer calls for you.
+          </p>
 
-            <p className="text-xl text-gray-400 max-w-2xl mx-auto leading-relaxed">
-              It's an AI voice assistant that talks to your customers on the
-              phone, answers their questions, and helps them get what they need
-              — automatically.
-            </p>
-          </div>
+          <p className="text-gray-400 mt-4 max-w-2xl mx-auto">
+            It&apos;s an AI voice assistant that talks to your customers on the phone, answers their questions,
+            and helps them get what they need — automatically.
+          </p>
 
-          <div className="space-y-8 pt-12">
-            <p className="text-2xl text-gray-300 font-medium">
-              Choose how you'd like to try it:
-            </p>
+          <div className="mt-10">
+            <p className="text-gray-400 mb-6">Choose how you&apos;d like to try it:</p>
 
-            <div className="flex flex-col sm:flex-row gap-6 justify-center items-center">
+            <div className="flex items-center justify-center gap-4">
               <button
-                onClick={handleCallMe}
-                className="w-full sm:w-auto bg-yellow-500 hover:bg-yellow-600 text-black font-bold py-4 px-12 rounded-lg transition-all duration-300 transform hover:scale-105 text-lg shadow-lg shadow-yellow-500/20"
+                onClick={handleCall}
+                className="bg-yellow-400 hover:bg-yellow-500 text-black font-bold px-8 py-3 rounded-xl transition"
               >
                 Call Me
               </button>
 
               <button
-                onClick={handleTextMe}
-                className="w-full sm:w-auto bg-gray-700 hover:bg-gray-600 text-white font-bold py-4 px-12 rounded-lg transition-all duration-300 transform hover:scale-105 text-lg border border-gray-600"
+                onClick={handleText}
+                className="bg-gray-800 hover:bg-gray-700 text-white font-bold px-8 py-3 rounded-xl transition border border-gray-700"
               >
                 Text Me
               </button>
             </div>
 
-            <p className="text-sm text-gray-500">
-              Current URL visitor: <span className="text-gray-300">{visitorName}</span>
-            </p>
+            <div className="mt-6 text-sm text-gray-500">
+              Current URL visitor: {urlName ? decodeURIComponent(urlName) : 'Default'}
+            </div>
           </div>
         </div>
+
+        {loading && (
+          <div className="text-center text-gray-400">
+            Loading visitor settings...
+          </div>
+        )}
+
+        {!loading && error && (
+          <div className="max-w-2xl mx-auto text-center bg-red-500/10 border border-red-500/30 rounded-xl p-4 text-red-200">
+            {error}
+            <div className="mt-2 text-xs text-red-200/70">
+              If you see ERR_NAME_NOT_RESOLVED, your VITE_SUPABASE_URL is wrong in Netlify.
+            </div>
+          </div>
+        )}
+
+        {!loading && !error && !assistantId && (
+          <div className="max-w-2xl mx-auto text-center bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 text-yellow-200">
+            No assistant_id found for this visitor. Add it in Supabase → <code className="text-yellow-100">public.visitors</code>.
+          </div>
+        )}
       </div>
+
+      {/* Vapi Widget (dynamic mode) */}
+      {assistantId && VAPI_PUBLIC_KEY && (
+        <vapi-widget
+          ref={(el) => {
+            widgetRef.current = el;
+          }}
+          public-key={VAPI_PUBLIC_KEY}
+          assistant-id={assistantId}
+          mode={widgetMode}
+          theme="dark"
+          size="full"
+          assistant-overrides={assistantOverrides}
+          empty-chat-message={firstMessage}
+          empty-voice-message={firstMessage}
+        />
+      )}
     </div>
   );
 }
