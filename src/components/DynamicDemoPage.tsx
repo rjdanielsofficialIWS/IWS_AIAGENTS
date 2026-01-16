@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useRef } from 'react';
-import { useParams, Link, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Loader, AlertCircle } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
@@ -15,21 +15,73 @@ interface DemoPage {
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
-  const navigate = useNavigate();
   const [demoPage, setDemoPage] = useState<DemoPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const widgetRef = useRef<HTMLDivElement>(null);
 
+  // Keep this list in sync with your explicit routes in App.tsx.
+  // Even though React Router will usually match explicit routes first,
+  // blocking these prevents confusion if someone creates a demo page with a reserved slug.
+  const reservedSlugs = useMemo(
+    () => new Set(['', 'demos', 'onboarding-booking', 'privacy-policy', 'login', 'register', 'dashboard']),
+    []
+  );
+
   useEffect(() => {
     fetchDemoPage();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug]);
 
   useEffect(() => {
     if (demoPage && widgetRef.current) {
-      renderWidget();
+      void renderWidget();
     }
-  }, [demoPage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoPage?.assistant_id, demoPage?.first_message, demoPage?.system_prompt]);
+
+  // Live updates: if you edit the row in Supabase, anyone on /:slug sees it instantly.
+  useEffect(() => {
+    const targetSlug = slug || 'demo';
+
+    // Block reserved slugs early.
+    if (reservedSlugs.has(targetSlug)) {
+      setDemoPage(null);
+      setLoading(false);
+      setError(`"${targetSlug}" is a reserved route and can't be used as a demo page slug.`);
+      return;
+    }
+
+    const channel = supabase
+      .channel(`demo_pages:${targetSlug}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'demo_pages',
+          filter: `slug=eq.${targetSlug}`,
+        },
+        (payload) => {
+          const newRow = (payload.new ?? null) as DemoPage | null;
+
+          // If deleted or becomes inactive, show not found.
+          if (!newRow || newRow.is_active !== true) {
+            setDemoPage(null);
+            setError(`Demo page "${targetSlug}" not found`);
+            return;
+          }
+
+          setError(null);
+          setDemoPage(newRow);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [slug, reservedSlugs]);
 
   const fetchDemoPage = async () => {
     try {
@@ -37,6 +89,13 @@ export function DynamicDemoPage() {
       setError(null);
 
       const targetSlug = slug || 'demo';
+
+      // Block reserved slugs early.
+      if (reservedSlugs.has(targetSlug)) {
+        setDemoPage(null);
+        setError(`"${targetSlug}" is a reserved route and can't be used as a demo page slug.`);
+        return;
+      }
 
       const { data, error: fetchError } = await supabase
         .from('demo_pages')
@@ -61,46 +120,65 @@ export function DynamicDemoPage() {
     }
   };
 
-  const renderWidget = () => {
+  const ensureVapiWidgetScriptLoaded = () => {
+    const SCRIPT_ID = 'vapi-widget-script';
+
+    return new Promise<void>((resolve, reject) => {
+      // Already loaded
+      if (document.getElementById(SCRIPT_ID)) {
+        resolve();
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.id = SCRIPT_ID;
+      script.src = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
+      script.async = true;
+      script.type = 'text/javascript';
+
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('Failed to load Vapi widget script'));
+
+      document.body.appendChild(script);
+    });
+  };
+
+  const renderWidget = async () => {
     if (!widgetRef.current || !demoPage) return;
 
-    const widgetCode = `<vapi-widget
-  public-key="4481e2b6-4294-4cac-8a20-54d51f2e24dc"
-  assistant-id="${demoPage.assistant_id}"
-  mode="voice"
-  theme="dark"
-  base-bg-color="#000000"
-  accent-color="#007510"
-  cta-button-color="#c7a317"
-  cta-button-text-color="#000000"
-  border-radius="medium"
-  size="compact"
-  position="bottom-right"
-  title="AI Voice Agent"
-  start-button-text="Start"
-  end-button-text="End Call"
-  cta-subtitle="Tap to speak.."
-  chat-first-message="${demoPage.first_message.replace(/"/g, '&quot;')}"
-  chat-placeholder="Type your message..."
-  voice-show-transcript="true"
-  consent-required="false"
-></vapi-widget>
+    // Clear previous widget content to avoid duplicates during live updates.
+    widgetRef.current.innerHTML = '';
 
-<script src="https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js" async type="text/javascript"></script>`;
+    try {
+      await ensureVapiWidgetScriptLoaded();
+    } catch (e) {
+      console.error(e);
+      // If script fails, we still show the page; widget area stays empty.
+      return;
+    }
 
-    widgetRef.current.innerHTML = widgetCode;
+    const widget = document.createElement('vapi-widget');
+    widget.setAttribute('public-key', '4481e2b6-4294-4cac-8a20-54d51f2e24dc');
+    widget.setAttribute('assistant-id', demoPage.assistant_id);
+    widget.setAttribute('mode', 'voice');
+    widget.setAttribute('theme', 'dark');
+    widget.setAttribute('base-bg-color', '#000000');
+    widget.setAttribute('accent-color', '#007510');
+    widget.setAttribute('cta-button-color', '#c7a317');
+    widget.setAttribute('cta-button-text-color', '#000000');
+    widget.setAttribute('border-radius', 'medium');
+    widget.setAttribute('size', 'compact');
+    widget.setAttribute('position', 'bottom-right');
+    widget.setAttribute('title', 'AI Voice Agent');
+    widget.setAttribute('start-button-text', 'Start');
+    widget.setAttribute('end-button-text', 'End Call');
+    widget.setAttribute('cta-subtitle', 'Tap to speak..');
+    widget.setAttribute('chat-first-message', demoPage.first_message || '');
+    widget.setAttribute('chat-placeholder', 'Type your message...');
+    widget.setAttribute('voice-show-transcript', 'true');
+    widget.setAttribute('consent-required', 'false');
 
-    const scripts = widgetRef.current.querySelectorAll('script');
-    scripts.forEach((oldScript) => {
-      const newScript = document.createElement('script');
-      Array.from(oldScript.attributes).forEach((attr) => {
-        newScript.setAttribute(attr.name, attr.value);
-      });
-      if (oldScript.textContent) {
-        newScript.textContent = oldScript.textContent;
-      }
-      oldScript.parentNode?.replaceChild(newScript, oldScript);
-    });
+    widgetRef.current.appendChild(widget);
   };
 
   if (loading) {
@@ -187,10 +265,13 @@ export function DynamicDemoPage() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              Try Our <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">AI Agent Live</span>
+              Try Our{' '}
+              <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
+                AI Agent Live
+              </span>
             </h2>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              Interact with our AI agent and see it in action instantly. No login required.
+              Interact with our AI agent and remember: this page updates live when you edit the record in Supabase.
             </p>
           </div>
 
