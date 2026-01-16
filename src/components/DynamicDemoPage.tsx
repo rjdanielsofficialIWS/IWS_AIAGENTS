@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Loader, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Loader, AlertCircle, X } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
 interface DemoPage {
@@ -13,11 +13,13 @@ interface DemoPage {
   updated_at: string;
 }
 
-// Widget script that already works in your project
+// Working embed script in your project
 const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
 
 // ✅ Your new public key
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
+
+type DemoMode = 'voice' | 'chat' | null;
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -27,15 +29,17 @@ export function DynamicDemoPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const voiceRef = useRef<HTMLDivElement>(null);
-  const chatRef = useRef<HTMLDivElement>(null);
+  const [openMode, setOpenMode] = useState<DemoMode>(null);
 
-  // Inject HTML + force <script> tags to execute
+  const voiceMountRef = useRef<HTMLDivElement>(null);
+  const chatMountRef = useRef<HTMLDivElement>(null);
+
   const renderWidget = (code: string, containerRef: React.RefObject<HTMLDivElement>) => {
     if (!containerRef.current || !code.trim()) return;
 
     containerRef.current.innerHTML = code;
 
+    // Force <script> execution (same technique as your DemoPage.tsx)
     const scripts = containerRef.current.querySelectorAll('script');
     scripts.forEach((oldScript) => {
       const newScript = document.createElement('script');
@@ -48,47 +52,40 @@ export function DynamicDemoPage() {
   };
 
   /**
-   * ✅ Removes any Vapi widgets that are NOT the two embedded ones.
-   * This kills the bottom-right floating widget on demo pages.
+   * ✅ Remove any Vapi widgets that are NOT our embedded modal widgets.
+   * This kills the bottom-right “Try Our AI Phone Agent” launcher on demo pages.
    */
   const removeNonEmbeddedVapiWidgets = () => {
-    const voiceContainer = voiceRef.current;
-    const chatContainer = chatRef.current;
+    const voiceContainer = voiceMountRef.current;
+    const chatContainer = chatMountRef.current;
 
     const embedded = new Set<HTMLElement>();
     if (voiceContainer) voiceContainer.querySelectorAll('vapi-widget').forEach((el) => embedded.add(el as HTMLElement));
     if (chatContainer) chatContainer.querySelectorAll('vapi-widget').forEach((el) => embedded.add(el as HTMLElement));
 
-    // Remove any vapi-widget that isn't inside our two containers
     document.querySelectorAll('vapi-widget').forEach((el) => {
-      if (!embedded.has(el as HTMLElement)) {
-        el.remove();
-      }
+      if (!embedded.has(el as HTMLElement)) el.remove();
     });
 
-    // Some widget builds wrap a fixed-position launcher.
-    // This removes common fixed launchers if present.
-    const maybeLaunchers = document.querySelectorAll(
-      '[class*="vapi"][class*="launcher"], [class*="Vapi"][class*="launcher"], [id*="vapi"], [data-vapi]'
+    // Remove common fixed launchers created by the widget
+    const possible = document.querySelectorAll(
+      '[class*="vapi"][class*="launcher"], [class*="Vapi"][class*="launcher"], [data-vapi], [id*="vapi"]'
     );
-    maybeLaunchers.forEach((node) => {
-      // Only remove if it’s not inside our embedded containers
+    possible.forEach((node) => {
       const insideVoice = voiceContainer ? voiceContainer.contains(node) : false;
       const insideChat = chatContainer ? chatContainer.contains(node) : false;
       if (!insideVoice && !insideChat) {
-        // Be conservative: only remove fixed-position elements that look like launchers
         const style = window.getComputedStyle(node as Element);
         if (style.position === 'fixed') (node as HTMLElement).remove();
       }
     });
   };
 
-  // ✅ Add a small CSS guard for demo pages (extra protection)
+  // Extra CSS guard: hide any fixed Vapi launcher/bubble on demo pages
   useEffect(() => {
     const style = document.createElement('style');
     style.setAttribute('data-demo-vapi-guard', 'true');
     style.textContent = `
-      /* On demo pages, never show any fixed Vapi launcher/bubble */
       body [style*="position: fixed"][class*="vapi"],
       body [class*="vapi"][class*="launcher"],
       body [class*="Vapi"][class*="launcher"] {
@@ -96,10 +93,7 @@ export function DynamicDemoPage() {
       }
     `;
     document.head.appendChild(style);
-
-    return () => {
-      style.remove();
-    };
+    return () => style.remove();
   }, []);
 
   // Fetch record for slug
@@ -146,7 +140,7 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Realtime updates
+  // Realtime updates (optional, but keeps it live)
   useEffect(() => {
     const channel = supabase
       .channel(`demo_pages:${targetSlug}`)
@@ -178,41 +172,46 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Render two widgets (voice + chat) and FIX layout
+  // Build widgets when modal opens
   useEffect(() => {
     if (!demoPage) return;
+
+    // Clear mounts anytime mode changes
+    if (voiceMountRef.current) voiceMountRef.current.innerHTML = '';
+    if (chatMountRef.current) chatMountRef.current.innerHTML = '';
+
+    if (!openMode) return;
 
     const assistantId = demoPage.assistant_id;
     const firstMessage = (demoPage.first_message || '').replace(/"/g, '&quot;');
 
-    // Clear mounts first
-    if (voiceRef.current) voiceRef.current.innerHTML = '';
-    if (chatRef.current) chatRef.current.innerHTML = '';
+    const commonAttrs = `
+      public-key="${VAPI_PUBLIC_KEY}"
+      assistant-id="${assistantId}"
+      theme="dark"
+      base-bg-color="#000000"
+      accent-color="#b8860b"
+      cta-button-color="#b8860b"
+      cta-button-text-color="#000000"
+      border-radius="large"
+      size="compact"
+      position="inline"
+      chat-first-message="${firstMessage}"
+      chat-placeholder="Type your message..."
+      consent-required="false"
+    `;
 
-    // ✅ Layout fix: force a safe max-width and prevent bleed outside cards
     const voiceCode = `
       <div style="width:100%; display:flex; justify-content:center;">
-        <div style="width:100%; max-width:420px; overflow:hidden; border-radius:16px;">
+        <div style="width:100%; max-width:440px; overflow:hidden; border-radius:16px;">
           <vapi-widget
-            public-key="${VAPI_PUBLIC_KEY}"
-            assistant-id="${assistantId}"
+            ${commonAttrs}
             mode="voice"
-            position="inline"
-            theme="dark"
-            base-bg-color="#000000"
-            accent-color="#007510"
-            cta-button-color="#c7a317"
-            cta-button-text-color="#000000"
-            border-radius="large"
-            size="compact"
             title="AI Voice Agent"
             start-button-text="Start"
             end-button-text="End Call"
             cta-subtitle="Tap to speak.."
-            chat-first-message="${firstMessage}"
-            chat-placeholder="Type your message..."
             voice-show-transcript="true"
-            consent-required="false"
           ></vapi-widget>
         </div>
       </div>
@@ -221,37 +220,24 @@ export function DynamicDemoPage() {
 
     const chatCode = `
       <div style="width:100%; display:flex; justify-content:center;">
-        <div style="width:100%; max-width:420px; overflow:hidden; border-radius:16px;">
+        <div style="width:100%; max-width:440px; overflow:hidden; border-radius:16px;">
           <vapi-widget
-            public-key="${VAPI_PUBLIC_KEY}"
-            assistant-id="${assistantId}"
+            ${commonAttrs}
             mode="chat"
-            position="inline"
-            theme="dark"
-            base-bg-color="#000000"
-            accent-color="#007510"
-            cta-button-color="#c7a317"
-            cta-button-text-color="#000000"
-            border-radius="large"
-            size="compact"
             title="AI Chat Agent"
             start-button-text="Start"
             end-button-text="End"
             cta-subtitle="Tap to chat.."
-            chat-first-message="${firstMessage}"
-            chat-placeholder="Type your message..."
-            consent-required="false"
           ></vapi-widget>
         </div>
       </div>
       <script src="${VAPI_WIDGET_SRC}" async type="text/javascript"></script>
     `;
 
-    renderWidget(voiceCode, voiceRef);
-    renderWidget(chatCode, chatRef);
+    if (openMode === 'voice') renderWidget(voiceCode, voiceMountRef);
+    if (openMode === 'chat') renderWidget(chatCode, chatMountRef);
 
-    // ✅ Kill the floating demo-page widget after scripts mount
-    // (Run a few times to catch late-injected launchers)
+    // Kill any floating launcher that sneaks in
     const t1 = window.setTimeout(removeNonEmbeddedVapiWidgets, 200);
     const t2 = window.setTimeout(removeNonEmbeddedVapiWidgets, 800);
     const t3 = window.setTimeout(removeNonEmbeddedVapiWidgets, 1600);
@@ -261,14 +247,23 @@ export function DynamicDemoPage() {
       window.clearTimeout(t2);
       window.clearTimeout(t3);
     };
-  }, [demoPage]);
+  }, [openMode, demoPage]);
+
+  // Close modal with ESC
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpenMode(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center px-4">
+      <div className="min-h-screen bg-black text-white flex items-center justify-center px-4">
         <div className="text-center">
           <Loader className="h-12 w-12 animate-spin text-yellow-400 mx-auto mb-4" />
-          <p className="text-gray-300">Loading demo page...</p>
+          <p className="text-gray-300">Loading demo...</p>
         </div>
       </div>
     );
@@ -276,28 +271,26 @@ export function DynamicDemoPage() {
 
   if (error || !demoPage) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white">
-        <header className="py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
+      <div className="min-h-screen bg-black text-white">
+        <header className="py-6 px-4 border-b border-gray-800">
           <div className="max-w-6xl mx-auto">
-            <Link to="/" className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors">
+            <Link to="/" className="flex items-center gap-2 text-gray-400 hover:text-gray-200">
               <ArrowLeft className="h-5 w-5" />
-              <span>Back to Home</span>
+              <span>Back</span>
             </Link>
           </div>
         </header>
 
-        <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <section className="py-20 px-4">
           <div className="max-w-2xl mx-auto text-center">
             <div className="bg-red-500/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
               <AlertCircle className="h-12 w-12 text-red-400" />
             </div>
             <h2 className="text-3xl font-bold mb-4">Demo Page Not Found</h2>
-            <p className="text-xl text-gray-300 mb-8">
-              {error || `The demo page "${targetSlug}" does not exist or is not active.`}
-            </p>
+            <p className="text-xl text-gray-300 mb-8">{error}</p>
             <Link
               to="/"
-              className="inline-flex items-center space-x-2 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300"
+              className="inline-flex items-center gap-2 bg-yellow-400 hover:bg-yellow-500 text-black font-bold py-3 px-6 rounded-xl"
             >
               <ArrowLeft className="h-5 w-5" />
               <span>Return to Home</span>
@@ -309,74 +302,111 @@ export function DynamicDemoPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-      <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <Link to="/" className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors">
+    <div className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black text-white overflow-x-hidden">
+      {/* Top nav */}
+      <header className="py-6 px-4">
+        <div className="max-w-6xl mx-auto">
+          <Link to="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-gray-200">
             <ArrowLeft className="h-5 w-5" />
             <span>Back</span>
           </Link>
-
-          <div className="text-center">
-            <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-              {demoPage.slug} Demo
-            </h1>
-            <p className="text-sm text-gray-400 mt-1">/{demoPage.slug}</p>
-          </div>
-
-          <div className="w-16" />
         </div>
       </header>
 
-      <main className="relative z-10 py-10 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          {/* Record preview */}
-          <div className="mb-8 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Assistant ID</div>
-                <div className="text-sm text-gray-200 break-all">{demoPage.assistant_id}</div>
-              </div>
-              <div>
-                <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">First Message</div>
-                <div className="text-sm text-gray-200">{demoPage.first_message}</div>
-              </div>
-              <div>
-                <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">System Prompt</div>
-                <div className="text-sm text-gray-200 line-clamp-3">{demoPage.system_prompt}</div>
-              </div>
-            </div>
+      {/* Main hero (matches your screenshot format + exact copy) */}
+      <main className="px-4 pb-16">
+        <div className="max-w-5xl mx-auto flex flex-col items-center text-center">
+          {/* Title */}
+          <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight mt-6">
+            Hey{' '}
+            <span className="text-yellow-400 drop-shadow-[0_0_20px_rgba(255,215,0,0.10)]">
+              Visitor
+            </span>
+            ,
+          </h1>
+
+          {/* Accent line */}
+          <div className="mt-4 h-1 w-24 rounded-full bg-yellow-400/80" />
+
+          {/* Subheadline */}
+          <p className="mt-8 text-xl sm:text-2xl text-gray-200">
+            I built a tool that{' '}
+            <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
+          </p>
+
+          {/* Description card */}
+          <div className="mt-10 w-full max-w-3xl rounded-2xl border border-gray-800 bg-gradient-to-b from-zinc-900/40 to-zinc-950/40 backdrop-blur-xl shadow-[0_20px_80px_rgba(0,0,0,0.45)] px-6 sm:px-10 py-8">
+            <p className="text-lg sm:text-xl text-gray-200 leading-relaxed">
+              It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what
+              they need — automatically.
+            </p>
           </div>
 
-          {/* Widgets */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 overflow-hidden">
-              <h2 className="text-lg font-semibold mb-4">Voice</h2>
-              <div className="w-full min-h-[520px] flex items-start justify-center">
-                <div ref={voiceRef} className="w-full flex justify-center" />
-              </div>
-            </div>
+          {/* Choose line */}
+          <p className="mt-12 text-xl sm:text-2xl font-semibold text-gray-200">
+            Choose how you&apos;d like to try it:
+          </p>
 
-            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6 overflow-hidden">
-              <h2 className="text-lg font-semibold mb-4">Chat</h2>
-              <div className="w-full min-h-[520px] flex items-start justify-center">
-                <div ref={chatRef} className="w-full flex justify-center" />
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center mt-10">
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center justify-center bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300"
+          {/* Buttons: side-by-side on desktop AND mobile */}
+          <div className="mt-8 w-full max-w-2xl flex flex-row gap-4 justify-center">
+            <button
+              onClick={() => setOpenMode('voice')}
+              className="flex-1 rounded-2xl bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-6 shadow-[0_16px_40px_rgba(255,215,0,0.12)] transition-transform active:scale-[0.99]"
             >
-              Schedule a Consultation
-            </a>
+              Call Me
+            </button>
+
+            <button
+              onClick={() => setOpenMode('chat')}
+              className="flex-1 rounded-2xl bg-zinc-900 hover:bg-zinc-800 text-yellow-400 border border-yellow-400/40 font-bold py-4 px-6 shadow-[0_16px_40px_rgba(0,0,0,0.35)] transition-transform active:scale-[0.99]"
+            >
+              Text Me
+            </button>
           </div>
+
+          {/* Optional tiny slug label (not part of copy, but helpful for you). Remove if you want. */}
+          <div className="mt-6 text-xs text-gray-500">/{demoPage.slug}</div>
         </div>
       </main>
+
+      {/* Modal overlay for widgets */}
+      {openMode && (
+        <div
+          className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onMouseDown={(e) => {
+            if (e.target === e.currentTarget) setOpenMode(null);
+          }}
+        >
+          <div className="w-full max-w-[560px] rounded-2xl border border-gray-800 bg-gradient-to-b from-zinc-900/70 to-black/70 shadow-[0_30px_120px_rgba(0,0,0,0.6)] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-800">
+              <div className="text-sm font-semibold text-gray-200">
+                {openMode === 'voice' ? 'Call Me' : 'Text Me'}
+              </div>
+              <button
+                onClick={() => setOpenMode(null)}
+                className="p-2 rounded-lg hover:bg-white/5 text-gray-300"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              {openMode === 'voice' && (
+                <div className="min-h-[520px] flex items-start justify-center">
+                  <div ref={voiceMountRef} className="w-full flex justify-center" />
+                </div>
+              )}
+
+              {openMode === 'chat' && (
+                <div className="min-h-[520px] flex items-start justify-center">
+                  <div ref={chatMountRef} className="w-full flex justify-center" />
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
