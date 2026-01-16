@@ -5,6 +5,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { HomePage } from './components/HomePage';
 import { DemoPage } from './components/DemoPage';
+import { DynamicDemoPage } from './components/DynamicDemoPage';
 import { OnboardingBookingPage } from './components/OnboardingBookingPage';
 import { LoginForm } from './components/auth/LoginForm';
 import { RegisterForm } from './components/auth/RegisterForm';
@@ -13,6 +14,7 @@ import { DashboardOverview } from './components/dashboard/DashboardOverview';
 import { AssistantsList } from './components/assistants/AssistantsList';
 import { AssistantBuilder } from './components/assistants/AssistantBuilder';
 import { WidgetManager } from './components/widgets/WidgetManager';
+import { DemoPagesManager } from './components/demo-pages/DemoPagesManager';
 import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
 import { Brain, Phone, MessageSquare, User } from 'lucide-react';
 import { VapiAssistant } from './types/vapi';
@@ -121,6 +123,7 @@ function Dashboard() {
         />
       )}
       {currentPage === 'widgets' && <WidgetManager />}
+      {currentPage === 'demo-pages' && <DemoPagesManager />}
       {currentPage === 'phone-numbers' && (
         <div className="text-center py-12">
           <Phone className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -210,7 +213,7 @@ function AppContent() {
 
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/demo" element={<DemoPage />} />
+        <Route path="/demos" element={<DemoPage />} />
         <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/login" element={<AuthPage isSignUp={false} />} />
@@ -223,7 +226,7 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="/:slug" element={<DynamicDemoPage />} />
       </Routes>
     </>
   );
