@@ -211,10 +211,6 @@ function AppContent() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/demo" element={<DemoPage />} />
-
-        {/* Variant demo pages: /John, /Sarah-Smith, etc. */}
-        <Route path="/:name" element={<DemoPage />} />
-
         <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/login" element={<AuthPage isSignUp={false} />} />
