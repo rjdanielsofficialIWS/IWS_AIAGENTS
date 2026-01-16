@@ -13,32 +13,136 @@ interface DemoPage {
   updated_at: string;
 }
 
+// Keep your existing key
 const VAPI_PUBLIC_KEY = '4481e2b6-4294-4cac-8a20-54d51f2e24dc';
+
+// IMPORTANT: use the same widget script that previously worked for you.
+// If your project used a different URL before, swap it back here.
 const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
 
-export function DynamicDemoPage() {
-  const { slug } = useParams<{ slug: string }>();
-  const targetSlug = useMemo(() => slug || 'demo', [slug]);
+function ensureVapiWidgetScript(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // If the custom element is already registered, we’re good.
+    if (customElements.get('vapi-widget')) {
+      resolve();
+      return;
+    }
 
-  const [demoPage, setDemoPage] = useState<DemoPage | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const widgetRef = useRef<HTMLDivElement>(null);
-
-  // Load Vapi widget script ONCE
-  useEffect(() => {
-    const existing = document.querySelector(`script[src="${VAPI_WIDGET_SRC}"]`);
-    if (existing) return;
+    // If script exists, wait a bit for it to register the element.
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${VAPI_WIDGET_SRC}"]`);
+    if (existing) {
+      // Give it a moment to register
+      const start = Date.now();
+      const tick = () => {
+        if (customElements.get('vapi-widget')) return resolve();
+        if (Date.now() - start > 8000) return reject(new Error('Vapi widget script loaded but vapi-widget not registered.'));
+        requestAnimationFrame(tick);
+      };
+      tick();
+      return;
+    }
 
     const s = document.createElement('script');
     s.src = VAPI_WIDGET_SRC;
     s.async = true;
     s.type = 'text/javascript';
+
+    s.onload = () => {
+      const start = Date.now();
+      const tick = () => {
+        if (customElements.get('vapi-widget')) return resolve();
+        if (Date.now() - start > 8000) return reject(new Error('Vapi widget script loaded but vapi-widget not registered.'));
+        requestAnimationFrame(tick);
+      };
+      tick();
+    };
+
+    s.onerror = () => reject(new Error('Failed to load Vapi widget script.'));
     document.body.appendChild(s);
+  });
+}
+
+function createVapiWidgetEl(opts: {
+  mode: 'voice' | 'chat';
+  publicKey: string;
+  assistantId: string;
+  firstMessage?: string;
+}) {
+  const el = document.createElement('vapi-widget');
+
+  // Required
+  el.setAttribute('public-key', opts.publicKey);
+  el.setAttribute('assistant-id', opts.assistantId);
+
+  // Mode
+  el.setAttribute('mode', opts.mode);
+
+  // Styling (center widgets, not floating)
+  el.setAttribute('theme', 'dark');
+  el.setAttribute('base-bg-color', '#000000');
+  el.setAttribute('accent-color', '#007510');
+  el.setAttribute('cta-button-color', '#c7a317');
+  el.setAttribute('cta-button-text-color', '#000000');
+  el.setAttribute('border-radius', 'large');
+  el.setAttribute('size', 'compact');
+
+  // IMPORTANT: this keeps it from trying to float bottom-right
+  // (some versions ignore position if embedded; safe to set a neutral value)
+  el.setAttribute('position', 'inline');
+
+  // Copy from DB
+  if (opts.firstMessage) {
+    el.setAttribute('chat-first-message', opts.firstMessage);
+  }
+
+  // Labels
+  el.setAttribute('title', opts.mode === 'voice' ? 'Voice Demo' : 'Chat Demo');
+  el.setAttribute('start-button-text', 'Start');
+  el.setAttribute('end-button-text', 'End');
+  el.setAttribute('cta-subtitle', opts.mode === 'voice' ? 'Tap to speak' : 'Tap to chat');
+  el.setAttribute('chat-placeholder', 'Type your message...');
+  el.setAttribute('voice-show-transcript', 'true');
+  el.setAttribute('consent-required', 'false');
+
+  return el;
+}
+
+export function DynamicDemoPage() {
+  const { slug } = useParams<{ slug: string }>();
+  const targetSlug = useMemo(() => (slug || 'demo').trim(), [slug]);
+
+  const [demoPage, setDemoPage] = useState<DemoPage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [widgetReady, setWidgetReady] = useState(false);
+
+  const voiceMountRef = useRef<HTMLDivElement>(null);
+  const chatMountRef = useRef<HTMLDivElement>(null);
+
+  // Load widget script and ensure vapi-widget is registered
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      try {
+        await ensureVapiWidgetScript();
+        if (!cancelled) setWidgetReady(true);
+      } catch (e) {
+        console.error(e);
+        if (!cancelled) {
+          setWidgetReady(false);
+          // Don’t hard-fail the page; we’ll show an error block below.
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Fetch record for this slug
+  // Fetch record for slug
   useEffect(() => {
     let isMounted = true;
 
@@ -83,9 +187,8 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Realtime: if the DB row changes, update the page instantly
+  // Realtime updates for this slug
   useEffect(() => {
-    // Subscribe to changes for THIS slug only
     const channel = supabase
       .channel(`demo_pages:${targetSlug}`)
       .on(
@@ -97,14 +200,12 @@ export function DynamicDemoPage() {
           filter: `slug=eq.${targetSlug}`,
         },
         (payload) => {
-          // DELETE
           if (payload.eventType === 'DELETE') {
             setDemoPage(null);
             setError(`Demo page "${targetSlug}" not found`);
             return;
           }
 
-          // INSERT / UPDATE
           const next = payload.new as DemoPage | null;
 
           if (!next || !next.is_active) {
@@ -124,47 +225,42 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Render widget whenever demoPage changes
+  // Render Voice + Chat widgets in the center whenever record changes and script is ready
   useEffect(() => {
-    if (!demoPage || !widgetRef.current) return;
+    if (!widgetReady) return;
+    if (!demoPage) return;
 
-    // Clear existing widget to avoid duplicates
-    widgetRef.current.innerHTML = '';
+    if (!voiceMountRef.current || !chatMountRef.current) return;
 
-    // Escape double-quotes for attribute safety
-    const firstMsg = (demoPage.first_message || '').replace(/"/g, '&quot;');
+    // Clear mounts to avoid duplicates
+    voiceMountRef.current.innerHTML = '';
+    chatMountRef.current.innerHTML = '';
 
-    const widgetEl = document.createElement('div');
-    widgetEl.innerHTML = `
-      <vapi-widget
-        public-key="${VAPI_PUBLIC_KEY}"
-        assistant-id="${demoPage.assistant_id}"
-        mode="voice"
-        theme="dark"
-        base-bg-color="#000000"
-        accent-color="#007510"
-        cta-button-color="#c7a317"
-        cta-button-text-color="#000000"
-        border-radius="medium"
-        size="compact"
-        position="bottom-right"
-        title="AI Voice Agent"
-        start-button-text="Start"
-        end-button-text="End Call"
-        cta-subtitle="Tap to speak.."
-        chat-first-message="${firstMsg}"
-        chat-placeholder="Type your message..."
-        voice-show-transcript="true"
-        consent-required="false"
-      ></vapi-widget>
-    `.trim();
+    const firstMessage = (demoPage.first_message || '').toString();
 
-    widgetRef.current.appendChild(widgetEl);
-  }, [demoPage]);
+    // Voice widget
+    const voiceEl = createVapiWidgetEl({
+      mode: 'voice',
+      publicKey: VAPI_PUBLIC_KEY,
+      assistantId: demoPage.assistant_id,
+      firstMessage,
+    });
+
+    // Chat widget
+    const chatEl = createVapiWidgetEl({
+      mode: 'chat',
+      publicKey: VAPI_PUBLIC_KEY,
+      assistantId: demoPage.assistant_id,
+      firstMessage,
+    });
+
+    voiceMountRef.current.appendChild(voiceEl);
+    chatMountRef.current.appendChild(chatEl);
+  }, [widgetReady, demoPage]);
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden flex items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white flex items-center justify-center px-4">
         <div className="text-center">
           <Loader className="h-12 w-12 animate-spin text-yellow-400 mx-auto mb-4" />
           <p className="text-gray-300">Loading demo page...</p>
@@ -175,27 +271,17 @@ export function DynamicDemoPage() {
 
   if (error || !demoPage) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-        <div className="fixed inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
-          <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
-        </div>
-
-        <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
-          <div className="max-w-7xl mx-auto">
-            <div className="flex items-center justify-between">
-              <Link
-                to="/"
-                className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5" />
-                <span>Back to Home</span>
-              </Link>
-            </div>
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white">
+        <header className="py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
+          <div className="max-w-6xl mx-auto">
+            <Link to="/" className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors">
+              <ArrowLeft className="h-5 w-5" />
+              <span>Back to Home</span>
+            </Link>
           </div>
         </header>
 
-        <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
+        <section className="py-20 px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl mx-auto text-center">
             <div className="bg-red-500/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
               <AlertCircle className="h-12 w-12 text-red-400" />
@@ -206,7 +292,7 @@ export function DynamicDemoPage() {
             </p>
             <Link
               to="/"
-              className="inline-flex items-center space-x-2 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02]"
+              className="inline-flex items-center space-x-2 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300"
             >
               <ArrowLeft className="h-5 w-5" />
               <span>Return to Home</span>
@@ -219,77 +305,82 @@ export function DynamicDemoPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
-        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
-      </div>
-
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-b border-gray-800">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between">
-            <Link
-              to="/"
-              className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors"
-            >
-              <ArrowLeft className="h-5 w-5" />
-              <span>Back to Home</span>
-            </Link>
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <Link to="/" className="flex items-center space-x-2 text-gray-400 hover:text-gray-300 transition-colors">
+            <ArrowLeft className="h-5 w-5" />
+            <span>Back</span>
+          </Link>
+
+          <div className="text-center">
             <h1 className="text-2xl sm:text-3xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-              Experience Our AI Agent
+              {demoPage.slug} Demo
             </h1>
-            <div className="w-24"></div>
+            <p className="text-sm text-gray-400 mt-1">/{demoPage.slug}</p>
           </div>
+
+          <div className="w-16" />
         </div>
       </header>
 
-      <section className="relative z-10 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              Try Our{' '}
-              <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-                AI Agent Live
-              </span>
-            </h2>
-            <p className="text-lg text-gray-300 max-w-2xl mx-auto">
-              Interact with our AI agent and see it in action instantly. No login required.
-            </p>
-          </div>
+      <main className="relative z-10 py-10 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-5xl mx-auto">
+          {/* Record preview so you can confirm it’s pulling the right row */}
+          <div className="mb-8 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">Assistant ID</div>
+                <div className="text-sm text-gray-200 break-all">{demoPage.assistant_id}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">First Message</div>
+                <div className="text-sm text-gray-200">{demoPage.first_message}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase tracking-wide text-gray-400 mb-1">System Prompt</div>
+                <div className="text-sm text-gray-200 line-clamp-3">{demoPage.system_prompt}</div>
+                <div className="text-xs text-gray-500 mt-2">
+                  Note: system_prompt is displayed here, but Vapi behavior changes only if the assistant’s prompt is updated in Vapi.
+                </div>
+              </div>
+            </div>
 
-          <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8">
-            {demoPage.system_prompt && (
-              <div className="mb-6 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                <h3 className="text-sm font-semibold text-blue-300 mb-2">Assistant Configuration</h3>
-                <p className="text-sm text-gray-300">{demoPage.system_prompt}</p>
+            {!widgetReady && (
+              <div className="mt-6 p-4 border border-red-500/30 bg-red-500/10 rounded-xl text-sm text-red-200">
+                Vapi widgets failed to initialize (script not ready). Check the widget script URL or console errors.
               </div>
             )}
-
-            <div ref={widgetRef} className="min-h-[200px]"></div>
           </div>
 
-          <div className="text-center mt-12">
-            <p className="text-lg text-gray-300 mb-6">
-              Impressed with what you've seen? Let's build a custom solution for your business.
-            </p>
+          {/* Centered widgets */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+              <h2 className="text-lg font-semibold mb-4">Voice</h2>
+              <div className="flex justify-center">
+                <div ref={voiceMountRef} className="w-full flex justify-center" />
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-6">
+              <h2 className="text-lg font-semibold mb-4">Chat</h2>
+              <div className="flex justify-center">
+                <div ref={chatMountRef} className="w-full flex justify-center" />
+              </div>
+            </div>
+          </div>
+
+          <div className="text-center mt-10">
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center space-x-3 bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
+              className="inline-flex items-center justify-center bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300"
             >
-              <span>Schedule a Consultation</span>
+              Schedule a Consultation
             </a>
           </div>
         </div>
-      </section>
-
-      <footer className="relative z-10 py-8 px-4 sm:px-6 lg:px-8 border-t border-gray-800 mt-12">
-        <div className="max-w-7xl mx-auto text-center">
-          <p className="text-gray-400 text-sm">
-            © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
-          </p>
-        </div>
-      </footer>
+      </main>
     </div>
   );
 }
