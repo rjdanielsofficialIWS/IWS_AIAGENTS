@@ -31,7 +31,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
 
   if (user.membership_status !== 'premium' && user.membership_status !== 'enterprise') {
     return (
@@ -51,14 +53,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
           <div className="space-y-4">
             <button
-              onClick={() => (window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding')}
+              onClick={() => window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding'}
               className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
             >
               Book Your Onboarding Call
             </button>
 
             <button
-              onClick={() => (window.location.href = '/')}
+              onClick={() => window.location.href = '/'}
               className="w-full text-gray-400 hover:text-gray-300 transition-colors text-sm"
             >
               Back to main page
@@ -87,7 +89,7 @@ function Dashboard() {
     setShowAssistantBuilder(true);
   };
 
-  const handleSaveAssistant = (_assistant: VapiAssistant) => {
+  const handleSaveAssistant = (assistant: VapiAssistant) => {
     setShowAssistantBuilder(false);
     setCurrentAssistant(null);
   };
@@ -113,10 +115,12 @@ function Dashboard() {
     <DashboardLayout currentPage={currentPage} onPageChange={setCurrentPage}>
       {currentPage === 'dashboard' && <DashboardOverview />}
       {currentPage === 'assistants' && (
-        <AssistantsList onCreateNew={handleCreateAssistant} onEdit={handleEditAssistant} />
+        <AssistantsList
+          onCreateNew={handleCreateAssistant}
+          onEdit={handleEditAssistant}
+        />
       )}
       {currentPage === 'widgets' && <WidgetManager />}
-
       {currentPage === 'phone-numbers' && (
         <div className="text-center py-12">
           <Phone className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
@@ -124,34 +128,46 @@ function Dashboard() {
           <p className="text-gray-500">Phone number management coming soon</p>
         </div>
       )}
-
-      {(currentPage === 'calls' ||
-        currentPage === 'webhooks' ||
-        currentPage === 'billing' ||
-        currentPage === 'api-keys' ||
-        currentPage === 'settings') && (
+      {currentPage === 'calls' && (
         <div className="text-center py-12">
           <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
-          <h3 className="text-xl font-semibold mb-2 text-gray-400">
-            {currentPage === 'calls'
-              ? 'Call Logs'
-              : currentPage === 'webhooks'
-              ? 'Webhooks'
-              : currentPage === 'billing'
-              ? 'Billing'
-              : currentPage === 'api-keys'
-              ? 'API Keys'
-              : 'Settings'}
-          </h3>
-          <p className="text-gray-500">Coming soon</p>
+          <h3 className="text-xl font-semibold mb-2 text-gray-400">Call Logs</h3>
+          <p className="text-gray-500">Call management coming soon</p>
         </div>
       )}
-
+      {currentPage === 'webhooks' && (
+        <div className="text-center py-12">
+          <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+          <h3 className="text-xl font-semibold mb-2 text-gray-400">Webhooks</h3>
+          <p className="text-gray-500">Webhook management coming soon</p>
+        </div>
+      )}
       {currentPage === 'team' && (
         <div className="text-center py-12">
           <User className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
           <h3 className="text-xl font-semibold mb-2 text-gray-400">Team Management</h3>
           <p className="text-gray-500">Team features coming soon</p>
+        </div>
+      )}
+      {currentPage === 'billing' && (
+        <div className="text-center py-12">
+          <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+          <h3 className="text-xl font-semibold mb-2 text-gray-400">Billing</h3>
+          <p className="text-gray-500">Billing management coming soon</p>
+        </div>
+      )}
+      {currentPage === 'api-keys' && (
+        <div className="text-center py-12">
+          <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+          <h3 className="text-xl font-semibold mb-2 text-gray-400">API Keys</h3>
+          <p className="text-gray-500">API key management coming soon</p>
+        </div>
+      )}
+      {currentPage === 'settings' && (
+        <div className="text-center py-12">
+          <MessageSquare className="h-16 w-16 mx-auto mb-4 text-gray-500 opacity-50" />
+          <h3 className="text-xl font-semibold mb-2 text-gray-400">Settings</h3>
+          <p className="text-gray-500">Settings management coming soon</p>
         </div>
       )}
     </DashboardLayout>
@@ -169,9 +185,15 @@ function AuthPage({ isSignUp }: { isSignUp: boolean }) {
       </div>
 
       {showSignUp ? (
-        <RegisterForm onSwitchToLogin={() => setShowSignUp(false)} onBack={() => (window.location.href = '/')} />
+        <RegisterForm
+          onSwitchToLogin={() => setShowSignUp(false)}
+          onBack={() => window.location.href = '/'}
+        />
       ) : (
-        <LoginForm onSwitchToRegister={() => setShowSignUp(true)} onBack={() => (window.location.href = '/')} />
+        <LoginForm
+          onSwitchToRegister={() => setShowSignUp(true)}
+          onBack={() => window.location.href = '/'}
+        />
       )}
     </div>
   );
@@ -180,22 +202,23 @@ function AuthPage({ isSignUp }: { isSignUp: boolean }) {
 function AppContent() {
   return (
     <>
+      {/* Meta Pixel base load */}
       <MetaPixel />
+
+      {/* Tracks page views on route changes */}
       <MetaPixelTracker />
 
       <Routes>
         <Route path="/" element={<HomePage />} />
-
-        {/* Demo supports both /demo and /SomeName */}
         <Route path="/demo" element={<DemoPage />} />
+
+        {/* Variant demo pages: /John, /Sarah-Smith, etc. */}
         <Route path="/:name" element={<DemoPage />} />
 
         <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-
         <Route path="/login" element={<AuthPage isSignUp={false} />} />
         <Route path="/register" element={<AuthPage isSignUp={true} />} />
-
         <Route
           path="/dashboard"
           element={
@@ -204,7 +227,6 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
-
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
