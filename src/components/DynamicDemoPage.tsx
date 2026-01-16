@@ -13,10 +13,7 @@ interface DemoPage {
   updated_at: string;
 }
 
-// Working embed script in your project
 const VAPI_WIDGET_SRC = 'https://unpkg.com/@vapi-ai/client-sdk-react/dist/embed/widget.umd.js';
-
-// ✅ Your new public key
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 
 type DemoMode = 'voice' | 'chat' | null;
@@ -51,10 +48,7 @@ export function DynamicDemoPage() {
     });
   };
 
-  /**
-   * ✅ Remove any Vapi widgets that are NOT our embedded modal widgets.
-   * This kills the bottom-right “Try Our AI Phone Agent” launcher on demo pages.
-   */
+  // Removes any Vapi widgets that are NOT our embedded modal widgets (kills bottom-right launcher)
   const removeNonEmbeddedVapiWidgets = () => {
     const voiceContainer = voiceMountRef.current;
     const chatContainer = chatMountRef.current;
@@ -67,7 +61,6 @@ export function DynamicDemoPage() {
       if (!embedded.has(el as HTMLElement)) el.remove();
     });
 
-    // Remove common fixed launchers created by the widget
     const possible = document.querySelectorAll(
       '[class*="vapi"][class*="launcher"], [class*="Vapi"][class*="launcher"], [data-vapi], [id*="vapi"]'
     );
@@ -140,7 +133,7 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Realtime updates (optional, but keeps it live)
+  // Realtime updates
   useEffect(() => {
     const channel = supabase
       .channel(`demo_pages:${targetSlug}`)
@@ -172,11 +165,42 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
+  // Helper: auto-open the widget UI so you don’t need the extra click.
+  // This clicks the first button found inside the widget shadow/DOM after it mounts.
+  const autoOpenWidget = (container: HTMLDivElement | null) => {
+    if (!container) return;
+
+    const attempt = () => {
+      // Most builds render a CTA button in light DOM. If they use shadow DOM, this might not work.
+      // But in your screenshots, the "AI Chat Agent" pill is clickable in DOM, so this works.
+      const btn =
+        container.querySelector('button') ||
+        container.querySelector('[role="button"]') ||
+        container.querySelector('vapi-widget');
+
+      if (btn instanceof HTMLElement) {
+        btn.click();
+        return true;
+      }
+      return false;
+    };
+
+    // Try a few times to catch async render
+    const t1 = window.setTimeout(() => attempt(), 150);
+    const t2 = window.setTimeout(() => attempt(), 450);
+    const t3 = window.setTimeout(() => attempt(), 900);
+
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  };
+
   // Build widgets when modal opens
   useEffect(() => {
     if (!demoPage) return;
 
-    // Clear mounts anytime mode changes
     if (voiceMountRef.current) voiceMountRef.current.innerHTML = '';
     if (chatMountRef.current) chatMountRef.current.innerHTML = '';
 
@@ -242,10 +266,17 @@ export function DynamicDemoPage() {
     const t2 = window.setTimeout(removeNonEmbeddedVapiWidgets, 800);
     const t3 = window.setTimeout(removeNonEmbeddedVapiWidgets, 1600);
 
+    // ✅ Auto-open the widget UI (no second click)
+    const cleanupAuto =
+      openMode === 'voice'
+        ? autoOpenWidget(voiceMountRef.current)
+        : autoOpenWidget(chatMountRef.current);
+
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       window.clearTimeout(t3);
+      if (typeof cleanupAuto === 'function') cleanupAuto();
     };
   }, [openMode, demoPage]);
 
@@ -301,9 +332,13 @@ export function DynamicDemoPage() {
     );
   }
 
+  // ✅ “Visitor” replaced with slug name (title-case-ish)
+  const niceSlug = demoPage.slug
+    ? demoPage.slug.charAt(0).toUpperCase() + demoPage.slug.slice(1)
+    : 'Demo';
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black text-white overflow-x-hidden">
-      {/* Top nav */}
+    <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-950 to-black text-white overflow-x-hidden">
       <header className="py-6 px-4">
         <div className="max-w-6xl mx-auto">
           <Link to="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-gray-200">
@@ -313,28 +348,23 @@ export function DynamicDemoPage() {
         </div>
       </header>
 
-      {/* Main hero (matches your screenshot format + exact copy) */}
       <main className="px-4 pb-16">
         <div className="max-w-5xl mx-auto flex flex-col items-center text-center">
-          {/* Title */}
           <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight mt-6">
             Hey{' '}
             <span className="text-yellow-400 drop-shadow-[0_0_20px_rgba(255,215,0,0.10)]">
-              Visitor
+              {niceSlug}
             </span>
             ,
           </h1>
 
-          {/* Accent line */}
           <div className="mt-4 h-1 w-24 rounded-full bg-yellow-400/80" />
 
-          {/* Subheadline */}
           <p className="mt-8 text-xl sm:text-2xl text-gray-200">
             I built a tool that{' '}
             <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
           </p>
 
-          {/* Description card */}
           <div className="mt-10 w-full max-w-3xl rounded-2xl border border-gray-800 bg-gradient-to-b from-zinc-900/40 to-zinc-950/40 backdrop-blur-xl shadow-[0_20px_80px_rgba(0,0,0,0.45)] px-6 sm:px-10 py-8">
             <p className="text-lg sm:text-xl text-gray-200 leading-relaxed">
               It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what
@@ -342,12 +372,10 @@ export function DynamicDemoPage() {
             </p>
           </div>
 
-          {/* Choose line */}
           <p className="mt-12 text-xl sm:text-2xl font-semibold text-gray-200">
             Choose how you&apos;d like to try it:
           </p>
 
-          {/* Buttons: side-by-side on desktop AND mobile */}
           <div className="mt-8 w-full max-w-2xl flex flex-row gap-4 justify-center">
             <button
               onClick={() => setOpenMode('voice')}
@@ -363,13 +391,10 @@ export function DynamicDemoPage() {
               Text Me
             </button>
           </div>
-
-          {/* Optional tiny slug label (not part of copy, but helpful for you). Remove if you want. */}
-          <div className="mt-6 text-xs text-gray-500">/{demoPage.slug}</div>
         </div>
       </main>
 
-      {/* Modal overlay for widgets */}
+      {/* Modal */}
       {openMode && (
         <div
           className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
