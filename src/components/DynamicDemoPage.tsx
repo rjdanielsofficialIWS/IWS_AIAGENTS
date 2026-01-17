@@ -364,7 +364,7 @@ export function DynamicDemoPage() {
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
-          I built a tool that <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
+          I built a tool for you that <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
