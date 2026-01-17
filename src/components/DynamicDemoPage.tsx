@@ -53,14 +53,14 @@ export function DynamicDemoPage() {
   }, []);
 
   /**
-   * Hard-remove the old bottom-right Vapi widget/launcher
-   * (this happens when the homepage widget script is loaded globally).
+   * Kill the old bottom-right Vapi widget/launcher (if it's injected globally).
+   * We do this only on demo pages.
    */
   const nukeVapiLauncher = () => {
-    // Remove any <vapi-widget> in DOM (your demo page uses NONE)
+    // Remove any <vapi-widget> elements (your demo pages use NONE)
     document.querySelectorAll('vapi-widget').forEach((el) => el.remove());
 
-    // Remove common launcher containers (fixed-position bubbles)
+    // Remove likely launcher containers injected by scripts
     const candidates = document.querySelectorAll(
       '[class*="vapi"], [id*="vapi"], [data-vapi], [class*="Vapi"], [id*="Vapi"]'
     );
@@ -74,35 +74,17 @@ export function DynamicDemoPage() {
     });
   };
 
-  // CSS guard + removal loop (handles widgets injected after load)
   useEffect(() => {
-    const style = document.createElement('style');
-    style.setAttribute('data-demo-kill-vapi', 'true');
-    style.textContent = `
-      /* Hide any Vapi launcher that sneaks in on demo pages */
-      [class*="vapi"], [class*="Vapi"], [id*="vapi"], [id*="Vapi"], [data-vapi] {
-        /* don't blanket hide everything; only kill common fixed launchers */
-      }
-      [class*="vapi"][style*="position: fixed"],
-      [class*="Vapi"][style*="position: fixed"],
-      [data-vapi][style*="position: fixed"] {
-        display:none !important;
-      }
-    `;
-    document.head.appendChild(style);
-
-    // initial + a few delayed nukes
+    // initial + delayed nukes + mutation observer
     nukeVapiLauncher();
     const t1 = window.setTimeout(nukeVapiLauncher, 300);
     const t2 = window.setTimeout(nukeVapiLauncher, 1200);
     const t3 = window.setTimeout(nukeVapiLauncher, 2500);
 
-    // watch for reinjection
     const obs = new MutationObserver(() => nukeVapiLauncher());
     obs.observe(document.body, { childList: true, subtree: true });
 
     return () => {
-      style.remove();
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       window.clearTimeout(t3);
@@ -159,7 +141,7 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug, displayName]);
 
-  // Realtime updates
+  // Realtime updates so changes in Supabase update the page
   useEffect(() => {
     if (!targetSlug) return;
 
@@ -174,7 +156,7 @@ export function DynamicDemoPage() {
 
           setDemoPage(next);
 
-          // keep first assistant bubble synced
+          // keep first assistant bubble synced to first_message
           setChatMsgs((prev) => {
             if (!prev.length) return [{ role: 'assistant', content: next.first_message || `Hey ${displayName}, how can I help?` }];
             const copy = [...prev];
@@ -236,7 +218,7 @@ export function DynamicDemoPage() {
 
         await vapi.start(demoPage.assistant_id);
 
-        // Optional speak
+        // Optional: speak the first message
         if (demoPage.first_message?.trim()) {
           try {
             await (vapi as any).say(demoPage.first_message.trim(), false);
@@ -362,13 +344,11 @@ export function DynamicDemoPage() {
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
-          I built a tool that{' '}
-          <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
+          I built a tool that <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what
-          they need — automatically.
+          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
         </div>
 
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
