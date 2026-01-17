@@ -1,6 +1,23 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, MessageSquare, CheckCircle, AlertCircle, Loader, ArrowLeft, ArrowRight, Target, Calendar, Users } from 'lucide-react';
+import {
+  Brain,
+  Zap,
+  TrendingUp,
+  Phone,
+  Mail,
+  User,
+  Building,
+  MessageSquare,
+  CheckCircle,
+  AlertCircle,
+  Loader,
+  ArrowLeft,
+  ArrowRight,
+  Target,
+  Calendar,
+  Users
+} from 'lucide-react';
 import { SubscriptionSection } from './SubscriptionSection';
 
 interface FormData {
@@ -225,11 +242,6 @@ export function HomePage() {
     }
   };
 
-  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
   const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setFormData(prev => ({ ...prev, countryCode: e.target.value }));
   };
@@ -319,20 +331,20 @@ export function HomePage() {
 
   return (
     <div className="min-h-screen text-white overflow-x-hidden bg-[radial-gradient(1200px_600px_at_50%_-200px,rgba(255,215,0,0.15),transparent_60%),linear-gradient(to_bottom,#2a2a2a,#0b0b0b,#000)]">
-  <div className="fixed inset-0 overflow-hidden pointer-events-none">
-    <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-yellow-400/6 to-transparent rounded-full animate-pulse"></div>
-    <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/6 to-transparent rounded-full animate-pulse delay-1000"></div>
-  </div>
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-yellow-400/6 to-transparent rounded-full animate-pulse"></div>
+        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/6 to-transparent rounded-full animate-pulse delay-1000"></div>
+      </div>
 
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center text-center">
             <div className="flex items-center space-x-3 mb-6">
               <div>
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
                   Infinite Wealth Solutions
                 </h1>
-                <p className="text-blue-300 text-base sm:text-lg">Digital Innovation Studio</p>
+                <p className="text-gray-300 text-base sm:text-lg">Digital Innovation Studio</p>
               </div>
             </div>
           </div>
@@ -343,62 +355,61 @@ export function HomePage() {
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-8 leading-tight">
             Transform Your Business with{' '}
-            <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
               Cutting-Edge Digital Solutions
             </span>
           </h2>
 
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            From AI-powered voice agents to high volume lead generation, and custom websites - we deliver premium digital solutions that drive results.
+            From AI-powered voice agents to high volume lead generation, and custom websites — we deliver premium digital solutions that drive results.
           </p>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
+            {/* Secondary CTA */}
             <button
               onClick={() => {
                 const leadCaptureSection = document.getElementById('lead-capture');
                 if (leadCaptureSection) {
-                  leadCaptureSection.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                  });
+                  leadCaptureSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 } else {
-                  window.scrollTo({
-                    top: document.body.scrollHeight,
-                    behavior: 'smooth'
-                  });
+                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
                 }
               }}
-              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
+              className="w-full sm:w-auto bg-white/10 border border-gray-700/60 hover:border-yellow-400/60 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/40 flex items-center justify-center space-x-3"
             >
               <MessageSquare className="h-6 w-6" />
               <span>Get a Package Quote</span>
             </button>
 
+            {/* Primary CTA */}
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-400/25 flex items-center justify-center space-x-3"
+              className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3"
             >
               <Calendar className="h-6 w-6" />
               <span>Get Started</span>
             </a>
           </div>
 
-          <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
+          <div
+            id="lead-capture"
+            className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto"
+          >
             <div className="text-center mb-12">
               <h3 className="text-2xl sm:text-3xl font-bold mb-4">
                 Get Your Custom Solution Quote
               </h3>
               <p className="text-gray-300 text-base">
-                Tell us about your project and we'll create the perfect solution for your business
+                Tell us about your project and we&apos;ll create the perfect solution for your business.
               </p>
             </div>
 
             {submitStatus === 'success' && (
               <div className="mb-8 p-4 bg-green-500/10 border border-green-500/50 rounded-lg flex items-center space-x-3">
                 <CheckCircle className="h-6 w-6 text-green-400" />
-                <p className="text-green-300">Thank you! Your submission has been received. We'll be in touch soon.</p>
+                <p className="text-green-300">Thank you! Your submission has been received. We&apos;ll be in touch soon.</p>
               </div>
             )}
 
@@ -414,23 +425,19 @@ export function HomePage() {
                 <div className="flex items-center justify-center space-x-4 mb-6">
                   {questions.map((_, index) => (
                     <React.Fragment key={index}>
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
-                        index < currentStep
-                          ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
-                          : index === currentStep
-                          ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/50'
-                          : 'bg-gray-600 text-gray-400'
-                      }`}>
-                        {index < currentStep ? (
-                          <CheckCircle className="h-6 w-6" />
-                        ) : (
-                          index + 1
-                        )}
+                      <div
+                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
+                          index < currentStep
+                            ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
+                            : index === currentStep
+                            ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/50'
+                            : 'bg-gray-600 text-gray-400'
+                        }`}
+                      >
+                        {index < currentStep ? <CheckCircle className="h-6 w-6" /> : index + 1}
                       </div>
                       {index < questions.length - 1 && (
-                        <div className={`w-8 h-1 transition-all duration-300 ${
-                          index < currentStep ? 'bg-green-500' : 'bg-gray-600'
-                        }`}></div>
+                        <div className={`w-8 h-1 transition-all duration-300 ${index < currentStep ? 'bg-green-500' : 'bg-gray-600'}`}></div>
                       )}
                     </React.Fragment>
                   ))}
@@ -447,12 +454,8 @@ export function HomePage() {
                   <CheckCircle className="h-12 w-12 text-green-400" />
                 </div>
                 <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
-                <p className="text-xl text-gray-300 mb-6">
-                  Your submission has been received successfully.
-                </p>
-                <p className="text-gray-400">
-                  We'll be in touch soon to discuss your custom solution.
-                </p>
+                <p className="text-xl text-gray-300 mb-6">Your submission has been received successfully.</p>
+                <p className="text-gray-400">We&apos;ll be in touch soon to discuss your custom solution.</p>
               </div>
             ) : (
               <div className="relative overflow-hidden">
@@ -476,13 +479,11 @@ export function HomePage() {
                       )}
 
                       <div className="space-y-2 sm:space-y-4">
-                        {question.type !== 'multi-input' && (
-                          question.label && (
-                            <label className="block text-sm font-medium text-gray-300 mb-3">
-                              <question.icon className="inline h-4 w-4 mr-2" />
-                              {question.label} *
-                            </label>
-                          )
+                        {question.type !== 'multi-input' && question.label && (
+                          <label className="block text-sm font-medium text-gray-300 mb-3">
+                            <question.icon className="inline h-4 w-4 mr-2" />
+                            {question.label} *
+                          </label>
                         )}
 
                         {question.type === 'multi-input' ? (
@@ -493,6 +494,7 @@ export function HomePage() {
                                   <field.icon className="inline h-4 w-4 mr-2" />
                                   {field.label} *
                                 </label>
+
                                 {field.id === 'phone' ? (
                                   <div className="flex">
                                     <select
@@ -523,6 +525,7 @@ export function HomePage() {
                                       <option value="+43">🇦🇹 +43</option>
                                       <option value="+32">🇧🇪 +32</option>
                                     </select>
+
                                     <input
                                       type={field.type}
                                       id={field.id}
@@ -650,14 +653,18 @@ export function HomePage() {
         </div>
       </section>
 
+      {/* Services */}
       <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-              Our <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">Premium Services</span>
+              Our{' '}
+              <span className="bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
+                Premium Services
+              </span>
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Professional digital solutions designed to elevate your business and drive real results
+              Professional digital solutions designed to elevate your business and drive real results.
             </p>
           </div>
 
@@ -682,13 +689,13 @@ export function HomePage() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-blue-400/50 transition-all duration-300 group">
-              <div className="bg-blue-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-400/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-blue-400" />
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
+              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
+                <TrendingUp className="h-10 w-10 text-yellow-400" />
               </div>
               <h3 className="text-2xl font-bold mb-4 text-center">Lead Generation</h3>
               <p className="text-gray-400 text-center leading-relaxed">
-                Drive qualified leads and grow your customer base through strategic social media marketing, targeted advertising, content creation, and comprehensive digital marketing campaigns.
+                Drive qualified leads and grow your customer base through strategic social media marketing, targeted advertising, content creation, and comprehensive digital campaigns.
               </p>
               <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
                 <div className="flex items-center space-x-1">
@@ -702,31 +709,29 @@ export function HomePage() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-green-400/50 transition-all duration-300 group">
-              <div className="bg-green-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-green-400/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-green-400" />
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
+              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
+                <Building className="h-10 w-10 text-yellow-400" />
               </div>
               <h3 className="text-2xl font-bold mb-4 text-center">Custom Website Development</h3>
               <p className="text-gray-400 text-center leading-relaxed">
-                Unique, professionally designed websites built from scratch with no templates. Get a website that truly represents your brand and converts visitors.
+                Unique, professionally designed websites built from scratch with no templates — made to represent your brand and convert visitors.
               </p>
               <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
                 <div className="flex items-center space-x-1">
-                  <Building className="h-4 w-4" />
-                  <span>Custom Design</span>
-                </div>
-                <div className="flex items-center space-x-1">
                   <Zap className="h-4 w-4" />
                   <span>High Performance</span>
+                </div>
+                <div className="flex items-center space-x-1">
+                  <Target className="h-4 w-4" />
+                  <span>Conversion Focused</span>
                 </div>
               </div>
             </div>
           </div>
 
           <div className="text-center mt-16">
-            <p className="text-lg text-gray-300 mb-8">
-              Ready to transform your business with our premium digital solutions?
-            </p>
+            <p className="text-lg text-gray-300 mb-8">Ready to transform your business?</p>
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
@@ -740,13 +745,14 @@ export function HomePage() {
         </div>
       </section>
 
+      {/* Pricing */}
       <SubscriptionSection />
 
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
         <div className="max-w-7xl mx-auto text-center">
           <div className="flex items-center justify-center space-x-3 mb-4">
             <Zap className="h-8 w-8 text-yellow-400" />
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
+            <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
               Infinite Wealth Solutions
             </h3>
           </div>
@@ -754,20 +760,14 @@ export function HomePage() {
             © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
           </p>
           <div className="flex items-center justify-center gap-6">
-  <Link
-    to="/demo"
-    className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-  >
-    Try AI Agent Demos
-  </Link>
+            <Link to="/demo" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
+              Try AI Agent Demos
+            </Link>
 
-  <Link
-    to="/privacy-policy"
-    className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-  >
-    Privacy Policy
-  </Link>
-</div>
+            <Link to="/privacy-policy" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
+              Privacy Policy
+            </Link>
+          </div>
         </div>
       </footer>
     </div>
