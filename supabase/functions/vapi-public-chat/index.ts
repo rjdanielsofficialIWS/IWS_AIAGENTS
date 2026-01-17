@@ -2,16 +2,19 @@ import { corsHeaders } from '../_shared/cors.ts';
 
 const VAPI_API_KEY = Deno.env.get('VAPI_API_KEY');
 
-if (!VAPI_API_KEY) {
-  throw new Error('VAPI_API_KEY environment variable is required');
-}
-
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response(null, { status: 204, headers: corsHeaders });
   }
 
   try {
+    if (!VAPI_API_KEY) {
+      return new Response(JSON.stringify({ error: 'Missing VAPI_API_KEY in Supabase function secrets' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     if (req.method !== 'POST') {
       return new Response(JSON.stringify({ error: 'Method not allowed' }), {
         status: 405,
@@ -19,7 +22,10 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    const { assistantId, input, previousChatId } = await req.json().catch(() => ({}));
+    const body = await req.json().catch(() => ({}));
+    const assistantId = body?.assistantId;
+    const input = body?.input;
+    const previousChatId = body?.previousChatId;
 
     if (!assistantId || !input) {
       return new Response(JSON.stringify({ error: 'assistantId and input are required' }), {
@@ -31,7 +37,7 @@ Deno.serve(async (req: Request) => {
     const vapiRes = await fetch('https://api.vapi.ai/chat', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${VAPI_API_KEY}`,
+        Authorization: `Bearer ${VAPI_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -50,24 +56,17 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // Normalize response so the client doesn’t care about Vapi’s exact shape
-    const responseText = json?.output?.[0]?.content ?? '';
-    const chatId = json?.id;
+    const responseText = json?.output?.[0]?.content ?? json?.response ?? '';
+    const chatId = json?.id ?? json?.chatId ?? null;
 
-    return new Response(JSON.stringify({ chatId, response: responseText, raw: json }), {
+    return new Response(JSON.stringify({ response: responseText, chatId, raw: json }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
-  } catch (err: unknown) {
-    return new Response(
-      JSON.stringify({
-        error: 'Internal server error',
-        details: err instanceof Error ? err.message : 'Unknown error',
-      }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+  } catch (err) {
+    return new Response(JSON.stringify({ error: 'Internal server error', details: String(err) }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });
