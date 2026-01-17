@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, Zap } from 'lucide-react';
+import { Check } from 'lucide-react';
 
 export function SubscriptionSection() {
   const plans = [
@@ -47,7 +47,7 @@ export function SubscriptionSection() {
         <div className="text-center mb-16">
           <h2 className="text-4xl sm:text-5xl font-bold mb-6">
             Choose Your{' '}
-            <span className="bg-gradient-to-r from-[#d4b05a] to-[#f2d27a] bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
               Plan
             </span>
           </h2>
@@ -62,20 +62,23 @@ export function SubscriptionSection() {
               key={plan.name}
               className={`bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border rounded-xl p-8 ${
                 plan.popular
-                  ? 'border-[#d4b05a]/50 ring-2 ring-[#d4b05a]/15'
+                  ? 'border-[#C8A24A]/60 ring-2 ring-[#C8A24A]/20'
                   : 'border-gray-700/50'
               }`}
             >
               {plan.popular && (
-                <div className="bg-[#d4b05a] text-black text-sm font-bold px-3 py-1 rounded-full inline-block mb-4">
+                <div className="bg-[#C8A24A] text-black text-sm font-bold px-3 py-1 rounded-full inline-block mb-4">
                   Most Popular
                 </div>
               )}
+
               <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
+
               <div className="mb-6">
                 <span className="text-4xl font-bold">{plan.price}</span>
                 <span className="text-gray-400">{plan.period}</span>
               </div>
+
               <ul className="space-y-4 mb-8">
                 {plan.features.map((feature, index) => (
                   <li key={index} className="flex items-start space-x-3">
@@ -84,13 +87,14 @@ export function SubscriptionSection() {
                   </li>
                 ))}
               </ul>
+
               <a
                 href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
                 target="_blank"
                 rel="noopener noreferrer"
                 className={`block w-full text-center py-3 px-6 rounded-xl font-bold transition-all ${
                   plan.popular
-                    ? 'bg-[#d4b05a] text-black hover:bg-[#e2c06a]'
+                    ? 'bg-[#C8A24A] text-black hover:bg-[#E3C36A]'
                     : 'bg-gray-700 text-white hover:bg-gray-600'
                 }`}
               >
