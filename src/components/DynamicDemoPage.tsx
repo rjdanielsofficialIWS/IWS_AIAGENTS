@@ -19,7 +19,9 @@ const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
-  const targetSlug = useMemo(() => (slug || 'demo').trim(), [slug]);
+
+  // ✅ Decode + trim so /PacificPlumbing, /pacificplumbing, /PACIFICPLUMBING all behave the same
+  const targetSlug = useMemo(() => decodeURIComponent((slug || 'demo').trim()), [slug]);
 
   const [demoPage, setDemoPage] = useState<DemoPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -86,7 +88,7 @@ export function DynamicDemoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch demo page record
+  // ✅ Fetch demo page record (case-insensitive support)
   useEffect(() => {
     let alive = true;
 
@@ -95,18 +97,31 @@ export function DynamicDemoPage() {
         setLoading(true);
         setError(null);
 
-        const { data, error } = await supabase
+        const rawSlug = decodeURIComponent(targetSlug);
+
+        // 1) Strict exact match first
+        let { data, error } = await supabase
           .from('demo_pages')
           .select('*')
-          .eq('slug', targetSlug)
+          .eq('slug', rawSlug)
           .eq('is_active', true)
           .maybeSingle();
+
+        // 2) Fallback: case-insensitive exact match
+        if (!data) {
+          ({ data, error } = await supabase
+            .from('demo_pages')
+            .select('*')
+            .ilike('slug', rawSlug)
+            .eq('is_active', true)
+            .maybeSingle());
+        }
 
         if (!alive) return;
 
         if (error || !data) {
           setDemoPage(null);
-          setError(`Demo page "${targetSlug}" not found`);
+          setError(`Demo page "${rawSlug}" not found`);
           return;
         }
 
@@ -134,32 +149,33 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug, displayName]);
 
-  // Realtime updates (optional but you had it)
+  // ✅ Realtime updates (case-insensitive)
+  // Supabase realtime filters are case-sensitive, so we subscribe to the table and filter locally.
   useEffect(() => {
     if (!targetSlug) return;
 
-    const channel = supabase
-      .channel(`demo_pages:${targetSlug}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'demo_pages', filter: `slug=eq.${targetSlug}` },
-        (payload) => {
-          const next = payload.new as DemoPage | null;
-          if (!next || !next.is_active) return;
+    const rawSlugLower = decodeURIComponent(targetSlug).toLowerCase();
 
-          setDemoPage(next);
-          setChatMsgs((prev) => {
-            if (!prev.length) {
-              return [{ role: 'assistant', content: next.first_message || `Hey ${displayName}, how can I help?` }];
-            }
-            const copy = [...prev];
-            if (copy[0]?.role === 'assistant') {
-              copy[0] = { role: 'assistant', content: next.first_message || copy[0].content };
-            }
-            return copy;
-          });
-        }
-      )
+    const channel = supabase
+      .channel(`demo_pages:any:${rawSlugLower}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'demo_pages' }, (payload) => {
+        const next = payload.new as DemoPage | null;
+        if (!next || !next.is_active) return;
+
+        if ((next.slug || '').toLowerCase() !== rawSlugLower) return;
+
+        setDemoPage(next);
+        setChatMsgs((prev) => {
+          if (!prev.length) {
+            return [{ role: 'assistant', content: next.first_message || `Hey ${displayName}, how can I help?` }];
+          }
+          const copy = [...prev];
+          if (copy[0]?.role === 'assistant') {
+            copy[0] = { role: 'assistant', content: next.first_message || copy[0].content };
+          }
+          return copy;
+        });
+      })
       .subscribe();
 
     return () => {
