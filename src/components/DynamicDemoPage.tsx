@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader, AlertCircle, X } from 'lucide-react';
+import { ArrowLeft, Loader, AlertCircle, X, Phone, MessageSquare } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import Vapi from '@vapi-ai/web';
 
@@ -52,6 +52,65 @@ export function DynamicDemoPage() {
     return `${base}/functions/v1/vapi-public-chat`;
   }, []);
 
+  /**
+   * Hard-remove the old bottom-right Vapi widget/launcher
+   * (this happens when the homepage widget script is loaded globally).
+   */
+  const nukeVapiLauncher = () => {
+    // Remove any <vapi-widget> in DOM (your demo page uses NONE)
+    document.querySelectorAll('vapi-widget').forEach((el) => el.remove());
+
+    // Remove common launcher containers (fixed-position bubbles)
+    const candidates = document.querySelectorAll(
+      '[class*="vapi"], [id*="vapi"], [data-vapi], [class*="Vapi"], [id*="Vapi"]'
+    );
+
+    candidates.forEach((node) => {
+      const el = node as HTMLElement;
+      const style = window.getComputedStyle(el);
+      if (style.position === 'fixed' || style.position === 'sticky') {
+        el.remove();
+      }
+    });
+  };
+
+  // CSS guard + removal loop (handles widgets injected after load)
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.setAttribute('data-demo-kill-vapi', 'true');
+    style.textContent = `
+      /* Hide any Vapi launcher that sneaks in on demo pages */
+      [class*="vapi"], [class*="Vapi"], [id*="vapi"], [id*="Vapi"], [data-vapi] {
+        /* don't blanket hide everything; only kill common fixed launchers */
+      }
+      [class*="vapi"][style*="position: fixed"],
+      [class*="Vapi"][style*="position: fixed"],
+      [data-vapi][style*="position: fixed"] {
+        display:none !important;
+      }
+    `;
+    document.head.appendChild(style);
+
+    // initial + a few delayed nukes
+    nukeVapiLauncher();
+    const t1 = window.setTimeout(nukeVapiLauncher, 300);
+    const t2 = window.setTimeout(nukeVapiLauncher, 1200);
+    const t3 = window.setTimeout(nukeVapiLauncher, 2500);
+
+    // watch for reinjection
+    const obs = new MutationObserver(() => nukeVapiLauncher());
+    obs.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      style.remove();
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      obs.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Fetch record
   useEffect(() => {
     let alive = true;
@@ -83,7 +142,7 @@ export function DynamicDemoPage() {
             content: data.first_message || `Hey ${displayName}, how can I help?`,
           },
         ]);
-      } catch (e) {
+      } catch {
         if (!alive) return;
         setDemoPage(null);
         setError('Failed to load demo page');
@@ -100,7 +159,7 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug, displayName]);
 
-  // Realtime updates so editing the record updates the page
+  // Realtime updates
   useEffect(() => {
     if (!targetSlug) return;
 
@@ -115,7 +174,7 @@ export function DynamicDemoPage() {
 
           setDemoPage(next);
 
-          // Keep the first assistant bubble in sync if it changes
+          // keep first assistant bubble synced
           setChatMsgs((prev) => {
             if (!prev.length) return [{ role: 'assistant', content: next.first_message || `Hey ${displayName}, how can I help?` }];
             const copy = [...prev];
@@ -151,7 +210,6 @@ export function DynamicDemoPage() {
         setVoiceError(null);
         setVoiceStatus('connecting');
 
-        // Ensure any previous instance is stopped
         try {
           vapiRef.current?.stop();
         } catch {}
@@ -160,7 +218,6 @@ export function DynamicDemoPage() {
         const vapi = new Vapi(VAPI_PUBLIC_KEY);
         vapiRef.current = vapi;
 
-        // Event handlers
         vapi.on('call-start', () => {
           if (cancelled) return;
           setVoiceStatus('live');
@@ -171,7 +228,6 @@ export function DynamicDemoPage() {
           setVoiceStatus('ended');
         });
 
-        // Some SDK builds emit `error`
         (vapi as any).on?.('error', (e: any) => {
           if (cancelled) return;
           setVoiceStatus('error');
@@ -180,13 +236,11 @@ export function DynamicDemoPage() {
 
         await vapi.start(demoPage.assistant_id);
 
-        // Optional: speak the record’s first message
+        // Optional speak
         if (demoPage.first_message?.trim()) {
           try {
             await (vapi as any).say(demoPage.first_message.trim(), false);
-          } catch {
-            // ok if not supported
-          }
+          } catch {}
         }
       } catch (e: any) {
         if (cancelled) return;
@@ -253,8 +307,8 @@ export function DynamicDemoPage() {
       const reply = json?.response || '…';
       setChatMsgs((prev) => [...prev, { role: 'assistant', content: reply }]);
     } catch (e: any) {
-      setChatError(e?.message || 'Chat failed');
-      setChatMsgs((prev) => [...prev, { role: 'assistant', content: 'Something went wrong. Please try again.' }]);
+      setChatError(e?.message || 'Chat failed (edge function)');
+      setChatMsgs((prev) => [...prev, { role: 'assistant', content: 'Chat is not connected yet. (Edge function error)' }]);
     } finally {
       setChatLoading(false);
     }
@@ -320,17 +374,21 @@ export function DynamicDemoPage() {
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center">
+          {/* Call Me */}
           <button
             onClick={() => setModal('voice')}
-            className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-2xl hover:bg-yellow-300 transition"
+            className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-2xl hover:bg-yellow-300 transition inline-flex items-center gap-3"
           >
+            <Phone className="h-5 w-5" />
             Call Me
           </button>
 
+          {/* Text Me (WHITE) */}
           <button
             onClick={() => setModal('chat')}
-            className="px-8 py-4 border border-yellow-400 text-yellow-400 rounded-2xl hover:bg-yellow-400/10 transition"
+            className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
           >
+            <MessageSquare className="h-5 w-5" />
             Text Me
           </button>
         </div>
@@ -373,10 +431,6 @@ export function DynamicDemoPage() {
                   >
                     End
                   </button>
-
-                  <p className="mt-6 text-xs text-gray-500 max-w-sm">
-                    If you don’t see a mic prompt, check your browser site permissions for microphone access.
-                  </p>
                 </div>
               ) : (
                 <div className="flex flex-col h-[420px]">
@@ -388,7 +442,9 @@ export function DynamicDemoPage() {
                       <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
                         <span
                           className={`inline-block px-4 py-2 rounded-xl ${
-                            m.role === 'user' ? 'bg-yellow-400 text-black' : 'bg-white/10 text-white border border-gray-700/50'
+                            m.role === 'user'
+                              ? 'bg-white text-black'
+                              : 'bg-white/10 text-white border border-gray-700/50'
                           }`}
                         >
                           {m.content}
@@ -418,14 +474,14 @@ export function DynamicDemoPage() {
                     <button
                       onClick={sendChat}
                       disabled={chatLoading || !chatInput.trim()}
-                      className="px-4 py-2 bg-yellow-400 text-black rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-yellow-300 transition"
+                      className="px-4 py-2 bg-white text-black rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 transition"
                     >
                       Send
                     </button>
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    This chat calls your public edge function: <span className="text-gray-400">vapi-public-chat</span>
+                    Chat uses: <span className="text-gray-400">/functions/v1/vapi-public-chat</span>
                   </p>
                 </div>
               )}
