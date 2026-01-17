@@ -16,7 +16,10 @@ import {
   ArrowRight,
   Target,
   Calendar,
-  Users
+  Users,
+  Sparkles,
+  Shield,
+  Rocket,
 } from 'lucide-react';
 import { SubscriptionSection } from './SubscriptionSection';
 
@@ -81,63 +84,39 @@ export function HomePage() {
   const questions: Question[] = [
     {
       id: 'serviceInterest',
-      title: 'Which services are you interested in?',
-      subtitle: '(Select all that apply)',
+      title: 'What do you want to improve first?',
+      subtitle: '(Pick all that apply)',
       type: 'checkbox',
       icon: Target,
       required: true,
       options: [
-        { value: 'ai-agents', label: 'AI Voice Agents - Automate calls and bookings' },
-        { value: 'lead-generation', label: 'Lead Generation - Social media marketing, content creation, and customer acquisition' },
-        { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' }
+        { value: 'custom-websites', label: 'Web Design — premium site that converts' },
+        { value: 'ai-agents', label: 'AI Phone Agents — answer calls 24/7 + book jobs' },
+        { value: 'lead-generation', label: 'Lead Generation — more qualified leads consistently' }
       ]
     },
     {
       id: 'projectRequirements',
-      title: 'Tell us about your project requirements',
+      title: 'Quick details (so we can build the right solution)',
       type: 'textarea',
-      placeholder: 'Describe your specific needs, goals, timeline, and any special requirements...',
+      placeholder: 'What’s your business? What are you trying to accomplish? Any timeline or special requirements?',
       rows: 4,
       icon: MessageSquare,
       required: true
     },
     {
       id: 'contactInfo',
-      title: '',
+      title: 'Where should we send the next steps?',
       type: 'multi-input',
       fields: [
-        {
-          id: 'name',
-          label: 'Name',
-          type: 'input',
-          placeholder: 'Your full name',
-          icon: User,
-          required: true
-        },
-        {
-          id: 'email',
-          label: 'Email',
-          type: 'email',
-          placeholder: 'your@email.com',
-          icon: Mail,
-          required: true
-        },
-        {
-          id: 'phone',
-          label: 'Phone Number',
-          type: 'tel',
-          placeholder: '(555) 123-4567',
-          icon: Phone,
-          required: true
-        }
+        { id: 'name', label: 'Name', type: 'input', placeholder: 'Your full name', icon: User, required: true },
+        { id: 'email', label: 'Email', type: 'email', placeholder: 'you@company.com', icon: Mail, required: true },
+        { id: 'phone', label: 'Phone', type: 'tel', placeholder: '555-123-4567', icon: Phone, required: true }
       ]
     }
   ];
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  const validateEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
   const validatePhone = (phone: string): boolean => {
     const phoneRegex = /^[\d\s\-\(\)]{7,15}$/;
@@ -145,51 +124,23 @@ export function HomePage() {
   };
 
   const validateCurrentStep = (): boolean => {
-    const currentQuestion = questions[currentStep];
+    const q = questions[currentStep];
     let isValid = true;
     let error = '';
 
-    if (currentQuestion.type === 'multi-input') {
-      for (const field of currentQuestion.fields || []) {
+    if (q.type === 'multi-input') {
+      for (const field of q.fields || []) {
         const value = formData[field.id];
-        if (!value.trim()) {
-          isValid = false;
-          error = `${field.label} is required`;
-          break;
-        } else if (field.id === 'email' && !validateEmail(value)) {
-          isValid = false;
-          error = 'Please enter a valid email address';
-          break;
-        } else if (field.id === 'phone' && !validatePhone(value)) {
-          isValid = false;
-          error = 'Please enter a valid phone number (digits only)';
-          break;
-        }
+        if (!value.trim()) { isValid = false; error = `${field.label} is required`; break; }
+        if (field.id === 'email' && !validateEmail(value)) { isValid = false; error = 'Please enter a valid email'; break; }
+        if (field.id === 'phone' && !validatePhone(value)) { isValid = false; error = 'Please enter a valid phone number'; break; }
       }
-    } else if (currentQuestion.type === 'select' || currentQuestion.type === 'radio') {
-      const value = formData[currentQuestion.id as keyof FormData];
-      if (!value || value.trim() === '') {
-        isValid = false;
-        error = 'Please select an option';
-      }
-    } else if (currentQuestion.type === 'checkbox') {
-      const value = formData[currentQuestion.id as keyof FormData] as string[];
-      if (!value || value.length === 0) {
-        isValid = false;
-        error = 'Please select at least one option';
-      }
+    } else if (q.type === 'checkbox') {
+      const value = formData[q.id as keyof FormData] as string[];
+      if (!value || value.length === 0) { isValid = false; error = 'Please select at least one option'; }
     } else {
-      const value = formData[currentQuestion.id as keyof FormData];
-      if (!value.trim()) {
-        isValid = false;
-        error = `${currentQuestion.label} is required`;
-      } else if (currentQuestion.id === 'email' && !validateEmail(value)) {
-        isValid = false;
-        error = 'Please enter a valid email address';
-      } else if (currentQuestion.id === 'phone' && !validatePhone(value)) {
-        isValid = false;
-        error = 'Please enter a valid phone number';
-      }
+      const value = formData[q.id as keyof FormData] as string;
+      if (!value.trim()) { isValid = false; error = 'This field is required'; }
     }
 
     setCurrentError(error);
@@ -198,27 +149,20 @@ export function HomePage() {
   };
 
   const validateAllSteps = (): boolean => {
-    for (let i = 0; i < questions.length; i++) {
-      const question = questions[i];
-
-      if (question.type === 'multi-input') {
-        for (const field of question.fields || []) {
+    for (const q of questions) {
+      if (q.type === 'multi-input') {
+        for (const field of q.fields || []) {
           const value = formData[field.id];
           if (!value.trim()) return false;
           if (field.id === 'email' && !validateEmail(value)) return false;
           if (field.id === 'phone' && !validatePhone(value)) return false;
         }
-      } else if (question.type === 'select' || question.type === 'radio') {
-        const value = formData[question.id as keyof FormData];
-        if (!value || value.trim() === '') return false;
-      } else if (question.type === 'checkbox') {
-        const value = formData[question.id as keyof FormData] as string[];
+      } else if (q.type === 'checkbox') {
+        const value = formData[q.id as keyof FormData] as string[];
         if (!value || value.length === 0) return false;
       } else {
-        const value = formData[question.id as keyof FormData];
+        const value = formData[q.id as keyof FormData] as string;
         if (!value.trim()) return false;
-        if (question.id === 'email' && !validateEmail(value)) return false;
-        if (question.id === 'phone' && !validatePhone(value)) return false;
       }
     }
     return true;
@@ -268,9 +212,7 @@ export function HomePage() {
 
       const response = await fetch(WEBHOOK_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: data.name,
           email: data.email,
@@ -329,170 +271,387 @@ export function HomePage() {
     validateCurrentStep();
   }, [currentStep, formData]);
 
+  const scrollToLead = () => {
+    const el = document.getElementById('lead-capture');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  };
+
   return (
-    <div className="min-h-screen text-white overflow-x-hidden bg-[radial-gradient(1200px_600px_at_50%_-200px,rgba(255,215,0,0.15),transparent_60%),linear-gradient(to_bottom,#2a2a2a,#0b0b0b,#000)]">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-yellow-400/6 to-transparent rounded-full animate-pulse"></div>
-        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/6 to-transparent rounded-full animate-pulse delay-1000"></div>
+    <div className="min-h-screen text-white overflow-x-hidden bg-[#050608]">
+      {/* Premium background */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(1100px_600px_at_50%_-220px,rgba(255,210,74,0.12),transparent_60%),radial-gradient(900px_500px_at_20%_30%,rgba(73,182,255,0.10),transparent_55%),radial-gradient(900px_500px_at_80%_60%,rgba(255,210,74,0.08),transparent_55%),linear-gradient(to_bottom,#0B0D10,#050608)]" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-gradient-to-br from-[#49B6FF]/20 to-transparent blur-3xl" />
+        <div className="absolute top-20 -right-40 w-[28rem] h-[28rem] rounded-full bg-gradient-to-br from-[#FFD24A]/18 to-transparent blur-3xl" />
+        <div className="absolute -bottom-52 left-1/3 w-[34rem] h-[34rem] rounded-full bg-gradient-to-br from-[#49B6FF]/12 via-[#FFD24A]/10 to-transparent blur-3xl" />
       </div>
 
-      <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex items-center space-x-3 mb-6">
-              <div>
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
-                  Infinite Wealth Solutions
-                </h1>
-                <p className="text-gray-300 text-base sm:text-lg">Digital Innovation Studio</p>
+      {/* Top nav */}
+      <header className="relative z-10 px-4 sm:px-6 lg:px-8 pt-8">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 backdrop-blur flex items-center justify-center">
+              <Sparkles className="h-5 w-5 text-[#FFD24A]" />
+            </div>
+            <div>
+              <div className="text-lg sm:text-xl font-extrabold tracking-tight">
+                Infinite Wealth Solutions
               </div>
+              <div className="text-xs sm:text-sm text-gray-400">AI • Web • Automations</div>
             </div>
           </div>
-        </div>
-      </header>
 
-      <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-8 leading-tight">
-            Transform Your Business with{' '}
-            <span className="bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
-              Cutting-Edge Digital Solutions
-            </span>
-          </h2>
-
-          <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            From AI-powered voice agents to high volume lead generation, and custom websites — we deliver premium digital solutions that drive results.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-            {/* Secondary CTA */}
-            <button
-              onClick={() => {
-                const leadCaptureSection = document.getElementById('lead-capture');
-                if (leadCaptureSection) {
-                  leadCaptureSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else {
-                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                }
-              }}
-              className="w-full sm:w-auto bg-white/10 border border-gray-700/60 hover:border-yellow-400/60 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/40 flex items-center justify-center space-x-3"
+          <div className="hidden sm:flex items-center gap-3">
+            <Link
+              to="/demo"
+              className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm"
             >
-              <MessageSquare className="h-6 w-6" />
-              <span>Get a Package Quote</span>
-            </button>
-
-            {/* Primary CTA */}
+              Try Demo
+            </Link>
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3"
+              className="px-4 py-2 rounded-xl font-bold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition text-sm"
             >
-              <Calendar className="h-6 w-6" />
-              <span>Get Started</span>
+              Book a Call
             </a>
           </div>
+        </div>
+      </header>
 
-          <div
-            id="lead-capture"
-            className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto"
-          >
-            <div className="text-center mb-12">
-              <h3 className="text-2xl sm:text-3xl font-bold mb-4">
-                Get Your Custom Solution Quote
-              </h3>
-              <p className="text-gray-300 text-base">
-                Tell us about your project and we&apos;ll create the perfect solution for your business.
+      {/* HERO */}
+      <section className="relative z-10 px-4 sm:px-6 lg:px-8 pt-14 pb-16">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur">
+                <Shield className="h-4 w-4 text-[#49B6FF]" />
+                <span className="text-sm text-gray-200">Premium digital systems</span>
+                <span className="text-sm text-gray-400">that look elite & convert</span>
+              </div>
+
+              <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05]">
+                Make your business{' '}
+                <span className="bg-gradient-to-r from-[#FFD24A] via-[#49B6FF] to-[#FFD24A] bg-clip-text text-transparent">
+                  look unstoppable
+                </span>
+                .
+              </h1>
+
+              <p className="mt-5 text-lg text-gray-300 max-w-xl">
+                Websites that convert. AI that answers calls. Automations that run the backend.
+                Clean, modern, and built to scale.
               </p>
+
+              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                <a
+                  href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition"
+                >
+                  <Calendar className="h-5 w-5" />
+                  Book a Call
+                </a>
+
+                <button
+                  onClick={scrollToLead}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                >
+                  <MessageSquare className="h-5 w-5 text-[#FFD24A]" />
+                  Get a Quote
+                </button>
+
+                <a
+                  href="#pricing"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                >
+                  <Target className="h-5 w-5 text-[#49B6FF]" />
+                  View Pricing
+                </a>
+              </div>
+
+              {/* Mini proof */}
+              <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-xl">
+                {[
+                  { icon: Phone, title: '24/7 Calls', sub: 'AI answers instantly' },
+                  { icon: Rocket, title: 'Fast Launch', sub: 'premium look in days' },
+                  { icon: TrendingUp, title: 'More Leads', sub: 'conversion-first design' },
+                ].map((b, i) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4"
+                  >
+                    <b.icon className={`h-5 w-5 ${i === 0 ? 'text-[#FFD24A]' : i === 1 ? 'text-[#49B6FF]' : 'text-[#FFD24A]'}`} />
+                    <div className="mt-2 font-bold">{b.title}</div>
+                    <div className="text-sm text-gray-400">{b.sub}</div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            {submitStatus === 'success' && (
-              <div className="mb-8 p-4 bg-green-500/10 border border-green-500/50 rounded-lg flex items-center space-x-3">
-                <CheckCircle className="h-6 w-6 text-green-400" />
-                <p className="text-green-300">Thank you! Your submission has been received. We&apos;ll be in touch soon.</p>
-              </div>
-            )}
+            {/* Right visual card */}
+            <div className="relative">
+              <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-[#FFD24A]/25 via-[#49B6FF]/25 to-[#FFD24A]/25 blur-2xl opacity-70" />
+              <div className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-7 overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
-            {submitStatus === 'error' && (
-              <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center space-x-3">
-                <AlertCircle className="h-6 w-6 text-red-400" />
-                <p className="text-red-300">Sorry, there was an error submitting your form. Please try again.</p>
-              </div>
-            )}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-gray-400">Live Preview</div>
+                    <div className="text-xl font-extrabold">AI + Website System</div>
+                  </div>
+                  <div className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-gray-300">
+                    Chrome Blue + Gold
+                  </div>
+                </div>
 
-            {submitStatus !== 'success' && (
-              <div className="mb-12">
-                <div className="flex items-center justify-center space-x-4 mb-6">
-                  {questions.map((_, index) => (
-                    <React.Fragment key={index}>
-                      <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
-                          index < currentStep
-                            ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
-                            : index === currentStep
-                            ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/50'
-                            : 'bg-gray-600 text-gray-400'
-                        }`}
-                      >
-                        {index < currentStep ? <CheckCircle className="h-6 w-6" /> : index + 1}
+                <div className="mt-6 grid grid-cols-1 gap-3">
+                  {[
+                    { title: 'AI Phone Agent', desc: 'Answers calls → captures lead → books appointment', icon: Phone, accent: 'from-[#FFD24A] to-[#49B6FF]' },
+                    { title: 'Website Upgrade', desc: 'Premium UI → clear offer → strong CTA', icon: Building, accent: 'from-[#49B6FF] to-[#FFD24A]' },
+                    { title: 'Automation Layer', desc: 'Lead routing → CRM → follow-ups', icon: Zap, accent: 'from-[#FFD24A] to-[#49B6FF]' },
+                  ].map((row, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded-2xl border border-white/10 bg-[#0B0D10]/60 p-4 flex items-start gap-3"
+                    >
+                      <div className={`h-11 w-11 rounded-xl bg-gradient-to-r ${row.accent} text-black flex items-center justify-center`}>
+                        <row.icon className="h-5 w-5" />
                       </div>
-                      {index < questions.length - 1 && (
-                        <div className={`w-8 h-1 transition-all duration-300 ${index < currentStep ? 'bg-green-500' : 'bg-gray-600'}`}></div>
-                      )}
-                    </React.Fragment>
+                      <div>
+                        <div className="font-bold">{row.title}</div>
+                        <div className="text-sm text-gray-400">{row.desc}</div>
+                      </div>
+                    </div>
                   ))}
                 </div>
-                <p className="text-center text-gray-400 text-sm">
-                  Step {currentStep + 1} of {questions.length}
-                </p>
-              </div>
-            )}
 
-            {submitStatus === 'success' ? (
-              <div className="text-center py-12">
-                <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle className="h-12 w-12 text-green-400" />
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
+                  <div className="text-sm text-gray-300">
+                    Want a custom package?
+                    <div className="text-xs text-gray-500">We’ll map it to your exact workflow.</div>
+                  </div>
+                  <button
+                    onClick={scrollToLead}
+                    className="px-4 py-2 rounded-xl font-bold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition text-sm"
+                  >
+                    Build Mine
+                  </button>
                 </div>
-                <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
-                <p className="text-xl text-gray-300 mb-6">Your submission has been received successfully.</p>
-                <p className="text-gray-400">We&apos;ll be in touch soon to discuss your custom solution.</p>
+
+                <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-[#49B6FF]/18 via-[#FFD24A]/12 to-transparent blur-2xl" />
               </div>
-            ) : (
-              <div className="relative overflow-hidden">
-                <div
-                  className="flex transition-transform duration-500 ease-in-out"
-                  style={{ transform: `translateX(-${currentStep * 100}%)` }}
-                >
-                  {questions.map((question, index) => (
-                    <div key={question.id} className="w-full flex-shrink-0 px-4">
-                      {question.title && (
-                        <div className="text-center mb-8">
-                          <h4 className="text-2xl sm:text-3xl font-bold mb-4">
-                            {question.title}
-                            {question.subtitle && (
-                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">
-                                {question.subtitle}
-                              </span>
-                            )}
-                          </h4>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SERVICES */}
+      <section className="relative z-10 px-4 sm:px-6 lg:px-8 pb-10">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl sm:text-4xl font-extrabold">
+              What we build{' '}
+              <span className="bg-gradient-to-r from-[#FFD24A] via-[#49B6FF] to-[#FFD24A] bg-clip-text text-transparent">
+                for you
+              </span>
+            </h2>
+            <p className="mt-3 text-gray-300 max-w-2xl mx-auto">
+              Designed to look high-end and perform like a machine.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { icon: Brain, title: 'AI Phone Agents', desc: 'Realistic voice agents that answer calls, qualify leads, and book jobs.', pill: '24/7', accent: 'text-[#FFD24A]' },
+              { icon: Building, title: 'Web Design', desc: 'Premium design that makes your business look legit — and drives action.', pill: 'Conversion-first', accent: 'text-[#49B6FF]' },
+              { icon: TrendingUp, title: 'Lead Systems', desc: 'Lead gen + follow-up automation that keeps your pipeline full.', pill: 'Growth', accent: 'text-[#FFD24A]' },
+            ].map((c, i) => (
+              <div key={i} className="relative">
+                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-white/10 to-white/5 blur-2xl opacity-70" />
+                <div className="relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 hover:bg-white/7 transition">
+                  <div className="flex items-start justify-between">
+                    <div className="h-12 w-12 rounded-xl bg-[#0B0D10]/60 border border-white/10 flex items-center justify-center">
+                      <c.icon className={`h-6 w-6 ${c.accent}`} />
+                    </div>
+                    <span className="text-xs px-3 py-1 rounded-full border border-white/10 bg-white/5 text-gray-300">
+                      {c.pill}
+                    </span>
+                  </div>
+                  <div className="mt-4 text-xl font-extrabold">{c.title}</div>
+                  <div className="mt-2 text-gray-400 text-sm leading-relaxed">{c.desc}</div>
+
+                  <div className="mt-5 flex items-center gap-2 text-sm text-gray-300">
+                    <CheckCircle className="h-4 w-4 text-[#49B6FF]" />
+                    Premium look
+                    <span className="text-gray-600">•</span>
+                    <CheckCircle className="h-4 w-4 text-[#FFD24A]" />
+                    Built to convert
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
+            <a
+              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition"
+            >
+              <Calendar className="h-5 w-5" />
+              Book a Call
+            </a>
+            <button
+              onClick={scrollToLead}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+            >
+              <MessageSquare className="h-5 w-5 text-[#FFD24A]" />
+              Get a Quote
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* LEAD CAPTURE FORM */}
+      <section className="relative z-10 px-4 sm:px-6 lg:px-8 py-16">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur">
+              <Sparkles className="h-4 w-4 text-[#FFD24A]" />
+              <span className="text-sm text-gray-200">Get a quote</span>
+              <span className="text-sm text-gray-400">quick and clean</span>
+            </div>
+            <h2 className="mt-5 text-3xl sm:text-4xl font-extrabold">
+              Get your{' '}
+              <span className="bg-gradient-to-r from-[#FFD24A] via-[#49B6FF] to-[#FFD24A] bg-clip-text text-transparent">
+                custom plan
+              </span>
+            </h2>
+            <p className="mt-3 text-gray-300">
+              Tell us what you want. We’ll map the best solution (and price) for your business.
+            </p>
+          </div>
+
+          <div id="lead-capture" className="relative">
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-[#FFD24A]/18 via-[#49B6FF]/18 to-[#FFD24A]/18 blur-2xl opacity-70" />
+            <div className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl p-6 sm:p-10 overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+              {submitStatus === 'success' && (
+                <div className="mb-6 p-4 rounded-2xl bg-green-500/10 border border-green-500/30 flex items-center gap-3">
+                  <CheckCircle className="h-6 w-6 text-green-400" />
+                  <div>
+                    <div className="font-bold text-green-200">Submitted successfully</div>
+                    <div className="text-sm text-green-200/70">We’ll reach out with next steps.</div>
+                  </div>
+                </div>
+              )}
+
+              {submitStatus === 'error' && (
+                <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center gap-3">
+                  <AlertCircle className="h-6 w-6 text-red-400" />
+                  <div>
+                    <div className="font-bold text-red-200">Submission failed</div>
+                    <div className="text-sm text-red-200/70">Try again in a moment.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step dots */}
+              {submitStatus !== 'success' && (
+                <div className="mb-8">
+                  <div className="flex items-center justify-center gap-3">
+                    {questions.map((_, idx) => (
+                      <div
+                        key={idx}
+                        className={`h-2.5 w-10 rounded-full transition-all ${
+                          idx === currentStep
+                            ? 'bg-gradient-to-r from-[#FFD24A] to-[#49B6FF]'
+                            : idx < currentStep
+                            ? 'bg-white/25'
+                            : 'bg-white/10'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-3 text-center text-xs text-gray-400">
+                    Step {currentStep + 1} of {questions.length}
+                  </div>
+                </div>
+              )}
+
+              {submitStatus === 'success' ? (
+                <div className="text-center py-10">
+                  <div className="mx-auto h-16 w-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+                    <CheckCircle className="h-8 w-8 text-[#49B6FF]" />
+                  </div>
+                  <h3 className="mt-4 text-2xl font-extrabold">You’re in.</h3>
+                  <p className="mt-2 text-gray-300">We’ll reach out shortly.</p>
+                </div>
+              ) : (
+                <div className="relative overflow-hidden">
+                  <div
+                    className="flex transition-transform duration-500 ease-in-out"
+                    style={{ transform: `translateX(-${currentStep * 100}%)` }}
+                  >
+                    {questions.map((q, idx) => (
+                      <div key={q.id} className="w-full flex-shrink-0 px-1">
+                        <div className="text-center mb-7">
+                          <h3 className="text-2xl sm:text-3xl font-extrabold">{q.title}</h3>
+                          {q.subtitle && <p className="mt-2 text-gray-400">{q.subtitle}</p>}
                         </div>
-                      )}
 
-                      <div className="space-y-2 sm:space-y-4">
-                        {question.type !== 'multi-input' && question.label && (
-                          <label className="block text-sm font-medium text-gray-300 mb-3">
-                            <question.icon className="inline h-4 w-4 mr-2" />
-                            {question.label} *
-                          </label>
-                        )}
-
-                        {question.type === 'multi-input' ? (
-                          <div className="space-y-4 sm:space-y-6">
-                            {question.fields?.map(field => (
+                        {/* Inputs */}
+                        {q.type === 'checkbox' ? (
+                          <div className="space-y-3">
+                            {q.options?.map((opt) => (
+                              <label
+                                key={opt.value}
+                                className="flex items-start gap-3 p-4 rounded-2xl border border-white/10 bg-[#0B0D10]/60 hover:bg-white/5 transition cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  name={q.id as string}
+                                  value={opt.value}
+                                  checked={(formData[q.id as keyof FormData] as string[])?.includes(opt.value) || false}
+                                  onChange={handleInputChange}
+                                  className="mt-1.5 h-5 w-5 accent-[#49B6FF]"
+                                />
+                                <div className="text-gray-200">
+                                  <div className="font-bold">{opt.label}</div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        ) : q.type === 'textarea' ? (
+                          <div>
+                            <textarea
+                              id={q.id as string}
+                              name={q.id as string}
+                              value={formData[q.id as keyof FormData] as string}
+                              onChange={handleInputChange}
+                              rows={q.rows || 4}
+                              className={`w-full px-4 py-3 rounded-2xl bg-[#0B0D10]/60 border ${
+                                currentError && idx === currentStep ? 'border-red-500/60' : 'border-white/10'
+                              } text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#49B6FF]/30 focus:border-[#49B6FF]/40 transition`}
+                              placeholder={q.placeholder}
+                            />
+                            {currentError && idx === currentStep && (
+                              <p className="mt-2 text-sm text-red-300">{currentError}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-5">
+                            {q.fields?.map((field) => (
                               <div key={field.id}>
-                                <label className="block text-sm font-medium text-gray-300 mb-3">
-                                  <field.icon className="inline h-4 w-4 mr-2" />
-                                  {field.label} *
+                                <label className="block text-sm font-bold text-gray-200 mb-2">
+                                  <field.icon className="inline h-4 w-4 mr-2 text-[#FFD24A]" />
+                                  {field.label}
                                 </label>
 
                                 {field.id === 'phone' ? (
@@ -500,30 +659,14 @@ export function HomePage() {
                                     <select
                                       value={formData.countryCode}
                                       onChange={handleCountryCodeChange}
-                                      className={`px-3 py-3 bg-gray-900/50 border ${
-                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                      className={`px-3 py-3 rounded-l-2xl bg-[#0B0D10]/60 border ${
+                                        currentError && idx === currentStep ? 'border-red-500/60' : 'border-white/10'
+                                      } border-r-0 text-white focus:outline-none`}
                                     >
                                       <option value="+1">🇨🇦 +1</option>
                                       <option value="+1">🇺🇸 +1</option>
                                       <option value="+44">🇬🇧 +44</option>
-                                      <option value="+33">🇫🇷 +33</option>
-                                      <option value="+49">🇩🇪 +49</option>
                                       <option value="+61">🇦🇺 +61</option>
-                                      <option value="+81">🇯🇵 +81</option>
-                                      <option value="+86">🇨🇳 +86</option>
-                                      <option value="+91">🇮🇳 +91</option>
-                                      <option value="+55">🇧🇷 +55</option>
-                                      <option value="+52">🇲🇽 +52</option>
-                                      <option value="+34">🇪🇸 +34</option>
-                                      <option value="+39">🇮🇹 +39</option>
-                                      <option value="+31">🇳🇱 +31</option>
-                                      <option value="+46">🇸🇪 +46</option>
-                                      <option value="+47">🇳🇴 +47</option>
-                                      <option value="+45">🇩🇰 +45</option>
-                                      <option value="+41">🇨🇭 +41</option>
-                                      <option value="+43">🇦🇹 +43</option>
-                                      <option value="+32">🇧🇪 +32</option>
                                     </select>
 
                                     <input
@@ -532,10 +675,10 @@ export function HomePage() {
                                       name={field.id}
                                       value={formData[field.id]}
                                       onChange={handleInputChange}
-                                      className={`flex-1 px-4 py-3 bg-gray-900/50 border ${
-                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                                      placeholder="555-123-4567"
+                                      className={`flex-1 px-4 py-3 rounded-r-2xl bg-[#0B0D10]/60 border ${
+                                        currentError && idx === currentStep ? 'border-red-500/60' : 'border-white/10'
+                                      } text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#49B6FF]/30 focus:border-[#49B6FF]/40 transition`}
+                                      placeholder={field.placeholder}
                                     />
                                   </div>
                                 ) : (
@@ -545,226 +688,102 @@ export function HomePage() {
                                     name={field.id}
                                     value={formData[field.id]}
                                     onChange={handleInputChange}
-                                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                                      currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                    className={`w-full px-4 py-3 rounded-2xl bg-[#0B0D10]/60 border ${
+                                      currentError && idx === currentStep ? 'border-red-500/60' : 'border-white/10'
+                                    } text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#49B6FF]/30 focus:border-[#49B6FF]/40 transition`}
                                     placeholder={field.placeholder}
                                   />
                                 )}
                               </div>
                             ))}
-                          </div>
-                        ) : question.type === 'checkbox' ? (
-                          <div className="space-y-4">
-                            {question.options?.map(option => (
-                              <label
-                                key={option.value}
-                                className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-yellow-400/30 transition-all group"
-                              >
-                                <input
-                                  type="checkbox"
-                                  name={question.id as string}
-                                  value={option.value}
-                                  checked={(formData[question.id as keyof FormData] as string[])?.includes(option.value) || false}
-                                  onChange={handleInputChange}
-                                  className="mt-1 w-5 h-5 text-yellow-400 bg-gray-900 border-gray-600 rounded focus:ring-yellow-400 focus:ring-2"
-                                />
-                                <div className="flex-1">
-                                  <span className="text-white font-medium group-hover:text-yellow-400 transition-colors">
-                                    {option.label}
-                                  </span>
-                                </div>
-                              </label>
-                            ))}
-                          </div>
-                        ) : (
-                          <textarea
-                            id={question.id as string}
-                            name={question.id as string}
-                            value={formData[question.id as keyof FormData]}
-                            onChange={handleInputChange}
-                            rows={question.rows || 4}
-                            className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                              currentError ? 'border-red-500' : 'border-gray-600'
-                            } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                            placeholder={question.placeholder}
-                          />
-                        )}
 
-                        {currentError && index === currentStep && (
-                          <p className="mt-2 text-sm text-red-400">{currentError}</p>
+                            {currentError && idx === currentStep && (
+                              <p className="mt-1 text-sm text-red-300">{currentError}</p>
+                            )}
+                          </div>
                         )}
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {submitStatus !== 'success' && (
-              <div className="flex justify-between items-center mt-4 pt-4 sm:mt-8 sm:pt-6 border-t border-gray-700/50">
-                <button
-                  type="button"
-                  onClick={handlePrevious}
-                  disabled={currentStep === 0}
-                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
-                    currentStep === 0
-                      ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                      : 'bg-gray-600 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                  <span>Previous</span>
-                </button>
-
-                {currentStep === questions.length - 1 ? (
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting || !isStepValid}
-                    className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-center flex-shrink-0 min-w-0"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader className="h-5 w-5 animate-spin" />
-                        <span className="hidden sm:inline">Submitting...</span>
-                        <span className="sm:hidden">Submitting</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="hidden sm:inline">Get Your Custom Solution</span>
-                        <span className="sm:hidden">Get Quote</span>
-                      </>
-                    )}
-                  </button>
-                ) : (
+              {/* Nav */}
+              {submitStatus !== 'success' && (
+                <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-between gap-3">
                   <button
                     type="button"
-                    onClick={handleNext}
-                    disabled={!isStepValid}
-                    className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 flex-shrink-0"
+                    onClick={handlePrevious}
+                    disabled={currentStep === 0}
+                    className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition ${
+                      currentStep === 0
+                        ? 'bg-white/5 border border-white/10 text-gray-500 cursor-not-allowed'
+                        : 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+                    }`}
                   >
-                    <span>Next</span>
-                    <ArrowRight className="h-5 w-5" />
+                    <ArrowLeft className="h-5 w-5" />
+                    Previous
                   </button>
-                )}
-              </div>
-            )}
+
+                  {currentStep === questions.length - 1 ? (
+                    <button
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || !isStepValid}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-extrabold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader className="h-5 w-5 animate-spin" />
+                          Submitting
+                        </>
+                      ) : (
+                        <>
+                          Submit
+                          <ArrowRight className="h-5 w-5" />
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleNext}
+                      disabled={!isStepValid}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-extrabold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                      <ArrowRight className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-[#49B6FF]/16 via-[#FFD24A]/10 to-transparent blur-2xl" />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Services */}
-      <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-              Our{' '}
-              <span className="bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
-                Premium Services
-              </span>
-            </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Professional digital solutions designed to elevate your business and drive real results.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
-              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
-                <Brain className="h-10 w-10 text-yellow-400" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">AI Voice Agents</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Intelligent AI agents that handle calls, bookings, customer service, and sales conversations with human-like natural speech and understanding.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Phone className="h-4 w-4" />
-                  <span>24/7 Availability</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>Auto Booking</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
-              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-yellow-400" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Lead Generation</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Drive qualified leads and grow your customer base through strategic social media marketing, targeted advertising, content creation, and comprehensive digital campaigns.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Users className="h-4 w-4" />
-                  <span>Targeted Audience</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <TrendingUp className="h-4 w-4" />
-                  <span>Growth Focused</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
-              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
-                <Building className="h-10 w-10 text-yellow-400" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Custom Website Development</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Unique, professionally designed websites built from scratch with no templates — made to represent your brand and convert visitors.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Zap className="h-4 w-4" />
-                  <span>High Performance</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Target className="h-4 w-4" />
-                  <span>Conversion Focused</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center mt-16">
-            <p className="text-lg text-gray-300 mb-8">Ready to transform your business?</p>
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3 mx-auto"
-            >
-              <Calendar className="h-6 w-6" />
-              <span>Schedule Your Consultation</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      {/* Pricing */}
+      {/* PRICING */}
       <SubscriptionSection />
 
-      <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <Zap className="h-8 w-8 text-yellow-400" />
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-yellow-500 bg-clip-text text-transparent">
-              Infinite Wealth Solutions
-            </h3>
+      {/* Footer */}
+      <footer className="relative z-10 px-4 sm:px-6 lg:px-8 py-12 border-t border-white/10">
+        <div className="max-w-7xl mx-auto flex flex-col items-center text-center gap-4">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5">
+            <Sparkles className="h-4 w-4 text-[#FFD24A]" />
+            <span className="text-sm text-gray-200">Infinite Wealth Solutions</span>
+            <span className="text-sm text-gray-400">AI • Web • Automations</span>
           </div>
-          <p className="text-gray-400 mb-3">
-            © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
-          </p>
-          <div className="flex items-center justify-center gap-6">
-            <Link to="/demo" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
-              Try AI Agent Demos
-            </Link>
 
-            <Link to="/privacy-policy" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
+          <div className="text-sm text-gray-400">
+            © {new Date().getFullYear()} Infinite Wealth Solutions. All rights reserved.
+          </div>
+
+          <div className="flex items-center gap-6">
+            <Link to="/demo" className="text-gray-400 hover:text-white transition text-sm">
+              Try Demo
+            </Link>
+            <Link to="/privacy-policy" className="text-gray-400 hover:text-white transition text-sm">
               Privacy Policy
             </Link>
           </div>
