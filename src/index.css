@@ -1,3 +1,52 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* SITE BACKGROUND (chrome dark grey) */
+.iws-site-bg {
+  background: #0b0f14;
+  color: #fff;
+}
+
+/* HERO GRADIENT ONLY (sleek, smooth, no banding) */
+.iws-hero-gradient {
+  position: relative;
+  background:
+    radial-gradient(900px 520px at 20% 20%, rgba(255, 215, 0, 0.14), transparent 62%),
+    radial-gradient(800px 520px at 80% 10%, rgba(255, 255, 255, 0.06), transparent 64%),
+    linear-gradient(135deg, rgba(20, 20, 20, 0.95), rgba(10, 10, 10, 0.95));
+}
+
+/* Subtle dither to prevent gradient banding */
+.iws-hero-gradient::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)' opacity='.35'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+}
+
+/* DEFAULT CARD (neutral chrome grey) — used for big containers like lead capture */
+.iws-card {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 0 16px 60px rgba(0, 0, 0, 0.55);
+}
+
+.iws-card:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+/* ✅ SMALL CARDS ONLY (Services + Subscription): chrome navy blue */
+.iws-small-card {
+  background: rgba(10, 22, 40, 0.78);         /* chrome navy */
+  border: 1px solid rgba(99, 165, 255, 0.12); /* subtle cool edge */
+  box-shadow: 0 18px 70px rgba(0, 0, 0, 0.60);
+}
+
+.iws-small-card:hover {
+  border-color: rgba(255, 215, 0, 0.20);      /* tiny gold pop on hover */
+}

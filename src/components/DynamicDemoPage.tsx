@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader, AlertCircle, X, Phone, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Loader, AlertCircle, X, Phone, PhoneOff, MessageSquare } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import Vapi from '@vapi-ai/web';
 
@@ -134,7 +134,7 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug, displayName]);
 
-  // Realtime updates (optional but you had it)
+  // Realtime updates
   useEffect(() => {
     if (!targetSlug) return;
 
@@ -248,7 +248,7 @@ export function DynamicDemoPage() {
     setModal(null);
   };
 
-  // ✅ FIXED CHAT (Option A): call Supabase Edge Function with Authorization + apikey
+  // Chat: call Supabase Edge Function
   const sendChat = async () => {
     if (!demoPage?.assistant_id) return;
     const msg = chatInput.trim();
@@ -268,7 +268,6 @@ export function DynamicDemoPage() {
 
       const publicChatUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-public-chat`;
 
-      // If logged in use session JWT, else fallback to anon JWT
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token || anonKey;
 
@@ -348,11 +347,11 @@ export function DynamicDemoPage() {
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
-          I built a tool that <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
+          I built a tool for you that <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
+          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
         </div>
 
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
@@ -396,7 +395,7 @@ export function DynamicDemoPage() {
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — speak normally.'}
+                    {voiceStatus === 'live' && 'Live — Act like a customer.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}
@@ -404,17 +403,21 @@ export function DynamicDemoPage() {
 
                   {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
 
+                  {/* Updated: Hang up icon button */}
                   <button
-                    className="mt-8 w-32 h-32 rounded-full bg-yellow-400 text-black font-bold hover:bg-yellow-300 transition"
+                    className="mt-8 w-28 h-28 rounded-full bg-red-600 text-white hover:bg-red-500 transition shadow-[0_18px_60px_rgba(255,0,0,0.18)] inline-flex items-center justify-center"
                     onClick={() => {
                       try {
                         vapiRef.current?.stop();
                       } catch {}
                       setVoiceStatus('ended');
                     }}
+                    aria-label="Hang up"
                   >
-                    End
+                    <PhoneOff className="h-10 w-10" />
                   </button>
+
+                  <p className="mt-3 text-xs text-gray-400">Hang up</p>
                 </div>
               ) : (
                 <div className="flex flex-col h-[420px]">

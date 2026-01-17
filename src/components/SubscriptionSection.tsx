@@ -4,40 +4,39 @@ import { Check, Zap } from 'lucide-react';
 export function SubscriptionSection() {
   const plans = [
     {
-      name: 'Starter',
-      price: '$399',
-      period: '/month',
+      name: 'Web Design',
+      price: '$499',
+      period: '',
       features: [
-        'Up to 1,000 AI-powered calls per month',
-        '1 AI Voice Assistant',
-        'Basic analytics',
-        'Email support',
+        'Modern, high-converting homepage',
+        'Mobile-optimized design',
+        'Fast loading & SEO-friendly setup',
+        'Launch support',
       ],
     },
     {
-      name: 'Professional',
-      price: '$499',
-      period: '/month',
+      name: 'AI Phone Agents',
+      price: '$99',
+      period: '/mo',
       features: [
-        'Up to 5,000 AI-powered calls per month',
-        '5 AI Voice Assistants',
-        'Advanced analytics & reporting',
-        'Priority support',
-        'Custom voice training',
+        'Answers calls after-hours & while busy',
+        'Books jobs & captures lead details',
+        'Transfers urgent calls when needed',
+        'Call summaries + basic analytics',
+        'Setup help included',
       ],
       popular: true,
     },
     {
-      name: 'Enterprise',
-      price: 'Custom',
+      name: 'Custom Package',
+      price: 'Contact',
       period: '',
       features: [
-        'Unlimited AI-powered calls',
-        'Unlimited AI Voice Assistants',
-        'Enterprise analytics',
-        '24/7 dedicated support',
-        'Custom integrations',
-        'White-label options',
+        'Mix web + AI + lead-gen services',
+        'Custom scope & timeline',
+        'Priority build + dedicated support',
+        'Integrations & automations',
+        'Ongoing optimization options',
       ],
     },
   ];
@@ -47,7 +46,10 @@ export function SubscriptionSection() {
       <div className="max-w-7xl mx-auto">
         <div className="text-center mb-16">
           <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-            Choose Your <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">Plan</span>
+            Choose Your{' '}
+            <span className="bg-gradient-to-r from-[#d4b05a] to-[#f2d27a] bg-clip-text text-transparent">
+              Plan
+            </span>
           </h2>
           <p className="text-xl text-gray-300 max-w-3xl mx-auto">
             Select the perfect plan for your business needs
@@ -59,11 +61,13 @@ export function SubscriptionSection() {
             <div
               key={plan.name}
               className={`bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border rounded-xl p-8 ${
-                plan.popular ? 'border-yellow-400/50 ring-2 ring-yellow-400/20' : 'border-gray-700/50'
+                plan.popular
+                  ? 'border-[#d4b05a]/50 ring-2 ring-[#d4b05a]/15'
+                  : 'border-gray-700/50'
               }`}
             >
               {plan.popular && (
-                <div className="bg-yellow-400 text-black text-sm font-bold px-3 py-1 rounded-full inline-block mb-4">
+                <div className="bg-[#d4b05a] text-black text-sm font-bold px-3 py-1 rounded-full inline-block mb-4">
                   Most Popular
                 </div>
               )}
@@ -86,7 +90,7 @@ export function SubscriptionSection() {
                 rel="noopener noreferrer"
                 className={`block w-full text-center py-3 px-6 rounded-xl font-bold transition-all ${
                   plan.popular
-                    ? 'bg-gradient-to-r from-yellow-400 to-yellow-500 text-black hover:from-yellow-500 hover:to-yellow-600'
+                    ? 'bg-[#d4b05a] text-black hover:bg-[#e2c06a]'
                     : 'bg-gray-700 text-white hover:bg-gray-600'
                 }`}
               >
