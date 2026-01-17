@@ -368,7 +368,7 @@ export function DynamicDemoPage() {
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
+          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
         </div>
 
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
