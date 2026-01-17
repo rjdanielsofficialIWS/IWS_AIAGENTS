@@ -393,7 +393,7 @@ export function DynamicDemoPage() {
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — speak normally.'}
+                    {voiceStatus === 'live' && 'Live — Ask about your services.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}
