@@ -349,29 +349,30 @@ export function HomePage() {
 
               <div className="mt-8 flex flex-col sm:flex-row gap-3">
                 <a
-                  href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition"
-                >
-                  <Calendar className="h-5 w-5" />
-                  Book a Call
-                </a>
+  href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+  target="_blank"
+  rel="noopener noreferrer"
+  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition"
+>
+  <Calendar className="h-5 w-5" />
+  Book a Call
+</a>
 
-                <button
-                  onClick={scrollToLead}
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
-                >
-                  <button
+<button
   onClick={() => setIsVapiModalOpen(true)}
   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
 >
   <Phone className="h-5 w-5 text-[#49B6FF]" />
   Try Our AI Phone Agent
 </button>
-                  <MessageSquare className="h-5 w-5 text-[#FFD24A]" />
-                  Get a Quote
-                </button>
+
+<button
+  onClick={scrollToLead}
+  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+>
+  <MessageSquare className="h-5 w-5 text-[#FFD24A]" />
+  Get a Quote
+</button>
 
                 <a
                   href="#pricing"
