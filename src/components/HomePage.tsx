@@ -358,7 +358,7 @@ export function HomePage() {
     <div
       className="min-h-screen text-white overflow-x-hidden"
       style={{
-        backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(212, 176, 90, 0.14), transparent 60%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
+        backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
         backgroundAttachment: 'fixed',
         backgroundRepeat: 'no-repeat',
         backgroundSize: 'cover',
