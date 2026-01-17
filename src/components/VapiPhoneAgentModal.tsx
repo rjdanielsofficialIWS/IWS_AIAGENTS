@@ -46,7 +46,6 @@ export default function VapiPhoneAgentModal({
   // Cleanup on close
   useEffect(() => {
     if (!isOpen) {
-      // ensure we stop any active call
       try {
         vapiRef.current?.stop?.();
       } catch {}
@@ -57,9 +56,9 @@ export default function VapiPhoneAgentModal({
     }
   }, [isOpen]);
 
-  // Initialize Vapi instance once
+  // Init instance once
   useEffect(() => {
-    if (!vapiRef.current) {
+    if (!vapiRef.current && cfg.pk) {
       vapiRef.current = new (Vapi as any)(cfg.pk);
     }
   }, [cfg.pk]);
@@ -112,7 +111,6 @@ export default function VapiPhoneAgentModal({
     try {
       setCallState("connecting");
       await vapiRef.current.start(cfg.aid);
-      // call-start event flips state to inCall
     } catch (e: any) {
       setCallState("error");
       setError(e?.message || "Failed to start call.");
@@ -128,15 +126,16 @@ export default function VapiPhoneAgentModal({
 
   const toggleMute = () => {
     try {
-      // Vapi client SDK supports mute/unmute in some versions via setMuted / mute
       if (typeof vapiRef.current?.setMuted === "function") {
         vapiRef.current.setMuted(!muted);
-      } else if (typeof vapiRef.current?.mute === "function" && typeof vapiRef.current?.unmute === "function") {
+      } else if (
+        typeof vapiRef.current?.mute === "function" &&
+        typeof vapiRef.current?.unmute === "function"
+      ) {
         !muted ? vapiRef.current.mute() : vapiRef.current.unmute();
       }
       setMuted((m) => !m);
     } catch {
-      // if mute isn't supported in your SDK version, just ignore silently
       setMuted((m) => !m);
     }
   };
@@ -146,17 +145,14 @@ export default function VapiPhoneAgentModal({
   return (
     <div className="fixed inset-0 z-[80]">
       {/* Backdrop */}
-      <button
-        aria-label="Close"
-        className="absolute inset-0 bg-black/70"
-        onClick={onClose}
-      />
+      <button aria-label="Close" className="absolute inset-0 bg-black/70" onClick={onClose} />
 
       {/* Modal */}
       <div className="absolute inset-0 flex items-center justify-center p-4">
         <div className="relative w-full max-w-lg rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl overflow-hidden">
           {/* Chrome glow */}
           <div className="pointer-events-none absolute -inset-1 rounded-3xl bg-gradient-to-r from-white/10 via-white/5 to-white/10 blur-2xl opacity-80" />
+
           <div className="relative p-6 sm:p-7">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -193,11 +189,7 @@ export default function VapiPhoneAgentModal({
                 </div>
               </div>
 
-              {error && (
-                <div className="mt-3 text-sm text-red-300">
-                  {error}
-                </div>
-              )}
+              {error && <div className="mt-3 text-sm text-red-300">{error}</div>}
             </div>
 
             {/* Controls */}
@@ -248,7 +240,6 @@ export default function VapiPhoneAgentModal({
               </button>
             </div>
 
-            {/* Note */}
             <div className="mt-5 text-xs text-gray-500">
               Tip: If your browser asks for microphone permission, click “Allow”.
             </div>
