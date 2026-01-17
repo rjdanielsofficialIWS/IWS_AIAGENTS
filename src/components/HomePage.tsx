@@ -318,11 +318,11 @@ export function HomePage() {
   }, [currentStep, formData]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
-        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
-      </div>
+    <div className="min-h-screen text-white overflow-x-hidden bg-[radial-gradient(1200px_600px_at_50%_-200px,rgba(255,215,0,0.15),transparent_60%),linear-gradient(to_bottom,#2a2a2a,#0b0b0b,#000)]">
+  <div className="fixed inset-0 overflow-hidden pointer-events-none">
+    <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-yellow-400/6 to-transparent rounded-full animate-pulse"></div>
+    <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/6 to-transparent rounded-full animate-pulse delay-1000"></div>
+  </div>
 
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
