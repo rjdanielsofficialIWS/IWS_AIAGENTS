@@ -165,36 +165,51 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug]);
 
-  // Helper: auto-open the widget UI so you don’t need the extra click.
-  // This clicks the first button found inside the widget shadow/DOM after it mounts.
+  // Auto-open the widget UI inside the modal (so you don’t see the pill button)
   const autoOpenWidget = (container: HTMLDivElement | null) => {
     if (!container) return;
 
-    const attempt = () => {
-      // Most builds render a CTA button in light DOM. If they use shadow DOM, this might not work.
-      // But in your screenshots, the "AI Chat Agent" pill is clickable in DOM, so this works.
-      const btn =
-        container.querySelector('button') ||
-        container.querySelector('[role="button"]') ||
-        container.querySelector('vapi-widget');
+    const deepQuery = (root: Document | ShadowRoot | HTMLElement, selectors: string[]) => {
+      for (const sel of selectors) {
+        const el = (root as any).querySelector?.(sel);
+        if (el) return el as HTMLElement;
+      }
+      return null;
+    };
 
-      if (btn instanceof HTMLElement) {
-        btn.click();
+    const tryOpen = () => {
+      // Light DOM attempt
+      const light = deepQuery(container, ['button', '[role="button"]', 'a', 'vapi-widget']);
+      if (light) {
+        light.click();
         return true;
       }
+
+      // Shadow DOM attempt (if open)
+      const widget = container.querySelector('vapi-widget') as any;
+      if (widget?.shadowRoot) {
+        const shadowBtn = deepQuery(widget.shadowRoot, [
+          'button',
+          '[role="button"]',
+          'div[role="button"]',
+          'span[role="button"]',
+        ]);
+        if (shadowBtn) {
+          shadowBtn.click();
+          return true;
+        }
+      }
+
       return false;
     };
 
-    // Try a few times to catch async render
-    const t1 = window.setTimeout(() => attempt(), 150);
-    const t2 = window.setTimeout(() => attempt(), 450);
-    const t3 = window.setTimeout(() => attempt(), 900);
+    const timers = [120, 280, 520, 900, 1400].map((ms) =>
+      window.setTimeout(() => {
+        tryOpen();
+      }, ms)
+    );
 
-    return () => {
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
-      window.clearTimeout(t3);
-    };
+    return () => timers.forEach((t) => window.clearTimeout(t));
   };
 
   // Build widgets when modal opens
@@ -266,11 +281,9 @@ export function DynamicDemoPage() {
     const t2 = window.setTimeout(removeNonEmbeddedVapiWidgets, 800);
     const t3 = window.setTimeout(removeNonEmbeddedVapiWidgets, 1600);
 
-    // ✅ Auto-open the widget UI (no second click)
+    // ✅ Auto-open UI
     const cleanupAuto =
-      openMode === 'voice'
-        ? autoOpenWidget(voiceMountRef.current)
-        : autoOpenWidget(chatMountRef.current);
+      openMode === 'voice' ? autoOpenWidget(voiceMountRef.current) : autoOpenWidget(chatMountRef.current);
 
     return () => {
       window.clearTimeout(t1);
@@ -332,13 +345,12 @@ export function DynamicDemoPage() {
     );
   }
 
-  // ✅ “Visitor” replaced with slug name (title-case-ish)
   const niceSlug = demoPage.slug
     ? demoPage.slug.charAt(0).toUpperCase() + demoPage.slug.slice(1)
     : 'Demo';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-900 via-zinc-950 to-black text-white overflow-x-hidden">
+    <div className="min-h-screen text-white overflow-x-hidden bg-[radial-gradient(1200px_700px_at_50%_-200px,rgba(255,215,0,0.10),transparent_60%),linear-gradient(to_bottom,#2a2a2a_0%,#0b0b0b_45%,#000_100%)]">
       <header className="py-6 px-4">
         <div className="max-w-6xl mx-auto">
           <Link to="/" className="inline-flex items-center gap-2 text-gray-400 hover:text-gray-200">
@@ -394,7 +406,6 @@ export function DynamicDemoPage() {
         </div>
       </main>
 
-      {/* Modal */}
       {openMode && (
         <div
           className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
