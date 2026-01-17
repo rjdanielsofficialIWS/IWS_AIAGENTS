@@ -3,7 +3,6 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Loader, AlertCircle, X, Phone, MessageSquare } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import Vapi from '@vapi-ai/web';
-import { VapiWidget } from '@vapi-ai/client-sdk-react';
 
 interface DemoPage {
   slug: string;
@@ -41,15 +40,14 @@ export function DynamicDemoPage() {
   }, [targetSlug]);
 
   /**
-   * Kill only the FLOATING/launcher-style Vapi widgets.
-   * DO NOT remove embedded widgets inside our modal.
+   * Remove ONLY floating/launcher Vapi widgets.
+   * Do NOT remove anything inside our modal.
    */
   const nukeVapiLauncher = () => {
-    // Remove <vapi-widget> ONLY if it's fixed-position (launcher)
+    // If there is a floating widget somewhere else, remove it.
+    // But never remove widgets inside our modal container.
     document.querySelectorAll('vapi-widget').forEach((node) => {
       const el = node as HTMLElement;
-
-      // never remove anything inside our modal
       if (el.closest('[data-demo-modal="true"]')) return;
 
       const style = window.getComputedStyle(el);
@@ -58,15 +56,13 @@ export function DynamicDemoPage() {
       }
     });
 
-    // Remove other fixed/sticky injected containers that look like launchers
+    // Also remove random fixed launchers (same rule: not inside modal)
     const candidates = document.querySelectorAll(
       '[class*="vapi"], [id*="vapi"], [data-vapi], [class*="Vapi"], [id*="Vapi"]'
     );
 
     candidates.forEach((node) => {
       const el = node as HTMLElement;
-
-      // never delete anything inside our modal
       if (el.closest('[data-demo-modal="true"]')) return;
 
       const style = window.getComputedStyle(el);
@@ -77,7 +73,6 @@ export function DynamicDemoPage() {
   };
 
   useEffect(() => {
-    // initial + delayed nukes + mutation observer
     nukeVapiLauncher();
     const t1 = window.setTimeout(nukeVapiLauncher, 300);
     const t2 = window.setTimeout(nukeVapiLauncher, 1200);
@@ -197,7 +192,6 @@ export function DynamicDemoPage() {
 
         await vapi.start(demoPage.assistant_id);
 
-        // Optional: speak the first message
         if (demoPage.first_message?.trim()) {
           try {
             await (vapi as any).say(demoPage.first_message.trim(), false);
@@ -235,7 +229,6 @@ export function DynamicDemoPage() {
     setModal(null);
   };
 
-  // UI states
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-white bg-black">
@@ -269,14 +262,12 @@ export function DynamicDemoPage() {
 
   return (
     <div className="min-h-screen text-white bg-[radial-gradient(1200px_600px_at_50%_-200px,rgba(255,215,0,0.15),transparent_60%),linear-gradient(to_bottom,#2a2a2a,#0b0b0b,#000)]">
-      {/* Header */}
       <header className="px-6 py-6">
         <Link to="/" className="flex items-center text-gray-400 hover:text-white">
           <ArrowLeft className="h-5 w-5 mr-2" /> Back
         </Link>
       </header>
 
-      {/* Hero */}
       <main className="max-w-3xl mx-auto text-center px-6 pb-16">
         <h1 className="text-5xl font-extrabold mt-10">
           Hey <span className="text-yellow-400">{displayName}</span>,
@@ -293,7 +284,6 @@ export function DynamicDemoPage() {
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center">
-          {/* Call Me */}
           <button
             onClick={() => setModal('voice')}
             className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-2xl hover:bg-yellow-300 transition inline-flex items-center gap-3"
@@ -302,7 +292,6 @@ export function DynamicDemoPage() {
             Call Me
           </button>
 
-          {/* Text Me */}
           <button
             onClick={() => setModal('chat')}
             className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
@@ -313,7 +302,6 @@ export function DynamicDemoPage() {
         </div>
       </main>
 
-      {/* Modal */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" data-demo-modal="true">
           <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
@@ -355,15 +343,21 @@ export function DynamicDemoPage() {
                 <div className="min-h-[420px]">
                   <h3 className="text-xl font-bold mb-3 text-white">AI Chat Agent</h3>
 
-                  <div className="h-[420px] border border-gray-700/60 rounded-xl bg-black/40 overflow-hidden">
-                    <VapiWidget
-                      publicKey={VAPI_PUBLIC_KEY}
-                      assistantId={demoPage.assistant_id}
+                  {/* ✅ IMPORTANT: force a real height so the widget can render */}
+                  <div className="h-[520px] border border-gray-700/60 rounded-xl bg-black/40 overflow-hidden">
+                    {/* ✅ Official Vapi widget web component */}
+                    <vapi-widget
+                      public-key={VAPI_PUBLIC_KEY}
+                      assistant-id={demoPage.assistant_id}
                       mode="chat"
                       theme="dark"
                       size="full"
-                      radius="large"
-                    />
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        height: '100%',
+                      } as any}
+                    ></vapi-widget>
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
