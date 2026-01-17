@@ -1,64 +1,73 @@
+/**
+ * Vapi AI Integration Edge Function
+ *
+ * Secure proxy for Vapi AI API requests.
+ * Keeps VAPI_API_KEY off the client.
+ *
+ * Supported routes:
+ *  - /assistants
+ *  - /phone-numbers
+ *  - /calls
+ *  - /webhooks
+ */
+
 import { corsHeaders } from '../_shared/cors.ts';
 
 const VAPI_API_KEY = Deno.env.get('VAPI_API_KEY');
 
 if (!VAPI_API_KEY) {
-  throw new Error('VAPI_API_KEY environment variable is required');
+  throw new Error('Missing VAPI_API_KEY environment variable');
 }
 
 Deno.serve(async (req: Request) => {
+  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 200, headers: corsHeaders });
+    return new Response(null, {
+      status: 204,
+      headers: corsHeaders,
+    });
   }
 
   try {
-    if (req.method !== 'POST') {
-      return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-        status: 405,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const url = new URL(req.url);
+    const path = url.pathname.replace('/functions/v1/vapi-ai', '');
+
+    if (!path) {
+      return new Response(
+        JSON.stringify({ error: 'Missing Vapi endpoint path' }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        }
+      );
     }
 
-    const { assistantId, input, previousChatId } = await req.json().catch(() => ({}));
+    const vapiUrl = `https://api.vapi.ai${path}`;
 
-    if (!assistantId || !input) {
-      return new Response(JSON.stringify({ error: 'assistantId and input are required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    const headers: HeadersInit = {
+      'Authorization': `Bearer ${VAPI_API_KEY}`,
+      'Content-Type': 'application/json',
+    };
 
-    const vapiRes = await fetch('https://api.vapi.ai/chat', {
-      method: 'POST',
+    // Forward request to Vapi
+    const vapiResponse = await fetch(vapiUrl, {
+      method: req.method,
+      headers,
+      body: req.method !== 'GET' ? await req.text() : undefined,
+    });
+
+    const text = await vapiResponse.text();
+
+    return new Response(text, {
+      status: vapiResponse.status,
       headers: {
-        'Authorization': `Bearer ${VAPI_API_KEY}`,
-        'Content-Type': 'application/json',
+        ...corsHeaders,
+        'Content-Type': vapiResponse.headers.get('content-type') || 'application/json',
       },
-      body: JSON.stringify({
-        assistantId,
-        input,
-        ...(previousChatId ? { previousChatId } : {}),
-      }),
     });
+  } catch (err) {
+    console.error('Vapi proxy error:', err);
 
-    const json = await vapiRes.json().catch(() => ({}));
-
-    if (!vapiRes.ok) {
-      return new Response(JSON.stringify({ error: json?.error || 'Vapi chat failed', details: json }), {
-        status: vapiRes.status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    // Normalize response so the client doesn’t care about Vapi’s exact shape
-    const responseText = json?.output?.[0]?.content ?? '';
-    const chatId = json?.id;
-
-    return new Response(JSON.stringify({ chatId, response: responseText, raw: json }), {
-      status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  } catch (err: unknown) {
     return new Response(
       JSON.stringify({
         error: 'Internal server error',
