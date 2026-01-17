@@ -267,13 +267,23 @@ export function DynamicDemoPage() {
     setChatMsgs((prev) => [...prev, { role: 'user', content: msg }]);
 
     try {
-      if (!import.meta.env.VITE_SUPABASE_URL) {
-        throw new Error('Missing VITE_SUPABASE_URL');
-      }
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl) throw new Error('Missing VITE_SUPABASE_URL');
+      if (!anonKey) throw new Error('Missing VITE_SUPABASE_ANON_KEY');
+
+      // If a user is logged in, use their JWT. Otherwise, fall back to anon.
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token || anonKey;
 
       const res = await fetch(publicChatUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: anonKey,
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
           assistantId: demoPage.assistant_id,
           input: msg,
@@ -283,7 +293,7 @@ export function DynamicDemoPage() {
       const json = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        throw new Error(json?.error || `Chat failed (${res.status})`);
+        throw new Error(json?.error || json?.message || `Chat failed (${res.status})`);
       }
 
       const reply = json?.response || '…';
