@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Loader, AlertCircle, X, Phone, MessageSquare } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import Vapi from '@vapi-ai/web';
+import { VapiWidget } from '@vapi-ai/client-sdk-react';
 
 interface DemoPage {
   slug: string;
@@ -15,41 +16,6 @@ interface DemoPage {
 type ModalMode = 'voice' | 'chat' | null;
 
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
-
-// Official Vapi web widget script (client-side)
-const VAPI_WIDGET_SCRIPT_URL =
-  'https://cdn.jsdelivr.net/gh/VapiAI/html-script-tag@latest/dist/assets/index.js';
-
-declare global {
-  interface Window {
-    vapiSDK?: {
-      run: (opts: any) => void;
-      destroy?: () => void;
-    };
-  }
-}
-
-function loadVapiWidgetScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    // already loaded
-    if (window.vapiSDK?.run) return resolve();
-
-    // already in DOM (loading)
-    const existing = document.querySelector(`script[src="${VAPI_WIDGET_SCRIPT_URL}"]`) as HTMLScriptElement | null;
-    if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('Failed to load Vapi widget script')));
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = VAPI_WIDGET_SCRIPT_URL;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Vapi widget script'));
-    document.body.appendChild(script);
-  });
-}
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -66,10 +32,6 @@ export function DynamicDemoPage() {
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'live' | 'ended' | 'error'>('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
-  // Chat widget container
-  const chatContainerRef = useRef<HTMLDivElement>(null);
-  const [chatWidgetError, setChatWidgetError] = useState<string | null>(null);
-
   const displayName = useMemo(() => {
     return targetSlug
       .split('-')
@@ -79,24 +41,31 @@ export function DynamicDemoPage() {
   }, [targetSlug]);
 
   /**
-   * Kill the old bottom-right Vapi widget/launcher (if it's injected globally).
-   * NOTE: updated so it doesn't delete the embedded widget inside the modal.
+   * Kill only the FLOATING/launcher-style Vapi widgets.
+   * DO NOT remove embedded widgets inside our modal.
    */
   const nukeVapiLauncher = () => {
-    // Remove any <vapi-widget> elements ONLY if they are fixed-position launchers
+    // Remove <vapi-widget> ONLY if it's fixed-position (launcher)
     document.querySelectorAll('vapi-widget').forEach((node) => {
       const el = node as HTMLElement;
+
+      // never remove anything inside our modal
+      if (el.closest('[data-demo-modal="true"]')) return;
+
       const style = window.getComputedStyle(el);
-      if (style.position === 'fixed') el.remove();
+      if (style.position === 'fixed' || style.position === 'sticky') {
+        el.remove();
+      }
     });
 
-    // Remove likely launcher containers injected by scripts (only fixed/sticky)
+    // Remove other fixed/sticky injected containers that look like launchers
     const candidates = document.querySelectorAll(
       '[class*="vapi"], [id*="vapi"], [data-vapi], [class*="Vapi"], [id*="Vapi"]'
     );
 
     candidates.forEach((node) => {
       const el = node as HTMLElement;
+
       // never delete anything inside our modal
       if (el.closest('[data-demo-modal="true"]')) return;
 
@@ -254,63 +223,6 @@ export function DynamicDemoPage() {
     };
   }, [modal, demoPage]);
 
-  // Start chat widget immediately when chat modal opens
-  useEffect(() => {
-    if (modal !== 'chat') return;
-    if (!demoPage?.assistant_id) return;
-
-    let cancelled = false;
-
-    const startChatWidget = async () => {
-      try {
-        setChatWidgetError(null);
-
-        // clear container
-        if (chatContainerRef.current) {
-          chatContainerRef.current.innerHTML = '';
-        }
-
-        await loadVapiWidgetScript();
-        if (cancelled) return;
-
-        // Safety check
-        if (!window.vapiSDK?.run) {
-          throw new Error('Vapi widget SDK not available after loading.');
-        }
-
-        // Mount widget INSIDE our container (no floating launcher)
-        // NOTE: The widget script uses `container` selector to embed in a div.
-        window.vapiSDK.run({
-          apiKey: VAPI_PUBLIC_KEY,
-          assistantId: demoPage.assistant_id,
-          mode: 'chat',
-          container: '#vapi-chat-embed',
-          // Optional: you can try theme options if supported by the script
-          // theme: 'dark',
-        });
-      } catch (e: any) {
-        if (cancelled) return;
-        setChatWidgetError(e?.message || 'Failed to load chat widget');
-      }
-    };
-
-    startChatWidget();
-
-    return () => {
-      cancelled = true;
-
-      // Attempt cleanup if SDK supports it
-      try {
-        window.vapiSDK?.destroy?.();
-      } catch {}
-
-      if (chatContainerRef.current) {
-        chatContainerRef.current.innerHTML = '';
-      }
-      setChatWidgetError(null);
-    };
-  }, [modal, demoPage]);
-
   const closeModal = () => {
     if (modal === 'voice') {
       try {
@@ -320,15 +232,6 @@ export function DynamicDemoPage() {
       setVoiceStatus('idle');
       setVoiceError(null);
     }
-
-    if (modal === 'chat') {
-      try {
-        window.vapiSDK?.destroy?.();
-      } catch {}
-      if (chatContainerRef.current) chatContainerRef.current.innerHTML = '';
-      setChatWidgetError(null);
-    }
-
     setModal(null);
   };
 
@@ -399,7 +302,7 @@ export function DynamicDemoPage() {
             Call Me
           </button>
 
-          {/* Text Me (WHITE) */}
+          {/* Text Me */}
           <button
             onClick={() => setModal('chat')}
             className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
@@ -452,25 +355,19 @@ export function DynamicDemoPage() {
                 <div className="min-h-[420px]">
                   <h3 className="text-xl font-bold mb-3 text-white">AI Chat Agent</h3>
 
-                  {chatWidgetError ? (
-                    <div className="text-sm text-red-300">
-                      {chatWidgetError}
-                      <div className="mt-2 text-gray-400">
-                        If this persists, it usually means the widget script couldn&apos;t load (blocked CDN / CSP).
-                      </div>
-                    </div>
-                  ) : (
-                    <div
-                      ref={chatContainerRef}
-                      className="h-[420px] border border-gray-700/60 rounded-xl bg-black/40 overflow-hidden"
-                    >
-                      {/* Vapi widget will embed here */}
-                      <div id="vapi-chat-embed" className="h-full w-full" />
-                    </div>
-                  )}
+                  <div className="h-[420px] border border-gray-700/60 rounded-xl bg-black/40 overflow-hidden">
+                    <VapiWidget
+                      publicKey={VAPI_PUBLIC_KEY}
+                      assistantId={demoPage.assistant_id}
+                      mode="chat"
+                      theme="dark"
+                      size="full"
+                      radius="large"
+                    />
+                  </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    Chat is now powered directly by Vapi (no Supabase Edge Function).
+                    Chat is powered directly by Vapi (no Supabase Edge Function).
                   </p>
                 </div>
               )}
