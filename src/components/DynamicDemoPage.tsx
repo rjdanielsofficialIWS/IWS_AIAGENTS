@@ -10,6 +10,7 @@ interface DemoPage {
   system_prompt: string;
   first_message: string;
   is_active: boolean;
+  favicon_url?: string; // ✅ NEW
 }
 
 type ChatMsg = { role: 'assistant' | 'user'; content: string };
@@ -20,7 +21,7 @@ const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
 
-  // ✅ Decode + trim so /PacificPlumbing, /pacificplumbing, /PACIFICPLUMBING all behave the same
+  // ✅ Decode + trim so /PacificPlumbing, /pacificplumbing, /PACIFICPLUMBING all work
   const targetSlug = useMemo(() => decodeURIComponent((slug || 'demo').trim()), [slug]);
 
   const [demoPage, setDemoPage] = useState<DemoPage | null>(null);
@@ -150,7 +151,6 @@ export function DynamicDemoPage() {
   }, [targetSlug, displayName]);
 
   // ✅ Realtime updates (case-insensitive)
-  // Supabase realtime filters are case-sensitive, so we subscribe to the table and filter locally.
   useEffect(() => {
     if (!targetSlug) return;
 
@@ -264,7 +264,7 @@ export function DynamicDemoPage() {
     setModal(null);
   };
 
-  // ✅ FIXED CHAT (Option A): call Supabase Edge Function with Authorization + apikey
+  // Chat via Supabase Edge Function
   const sendChat = async () => {
     if (!demoPage?.assistant_id) return;
     const msg = chatInput.trim();
@@ -284,7 +284,6 @@ export function DynamicDemoPage() {
 
       const publicChatUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-public-chat`;
 
-      // If logged in use session JWT, else fallback to anon JWT
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token || anonKey;
 
@@ -359,22 +358,35 @@ export function DynamicDemoPage() {
 
       {/* Hero */}
       <main className="max-w-3xl mx-auto text-center px-6 pb-16">
-        <h1 className="text-5xl font-extrabold mt-10">
+        {/* ✅ NEW: favicon hero badge */}
+        {demoPage.favicon_url ? (
+          <img
+            src={demoPage.favicon_url}
+            alt={`${displayName} logo`}
+            className="mx-auto mt-10 mb-6 h-20 w-20 rounded-2xl bg-white p-3 shadow-[0_0_30px_rgba(255,215,0,0.35)]"
+            loading="lazy"
+          />
+        ) : (
+          <div className="mx-auto mt-10 mb-6 h-20 w-20 rounded-2xl bg-yellow-400 text-black flex items-center justify-center font-extrabold text-3xl shadow-[0_0_30px_rgba(255,215,0,0.25)]">
+            {displayName.charAt(0)}
+          </div>
+        )}
+
+        <h1 className="text-5xl font-extrabold">
           Hey <span className="text-yellow-400">{displayName}</span>,
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
-          I built a tool for you that <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
+          I built a tool that <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
+          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
         </div>
 
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center">
-          {/* Call Me */}
           <button
             onClick={() => setModal('voice')}
             className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-2xl hover:bg-yellow-300 transition inline-flex items-center gap-3"
@@ -383,7 +395,6 @@ export function DynamicDemoPage() {
             Call Me
           </button>
 
-          {/* Text Me */}
           <button
             onClick={() => setModal('chat')}
             className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
@@ -412,7 +423,7 @@ export function DynamicDemoPage() {
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — Act like a customer.'}
+                    {voiceStatus === 'live' && 'Live — speak normally.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}
