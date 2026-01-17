@@ -1,72 +1,80 @@
-import { corsHeaders } from '../_shared/cors.ts';
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const VAPI_API_KEY = Deno.env.get('VAPI_API_KEY');
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
 
-Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: corsHeaders });
+serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    if (!VAPI_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Missing VAPI_API_KEY in Supabase function secrets' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
-    if (req.method !== 'POST') {
-      return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+    if (req.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Method not allowed" }), {
         status: 405,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const body = await req.json().catch(() => ({}));
-    const assistantId = body?.assistantId;
-    const input = body?.input;
-    const previousChatId = body?.previousChatId;
+    const { assistantId, input } = await req.json().catch(() => ({}));
 
     if (!assistantId || !input) {
-      return new Response(JSON.stringify({ error: 'assistantId and input are required' }), {
+      return new Response(JSON.stringify({ error: "Missing assistantId or input" }), {
         status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    const vapiRes = await fetch('https://api.vapi.ai/chat', {
-      method: 'POST',
+    const VAPI_API_KEY = Deno.env.get("VAPI_API_KEY");
+    if (!VAPI_API_KEY) {
+      return new Response(JSON.stringify({ error: "Missing VAPI_API_KEY in Supabase secrets" }), {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // Vapi chat call (server-side)
+    const vapiRes = await fetch("https://api.vapi.ai/chat", {
+      method: "POST",
       headers: {
         Authorization: `Bearer ${VAPI_API_KEY}`,
-        'Content-Type': 'application/json',
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         assistantId,
-        input,
-        ...(previousChatId ? { previousChatId } : {}),
+        messages: [{ role: "user", content: input }],
       }),
     });
 
     const json = await vapiRes.json().catch(() => ({}));
 
     if (!vapiRes.ok) {
-      return new Response(JSON.stringify({ error: json?.error || 'Vapi chat failed', details: json }), {
-        status: vapiRes.status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return new Response(
+        JSON.stringify({ error: "Vapi chat failed", status: vapiRes.status, details: json }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
     }
 
-    const responseText = json?.output?.[0]?.content ?? json?.response ?? '';
-    const chatId = json?.id ?? json?.chatId ?? null;
+    // Try common shapes, fall back gracefully
+    const response =
+      json?.choices?.[0]?.message?.content ||
+      json?.output?.[0]?.content ||
+      json?.response ||
+      "";
 
-    return new Response(JSON.stringify({ response: responseText, chatId, raw: json }), {
+    return new Response(JSON.stringify({ response }), {
       status: 200,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
-    return new Response(JSON.stringify({ error: 'Internal server error', details: String(err) }), {
+    return new Response(JSON.stringify({ error: "Internal error", details: String(err) }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 });
