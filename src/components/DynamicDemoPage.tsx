@@ -12,6 +12,7 @@ interface DemoPage {
   is_active: boolean;
 }
 
+type ChatMsg = { role: 'assistant' | 'user'; content: string };
 type ModalMode = 'voice' | 'chat' | null;
 
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
@@ -31,6 +32,13 @@ export function DynamicDemoPage() {
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'live' | 'ended' | 'error'>('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
+  // Chat
+  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([]);
+  const [chatInput, setChatInput] = useState('');
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatError, setChatError] = useState<string | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
   const displayName = useMemo(() => {
     return targetSlug
       .split('-')
@@ -39,24 +47,15 @@ export function DynamicDemoPage() {
       .join(' ');
   }, [targetSlug]);
 
-  /**
-   * Remove ONLY floating/launcher Vapi widgets.
-   * Do NOT remove anything inside our modal.
-   */
+  // Remove any floating Vapi launcher widgets (but don't mess with modal content)
   const nukeVapiLauncher = () => {
-    // If there is a floating widget somewhere else, remove it.
-    // But never remove widgets inside our modal container.
     document.querySelectorAll('vapi-widget').forEach((node) => {
       const el = node as HTMLElement;
       if (el.closest('[data-demo-modal="true"]')) return;
-
       const style = window.getComputedStyle(el);
-      if (style.position === 'fixed' || style.position === 'sticky') {
-        el.remove();
-      }
+      if (style.position === 'fixed' || style.position === 'sticky') el.remove();
     });
 
-    // Also remove random fixed launchers (same rule: not inside modal)
     const candidates = document.querySelectorAll(
       '[class*="vapi"], [id*="vapi"], [data-vapi], [class*="Vapi"], [id*="Vapi"]'
     );
@@ -64,11 +63,8 @@ export function DynamicDemoPage() {
     candidates.forEach((node) => {
       const el = node as HTMLElement;
       if (el.closest('[data-demo-modal="true"]')) return;
-
       const style = window.getComputedStyle(el);
-      if (style.position === 'fixed' || style.position === 'sticky') {
-        el.remove();
-      }
+      if (style.position === 'fixed' || style.position === 'sticky') el.remove();
     });
   };
 
@@ -90,7 +86,7 @@ export function DynamicDemoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Fetch record
+  // Fetch demo page record
   useEffect(() => {
     let alive = true;
 
@@ -115,6 +111,12 @@ export function DynamicDemoPage() {
         }
 
         setDemoPage(data);
+        setChatMsgs([
+          {
+            role: 'assistant',
+            content: data.first_message || `Hey ${displayName}, how can I help?`,
+          },
+        ]);
       } catch {
         if (!alive) return;
         setDemoPage(null);
@@ -130,9 +132,9 @@ export function DynamicDemoPage() {
     return () => {
       alive = false;
     };
-  }, [targetSlug]);
+  }, [targetSlug, displayName]);
 
-  // Realtime updates so changes in Supabase update the page
+  // Realtime updates (optional but you had it)
   useEffect(() => {
     if (!targetSlug) return;
 
@@ -144,7 +146,18 @@ export function DynamicDemoPage() {
         (payload) => {
           const next = payload.new as DemoPage | null;
           if (!next || !next.is_active) return;
+
           setDemoPage(next);
+          setChatMsgs((prev) => {
+            if (!prev.length) {
+              return [{ role: 'assistant', content: next.first_message || `Hey ${displayName}, how can I help?` }];
+            }
+            const copy = [...prev];
+            if (copy[0]?.role === 'assistant') {
+              copy[0] = { role: 'assistant', content: next.first_message || copy[0].content };
+            }
+            return copy;
+          });
         }
       )
       .subscribe();
@@ -152,7 +165,13 @@ export function DynamicDemoPage() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [targetSlug]);
+  }, [targetSlug, displayName]);
+
+  // Auto-scroll chat
+  useEffect(() => {
+    if (!chatScrollRef.current) return;
+    chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+  }, [chatMsgs, chatLoading]);
 
   // Start voice immediately when voice modal opens
   useEffect(() => {
@@ -229,6 +248,59 @@ export function DynamicDemoPage() {
     setModal(null);
   };
 
+  // ✅ FIXED CHAT (Option A): call Supabase Edge Function with Authorization + apikey
+  const sendChat = async () => {
+    if (!demoPage?.assistant_id) return;
+    const msg = chatInput.trim();
+    if (!msg || chatLoading) return;
+
+    setChatError(null);
+    setChatLoading(true);
+    setChatInput('');
+    setChatMsgs((prev) => [...prev, { role: 'user', content: msg }]);
+
+    try {
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl) throw new Error('Missing VITE_SUPABASE_URL');
+      if (!anonKey) throw new Error('Missing VITE_SUPABASE_ANON_KEY');
+
+      const publicChatUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-public-chat`;
+
+      // If logged in use session JWT, else fallback to anon JWT
+      const { data } = await supabase.auth.getSession();
+      const token = data?.session?.access_token || anonKey;
+
+      const res = await fetch(publicChatUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: anonKey,
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          assistantId: demoPage.assistant_id,
+          input: msg,
+        }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+
+      if (!res.ok) {
+        throw new Error(json?.error || json?.message || `Chat failed (${res.status})`);
+      }
+
+      const reply = json?.response || '…';
+      setChatMsgs((prev) => [...prev, { role: 'assistant', content: reply }]);
+    } catch (e: any) {
+      setChatError(e?.message || 'Chat failed (edge function)');
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  // UI states
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-white bg-black">
@@ -262,12 +334,14 @@ export function DynamicDemoPage() {
 
   return (
     <div className="min-h-screen text-white bg-[radial-gradient(1200px_600px_at_50%_-200px,rgba(255,215,0,0.15),transparent_60%),linear-gradient(to_bottom,#2a2a2a,#0b0b0b,#000)]">
+      {/* Header */}
       <header className="px-6 py-6">
         <Link to="/" className="flex items-center text-gray-400 hover:text-white">
           <ArrowLeft className="h-5 w-5 mr-2" /> Back
         </Link>
       </header>
 
+      {/* Hero */}
       <main className="max-w-3xl mx-auto text-center px-6 pb-16">
         <h1 className="text-5xl font-extrabold mt-10">
           Hey <span className="text-yellow-400">{displayName}</span>,
@@ -284,6 +358,7 @@ export function DynamicDemoPage() {
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center">
+          {/* Call Me */}
           <button
             onClick={() => setModal('voice')}
             className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-2xl hover:bg-yellow-300 transition inline-flex items-center gap-3"
@@ -292,6 +367,7 @@ export function DynamicDemoPage() {
             Call Me
           </button>
 
+          {/* Text Me */}
           <button
             onClick={() => setModal('chat')}
             className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
@@ -302,6 +378,7 @@ export function DynamicDemoPage() {
         </div>
       </main>
 
+      {/* Modal */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" data-demo-modal="true">
           <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
@@ -340,28 +417,55 @@ export function DynamicDemoPage() {
                   </button>
                 </div>
               ) : (
-                <div className="min-h-[420px]">
-                  <h3 className="text-xl font-bold mb-3 text-white">AI Chat Agent</h3>
+                <div className="flex flex-col h-[420px]">
+                  <div
+                    ref={chatScrollRef}
+                    className="flex-1 overflow-y-auto border border-gray-700/60 rounded-xl p-4 bg-black/40"
+                  >
+                    {chatMsgs.map((m, i) => (
+                      <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
+                        <span
+                          className={`inline-block px-4 py-2 rounded-xl ${
+                            m.role === 'user'
+                              ? 'bg-white text-black'
+                              : 'bg-white/10 text-white border border-gray-700/50'
+                          }`}
+                        >
+                          {m.content}
+                        </span>
+                      </div>
+                    ))}
 
-                  {/* ✅ IMPORTANT: force a real height so the widget can render */}
-                  <div className="h-[520px] border border-gray-700/60 rounded-xl bg-black/40 overflow-hidden">
-                    {/* ✅ Official Vapi widget web component */}
-                    <vapi-widget
-                      public-key={VAPI_PUBLIC_KEY}
-                      assistant-id={demoPage.assistant_id}
-                      mode="chat"
-                      theme="dark"
-                      size="full"
-                      style={{
-                        display: 'block',
-                        width: '100%',
-                        height: '100%',
-                      } as any}
-                    ></vapi-widget>
+                    {chatLoading && (
+                      <div className="mb-2 text-left">
+                        <span className="inline-block px-4 py-2 rounded-xl bg-white/10 text-white border border-gray-700/50">
+                          Typing…
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {chatError && <div className="mt-2 text-xs text-red-300">{chatError}</div>}
+
+                  <div className="mt-3 flex gap-2">
+                    <input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && sendChat()}
+                      className="flex-1 bg-black/40 border border-gray-700/60 rounded-xl px-4 py-2 text-white placeholder:text-gray-500 outline-none focus:border-yellow-400/70"
+                      placeholder="Type your message…"
+                    />
+                    <button
+                      onClick={sendChat}
+                      disabled={chatLoading || !chatInput.trim()}
+                      className="px-4 py-2 bg-white text-black rounded-xl font-bold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 transition"
+                    >
+                      Send
+                    </button>
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    Chat is powered directly by Vapi (no Supabase Edge Function).
+                    Chat uses: <span className="text-gray-400">/functions/v1/vapi-public-chat</span>
                   </p>
                 </div>
               )}
