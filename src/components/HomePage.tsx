@@ -1,7 +1,20 @@
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Brain, Zap, TrendingUp, Phone, Mail, User, Building, MessageSquare, CheckCircle, AlertCircle, Loader, ArrowLeft, ArrowRight, Target, Calendar, Users } from 'lucide-react';
-import { SubscriptionSection } from './SubscriptionSection';
+import React from "react";
+import {
+  Sparkles,
+  Phone,
+  Mail,
+  User,
+  CheckCircle,
+  AlertCircle,
+  Loader,
+  Calendar,
+  ArrowRight,
+  ShieldCheck,
+  Zap,
+  Wand2,
+} from "lucide-react";
+import { SubscriptionSection } from "./SubscriptionSection";
+import { VapiVoiceWidget } from "./VapiVoiceWidget";
 
 interface FormData {
   name: string;
@@ -14,762 +27,798 @@ interface FormData {
   projectRequirements: string;
 }
 
-interface EnhanceState {
-  isEnhancing: boolean;
-  hasEnhanced: boolean;
-}
+type QuestionId = "serviceInterest" | "projectRequirements" | "contactInfo";
+type QuestionType = "textarea" | "checkbox" | "multi-input";
 
 interface Question {
-  id: keyof FormData | 'contactInfo';
+  id: QuestionId;
   title: string;
   subtitle?: string;
-  label?: string;
-  type: 'input' | 'textarea' | 'multi-input' | 'select' | 'radio' | 'checkbox';
-  placeholder?: string;
-  rows?: number;
-  icon?: React.ComponentType<any>;
+  type: QuestionType;
+  icon: React.ComponentType<any>;
   required?: boolean;
-  options?: { value: string; label: string }[];
+  options?: { value: string; label: string; hint?: string }[];
   fields?: {
     id: keyof FormData;
     label: string;
-    type: 'input' | 'email' | 'tel';
+    type: "input" | "email" | "tel";
     placeholder: string;
     icon: React.ComponentType<any>;
     required: boolean;
   }[];
 }
 
+const WEBHOOK_URL =
+  "https://hook.us2.make.com/278k1u1vit3mimed0gqe0uqlkw2d99yw";
+
+function Action({
+  onClick,
+  disabled,
+  className,
+  children,
+  ariaLabel,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: React.ReactNode;
+  ariaLabel?: string;
+}) {
+  return (
+    <div
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-label={ariaLabel}
+      aria-disabled={disabled ? "true" : "false"}
+      onClick={disabled ? undefined : onClick}
+      onKeyDown={(e) => {
+        if (disabled) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick();
+        }
+      }}
+      className={[
+        "select-none",
+        disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
+        className ?? "",
+      ].join(" ")}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function HomePage() {
-  const [currentStep, setCurrentStep] = useState(0);
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    email: '',
-    phone: '',
-    countryCode: '+1',
-    business: '',
-    services: '',
+  const [currentStep, setCurrentStep] = React.useState(0);
+  const [formData, setFormData] = React.useState<FormData>({
+    name: "",
+    email: "",
+    phone: "",
+    countryCode: "+1",
+    business: "",
+    services: "",
     serviceInterest: [],
-    projectRequirements: ''
+    projectRequirements: "",
   });
-  const [currentError, setCurrentError] = useState<string>('');
-  const [isStepValid, setIsStepValid] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
-  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
-    isEnhancing: false,
-    hasEnhanced: false
-  });
+
+  const [currentError, setCurrentError] = React.useState<string>("");
+  const [isStepValid, setIsStepValid] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [submitStatus, setSubmitStatus] = React.useState<
+    "success" | "error" | null
+  >(null);
+
+  // Subtle scroll-driven background shift (professional: very light)
+  const [scrollP, setScrollP] = React.useState(0);
+  React.useEffect(() => {
+    let raf = 0;
+    const update = () => {
+      const doc = document.documentElement;
+      const max = Math.max(1, doc.scrollHeight - window.innerHeight);
+      const p = Math.min(1, Math.max(0, window.scrollY / max));
+      setScrollP(p);
+    };
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, []);
+
+  const x1 = `${(22 + scrollP * 26).toFixed(2)}%`;
+  const y1 = `${(18 + ((scrollP * 1.2) % 1) * 12).toFixed(2)}%`;
+  const x2 = `${(78 - scrollP * 20).toFixed(2)}%`;
+  const y2 = `${(72 + ((scrollP * 1.1) % 1) * 12).toFixed(2)}%`;
+
+  const rootStyle = {
+    ["--x1" as any]: x1,
+    ["--y1" as any]: y1,
+    ["--x2" as any]: x2,
+    ["--y2" as any]: y2,
+  } as React.CSSProperties;
 
   const questions: Question[] = [
     {
-      id: 'serviceInterest',
-      title: 'Which services are you interested in?',
-      subtitle: '(Select all that apply)',
-      type: 'checkbox',
-      icon: Target,
+      id: "serviceInterest",
+      title: "What are you looking for?",
+      subtitle: "Select one or more — we’ll tailor the quote.",
+      type: "checkbox",
+      icon: Sparkles,
       required: true,
       options: [
-        { value: 'ai-agents', label: 'AI Voice Agents - Automate calls and bookings' },
-        { value: 'lead-generation', label: 'Lead Generation - Social media marketing, content creation, and customer acquisition' },
-        { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' }
-      ]
+        { value: "ai-agent", label: "AI Phone Agent", hint: "Capture calls and book appointments." },
+        { value: "website", label: "Web Design", hint: "Clean, premium site built to convert." },
+        { value: "custom", label: "Custom Package", hint: "Website + AI + automations." },
+      ],
     },
     {
-      id: 'projectRequirements',
-      title: 'Tell us about your project requirements',
-      type: 'textarea',
-      placeholder: 'Describe your specific needs, goals, timeline, and any special requirements...',
-      rows: 4,
-      icon: MessageSquare,
-      required: true
+      id: "projectRequirements",
+      title: "What do you want to improve?",
+      subtitle: "Keep it short — the outcome matters.",
+      type: "textarea",
+      icon: Wand2,
+      required: true,
     },
     {
-      id: 'contactInfo',
-      title: '',
-      type: 'multi-input',
+      id: "contactInfo",
+      title: "Where should we send the quote?",
+      subtitle: "We’ll reply quickly. No spam.",
+      type: "multi-input",
+      icon: ShieldCheck,
       fields: [
-        {
-          id: 'name',
-          label: 'Name',
-          type: 'input',
-          placeholder: 'Your full name',
-          icon: User,
-          required: true
-        },
-        {
-          id: 'email',
-          label: 'Email',
-          type: 'email',
-          placeholder: 'your@email.com',
-          icon: Mail,
-          required: true
-        },
-        {
-          id: 'phone',
-          label: 'Phone Number',
-          type: 'tel',
-          placeholder: '(555) 123-4567',
-          icon: Phone,
-          required: true
-        }
-      ]
-    }
+        { id: "name", label: "Name", type: "input", placeholder: "Your name", icon: User, required: true },
+        { id: "email", label: "Email", type: "email", placeholder: "you@company.com", icon: Mail, required: true },
+        { id: "phone", label: "Phone", type: "tel", placeholder: "555 123 4567", icon: Phone, required: true },
+        { id: "business", label: "Business (optional)", type: "input", placeholder: "Company name", icon: Sparkles, required: false },
+      ],
+    },
   ];
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
+  const validateEmail = (email: string) =>
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  const validatePhone = (phone: string): boolean => {
-    const phoneRegex = /^[\d\s\-\(\)]{7,15}$/;
-    return phoneRegex.test(phone.replace(/\s/g, ''));
-  };
+  const validatePhone = (phone: string) =>
+    /^[\d\s\-\(\)]{7,18}$/.test(phone.replace(/\s/g, ""));
 
-  const validateCurrentStep = (): boolean => {
-    const currentQuestion = questions[currentStep];
-    let isValid = true;
-    let error = '';
+  const validateCurrentStep = () => {
+    const q = questions[currentStep];
+    let ok = true;
+    let err = "";
 
-    if (currentQuestion.type === 'multi-input') {
-      for (const field of currentQuestion.fields || []) {
-        const value = formData[field.id];
-        if (!value.trim()) {
-          isValid = false;
-          error = `${field.label} is required`;
-          break;
-        } else if (field.id === 'email' && !validateEmail(value)) {
-          isValid = false;
-          error = 'Please enter a valid email address';
-          break;
-        } else if (field.id === 'phone' && !validatePhone(value)) {
-          isValid = false;
-          error = 'Please enter a valid phone number (digits only)';
-          break;
-        }
-      }
-    } else if (currentQuestion.type === 'select' || currentQuestion.type === 'radio') {
-      const value = formData[currentQuestion.id as keyof FormData];
-      if (!value || value.trim() === '') {
-        isValid = false;
-        error = 'Please select an option';
-      }
-    } else if (currentQuestion.type === 'checkbox') {
-      const value = formData[currentQuestion.id as keyof FormData] as string[];
-      if (!value || value.length === 0) {
-        isValid = false;
-        error = 'Please select at least one option';
-      }
-    } else {
-      const value = formData[currentQuestion.id as keyof FormData];
-      if (!value.trim()) {
-        isValid = false;
-        error = `${currentQuestion.label} is required`;
-      } else if (currentQuestion.id === 'email' && !validateEmail(value)) {
-        isValid = false;
-        error = 'Please enter a valid email address';
-      } else if (currentQuestion.id === 'phone' && !validatePhone(value)) {
-        isValid = false;
-        error = 'Please enter a valid phone number';
+    if (q.type === "checkbox") {
+      if (!formData.serviceInterest || formData.serviceInterest.length === 0) {
+        ok = false;
+        err = "Select at least one option.";
       }
     }
 
-    setCurrentError(error);
-    setIsStepValid(isValid);
-    return isValid;
-  };
-
-  const validateAllSteps = (): boolean => {
-    for (let i = 0; i < questions.length; i++) {
-      const question = questions[i];
-
-      if (question.type === 'multi-input') {
-        for (const field of question.fields || []) {
-          const value = formData[field.id];
-          if (!value.trim()) return false;
-          if (field.id === 'email' && !validateEmail(value)) return false;
-          if (field.id === 'phone' && !validatePhone(value)) return false;
-        }
-      } else if (question.type === 'select' || question.type === 'radio') {
-        const value = formData[question.id as keyof FormData];
-        if (!value || value.trim() === '') return false;
-      } else if (question.type === 'checkbox') {
-        const value = formData[question.id as keyof FormData] as string[];
-        if (!value || value.length === 0) return false;
-      } else {
-        const value = formData[question.id as keyof FormData];
-        if (!value.trim()) return false;
-        if (question.id === 'email' && !validateEmail(value)) return false;
-        if (question.id === 'phone' && !validatePhone(value)) return false;
+    if (q.type === "textarea") {
+      if (!formData.projectRequirements.trim()) {
+        ok = false;
+        err = "Tell us what you want to improve.";
       }
     }
+
+    if (q.type === "multi-input") {
+      for (const field of q.fields ?? []) {
+        const v = String(formData[field.id] ?? "").trim();
+        if (field.required && !v) {
+          ok = false;
+          err = `${field.label} is required.`;
+          break;
+        }
+        if (field.id === "email" && v && !validateEmail(v)) {
+          ok = false;
+          err = "Enter a valid email.";
+          break;
+        }
+        if (field.id === "phone" && v && !validatePhone(v)) {
+          ok = false;
+          err = "Enter a valid phone number.";
+          break;
+        }
+      }
+    }
+
+    setCurrentError(err);
+    setIsStepValid(ok);
+    return ok;
+  };
+
+  const validateAllSteps = () => {
+    if (!formData.serviceInterest?.length) return false;
+    if (!formData.projectRequirements.trim()) return false;
+    if (!formData.name.trim()) return false;
+    if (!formData.email.trim() || !validateEmail(formData.email.trim())) return false;
+    if (!formData.phone.trim() || !validatePhone(formData.phone.trim())) return false;
     return true;
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
+  React.useEffect(() => {
+    validateCurrentStep();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, formData]);
 
-    if (e.target.type === 'checkbox') {
-      const checkboxValue = (e.target as HTMLInputElement).value;
-      const isChecked = (e.target as HTMLInputElement).checked;
+  const scrollToLead = () => {
+    const el = document.getElementById("lead-capture");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
 
-      setFormData(prev => ({
+  const toggleInterest = (value: string) => {
+    setFormData((prev) => {
+      const list = prev.serviceInterest ?? [];
+      const exists = list.includes(value);
+      return {
         ...prev,
-        [name]: isChecked
-          ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
-          : (prev[name as keyof FormData] as string[]).filter(item => item !== checkboxValue)
-      }));
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFormData(prev => ({ ...prev, countryCode: e.target.value }));
+        serviceInterest: exists ? list.filter((x) => x !== value) : [...list, value],
+      };
+    });
   };
 
   const handleNext = () => {
-    if (validateCurrentStep()) {
-      if (currentStep < questions.length - 1) {
-        setCurrentStep(currentStep + 1);
-        setCurrentError('');
-      }
+    if (!validateCurrentStep()) return;
+    if (currentStep < questions.length - 1) {
+      setCurrentStep((s) => s + 1);
+      setCurrentError("");
     }
   };
 
   const handlePrevious = () => {
     if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-      setCurrentError('');
+      setCurrentStep((s) => s - 1);
+      setCurrentError("");
     }
   };
 
-  const submitToWebhook = async (data: FormData): Promise<boolean> => {
+  const submitToWebhook = async (data: FormData) => {
     try {
-      const WEBHOOK_URL = 'https://hook.us2.make.com/278k1u1vit3mimed0gqe0uqlkw2d99yw';
-
       const response = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: data.name,
           email: data.email,
-          phone: data.countryCode.replace('+', '') + data.phone,
+          phone: data.countryCode.replace("+", "") + data.phone,
           business: data.business,
           services: data.services,
-          serviceInterest: Array.isArray(data.serviceInterest) ? data.serviceInterest.join(', ') : data.serviceInterest,
+          serviceInterest: Array.isArray(data.serviceInterest)
+            ? data.serviceInterest.join(", ")
+            : data.serviceInterest,
           projectRequirements: data.projectRequirements,
-          timestamp: new Date().toISOString()
-        })
+          timestamp: new Date().toISOString(),
+        }),
       });
-
       return response.ok;
-    } catch (error) {
-      console.error('Error submitting to webhook:', error);
+    } catch (e) {
+      console.error("Webhook submit error:", e);
       return false;
     }
   };
 
   const handleSubmit = async () => {
     if (!validateAllSteps()) {
-      setSubmitStatus('error');
+      setSubmitStatus("error");
       return;
     }
 
     setIsSubmitting(true);
     setSubmitStatus(null);
 
-    try {
-      const success = await submitToWebhook(formData);
+    const ok = await submitToWebhook(formData);
 
-      if (success) {
-        setSubmitStatus('success');
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          countryCode: '+1',
-          business: '',
-          services: '',
-          serviceInterest: [],
-          projectRequirements: ''
-        });
-      } else {
-        setSubmitStatus('error');
-      }
-    } catch (error) {
-      console.error('Submission error:', error);
-      setSubmitStatus('error');
-    } finally {
-      setIsSubmitting(false);
+    if (ok) {
+      setSubmitStatus("success");
+      setFormData({
+        name: "",
+        email: "",
+        phone: "",
+        countryCode: "+1",
+        business: "",
+        services: "",
+        serviceInterest: [],
+        projectRequirements: "",
+      });
+      setCurrentStep(0);
+    } else {
+      setSubmitStatus("error");
     }
+
+    setIsSubmitting(false);
   };
 
-  React.useEffect(() => {
-    validateCurrentStep();
-  }, [currentStep, formData]);
+  // Professional accent usage: keep subtle (no big gradient text everywhere)
+  const accentBlue = "text-[#49B6FF]";
+  const accentGold = "text-[#FFD24A]";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white overflow-x-hidden">
-      <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-1/2 -right-1/2 w-full h-full bg-gradient-to-br from-blue-500/5 to-transparent rounded-full animate-pulse"></div>
-        <div className="absolute -bottom-1/2 -left-1/2 w-full h-full bg-gradient-to-tr from-yellow-400/5 to-transparent rounded-full animate-pulse delay-1000"></div>
+    <div style={rootStyle} className="min-h-screen text-white overflow-x-hidden">
+      {/* Professional black/grey gradient background */}
+      <div className="fixed inset-0 -z-10" aria-hidden="true">
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `
+              radial-gradient(900px circle at var(--x1) var(--y1), rgba(255,255,255,0.06), transparent 62%),
+              radial-gradient(900px circle at var(--x2) var(--y2), rgba(255,255,255,0.04), transparent 62%),
+              linear-gradient(180deg, #050607 0%, #0B0D10 45%, #07080A 100%)
+            `,
+          }}
+        />
+        <div className="absolute inset-0 bg-black/20" />
       </div>
 
-      <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex items-center space-x-3 mb-6">
-              <div>
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-                  Infinite Wealth Solutions
-                </h1>
-                <p className="text-blue-300 text-base sm:text-lg">Digital Innovation Studio</p>
-              </div>
+      {/* Header */}
+      <header className="relative z-10 px-4 sm:px-6 lg:px-8 pt-7">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-xl flex items-center justify-center">
+              <Zap className={`h-5 w-5 ${accentBlue}`} />
             </div>
+            <div className="leading-tight">
+              <div className="text-sm text-white/60">Infinite Wealth Solutions</div>
+              <div className="text-lg font-semibold text-white/90">AI Studio</div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <Action
+              onClick={scrollToLead}
+              ariaLabel="Jump to quote form"
+              className="px-4 py-2 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] transition backdrop-blur-xl"
+            >
+              <div className="flex items-center gap-2 text-sm text-white/80">
+                <Sparkles className={`h-4 w-4 ${accentGold}`} />
+                <span>Get a Quote</span>
+              </div>
+            </Action>
+
+            <a
+              href="https://infinitewealthsolutionsai.com/demo"
+              className="px-4 py-2 rounded-xl border border-white/10 bg-white/[0.015] hover:bg-white/[0.035] transition backdrop-blur-xl text-sm text-white/75"
+            >
+              Free Demo
+            </a>
           </div>
         </div>
       </header>
 
-      <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-8 leading-tight">
-            Transform Your Business with{' '}
-            <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-              Cutting-Edge Digital Solutions
-            </span>
-          </h2>
-
-          <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            From AI-powered voice agents to high volume lead generation, and custom websites - we deliver premium digital solutions that drive results.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-            <button
-              onClick={() => {
-                const leadCaptureSection = document.getElementById('lead-capture');
-                if (leadCaptureSection) {
-                  leadCaptureSection.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                  });
-                } else {
-                  window.scrollTo({
-                    top: document.body.scrollHeight,
-                    behavior: 'smooth'
-                  });
-                }
-              }}
-              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
-            >
-              <MessageSquare className="h-6 w-6" />
-              <span>Get a Package Quote</span>
-            </button>
-
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full sm:w-auto bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-400/25 flex items-center justify-center space-x-3"
-            >
-              <Calendar className="h-6 w-6" />
-              <span>Get Started</span>
-            </a>
-          </div>
-
-          <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
-            <div className="text-center mb-12">
-              <h3 className="text-2xl sm:text-3xl font-bold mb-4">
-                Get Your Custom Solution Quote
-              </h3>
-              <p className="text-gray-300 text-base">
-                Tell us about your project and we'll create the perfect solution for your business
-              </p>
+      {/* Hero */}
+      <section className="relative z-10 px-4 sm:px-6 lg:px-8 pt-10 pb-8">
+        <div className="max-w-7xl mx-auto grid lg:grid-cols-12 gap-10 items-center">
+          <div className="lg:col-span-7">
+            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] backdrop-blur-xl text-xs text-white/60">
+              <ShieldCheck className={`h-4 w-4 ${accentBlue}`} />
+              Web design + voice AI built for lead capture
             </div>
 
-            {submitStatus === 'success' && (
-              <div className="mb-8 p-4 bg-green-500/10 border border-green-500/50 rounded-lg flex items-center space-x-3">
-                <CheckCircle className="h-6 w-6 text-green-400" />
-                <p className="text-green-300">Thank you! Your submission has been received. We'll be in touch soon.</p>
+            <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white/95">
+              Professional websites and AI voice agents —
+              <span className="text-white/70"> built to convert.</span>
+            </h1>
+
+            <p className="mt-4 text-base sm:text-lg text-white/55 max-w-2xl leading-relaxed">
+              If your business misses calls or your site isn’t converting, we fix both — with a clean
+              premium site and a realistic voice agent that captures details and books appointments.
+            </p>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-xl px-4 py-3 flex items-center gap-2">
+                <Phone className={`h-4 w-4 ${accentBlue}`} />
+                <span className="text-sm text-white/65">Calls answered after-hours</span>
               </div>
-            )}
-
-            {submitStatus === 'error' && (
-              <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center space-x-3">
-                <AlertCircle className="h-6 w-6 text-red-400" />
-                <p className="text-red-300">Sorry, there was an error submitting your form. Please try again.</p>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-xl px-4 py-3 flex items-center gap-2">
+                <Calendar className={`h-4 w-4 ${accentGold}`} />
+                <span className="text-sm text-white/65">Appointments booked automatically</span>
               </div>
-            )}
+            </div>
 
-            {submitStatus !== 'success' && (
-              <div className="mb-12">
-                <div className="flex items-center justify-center space-x-4 mb-6">
-                  {questions.map((_, index) => (
-                    <React.Fragment key={index}>
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
-                        index < currentStep
-                          ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
-                          : index === currentStep
-                          ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/50'
-                          : 'bg-gray-600 text-gray-400'
-                      }`}>
-                        {index < currentStep ? (
-                          <CheckCircle className="h-6 w-6" />
-                        ) : (
-                          index + 1
-                        )}
-                      </div>
-                      {index < questions.length - 1 && (
-                        <div className={`w-8 h-1 transition-all duration-300 ${
-                          index < currentStep ? 'bg-green-500' : 'bg-gray-600'
-                        }`}></div>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </div>
-                <p className="text-center text-gray-400 text-sm">
-                  Step {currentStep + 1} of {questions.length}
-                </p>
+            <div className="mt-6 flex items-center gap-4 text-sm text-white/55">
+              <a
+                href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 hover:text-white/80 transition"
+              >
+                <Calendar className={`h-4 w-4 ${accentGold}`} />
+                <span className="font-semibold text-white/80">Book a setup call</span>
+                <ArrowRight className="h-4 w-4 text-white/35" />
+              </a>
+
+              <Action
+                onClick={scrollToLead}
+                ariaLabel="Scroll to quote form"
+                className="inline-flex items-center gap-2 hover:text-white/80 transition"
+              >
+                <span className={`font-semibold ${accentBlue}`}>Get a quote</span>
+                <ArrowRight className="h-4 w-4 text-white/35" />
+              </Action>
+            </div>
+          </div>
+
+          {/* Right panel (professional, minimal) */}
+          <div className="lg:col-span-5">
+            <div className="rounded-3xl border border-white/10 bg-white/[0.02] backdrop-blur-xl p-6">
+              <div className="text-sm text-white/55">What you get</div>
+
+              <div className="mt-4 space-y-3">
+                {[
+                  "A clean premium website that looks credible and converts on mobile.",
+                  "A human-like voice agent that captures missed calls and qualifies leads.",
+                  "A simple handoff so you can manage and scale without complexity.",
+                ].map((t) => (
+                  <div key={t} className="flex items-start gap-3 text-sm text-white/60">
+                    <CheckCircle className={`h-5 w-5 ${accentBlue} mt-0.5`} />
+                    <span>{t}</span>
+                  </div>
+                ))}
               </div>
-            )}
 
-            {submitStatus === 'success' ? (
-              <div className="text-center py-12">
-                <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle className="h-12 w-12 text-green-400" />
-                </div>
-                <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
-                <p className="text-xl text-gray-300 mb-6">
-                  Your submission has been received successfully.
-                </p>
-                <p className="text-gray-400">
-                  We'll be in touch soon to discuss your custom solution.
-                </p>
+              <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.015] p-4 text-sm text-white/55">
+                Want to hear the agent? Tap the voice widget bottom-right.
               </div>
-            ) : (
-              <div className="relative overflow-hidden">
-                <div
-                  className="flex transition-transform duration-500 ease-in-out"
-                  style={{ transform: `translateX(-${currentStep * 100}%)` }}
-                >
-                  {questions.map((question, index) => (
-                    <div key={question.id} className="w-full flex-shrink-0 px-4">
-                      {question.title && (
-                        <div className="text-center mb-8">
-                          <h4 className="text-2xl sm:text-3xl font-bold mb-4">
-                            {question.title}
-                            {question.subtitle && (
-                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">
-                                {question.subtitle}
-                              </span>
-                            )}
-                          </h4>
-                        </div>
-                      )}
-
-                      <div className="space-y-2 sm:space-y-4">
-                        {question.type !== 'multi-input' && (
-                          question.label && (
-                            <label className="block text-sm font-medium text-gray-300 mb-3">
-                              <question.icon className="inline h-4 w-4 mr-2" />
-                              {question.label} *
-                            </label>
-                          )
-                        )}
-
-                        {question.type === 'multi-input' ? (
-                          <div className="space-y-4 sm:space-y-6">
-                            {question.fields?.map(field => (
-                              <div key={field.id}>
-                                <label className="block text-sm font-medium text-gray-300 mb-3">
-                                  <field.icon className="inline h-4 w-4 mr-2" />
-                                  {field.label} *
-                                </label>
-                                {field.id === 'phone' ? (
-                                  <div className="flex">
-                                    <select
-                                      value={formData.countryCode}
-                                      onChange={handleCountryCodeChange}
-                                      className={`px-3 py-3 bg-gray-900/50 border ${
-                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                                    >
-                                      <option value="+1">🇨🇦 +1</option>
-                                      <option value="+1">🇺🇸 +1</option>
-                                      <option value="+44">🇬🇧 +44</option>
-                                      <option value="+33">🇫🇷 +33</option>
-                                      <option value="+49">🇩🇪 +49</option>
-                                      <option value="+61">🇦🇺 +61</option>
-                                      <option value="+81">🇯🇵 +81</option>
-                                      <option value="+86">🇨🇳 +86</option>
-                                      <option value="+91">🇮🇳 +91</option>
-                                      <option value="+55">🇧🇷 +55</option>
-                                      <option value="+52">🇲🇽 +52</option>
-                                      <option value="+34">🇪🇸 +34</option>
-                                      <option value="+39">🇮🇹 +39</option>
-                                      <option value="+31">🇳🇱 +31</option>
-                                      <option value="+46">🇸🇪 +46</option>
-                                      <option value="+47">🇳🇴 +47</option>
-                                      <option value="+45">🇩🇰 +45</option>
-                                      <option value="+41">🇨🇭 +41</option>
-                                      <option value="+43">🇦🇹 +43</option>
-                                      <option value="+32">🇧🇪 +32</option>
-                                    </select>
-                                    <input
-                                      type={field.type}
-                                      id={field.id}
-                                      name={field.id}
-                                      value={formData[field.id]}
-                                      onChange={handleInputChange}
-                                      className={`flex-1 px-4 py-3 bg-gray-900/50 border ${
-                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                                      placeholder="555-123-4567"
-                                    />
-                                  </div>
-                                ) : (
-                                  <input
-                                    type={field.type}
-                                    id={field.id}
-                                    name={field.id}
-                                    value={formData[field.id]}
-                                    onChange={handleInputChange}
-                                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                                      currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
-                                    placeholder={field.placeholder}
-                                  />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : question.type === 'checkbox' ? (
-                          <div className="space-y-4">
-                            {question.options?.map(option => (
-                              <label
-                                key={option.value}
-                                className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-yellow-400/30 transition-all group"
-                              >
-                                <input
-                                  type="checkbox"
-                                  name={question.id as string}
-                                  value={option.value}
-                                  checked={(formData[question.id as keyof FormData] as string[])?.includes(option.value) || false}
-                                  onChange={handleInputChange}
-                                  className="mt-1 w-5 h-5 text-yellow-400 bg-gray-900 border-gray-600 rounded focus:ring-yellow-400 focus:ring-2"
-                                />
-                                <div className="flex-1">
-                                  <span className="text-white font-medium group-hover:text-yellow-400 transition-colors">
-                                    {option.label}
-                                  </span>
-                                </div>
-                              </label>
-                            ))}
-                          </div>
-                        ) : (
-                          <textarea
-                            id={question.id as string}
-                            name={question.id as string}
-                            value={formData[question.id as keyof FormData]}
-                            onChange={handleInputChange}
-                            rows={question.rows || 4}
-                            className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                              currentError ? 'border-red-500' : 'border-gray-600'
-                            } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
-                            placeholder={question.placeholder}
-                          />
-                        )}
-
-                        {currentError && index === currentStep && (
-                          <p className="mt-2 text-sm text-red-400">{currentError}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {submitStatus !== 'success' && (
-              <div className="flex justify-between items-center mt-4 pt-4 sm:mt-8 sm:pt-6 border-t border-gray-700/50">
-                <button
-                  type="button"
-                  onClick={handlePrevious}
-                  disabled={currentStep === 0}
-                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
-                    currentStep === 0
-                      ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                      : 'bg-gray-600 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                  <span>Previous</span>
-                </button>
-
-                {currentStep === questions.length - 1 ? (
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting || !isStepValid}
-                    className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-center flex-shrink-0 min-w-0"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader className="h-5 w-5 animate-spin" />
-                        <span className="hidden sm:inline">Submitting...</span>
-                        <span className="sm:hidden">Submitting</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="hidden sm:inline">Get Your Custom Solution</span>
-                        <span className="sm:hidden">Get Quote</span>
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    disabled={!isStepValid}
-                    className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 flex-shrink-0"
-                  >
-                    <span>Next</span>
-                    <ArrowRight className="h-5 w-5" />
-                  </button>
-                )}
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-              Our <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">Premium Services</span>
-            </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Professional digital solutions designed to elevate your business and drive real results
-            </p>
-          </div>
+      {/* Lead Capture */}
+      <section id="lead-capture" className="relative z-10 px-4 sm:px-6 lg:px-8 pb-12">
+        <div className="max-w-5xl mx-auto">
+          <div className="rounded-[24px] border border-white/10 bg-white/[0.02] backdrop-blur-xl overflow-hidden">
+            <div className="p-6 sm:p-7 border-b border-white/10">
+              <div className="flex items-start justify-between gap-6 flex-col sm:flex-row">
+                <div>
+                  <h2 className="text-2xl sm:text-3xl font-semibold text-white/90">
+                    Request a quote
+                  </h2>
+                  <p className="mt-2 text-white/50">Short form. Fast response.</p>
+                </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
-              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
-                <Brain className="h-10 w-10 text-yellow-400" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">AI Voice Agents</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Intelligent AI agents that handle calls, bookings, customer service, and sales conversations with human-like natural speech and understanding.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Phone className="h-4 w-4" />
-                  <span>24/7 Availability</span>
+                <div className="flex items-center gap-2">
+                  {questions.map((_, idx) => {
+                    const done = idx < currentStep;
+                    const active = idx === currentStep;
+                    return (
+                      <React.Fragment key={idx}>
+                        <Action
+                          ariaLabel={`Go to step ${idx + 1}`}
+                          onClick={() => {
+                            setCurrentStep(idx);
+                            setCurrentError("");
+                          }}
+                          className={[
+                            "h-10 w-10 rounded-2xl flex items-center justify-center border transition",
+                            done
+                              ? "border-white/16 bg-white/[0.04]"
+                              : active
+                              ? "border-white/20 bg-white/[0.05]"
+                              : "border-white/10 bg-white/[0.015] hover:bg-white/[0.03] hover:border-white/14",
+                          ].join(" ")}
+                        >
+                          {done ? (
+                            <CheckCircle className={`h-5 w-5 ${accentGold}`} />
+                          ) : (
+                            <span className="text-sm text-white/70 font-semibold">{idx + 1}</span>
+                          )}
+                        </Action>
+                        {idx < questions.length - 1 && (
+                          <div className="w-7 h-[2px] bg-white/10" />
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center space-x-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>Auto Booking</span>
-                </div>
               </div>
+
+              {submitStatus === "success" && (
+                <div className="mt-5 p-4 rounded-2xl border border-emerald-400/15 bg-emerald-400/10 flex items-start gap-3">
+                  <CheckCircle className="h-5 w-5 text-emerald-300 mt-0.5" />
+                  <div>
+                    <div className="font-semibold text-emerald-200">Received.</div>
+                    <div className="text-sm text-emerald-100/75">
+                      We’ll reply with next steps and pricing.
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {submitStatus === "error" && (
+                <div className="mt-5 p-4 rounded-2xl border border-red-400/15 bg-red-400/10 flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-300 mt-0.5" />
+                  <div>
+                    <div className="font-semibold text-red-200">Something failed.</div>
+                    <div className="text-sm text-red-100/75">Please try again.</div>
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-blue-400/50 transition-all duration-300 group">
-              <div className="bg-blue-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-blue-400/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-blue-400" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Lead Generation</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Drive qualified leads and grow your customer base through strategic social media marketing, targeted advertising, content creation, and comprehensive digital marketing campaigns.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Users className="h-4 w-4" />
-                  <span>Targeted Audience</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <TrendingUp className="h-4 w-4" />
-                  <span>Growth Focused</span>
-                </div>
-              </div>
-            </div>
+            {submitStatus !== "success" && (
+              <div className="p-6 sm:p-7">
+                {(() => {
+                  const q = questions[currentStep];
 
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-green-400/50 transition-all duration-300 group">
-              <div className="bg-green-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-green-400/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-green-400" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Custom Website Development</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Unique, professionally designed websites built from scratch with no templates. Get a website that truly represents your brand and converts visitors.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Building className="h-4 w-4" />
-                  <span>Custom Design</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Zap className="h-4 w-4" />
-                  <span>High Performance</span>
-                </div>
-              </div>
-            </div>
-          </div>
+                  if (q.type === "checkbox") {
+                    return (
+                      <div>
+                        <div className="mb-5">
+                          <div className="flex items-center gap-3 mb-2">
+                            <q.icon className={`h-5 w-5 ${accentGold}`} />
+                            <div className="text-xl sm:text-2xl font-semibold text-white/90">
+                              {q.title}
+                            </div>
+                          </div>
+                          {q.subtitle && <div className="text-sm text-white/50">{q.subtitle}</div>}
+                        </div>
 
-          <div className="text-center mt-16">
-            <p className="text-lg text-gray-300 mb-8">
-              Ready to transform your business with our premium digital solutions?
-            </p>
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-gradient-to-r from-yellow-400 to-yellow-500 hover:from-yellow-500 hover:to-yellow-600 text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3 mx-auto"
-            >
-              <Calendar className="h-6 w-6" />
-              <span>Schedule Your Consultation</span>
-            </a>
+                        <div className="grid sm:grid-cols-3 gap-3">
+                          {(q.options ?? []).map((opt) => {
+                            const selected = formData.serviceInterest.includes(opt.value);
+                            return (
+                              <Action
+                                key={opt.value}
+                                ariaLabel={opt.label}
+                                onClick={() => toggleInterest(opt.value)}
+                                className={[
+                                  "rounded-2xl border p-4 transition",
+                                  selected
+                                    ? "border-white/18 bg-white/[0.05]"
+                                    : "border-white/10 bg-white/[0.015] hover:bg-white/[0.03] hover:border-white/14",
+                                ].join(" ")}
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <div className="font-semibold text-white/80">{opt.label}</div>
+                                    {opt.hint && <div className="mt-1 text-sm text-white/50">{opt.hint}</div>}
+                                  </div>
+                                  {selected && <CheckCircle className={`h-5 w-5 ${accentBlue}`} />}
+                                </div>
+                              </Action>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (q.type === "textarea") {
+                    return (
+                      <div>
+                        <div className="mb-5">
+                          <div className="flex items-center gap-3 mb-2">
+                            <q.icon className={`h-5 w-5 ${accentBlue}`} />
+                            <div className="text-xl sm:text-2xl font-semibold text-white/90">
+                              {q.title}
+                            </div>
+                          </div>
+                          {q.subtitle && <div className="text-sm text-white/50">{q.subtitle}</div>}
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-white/[0.015] overflow-hidden">
+                          <textarea
+                            value={formData.projectRequirements}
+                            onChange={(e) =>
+                              setFormData((p) => ({
+                                ...p,
+                                projectRequirements: e.target.value,
+                              }))
+                            }
+                            placeholder='Example: "Improve missed call capture and increase booked appointments."'
+                            rows={5}
+                            className="w-full bg-transparent px-4 py-4 outline-none text-white placeholder:text-white/30"
+                          />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // multi-input
+                  return (
+                    <div>
+                      <div className="mb-5">
+                        <div className="flex items-center gap-3 mb-2">
+                          <q.icon className={`h-5 w-5 ${accentGold}`} />
+                          <div className="text-xl sm:text-2xl font-semibold text-white/90">
+                            {q.title}
+                          </div>
+                        </div>
+                        {q.subtitle && <div className="text-sm text-white/50">{q.subtitle}</div>}
+                      </div>
+
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        {(q.fields ?? []).map((field) => {
+                          const Icon = field.icon;
+
+                          if (field.id === "phone") {
+                            return (
+                              <div key={field.id} className="sm:col-span-2">
+                                <label className="text-sm text-white/55 flex items-center gap-2 mb-2">
+                                  <Icon className={`h-4 w-4 ${accentBlue}`} />
+                                  {field.label}
+                                  {field.required ? <span className="text-white/30">*</span> : null}
+                                </label>
+
+                                <div className="flex rounded-2xl border border-white/10 bg-white/[0.015] overflow-hidden">
+                                  <select
+                                    value={formData.countryCode}
+                                    onChange={(e) =>
+                                      setFormData((p) => ({
+                                        ...p,
+                                        countryCode: e.target.value,
+                                      }))
+                                    }
+                                    className="bg-transparent px-3 py-3 outline-none text-white/65 border-r border-white/10"
+                                  >
+                                    <option value="+1">🇨🇦 +1</option>
+                                    <option value="+1">🇺🇸 +1</option>
+                                    <option value="+44">🇬🇧 +44</option>
+                                    <option value="+61">🇦🇺 +61</option>
+                                    <option value="+34">🇪🇸 +34</option>
+                                    <option value="+49">🇩🇪 +49</option>
+                                  </select>
+
+                                  <input
+                                    value={formData.phone}
+                                    onChange={(e) =>
+                                      setFormData((p) => ({
+                                        ...p,
+                                        phone: e.target.value,
+                                      }))
+                                    }
+                                    placeholder={field.placeholder}
+                                    className="flex-1 bg-transparent px-4 py-3 outline-none text-white placeholder:text-white/30"
+                                    inputMode="tel"
+                                  />
+                                </div>
+                              </div>
+                            );
+                          }
+
+                          const val = String(formData[field.id] ?? "");
+                          return (
+                            <div key={field.id}>
+                              <label className="text-sm text-white/55 flex items-center gap-2 mb-2">
+                                <Icon className={`h-4 w-4 ${accentGold}`} />
+                                {field.label}
+                                {field.required ? <span className="text-white/30">*</span> : null}
+                              </label>
+
+                              <div className="rounded-2xl border border-white/10 bg-white/[0.015] overflow-hidden">
+                                <input
+                                  value={val}
+                                  onChange={(e) =>
+                                    setFormData((p) => ({
+                                      ...p,
+                                      [field.id]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={field.placeholder}
+                                  className="w-full bg-transparent px-4 py-3 outline-none text-white placeholder:text-white/30"
+                                  inputMode={
+                                    field.type === "email"
+                                      ? "email"
+                                      : field.type === "tel"
+                                      ? "tel"
+                                      : "text"
+                                  }
+                                />
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {currentError && (
+                  <div className="mt-5 p-4 rounded-2xl border border-red-400/15 bg-red-400/10 flex items-center gap-3">
+                    <AlertCircle className="h-5 w-5 text-red-300" />
+                    <div className="text-sm text-red-100/80">{currentError}</div>
+                  </div>
+                )}
+
+                {/* Navigation */}
+                <div className="mt-7 flex items-center justify-between gap-3 flex-col sm:flex-row">
+                  <Action
+                    ariaLabel="Previous step"
+                    disabled={currentStep === 0}
+                    onClick={handlePrevious}
+                    className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.015] hover:bg-white/[0.03] transition text-white/70 text-center"
+                  >
+                    Back
+                  </Action>
+
+                  {currentStep < questions.length - 1 ? (
+                    <Action
+                      ariaLabel="Next step"
+                      disabled={!isStepValid}
+                      onClick={handleNext}
+                      className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.045] transition"
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-white/80 font-semibold">Next</span>
+                        <ArrowRight className={`h-4 w-4 ${accentGold}`} />
+                      </div>
+                    </Action>
+                  ) : (
+                    <Action
+                      ariaLabel="Submit"
+                      disabled={!isStepValid || isSubmitting}
+                      onClick={handleSubmit}
+                      className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.045] hover:bg-white/[0.06] transition"
+                    >
+                      <div className="flex items-center justify-center gap-2">
+                        {isSubmitting ? (
+                          <>
+                            <Loader className={`h-4 w-4 animate-spin ${accentGold}`} />
+                            <span className="text-white/70 font-semibold">Sending…</span>
+                          </>
+                        ) : (
+                          <>
+                            <span className="text-white/85 font-semibold">Send</span>
+                            <ArrowRight className={`h-4 w-4 ${accentBlue}`} />
+                          </>
+                        )}
+                      </div>
+                    </Action>
+                  )}
+                </div>
+
+                <div className="mt-5 text-xs text-white/35 leading-relaxed">
+                  By submitting, you agree we can contact you about this request.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </section>
 
       <SubscriptionSection />
 
-      <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <Zap className="h-8 w-8 text-yellow-400" />
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">
-              Infinite Wealth Solutions
-            </h3>
+      <footer className="relative z-10 px-4 sm:px-6 lg:px-8 py-10 border-t border-white/10">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-5">
+          <div className="text-sm text-white/40">
+            © {new Date().getFullYear()} Infinite Wealth Solutions — AI Studio
           </div>
-          <p className="text-gray-400 mb-3">
-            © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
-          </p>
-          <div className="flex items-center justify-center gap-6">
-  <Link
-    to="/demo"
-    className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-  >
-    Try AI Agent Demos
-  </Link>
 
-  <Link
-    to="/privacy-policy"
-    className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-  >
-    Privacy Policy
-  </Link>
-</div>
+          <div className="flex items-center gap-5 text-sm">
+            <a
+              href="https://infinitewealthsolutionsai.com/demo"
+              className="text-white/40 hover:text-white/70 transition"
+            >
+              Demo
+            </a>
+            <a
+              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-white/40 hover:text-white/70 transition"
+            >
+              Book
+            </a>
+            <a href="/privacy-policy" className="text-white/40 hover:text-white/70 transition">
+              Privacy
+            </a>
+          </div>
         </div>
       </footer>
+
+      <VapiVoiceWidget
+        publicKey="ebb2120b-ac56-4ce9-b1d5-17966931c665"
+        assistantId="76efe9e0-957c-410a-9163-75acbceec45e"
+        firstMessage="Infinite Wealth Solutions AI - Avery speaking, how may I help you?"
+      />
     </div>
   );
 }

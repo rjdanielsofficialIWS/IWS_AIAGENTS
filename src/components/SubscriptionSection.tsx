@@ -1,99 +1,124 @@
-import React from 'react';
-import { Check, Zap } from 'lucide-react';
+import React from "react";
+import { ArrowRight, CheckCircle } from "lucide-react";
 
 export function SubscriptionSection() {
-  const plans = [
+  const accentBlue = "text-[#49B6FF]";
+  const accentGold = "text-[#FFD24A]";
+
+  const cards = [
     {
-      name: 'Starter',
-      price: '$399',
-      period: '/month',
+      name: "Web Design",
+      price: "$499",
+      sub: "one-time",
       features: [
-        'Up to 1,000 AI-powered calls per month',
-        '1 AI Voice Assistant',
-        'Basic analytics',
-        'Email support',
+        "Premium, clean layout",
+        "Mobile-first conversion structure",
+        "Fast launch turnaround",
+        "Lead-capture focused",
       ],
+      accent: "blue" as const,
+      action: {
+        label: "View demo",
+        href: "https://infinitewealthsolutionsai.com/demo",
+        external: true,
+      },
     },
     {
-      name: 'Professional',
-      price: '$499',
-      period: '/month',
+      name: "AI Phone Agent",
+      price: "$99/mo",
+      sub: "subscription",
       features: [
-        'Up to 5,000 AI-powered calls per month',
-        '5 AI Voice Assistants',
-        'Advanced analytics & reporting',
-        'Priority support',
-        'Custom voice training',
+        "Answers missed calls",
+        "Captures and qualifies leads",
+        "Books appointments automatically",
+        "Professional brand voice",
       ],
-      popular: true,
+      accent: "gold" as const,
+      action: {
+        label: "Book setup call",
+        href: "https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding",
+        external: true,
+      },
+      highlight: true,
     },
     {
-      name: 'Enterprise',
-      price: 'Custom',
-      period: '',
+      name: "Custom Package",
+      price: "Contact",
+      sub: "tailored",
       features: [
-        'Unlimited AI-powered calls',
-        'Unlimited AI Voice Assistants',
-        'Enterprise analytics',
-        '24/7 dedicated support',
-        'Custom integrations',
-        'White-label options',
+        "Website + AI + automations",
+        "Integrations & workflows",
+        "Done-for-you implementation",
+        "Built for your operations",
       ],
+      accent: "blue" as const,
+      action: { label: "Get a quote", href: "#lead-capture", external: false },
     },
   ];
 
   return (
-    <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
+    <section className="relative z-10 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
-        <div className="text-center mb-16">
-          <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-            Choose Your <span className="bg-gradient-to-r from-yellow-400 to-blue-400 bg-clip-text text-transparent">Plan</span>
+        <div className="text-center mb-8">
+          <h2 className="text-3xl sm:text-4xl font-semibold tracking-tight text-white/90">
+            Pricing
           </h2>
-          <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-            Select the perfect plan for your business needs
+          <p className="mt-3 text-white/55 max-w-2xl mx-auto">
+            Straightforward options — designed for lead capture and reliable follow-up.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-          {plans.map((plan) => (
-            <div
-              key={plan.name}
-              className={`bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border rounded-xl p-8 ${
-                plan.popular ? 'border-yellow-400/50 ring-2 ring-yellow-400/20' : 'border-gray-700/50'
-              }`}
-            >
-              {plan.popular && (
-                <div className="bg-yellow-400 text-black text-sm font-bold px-3 py-1 rounded-full inline-block mb-4">
-                  Most Popular
-                </div>
-              )}
-              <h3 className="text-2xl font-bold mb-2">{plan.name}</h3>
-              <div className="mb-6">
-                <span className="text-4xl font-bold">{plan.price}</span>
-                <span className="text-gray-400">{plan.period}</span>
-              </div>
-              <ul className="space-y-4 mb-8">
-                {plan.features.map((feature, index) => (
-                  <li key={index} className="flex items-start space-x-3">
-                    <Check className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
-                    <span className="text-gray-300">{feature}</span>
-                  </li>
-                ))}
-              </ul>
-              <a
-                href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-                target="_blank"
-                rel="noopener noreferrer"
-                className={`block w-full text-center py-3 px-6 rounded-xl font-bold transition-all ${
-                  plan.popular
-                    ? 'bg-gradient-to-r from-yellow-400 to-yellow-500 text-black hover:from-yellow-500 hover:to-yellow-600'
-                    : 'bg-gray-700 text-white hover:bg-gray-600'
-                }`}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+          {cards.map((c) => {
+            const ring = c.highlight
+              ? "border-white/18 bg-white/[0.03]"
+              : "border-white/10 bg-white/[0.02] hover:bg-white/[0.03] hover:border-white/14";
+
+            const iconColor = c.accent === "gold" ? accentGold : accentBlue;
+
+            return (
+              <div
+                key={c.name}
+                className={[
+                  "rounded-[22px] border backdrop-blur-xl p-6 transition",
+                  ring,
+                ].join(" ")}
               >
-                Get Started
-              </a>
-            </div>
-          ))}
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-lg font-semibold text-white/90">{c.name}</div>
+                    <div className="mt-2">
+                      <span className="text-3xl font-semibold text-white/90">{c.price}</span>
+                      <span className="text-white/40 ml-2">{c.sub}</span>
+                    </div>
+                  </div>
+
+                  {c.highlight ? (
+                    <div className="text-xs text-white/50">Most popular</div>
+                  ) : null}
+                </div>
+
+                <ul className="mt-5 space-y-2.5">
+                  {c.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-sm text-white/60">
+                      <CheckCircle className={`h-4 w-4 mt-0.5 ${iconColor}`} />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <a
+                  href={c.action.href}
+                  target={c.action.external ? "_self" : undefined}
+                  rel={c.action.external ? "noopener noreferrer" : undefined}
+                  className="mt-6 inline-flex items-center gap-2 text-sm text-white/65 hover:text-white transition"
+                >
+                  <span className="font-semibold text-white/80">{c.action.label}</span>
+                  <ArrowRight className="h-4 w-4 text-white/35" />
+                </a>
+              </div>
+            );
+          })}
         </div>
       </div>
     </section>
