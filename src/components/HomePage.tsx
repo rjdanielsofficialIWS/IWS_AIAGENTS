@@ -64,6 +64,7 @@ interface Question {
 export function HomePage() {
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
+  const [isVapiModalOpen, setIsVapiModalOpen] = useState(false);
     name: '',
     email: '',
     phone: '',
@@ -361,6 +362,13 @@ export function HomePage() {
                   onClick={scrollToLead}
                   className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
                 >
+                  <button
+  onClick={() => setIsVapiModalOpen(true)}
+  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+>
+  <Phone className="h-5 w-5 text-[#49B6FF]" />
+  Try Our AI Phone Agent
+</button>
                   <MessageSquare className="h-5 w-5 text-[#FFD24A]" />
                   Get a Quote
                 </button>
