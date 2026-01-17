@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader, AlertCircle, X, Phone, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Loader, AlertCircle, X, Phone, PhoneOff, MessageSquare } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import Vapi from '@vapi-ai/web';
 
@@ -248,7 +248,7 @@ export function DynamicDemoPage() {
     setModal(null);
   };
 
-  // ✅ FIXED CHAT (Option A): call Supabase Edge Function with Authorization + apikey
+  // Chat uses Supabase Edge Function (Option A)
   const sendChat = async () => {
     if (!demoPage?.assistant_id) return;
     const msg = chatInput.trim();
@@ -268,7 +268,6 @@ export function DynamicDemoPage() {
 
       const publicChatUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-public-chat`;
 
-      // If logged in use session JWT, else fallback to anon JWT
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token || anonKey;
 
@@ -352,13 +351,12 @@ export function DynamicDemoPage() {
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
+          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
         </div>
 
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center">
-          {/* Call Me */}
           <button
             onClick={() => setModal('voice')}
             className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-2xl hover:bg-yellow-300 transition inline-flex items-center gap-3"
@@ -367,7 +365,6 @@ export function DynamicDemoPage() {
             Call Me
           </button>
 
-          {/* Text Me */}
           <button
             onClick={() => setModal('chat')}
             className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
@@ -396,7 +393,7 @@ export function DynamicDemoPage() {
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — speak normally.'}
+                    {voiceStatus === 'live' && 'Live — Ask about your services.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}
@@ -404,17 +401,31 @@ export function DynamicDemoPage() {
 
                   {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
 
+                  {/* ✅ Sleek Hang Up Button */}
                   <button
-                    className="mt-8 w-32 h-32 rounded-full bg-yellow-400 text-black font-bold hover:bg-yellow-300 transition"
                     onClick={() => {
                       try {
                         vapiRef.current?.stop();
                       } catch {}
                       setVoiceStatus('ended');
                     }}
+                    className="
+                      mt-10
+                      w-20 h-20
+                      rounded-full
+                      bg-red-600
+                      hover:bg-red-500
+                      active:scale-95
+                      transition
+                      flex items-center justify-center
+                      shadow-[0_10px_30px_rgba(220,38,38,0.45)]
+                    "
+                    aria-label="End call"
                   >
-                    End
+                    <PhoneOff className="h-8 w-8 text-white" />
                   </button>
+
+                  <p className="mt-4 text-sm text-gray-400 tracking-wide">Tap to hang up</p>
                 </div>
               ) : (
                 <div className="flex flex-col h-[420px]">
@@ -465,8 +476,8 @@ export function DynamicDemoPage() {
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    Chat uses: <span className="text-gray-400">/functions/v1/vapi-public-chat</span>
-                  </p>
+  Powered by Infinite Wealth Solutions AI • Responses are instant
+</p>
                 </div>
               )}
             </div>

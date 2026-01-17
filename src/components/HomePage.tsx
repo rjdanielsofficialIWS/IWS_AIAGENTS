@@ -1,20 +1,28 @@
-import React from "react";
+import VapiPhoneAgentModal from "./VapiPhoneAgentModal";
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
-  Sparkles,
+  Brain,
+  Zap,
+  TrendingUp,
   Phone,
   Mail,
   User,
+  Building,
+  MessageSquare,
   CheckCircle,
   AlertCircle,
   Loader,
-  Calendar,
+  ArrowLeft,
   ArrowRight,
-  ShieldCheck,
-  Zap,
-  Wand2,
-} from "lucide-react";
-import { SubscriptionSection } from "./SubscriptionSection";
-import { VapiVoiceWidget } from "./VapiVoiceWidget";
+  Target,
+  Calendar,
+  Users,
+  Sparkles,
+  Shield,
+  Rocket,
+} from 'lucide-react';
+import { SubscriptionSection } from './SubscriptionSection';
 
 interface FormData {
   name: string;
@@ -27,798 +35,769 @@ interface FormData {
   projectRequirements: string;
 }
 
-type QuestionId = "serviceInterest" | "projectRequirements" | "contactInfo";
-type QuestionType = "textarea" | "checkbox" | "multi-input";
+interface EnhanceState {
+  isEnhancing: boolean;
+  hasEnhanced: boolean;
+}
 
 interface Question {
-  id: QuestionId;
+  id: keyof FormData | 'contactInfo';
   title: string;
   subtitle?: string;
-  type: QuestionType;
-  icon: React.ComponentType<any>;
+  label?: string;
+  type: 'input' | 'textarea' | 'multi-input' | 'select' | 'radio' | 'checkbox';
+  placeholder?: string;
+  rows?: number;
+  icon?: React.ComponentType<any>;
   required?: boolean;
-  options?: { value: string; label: string; hint?: string }[];
+  options?: { value: string; label: string }[];
   fields?: {
     id: keyof FormData;
     label: string;
-    type: "input" | "email" | "tel";
+    type: 'input' | 'email' | 'tel';
     placeholder: string;
     icon: React.ComponentType<any>;
     required: boolean;
   }[];
 }
 
-const WEBHOOK_URL =
-  "https://hook.us2.make.com/278k1u1vit3mimed0gqe0uqlkw2d99yw";
-
-function Action({
-  onClick,
-  disabled,
-  className,
-  children,
-  ariaLabel,
-}: {
-  onClick: () => void;
-  disabled?: boolean;
-  className?: string;
-  children: React.ReactNode;
-  ariaLabel?: string;
-}) {
-  return (
-    <div
-      role="button"
-      tabIndex={disabled ? -1 : 0}
-      aria-label={ariaLabel}
-      aria-disabled={disabled ? "true" : "false"}
-      onClick={disabled ? undefined : onClick}
-      onKeyDown={(e) => {
-        if (disabled) return;
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      className={[
-        "select-none",
-        disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer",
-        className ?? "",
-      ].join(" ")}
-    >
-      {children}
-    </div>
-  );
-}
-
 export function HomePage() {
-  const [currentStep, setCurrentStep] = React.useState(0);
-  const [formData, setFormData] = React.useState<FormData>({
-    name: "",
-    email: "",
-    phone: "",
-    countryCode: "+1",
-    business: "",
-    services: "",
+  const [currentStep, setCurrentStep] = useState(0);
+  const [formData, setFormData] = useState<FormData>({
+    name: '',
+    email: '',
+    phone: '',
+    countryCode: '+1',
+    business: '',
+    services: '',
     serviceInterest: [],
-    projectRequirements: "",
+    projectRequirements: ''
   });
-
-  const [currentError, setCurrentError] = React.useState<string>("");
-  const [isStepValid, setIsStepValid] = React.useState(false);
-  const [isSubmitting, setIsSubmitting] = React.useState(false);
-  const [submitStatus, setSubmitStatus] = React.useState<
-    "success" | "error" | null
-  >(null);
-
-  // Subtle scroll-driven background shift (professional: very light)
-  const [scrollP, setScrollP] = React.useState(0);
-  React.useEffect(() => {
-    let raf = 0;
-    const update = () => {
-      const doc = document.documentElement;
-      const max = Math.max(1, doc.scrollHeight - window.innerHeight);
-      const p = Math.min(1, Math.max(0, window.scrollY / max));
-      setScrollP(p);
-    };
-    const onScroll = () => {
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(update);
-    };
-
-    update();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
-
-    return () => {
-      cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
-    };
-  }, []);
-
-  const x1 = `${(22 + scrollP * 26).toFixed(2)}%`;
-  const y1 = `${(18 + ((scrollP * 1.2) % 1) * 12).toFixed(2)}%`;
-  const x2 = `${(78 - scrollP * 20).toFixed(2)}%`;
-  const y2 = `${(72 + ((scrollP * 1.1) % 1) * 12).toFixed(2)}%`;
-
-  const rootStyle = {
-    ["--x1" as any]: x1,
-    ["--y1" as any]: y1,
-    ["--x2" as any]: x2,
-    ["--y2" as any]: y2,
-  } as React.CSSProperties;
+  const [currentError, setCurrentError] = useState<string>('');
+  const [isStepValid, setIsStepValid] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
+  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
+    isEnhancing: false,
+    hasEnhanced: false
+  });
 
   const questions: Question[] = [
     {
-      id: "serviceInterest",
-      title: "What are you looking for?",
-      subtitle: "Select one or more — we’ll tailor the quote.",
-      type: "checkbox",
-      icon: Sparkles,
+      id: 'serviceInterest',
+      title: 'What do you want to improve first?',
+      subtitle: '(Pick all that apply)',
+      type: 'checkbox',
+      icon: Target,
       required: true,
       options: [
-        { value: "ai-agent", label: "AI Phone Agent", hint: "Capture calls and book appointments." },
-        { value: "website", label: "Web Design", hint: "Clean, premium site built to convert." },
-        { value: "custom", label: "Custom Package", hint: "Website + AI + automations." },
-      ],
+        { value: 'custom-websites', label: 'Web Design — premium site that converts' },
+        { value: 'ai-agents', label: 'AI Phone Agents — answer calls 24/7 + book jobs' },
+        { value: 'lead-generation', label: 'Lead Generation — more qualified leads consistently' }
+      ]
     },
     {
-      id: "projectRequirements",
-      title: "What do you want to improve?",
-      subtitle: "Keep it short — the outcome matters.",
-      type: "textarea",
-      icon: Wand2,
-      required: true,
+      id: 'projectRequirements',
+      title: 'Quick details (so we can build the right solution)',
+      type: 'textarea',
+      placeholder: 'What’s your business? What are you trying to accomplish? Any timeline or special requirements?',
+      rows: 4,
+      icon: MessageSquare,
+      required: true
     },
     {
-      id: "contactInfo",
-      title: "Where should we send the quote?",
-      subtitle: "We’ll reply quickly. No spam.",
-      type: "multi-input",
-      icon: ShieldCheck,
+      id: 'contactInfo',
+      title: 'Where should we send the next steps?',
+      type: 'multi-input',
       fields: [
-        { id: "name", label: "Name", type: "input", placeholder: "Your name", icon: User, required: true },
-        { id: "email", label: "Email", type: "email", placeholder: "you@company.com", icon: Mail, required: true },
-        { id: "phone", label: "Phone", type: "tel", placeholder: "555 123 4567", icon: Phone, required: true },
-        { id: "business", label: "Business (optional)", type: "input", placeholder: "Company name", icon: Sparkles, required: false },
-      ],
-    },
+        { id: 'name', label: 'Name', type: 'input', placeholder: 'Your full name', icon: User, required: true },
+        { id: 'email', label: 'Email', type: 'email', placeholder: 'you@company.com', icon: Mail, required: true },
+        { id: 'phone', label: 'Phone', type: 'tel', placeholder: '555-123-4567', icon: Phone, required: true }
+      ]
+    }
   ];
 
-  const validateEmail = (email: string) =>
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  const validateEmail = (email: string): boolean => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  const validatePhone = (phone: string) =>
-    /^[\d\s\-\(\)]{7,18}$/.test(phone.replace(/\s/g, ""));
-
-  const validateCurrentStep = () => {
-    const q = questions[currentStep];
-    let ok = true;
-    let err = "";
-
-    if (q.type === "checkbox") {
-      if (!formData.serviceInterest || formData.serviceInterest.length === 0) {
-        ok = false;
-        err = "Select at least one option.";
-      }
-    }
-
-    if (q.type === "textarea") {
-      if (!formData.projectRequirements.trim()) {
-        ok = false;
-        err = "Tell us what you want to improve.";
-      }
-    }
-
-    if (q.type === "multi-input") {
-      for (const field of q.fields ?? []) {
-        const v = String(formData[field.id] ?? "").trim();
-        if (field.required && !v) {
-          ok = false;
-          err = `${field.label} is required.`;
-          break;
-        }
-        if (field.id === "email" && v && !validateEmail(v)) {
-          ok = false;
-          err = "Enter a valid email.";
-          break;
-        }
-        if (field.id === "phone" && v && !validatePhone(v)) {
-          ok = false;
-          err = "Enter a valid phone number.";
-          break;
-        }
-      }
-    }
-
-    setCurrentError(err);
-    setIsStepValid(ok);
-    return ok;
+  const validatePhone = (phone: string): boolean => {
+    const phoneRegex = /^[\d\s\-\(\)]{7,15}$/;
+    return phoneRegex.test(phone.replace(/\s/g, ''));
   };
 
-  const validateAllSteps = () => {
-    if (!formData.serviceInterest?.length) return false;
-    if (!formData.projectRequirements.trim()) return false;
-    if (!formData.name.trim()) return false;
-    if (!formData.email.trim() || !validateEmail(formData.email.trim())) return false;
-    if (!formData.phone.trim() || !validatePhone(formData.phone.trim())) return false;
+  const validateCurrentStep = (): boolean => {
+    const q = questions[currentStep];
+    let isValid = true;
+    let error = '';
+
+    if (q.type === 'multi-input') {
+      for (const field of q.fields || []) {
+        const value = formData[field.id];
+        if (!value.trim()) { isValid = false; error = `${field.label} is required`; break; }
+        if (field.id === 'email' && !validateEmail(value)) { isValid = false; error = 'Please enter a valid email'; break; }
+        if (field.id === 'phone' && !validatePhone(value)) { isValid = false; error = 'Please enter a valid phone number'; break; }
+      }
+    } else if (q.type === 'checkbox') {
+      const value = formData[q.id as keyof FormData] as string[];
+      if (!value || value.length === 0) { isValid = false; error = 'Please select at least one option'; }
+    } else {
+      const value = formData[q.id as keyof FormData] as string;
+      if (!value.trim()) { isValid = false; error = 'This field is required'; }
+    }
+
+    setCurrentError(error);
+    setIsStepValid(isValid);
+    return isValid;
+  };
+
+  const validateAllSteps = (): boolean => {
+    for (const q of questions) {
+      if (q.type === 'multi-input') {
+        for (const field of q.fields || []) {
+          const value = formData[field.id];
+          if (!value.trim()) return false;
+          if (field.id === 'email' && !validateEmail(value)) return false;
+          if (field.id === 'phone' && !validatePhone(value)) return false;
+        }
+      } else if (q.type === 'checkbox') {
+        const value = formData[q.id as keyof FormData] as string[];
+        if (!value || value.length === 0) return false;
+      } else {
+        const value = formData[q.id as keyof FormData] as string;
+        if (!value.trim()) return false;
+      }
+    }
     return true;
   };
 
-  React.useEffect(() => {
-    validateCurrentStep();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, formData]);
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
 
-  const scrollToLead = () => {
-    const el = document.getElementById("lead-capture");
-    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (e.target.type === 'checkbox') {
+      const checkboxValue = (e.target as HTMLInputElement).value;
+      const isChecked = (e.target as HTMLInputElement).checked;
+
+      setFormData(prev => ({
+        ...prev,
+        [name]: isChecked
+          ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
+          : (prev[name as keyof FormData] as string[]).filter(item => item !== checkboxValue)
+      }));
+    } else {
+      setFormData(prev => ({ ...prev, [name]: value }));
+    }
   };
 
-  const toggleInterest = (value: string) => {
-    setFormData((prev) => {
-      const list = prev.serviceInterest ?? [];
-      const exists = list.includes(value);
-      return {
-        ...prev,
-        serviceInterest: exists ? list.filter((x) => x !== value) : [...list, value],
-      };
-    });
+  const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setFormData(prev => ({ ...prev, countryCode: e.target.value }));
   };
 
   const handleNext = () => {
-    if (!validateCurrentStep()) return;
-    if (currentStep < questions.length - 1) {
-      setCurrentStep((s) => s + 1);
-      setCurrentError("");
+    if (validateCurrentStep()) {
+      if (currentStep < questions.length - 1) {
+        setCurrentStep(currentStep + 1);
+        setCurrentError('');
+      }
     }
   };
 
   const handlePrevious = () => {
     if (currentStep > 0) {
-      setCurrentStep((s) => s - 1);
-      setCurrentError("");
+      setCurrentStep(currentStep - 1);
+      setCurrentError('');
     }
   };
 
-  const submitToWebhook = async (data: FormData) => {
+  const submitToWebhook = async (data: FormData): Promise<boolean> => {
     try {
+      const WEBHOOK_URL = 'https://hook.us2.make.com/278k1u1vit3mimed0gqe0uqlkw2d99yw';
+
       const response = await fetch(WEBHOOK_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: data.name,
           email: data.email,
-          phone: data.countryCode.replace("+", "") + data.phone,
+          phone: data.countryCode.replace('+', '') + data.phone,
           business: data.business,
           services: data.services,
-          serviceInterest: Array.isArray(data.serviceInterest)
-            ? data.serviceInterest.join(", ")
-            : data.serviceInterest,
+          serviceInterest: Array.isArray(data.serviceInterest) ? data.serviceInterest.join(', ') : data.serviceInterest,
           projectRequirements: data.projectRequirements,
-          timestamp: new Date().toISOString(),
-        }),
+          timestamp: new Date().toISOString()
+        })
       });
+
       return response.ok;
-    } catch (e) {
-      console.error("Webhook submit error:", e);
+    } catch (error) {
+      console.error('Error submitting to webhook:', error);
       return false;
     }
   };
 
   const handleSubmit = async () => {
     if (!validateAllSteps()) {
-      setSubmitStatus("error");
+      setSubmitStatus('error');
       return;
     }
 
     setIsSubmitting(true);
     setSubmitStatus(null);
 
-    const ok = await submitToWebhook(formData);
+    try {
+      const success = await submitToWebhook(formData);
 
-    if (ok) {
-      setSubmitStatus("success");
-      setFormData({
-        name: "",
-        email: "",
-        phone: "",
-        countryCode: "+1",
-        business: "",
-        services: "",
-        serviceInterest: [],
-        projectRequirements: "",
-      });
-      setCurrentStep(0);
-    } else {
-      setSubmitStatus("error");
+      if (success) {
+        setSubmitStatus('success');
+        setFormData({
+          name: '',
+          email: '',
+          phone: '',
+          countryCode: '+1',
+          business: '',
+          services: '',
+          serviceInterest: [],
+          projectRequirements: ''
+        });
+      } else {
+        setSubmitStatus('error');
+      }
+    } catch (error) {
+      console.error('Submission error:', error);
+      setSubmitStatus('error');
+    } finally {
+      setIsSubmitting(false);
     }
-
-    setIsSubmitting(false);
   };
 
-  // Professional accent usage: keep subtle (no big gradient text everywhere)
-  const accentBlue = "text-[#49B6FF]";
-  const accentGold = "text-[#FFD24A]";
+  React.useEffect(() => {
+    validateCurrentStep();
+  }, [currentStep, formData]);
+
+  const scrollToLead = () => {
+    const el = document.getElementById('lead-capture');
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  };
 
   return (
-    <div style={rootStyle} className="min-h-screen text-white overflow-x-hidden">
-      {/* Professional black/grey gradient background */}
-      <div className="fixed inset-0 -z-10" aria-hidden="true">
-        <div
-          className="absolute inset-0"
-          style={{
-            backgroundImage: `
-              radial-gradient(900px circle at var(--x1) var(--y1), rgba(255,255,255,0.06), transparent 62%),
-              radial-gradient(900px circle at var(--x2) var(--y2), rgba(255,255,255,0.04), transparent 62%),
-              linear-gradient(180deg, #050607 0%, #0B0D10 45%, #07080A 100%)
-            `,
-          }}
-        />
-        <div className="absolute inset-0 bg-black/20" />
+    <div className="min-h-screen text-white overflow-x-hidden bg-[#050608]">
+      {/* Premium background (no blue↔gold blend) */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute inset-0 bg-[radial-gradient(1100px_600px_at_50%_-220px,rgba(255,210,74,0.10),transparent_60%),radial-gradient(900px_500px_at_20%_30%,rgba(73,182,255,0.10),transparent_55%),linear-gradient(to_bottom,#0B0D10,#050608)]" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-[#49B6FF]/12 blur-3xl" />
+        <div className="absolute top-20 -right-40 w-[28rem] h-[28rem] rounded-full bg-[#FFD24A]/14 blur-3xl" />
+        <div className="absolute -bottom-52 left-1/3 w-[34rem] h-[34rem] rounded-full bg-white/6 blur-3xl" />
       </div>
 
-      {/* Header */}
-      <header className="relative z-10 px-4 sm:px-6 lg:px-8 pt-7">
+      {/* Top nav */}
+      <header className="relative z-10 px-4 sm:px-6 lg:px-8 pt-8">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-xl flex items-center justify-center">
-              <Zap className={`h-5 w-5 ${accentBlue}`} />
+            <div className="h-10 w-10 rounded-xl bg-white/5 border border-white/10 backdrop-blur flex items-center justify-center">
+              <Sparkles className="h-5 w-5 text-[#FFD24A]" />
             </div>
-            <div className="leading-tight">
-              <div className="text-sm text-white/60">Infinite Wealth Solutions</div>
-              <div className="text-lg font-semibold text-white/90">AI Studio</div>
+            <div>
+              <div className="text-lg sm:text-xl font-extrabold tracking-tight">
+                Infinite Wealth Solutions
+              </div>
+              <div className="text-xs sm:text-sm text-gray-400">AI • Web • Automations</div>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
-            <Action
-              onClick={scrollToLead}
-              ariaLabel="Jump to quote form"
-              className="px-4 py-2 rounded-xl border border-white/10 bg-white/[0.02] hover:bg-white/[0.04] transition backdrop-blur-xl"
+          <div className="hidden sm:flex items-center gap-3">
+            <Link
+              to="/demo"
+              className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition text-sm"
             >
-              <div className="flex items-center gap-2 text-sm text-white/80">
-                <Sparkles className={`h-4 w-4 ${accentGold}`} />
-                <span>Get a Quote</span>
-              </div>
-            </Action>
-
+              Try Demo
+            </Link>
             <a
-              href="https://infinitewealthsolutionsai.com/demo"
-              className="px-4 py-2 rounded-xl border border-white/10 bg-white/[0.015] hover:bg-white/[0.035] transition backdrop-blur-xl text-sm text-white/75"
+              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition text-sm"
             >
-              Free Demo
+              Book a Call
             </a>
           </div>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative z-10 px-4 sm:px-6 lg:px-8 pt-10 pb-8">
-        <div className="max-w-7xl mx-auto grid lg:grid-cols-12 gap-10 items-center">
-          <div className="lg:col-span-7">
-            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] backdrop-blur-xl text-xs text-white/60">
-              <ShieldCheck className={`h-4 w-4 ${accentBlue}`} />
-              Web design + voice AI built for lead capture
-            </div>
-
-            <h1 className="mt-5 text-4xl sm:text-5xl lg:text-6xl font-semibold tracking-tight text-white/95">
-              Professional websites and AI voice agents —
-              <span className="text-white/70"> built to convert.</span>
-            </h1>
-
-            <p className="mt-4 text-base sm:text-lg text-white/55 max-w-2xl leading-relaxed">
-              If your business misses calls or your site isn’t converting, we fix both — with a clean
-              premium site and a realistic voice agent that captures details and books appointments.
-            </p>
-
-            <div className="mt-6 flex flex-col sm:flex-row gap-3 max-w-2xl">
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-xl px-4 py-3 flex items-center gap-2">
-                <Phone className={`h-4 w-4 ${accentBlue}`} />
-                <span className="text-sm text-white/65">Calls answered after-hours</span>
+      {/* HERO */}
+      <section className="relative z-10 px-4 sm:px-6 lg:px-8 pt-14 pb-16">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur">
+                <Shield className="h-4 w-4 text-[#49B6FF]" />
+                <span className="text-sm text-gray-200">Premium digital systems</span>
+                <span className="text-sm text-gray-400">that look elite & convert</span>
               </div>
-              <div className="rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-xl px-4 py-3 flex items-center gap-2">
-                <Calendar className={`h-4 w-4 ${accentGold}`} />
-                <span className="text-sm text-white/65">Appointments booked automatically</span>
+
+              <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05]">
+                Make your business{' '}
+                <span className="bg-gradient-to-r from-gray-100 via-gray-300 to-gray-100 bg-clip-text text-transparent">
+                  look unstoppable
+                </span>
+                .
+              </h1>
+
+              <p className="mt-5 text-lg text-gray-300 max-w-xl">
+                Websites that convert. AI that answers calls. Automations that run the backend.
+                Clean, modern, and built to scale.
+              </p>
+
+              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                <a
+                  href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition"
+                >
+                  <Calendar className="h-5 w-5" />
+                  Book a Call
+                </a>
+
+                <button
+                  onClick={scrollToLead}
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                >
+                  <MessageSquare className="h-5 w-5 text-[#FFD24A]" />
+                  Get a Quote
+                </button>
+
+                <a
+                  href="#pricing"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+                >
+                  <Target className="h-5 w-5 text-[#49B6FF]" />
+                  View Pricing
+                </a>
               </div>
-            </div>
 
-            <div className="mt-6 flex items-center gap-4 text-sm text-white/55">
-              <a
-                href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 hover:text-white/80 transition"
-              >
-                <Calendar className={`h-4 w-4 ${accentGold}`} />
-                <span className="font-semibold text-white/80">Book a setup call</span>
-                <ArrowRight className="h-4 w-4 text-white/35" />
-              </a>
-
-              <Action
-                onClick={scrollToLead}
-                ariaLabel="Scroll to quote form"
-                className="inline-flex items-center gap-2 hover:text-white/80 transition"
-              >
-                <span className={`font-semibold ${accentBlue}`}>Get a quote</span>
-                <ArrowRight className="h-4 w-4 text-white/35" />
-              </Action>
-            </div>
-          </div>
-
-          {/* Right panel (professional, minimal) */}
-          <div className="lg:col-span-5">
-            <div className="rounded-3xl border border-white/10 bg-white/[0.02] backdrop-blur-xl p-6">
-              <div className="text-sm text-white/55">What you get</div>
-
-              <div className="mt-4 space-y-3">
+              {/* Mini proof */}
+              <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-xl">
                 {[
-                  "A clean premium website that looks credible and converts on mobile.",
-                  "A human-like voice agent that captures missed calls and qualifies leads.",
-                  "A simple handoff so you can manage and scale without complexity.",
-                ].map((t) => (
-                  <div key={t} className="flex items-start gap-3 text-sm text-white/60">
-                    <CheckCircle className={`h-5 w-5 ${accentBlue} mt-0.5`} />
-                    <span>{t}</span>
+                  { icon: Phone, title: '24/7 Calls', sub: 'AI answers instantly', color: 'text-[#FFD24A]' },
+                  { icon: Rocket, title: 'Fast Launch', sub: 'premium look in days', color: 'text-[#49B6FF]' },
+                  { icon: TrendingUp, title: 'More Leads', sub: 'conversion-first design', color: 'text-[#FFD24A]' },
+                ].map((b, i) => (
+                  <div
+                    key={i}
+                    className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4"
+                  >
+                    <b.icon className={`h-5 w-5 ${b.color}`} />
+                    <div className="mt-2 font-bold">{b.title}</div>
+                    <div className="text-sm text-gray-400">{b.sub}</div>
                   </div>
                 ))}
               </div>
-
-              <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.015] p-4 text-sm text-white/55">
-                Want to hear the agent? Tap the voice widget bottom-right.
-              </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      {/* Lead Capture */}
-      <section id="lead-capture" className="relative z-10 px-4 sm:px-6 lg:px-8 pb-12">
-        <div className="max-w-5xl mx-auto">
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.02] backdrop-blur-xl overflow-hidden">
-            <div className="p-6 sm:p-7 border-b border-white/10">
-              <div className="flex items-start justify-between gap-6 flex-col sm:flex-row">
-                <div>
-                  <h2 className="text-2xl sm:text-3xl font-semibold text-white/90">
-                    Request a quote
-                  </h2>
-                  <p className="mt-2 text-white/50">Short form. Fast response.</p>
+            {/* Right visual card */}
+            <div className="relative">
+              {/* Chrome glow */}
+              <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-white/10 via-white/5 to-white/10 blur-2xl opacity-80" />
+              <div className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-7 overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm text-gray-400">Live Preview</div>
+                    <div className="text-xl font-extrabold">AI + Website System</div>
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  {questions.map((_, idx) => {
-                    const done = idx < currentStep;
-                    const active = idx === currentStep;
+                <div className="mt-6 grid grid-cols-1 gap-3">
+                  {[
+                    { title: 'AI Phone Agent', desc: 'Answers calls → captures lead → books appointment', icon: Phone, accent: 'gold' as const },
+                    { title: 'Website Upgrade', desc: 'Premium UI → clear offer → strong CTA', icon: Building, accent: 'blue' as const },
+                    { title: 'Automation Layer', desc: 'Lead routing → CRM → follow-ups', icon: Zap, accent: 'gold' as const },
+                  ].map((row, idx) => {
+                    const isBlue = row.accent === 'blue';
                     return (
-                      <React.Fragment key={idx}>
-                        <Action
-                          ariaLabel={`Go to step ${idx + 1}`}
-                          onClick={() => {
-                            setCurrentStep(idx);
-                            setCurrentError("");
-                          }}
-                          className={[
-                            "h-10 w-10 rounded-2xl flex items-center justify-center border transition",
-                            done
-                              ? "border-white/16 bg-white/[0.04]"
-                              : active
-                              ? "border-white/20 bg-white/[0.05]"
-                              : "border-white/10 bg-white/[0.015] hover:bg-white/[0.03] hover:border-white/14",
-                          ].join(" ")}
+                      <div
+                        key={idx}
+                        className="rounded-2xl border border-white/10 bg-[#0B0D10]/60 p-4 flex items-start gap-3"
+                      >
+                        <div
+                          className={`h-11 w-11 rounded-xl border border-white/10 bg-[#0B0D10]/60 flex items-center justify-center ${
+                            isBlue ? 'ring-1 ring-[#49B6FF]/40' : 'ring-1 ring-[#FFD24A]/40'
+                          }`}
                         >
-                          {done ? (
-                            <CheckCircle className={`h-5 w-5 ${accentGold}`} />
-                          ) : (
-                            <span className="text-sm text-white/70 font-semibold">{idx + 1}</span>
-                          )}
-                        </Action>
-                        {idx < questions.length - 1 && (
-                          <div className="w-7 h-[2px] bg-white/10" />
-                        )}
-                      </React.Fragment>
+                          <row.icon className={`h-5 w-5 ${isBlue ? 'text-[#49B6FF]' : 'text-[#FFD24A]'}`} />
+                        </div>
+                        <div>
+                          <div className="font-bold">{row.title}</div>
+                          <div className="text-sm text-gray-400">{row.desc}</div>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
-              </div>
 
-              {submitStatus === "success" && (
-                <div className="mt-5 p-4 rounded-2xl border border-emerald-400/15 bg-emerald-400/10 flex items-start gap-3">
-                  <CheckCircle className="h-5 w-5 text-emerald-300 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-emerald-200">Received.</div>
-                    <div className="text-sm text-emerald-100/75">
-                      We’ll reply with next steps and pricing.
-                    </div>
+                <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
+                  <div className="text-sm text-gray-300">
+                    Want a custom package?
+                    <div className="text-xs text-gray-500">We’ll map it to your exact workflow.</div>
                   </div>
-                </div>
-              )}
-
-              {submitStatus === "error" && (
-                <div className="mt-5 p-4 rounded-2xl border border-red-400/15 bg-red-400/10 flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-red-300 mt-0.5" />
-                  <div>
-                    <div className="font-semibold text-red-200">Something failed.</div>
-                    <div className="text-sm text-red-100/75">Please try again.</div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {submitStatus !== "success" && (
-              <div className="p-6 sm:p-7">
-                {(() => {
-                  const q = questions[currentStep];
-
-                  if (q.type === "checkbox") {
-                    return (
-                      <div>
-                        <div className="mb-5">
-                          <div className="flex items-center gap-3 mb-2">
-                            <q.icon className={`h-5 w-5 ${accentGold}`} />
-                            <div className="text-xl sm:text-2xl font-semibold text-white/90">
-                              {q.title}
-                            </div>
-                          </div>
-                          {q.subtitle && <div className="text-sm text-white/50">{q.subtitle}</div>}
-                        </div>
-
-                        <div className="grid sm:grid-cols-3 gap-3">
-                          {(q.options ?? []).map((opt) => {
-                            const selected = formData.serviceInterest.includes(opt.value);
-                            return (
-                              <Action
-                                key={opt.value}
-                                ariaLabel={opt.label}
-                                onClick={() => toggleInterest(opt.value)}
-                                className={[
-                                  "rounded-2xl border p-4 transition",
-                                  selected
-                                    ? "border-white/18 bg-white/[0.05]"
-                                    : "border-white/10 bg-white/[0.015] hover:bg-white/[0.03] hover:border-white/14",
-                                ].join(" ")}
-                              >
-                                <div className="flex items-start justify-between gap-3">
-                                  <div>
-                                    <div className="font-semibold text-white/80">{opt.label}</div>
-                                    {opt.hint && <div className="mt-1 text-sm text-white/50">{opt.hint}</div>}
-                                  </div>
-                                  {selected && <CheckCircle className={`h-5 w-5 ${accentBlue}`} />}
-                                </div>
-                              </Action>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  if (q.type === "textarea") {
-                    return (
-                      <div>
-                        <div className="mb-5">
-                          <div className="flex items-center gap-3 mb-2">
-                            <q.icon className={`h-5 w-5 ${accentBlue}`} />
-                            <div className="text-xl sm:text-2xl font-semibold text-white/90">
-                              {q.title}
-                            </div>
-                          </div>
-                          {q.subtitle && <div className="text-sm text-white/50">{q.subtitle}</div>}
-                        </div>
-
-                        <div className="rounded-2xl border border-white/10 bg-white/[0.015] overflow-hidden">
-                          <textarea
-                            value={formData.projectRequirements}
-                            onChange={(e) =>
-                              setFormData((p) => ({
-                                ...p,
-                                projectRequirements: e.target.value,
-                              }))
-                            }
-                            placeholder='Example: "Improve missed call capture and increase booked appointments."'
-                            rows={5}
-                            className="w-full bg-transparent px-4 py-4 outline-none text-white placeholder:text-white/30"
-                          />
-                        </div>
-                      </div>
-                    );
-                  }
-
-                  // multi-input
-                  return (
-                    <div>
-                      <div className="mb-5">
-                        <div className="flex items-center gap-3 mb-2">
-                          <q.icon className={`h-5 w-5 ${accentGold}`} />
-                          <div className="text-xl sm:text-2xl font-semibold text-white/90">
-                            {q.title}
-                          </div>
-                        </div>
-                        {q.subtitle && <div className="text-sm text-white/50">{q.subtitle}</div>}
-                      </div>
-
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        {(q.fields ?? []).map((field) => {
-                          const Icon = field.icon;
-
-                          if (field.id === "phone") {
-                            return (
-                              <div key={field.id} className="sm:col-span-2">
-                                <label className="text-sm text-white/55 flex items-center gap-2 mb-2">
-                                  <Icon className={`h-4 w-4 ${accentBlue}`} />
-                                  {field.label}
-                                  {field.required ? <span className="text-white/30">*</span> : null}
-                                </label>
-
-                                <div className="flex rounded-2xl border border-white/10 bg-white/[0.015] overflow-hidden">
-                                  <select
-                                    value={formData.countryCode}
-                                    onChange={(e) =>
-                                      setFormData((p) => ({
-                                        ...p,
-                                        countryCode: e.target.value,
-                                      }))
-                                    }
-                                    className="bg-transparent px-3 py-3 outline-none text-white/65 border-r border-white/10"
-                                  >
-                                    <option value="+1">🇨🇦 +1</option>
-                                    <option value="+1">🇺🇸 +1</option>
-                                    <option value="+44">🇬🇧 +44</option>
-                                    <option value="+61">🇦🇺 +61</option>
-                                    <option value="+34">🇪🇸 +34</option>
-                                    <option value="+49">🇩🇪 +49</option>
-                                  </select>
-
-                                  <input
-                                    value={formData.phone}
-                                    onChange={(e) =>
-                                      setFormData((p) => ({
-                                        ...p,
-                                        phone: e.target.value,
-                                      }))
-                                    }
-                                    placeholder={field.placeholder}
-                                    className="flex-1 bg-transparent px-4 py-3 outline-none text-white placeholder:text-white/30"
-                                    inputMode="tel"
-                                  />
-                                </div>
-                              </div>
-                            );
-                          }
-
-                          const val = String(formData[field.id] ?? "");
-                          return (
-                            <div key={field.id}>
-                              <label className="text-sm text-white/55 flex items-center gap-2 mb-2">
-                                <Icon className={`h-4 w-4 ${accentGold}`} />
-                                {field.label}
-                                {field.required ? <span className="text-white/30">*</span> : null}
-                              </label>
-
-                              <div className="rounded-2xl border border-white/10 bg-white/[0.015] overflow-hidden">
-                                <input
-                                  value={val}
-                                  onChange={(e) =>
-                                    setFormData((p) => ({
-                                      ...p,
-                                      [field.id]: e.target.value,
-                                    }))
-                                  }
-                                  placeholder={field.placeholder}
-                                  className="w-full bg-transparent px-4 py-3 outline-none text-white placeholder:text-white/30"
-                                  inputMode={
-                                    field.type === "email"
-                                      ? "email"
-                                      : field.type === "tel"
-                                      ? "tel"
-                                      : "text"
-                                  }
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                {currentError && (
-                  <div className="mt-5 p-4 rounded-2xl border border-red-400/15 bg-red-400/10 flex items-center gap-3">
-                    <AlertCircle className="h-5 w-5 text-red-300" />
-                    <div className="text-sm text-red-100/80">{currentError}</div>
-                  </div>
-                )}
-
-                {/* Navigation */}
-                <div className="mt-7 flex items-center justify-between gap-3 flex-col sm:flex-row">
-                  <Action
-                    ariaLabel="Previous step"
-                    disabled={currentStep === 0}
-                    onClick={handlePrevious}
-                    className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.015] hover:bg-white/[0.03] transition text-white/70 text-center"
+                  <button
+                    onClick={scrollToLead}
+                    className="px-4 py-2 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition text-sm"
                   >
-                    Back
-                  </Action>
-
-                  {currentStep < questions.length - 1 ? (
-                    <Action
-                      ariaLabel="Next step"
-                      disabled={!isStepValid}
-                      onClick={handleNext}
-                      className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.045] transition"
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        <span className="text-white/80 font-semibold">Next</span>
-                        <ArrowRight className={`h-4 w-4 ${accentGold}`} />
-                      </div>
-                    </Action>
-                  ) : (
-                    <Action
-                      ariaLabel="Submit"
-                      disabled={!isStepValid || isSubmitting}
-                      onClick={handleSubmit}
-                      className="w-full sm:w-auto px-5 py-3 rounded-2xl border border-white/10 bg-white/[0.045] hover:bg-white/[0.06] transition"
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        {isSubmitting ? (
-                          <>
-                            <Loader className={`h-4 w-4 animate-spin ${accentGold}`} />
-                            <span className="text-white/70 font-semibold">Sending…</span>
-                          </>
-                        ) : (
-                          <>
-                            <span className="text-white/85 font-semibold">Send</span>
-                            <ArrowRight className={`h-4 w-4 ${accentBlue}`} />
-                          </>
-                        )}
-                      </div>
-                    </Action>
-                  )}
+                    Build Mine
+                  </button>
                 </div>
 
-                <div className="mt-5 text-xs text-white/35 leading-relaxed">
-                  By submitting, you agree we can contact you about this request.
-                </div>
+                <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-[#49B6FF]/10 blur-2xl" />
+                <div className="absolute -bottom-24 -left-24 w-56 h-56 rounded-full bg-[#FFD24A]/10 blur-2xl" />
               </div>
-            )}
+            </div>
           </div>
         </div>
       </section>
 
-      <SubscriptionSection />
-
-      <footer className="relative z-10 px-4 sm:px-6 lg:px-8 py-10 border-t border-white/10">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-5">
-          <div className="text-sm text-white/40">
-            © {new Date().getFullYear()} Infinite Wealth Solutions — AI Studio
+      {/* SERVICES */}
+      <section className="relative z-10 px-4 sm:px-6 lg:px-8 pb-10">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl sm:text-4xl font-extrabold">
+              What we build{' '}
+              <span className="bg-gradient-to-r from-gray-100 via-gray-300 to-gray-100 bg-clip-text text-transparent">
+                for you
+              </span>
+            </h2>
+            <p className="mt-3 text-gray-300 max-w-2xl mx-auto">
+              Designed to look high-end and perform like a machine.
+            </p>
           </div>
 
-          <div className="flex items-center gap-5 text-sm">
-            <a
-              href="https://infinitewealthsolutionsai.com/demo"
-              className="text-white/40 hover:text-white/70 transition"
-            >
-              Demo
-            </a>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { icon: Brain, title: 'AI Phone Agents', desc: 'Realistic voice agents that answer calls, qualify leads, and book jobs.', pill: '24/7', accent: 'gold' as const },
+              { icon: Building, title: 'Web Design', desc: 'Premium design that makes your business look legit — and drives action.', pill: 'Conversion-first', accent: 'blue' as const },
+              { icon: TrendingUp, title: 'Lead Systems', desc: 'Lead gen + follow-up automation that keeps your pipeline full.', pill: 'Growth', accent: 'gold' as const },
+            ].map((c, i) => {
+              const isBlue = c.accent === 'blue';
+              return (
+                <div key={i} className="relative">
+                  <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-white/10 to-white/5 blur-2xl opacity-70" />
+                  <div className="relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 hover:bg-white/7 transition">
+                    <div className="flex items-start justify-between">
+                      <div className="h-12 w-12 rounded-xl bg-[#0B0D10]/60 border border-white/10 flex items-center justify-center">
+                        <c.icon className={`h-6 w-6 ${isBlue ? 'text-[#49B6FF]' : 'text-[#FFD24A]'}`} />
+                      </div>
+                      <span className="text-xs px-3 py-1 rounded-full border border-white/10 bg-white/5 text-gray-300">
+                        {c.pill}
+                      </span>
+                    </div>
+                    <div className="mt-4 text-xl font-extrabold">{c.title}</div>
+                    <div className="mt-2 text-gray-400 text-sm leading-relaxed">{c.desc}</div>
+
+                    <div className="mt-5 flex items-center gap-2 text-sm text-gray-300">
+                      <CheckCircle className="h-4 w-4 text-[#49B6FF]" />
+                      Premium look
+                      <span className="text-gray-600">•</span>
+                      <CheckCircle className="h-4 w-4 text-[#FFD24A]" />
+                      Built to convert
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-white/40 hover:text-white/70 transition"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition"
             >
-              Book
+              <Calendar className="h-5 w-5" />
+              Book a Call
             </a>
-            <a href="/privacy-policy" className="text-white/40 hover:text-white/70 transition">
-              Privacy
-            </a>
+            <button
+              onClick={scrollToLead}
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-white/5 border border-white/10 hover:bg-white/10 transition"
+            >
+              <MessageSquare className="h-5 w-5 text-[#FFD24A]" />
+              Get a Quote
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* LEAD CAPTURE FORM */}
+      <section className="relative z-10 px-4 sm:px-6 lg:px-8 py-16">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5 backdrop-blur">
+              <Sparkles className="h-4 w-4 text-[#FFD24A]" />
+              <span className="text-sm text-gray-200">Get a quote</span>
+              <span className="text-sm text-gray-400">quick and clean</span>
+            </div>
+            <h2 className="mt-5 text-3xl sm:text-4xl font-extrabold">
+              Get your{' '}
+              <span className="bg-gradient-to-r from-gray-100 via-gray-300 to-gray-100 bg-clip-text text-transparent">
+                custom plan
+              </span>
+            </h2>
+            <p className="mt-3 text-gray-300">
+              Tell us what you want. We’ll map the best solution (and price) for your business.
+            </p>
+          </div>
+
+          <div id="lead-capture" className="relative">
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-white/10 via-white/5 to-white/10 blur-2xl opacity-80" />
+            <div className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl p-6 sm:p-10 overflow-hidden">
+              <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+
+              {submitStatus === 'success' && (
+                <div className="mb-6 p-4 rounded-2xl bg-green-500/10 border border-green-500/30 flex items-center gap-3">
+                  <CheckCircle className="h-6 w-6 text-green-400" />
+                  <div>
+                    <div className="font-bold text-green-200">Submitted successfully</div>
+                    <div className="text-sm text-green-200/70">We’ll reach out with next steps.</div>
+                  </div>
+                </div>
+              )}
+
+              {submitStatus === 'error' && (
+                <div className="mb-6 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center gap-3">
+                  <AlertCircle className="h-6 w-6 text-red-400" />
+                  <div>
+                    <div className="font-bold text-red-200">Submission failed</div>
+                    <div className="text-sm text-red-200/70">Try again in a moment.</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Step bars */}
+              {submitStatus !== 'success' && (
+                <div className="mb-8">
+                  <div className="flex items-center justify-center gap-3">
+                    {questions.map((_, idx) => (
+                      <div
+                        key={idx}
+                        className={`h-2.5 w-10 rounded-full transition-all ${
+                          idx === currentStep
+                            ? 'bg-[#FFD24A]'
+                            : idx < currentStep
+                            ? 'bg-white/25'
+                            : 'bg-white/10'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-3 text-center text-xs text-gray-400">
+                    Step {currentStep + 1} of {questions.length}
+                  </div>
+                </div>
+              )}
+
+              {submitStatus === 'success' ? (
+                <div className="text-center py-10">
+                  <div className="mx-auto h-16 w-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
+                    <CheckCircle className="h-8 w-8 text-[#49B6FF]" />
+                  </div>
+                  <h3 className="mt-4 text-2xl font-extrabold">You’re in.</h3>
+                  <p className="mt-2 text-gray-300">We’ll reach out shortly.</p>
+                </div>
+              ) : (
+                <div className="relative overflow-hidden">
+                  <div
+                    className="flex transition-transform duration-500 ease-in-out"
+                    style={{ transform: `translateX(-${currentStep * 100}%)` }}
+                  >
+                    {questions.map((q, idx) => (
+                      <div key={q.id} className="w-full flex-shrink-0 px-1">
+                        <div className="text-center mb-7">
+                          <h3 className="text-2xl sm:text-3xl font-extrabold">{q.title}</h3>
+                          {q.subtitle && <p className="mt-2 text-gray-400">{q.subtitle}</p>}
+                        </div>
+
+                        {q.type === 'checkbox' ? (
+                          <div className="space-y-3">
+                            {q.options?.map((opt) => (
+                              <label
+                                key={opt.value}
+                                className="flex items-start gap-3 p-4 rounded-2xl border border-white/10 bg-[#0B0D10]/60 hover:bg-white/5 transition cursor-pointer"
+                              >
+                                <input
+                                  type="checkbox"
+                                  name={q.id as string}
+                                  value={opt.value}
+                                  checked={(formData[q.id as keyof FormData] as string[])?.includes(opt.value) || false}
+                                  onChange={handleInputChange}
+                                  className="mt-1.5 h-5 w-5 accent-[#49B6FF]"
+                                />
+                                <div className="text-gray-200">
+                                  <div className="font-bold">{opt.label}</div>
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        ) : q.type === 'textarea' ? (
+                          <div>
+                            <textarea
+                              id={q.id as string}
+                              name={q.id as string}
+                              value={formData[q.id as keyof FormData] as string}
+                              onChange={handleInputChange}
+                              rows={q.rows || 4}
+                              className={`w-full px-4 py-3 rounded-2xl bg-[#0B0D10]/60 border ${
+                                currentError && idx === currentStep ? 'border-red-500/60' : 'border-white/10'
+                              } text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#49B6FF]/30 focus:border-[#49B6FF]/40 transition`}
+                              placeholder={q.placeholder}
+                            />
+                            {currentError && idx === currentStep && (
+                              <p className="mt-2 text-sm text-red-300">{currentError}</p>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="space-y-5">
+                            {q.fields?.map((field) => (
+                              <div key={field.id}>
+                                <label className="block text-sm font-bold text-gray-200 mb-2">
+                                  <field.icon className="inline h-4 w-4 mr-2 text-[#FFD24A]" />
+                                  {field.label}
+                                </label>
+
+                                {field.id === 'phone' ? (
+                                  <div className="flex">
+                                    <select
+                                      value={formData.countryCode}
+                                      onChange={handleCountryCodeChange}
+                                      className={`px-3 py-3 rounded-l-2xl bg-[#0B0D10]/60 border ${
+                                        currentError && idx === currentStep ? 'border-red-500/60' : 'border-white/10'
+                                      } border-r-0 text-white focus:outline-none`}
+                                    >
+                                      <option value="+1">🇨🇦 +1</option>
+                                      <option value="+1">🇺🇸 +1</option>
+                                      <option value="+44">🇬🇧 +44</option>
+                                      <option value="+61">🇦🇺 +61</option>
+                                    </select>
+
+                                    <input
+                                      type={field.type}
+                                      id={field.id}
+                                      name={field.id}
+                                      value={formData[field.id]}
+                                      onChange={handleInputChange}
+                                      className={`flex-1 px-4 py-3 rounded-r-2xl bg-[#0B0D10]/60 border ${
+                                        currentError && idx === currentStep ? 'border-red-500/60' : 'border-white/10'
+                                      } text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#49B6FF]/30 focus:border-[#49B6FF]/40 transition`}
+                                      placeholder={field.placeholder}
+                                    />
+                                  </div>
+                                ) : (
+                                  <input
+                                    type={field.type}
+                                    id={field.id}
+                                    name={field.id}
+                                    value={formData[field.id]}
+                                    onChange={handleInputChange}
+                                    className={`w-full px-4 py-3 rounded-2xl bg-[#0B0D10]/60 border ${
+                                      currentError && idx === currentStep ? 'border-red-500/60' : 'border-white/10'
+                                    } text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#49B6FF]/30 focus:border-[#49B6FF]/40 transition`}
+                                    placeholder={field.placeholder}
+                                  />
+                                )}
+                              </div>
+                            ))}
+
+                            {currentError && idx === currentStep && (
+                              <p className="mt-1 text-sm text-red-300">{currentError}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {submitStatus !== 'success' && (
+                <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={handlePrevious}
+                    disabled={currentStep === 0}
+                    className={`inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-bold transition ${
+                      currentStep === 0
+                        ? 'bg-white/5 border border-white/10 text-gray-500 cursor-not-allowed'
+                        : 'bg-white/5 border border-white/10 text-white hover:bg-white/10'
+                    }`}
+                  >
+                    <ArrowLeft className="h-5 w-5" />
+                    Previous
+                  </button>
+
+                  {currentStep === questions.length - 1 ? (
+                    <button
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || !isStepValid}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-extrabold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader className="h-5 w-5 animate-spin" />
+                          Submitting
+                        </>
+                      ) : (
+                        <>
+                          Submit
+                          <ArrowRight className="h-5 w-5" />
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleNext}
+                      disabled={!isStepValid}
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-extrabold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Next
+                      <ArrowRight className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-[#49B6FF]/10 blur-2xl" />
+              <div className="absolute -bottom-24 -left-24 w-56 h-56 rounded-full bg-[#FFD24A]/10 blur-2xl" />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* PRICING */}
+      <SubscriptionSection />
+
+      {/* Footer */}
+      <footer className="relative z-10 px-4 sm:px-6 lg:px-8 py-12 border-t border-white/10">
+        <div className="max-w-7xl mx-auto flex flex-col items-center text-center gap-4">
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/5">
+            <Sparkles className="h-4 w-4 text-[#FFD24A]" />
+            <span className="text-sm text-gray-200">Infinite Wealth Solutions</span>
+            <span className="text-sm text-gray-400">AI • Web • Automations</span>
+          </div>
+
+          <div className="text-sm text-gray-400">
+            © {new Date().getFullYear()} Infinite Wealth Solutions. All rights reserved.
+          </div>
+
+          <div className="flex items-center gap-6">
+            <Link to="/demo" className="text-gray-400 hover:text-white transition text-sm">
+              Try Demo
+            </Link>
+            <Link to="/privacy-policy" className="text-gray-400 hover:text-white transition text-sm">
+              Privacy Policy
+            </Link>
           </div>
         </div>
       </footer>
-
-      <VapiVoiceWidget
-        publicKey="ebb2120b-ac56-4ce9-b1d5-17966931c665"
-        assistantId="76efe9e0-957c-410a-9163-75acbceec45e"
-        firstMessage="Infinite Wealth Solutions AI - Avery speaking, how may I help you?"
-      />
     </div>
   );
 }
