@@ -279,12 +279,12 @@ export function HomePage() {
 
   return (
     <div className="min-h-screen text-white overflow-x-hidden bg-[#050608]">
-      {/* Premium background */}
+      {/* Premium background (no blue↔gold blend) */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(1100px_600px_at_50%_-220px,rgba(255,210,74,0.12),transparent_60%),radial-gradient(900px_500px_at_20%_30%,rgba(73,182,255,0.10),transparent_55%),radial-gradient(900px_500px_at_80%_60%,rgba(255,210,74,0.08),transparent_55%),linear-gradient(to_bottom,#0B0D10,#050608)]" />
-        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-gradient-to-br from-[#49B6FF]/20 to-transparent blur-3xl" />
-        <div className="absolute top-20 -right-40 w-[28rem] h-[28rem] rounded-full bg-gradient-to-br from-[#FFD24A]/18 to-transparent blur-3xl" />
-        <div className="absolute -bottom-52 left-1/3 w-[34rem] h-[34rem] rounded-full bg-gradient-to-br from-[#49B6FF]/12 via-[#FFD24A]/10 to-transparent blur-3xl" />
+        <div className="absolute inset-0 bg-[radial-gradient(1100px_600px_at_50%_-220px,rgba(255,210,74,0.10),transparent_60%),radial-gradient(900px_500px_at_20%_30%,rgba(73,182,255,0.10),transparent_55%),linear-gradient(to_bottom,#0B0D10,#050608)]" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-[#49B6FF]/12 blur-3xl" />
+        <div className="absolute top-20 -right-40 w-[28rem] h-[28rem] rounded-full bg-[#FFD24A]/14 blur-3xl" />
+        <div className="absolute -bottom-52 left-1/3 w-[34rem] h-[34rem] rounded-full bg-white/6 blur-3xl" />
       </div>
 
       {/* Top nav */}
@@ -313,7 +313,7 @@ export function HomePage() {
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-4 py-2 rounded-xl font-bold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition text-sm"
+              className="px-4 py-2 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition text-sm"
             >
               Book a Call
             </a>
@@ -334,7 +334,7 @@ export function HomePage() {
 
               <h1 className="mt-6 text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05]">
                 Make your business{' '}
-                <span className="bg-gradient-to-r from-[#FFD24A] via-[#49B6FF] to-[#FFD24A] bg-clip-text text-transparent">
+                <span className="bg-gradient-to-r from-gray-100 via-gray-300 to-gray-100 bg-clip-text text-transparent">
                   look unstoppable
                 </span>
                 .
@@ -350,7 +350,7 @@ export function HomePage() {
                   href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition"
+                  className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition"
                 >
                   <Calendar className="h-5 w-5" />
                   Book a Call
@@ -376,15 +376,15 @@ export function HomePage() {
               {/* Mini proof */}
               <div className="mt-10 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-xl">
                 {[
-                  { icon: Phone, title: '24/7 Calls', sub: 'AI answers instantly' },
-                  { icon: Rocket, title: 'Fast Launch', sub: 'premium look in days' },
-                  { icon: TrendingUp, title: 'More Leads', sub: 'conversion-first design' },
+                  { icon: Phone, title: '24/7 Calls', sub: 'AI answers instantly', color: 'text-[#FFD24A]' },
+                  { icon: Rocket, title: 'Fast Launch', sub: 'premium look in days', color: 'text-[#49B6FF]' },
+                  { icon: TrendingUp, title: 'More Leads', sub: 'conversion-first design', color: 'text-[#FFD24A]' },
                 ].map((b, i) => (
                   <div
                     key={i}
                     className="rounded-2xl border border-white/10 bg-white/5 backdrop-blur p-4"
                   >
-                    <b.icon className={`h-5 w-5 ${i === 0 ? 'text-[#FFD24A]' : i === 1 ? 'text-[#49B6FF]' : 'text-[#FFD24A]'}`} />
+                    <b.icon className={`h-5 w-5 ${b.color}`} />
                     <div className="mt-2 font-bold">{b.title}</div>
                     <div className="text-sm text-gray-400">{b.sub}</div>
                   </div>
@@ -394,7 +394,8 @@ export function HomePage() {
 
             {/* Right visual card */}
             <div className="relative">
-              <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-[#FFD24A]/25 via-[#49B6FF]/25 to-[#FFD24A]/25 blur-2xl opacity-70" />
+              {/* Chrome glow */}
+              <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-white/10 via-white/5 to-white/10 blur-2xl opacity-80" />
               <div className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-7 overflow-hidden">
                 <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
@@ -403,30 +404,34 @@ export function HomePage() {
                     <div className="text-sm text-gray-400">Live Preview</div>
                     <div className="text-xl font-extrabold">AI + Website System</div>
                   </div>
-                  <div className="px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-xs text-gray-300">
-                    Chrome Blue + Gold
-                  </div>
                 </div>
 
                 <div className="mt-6 grid grid-cols-1 gap-3">
                   {[
-                    { title: 'AI Phone Agent', desc: 'Answers calls → captures lead → books appointment', icon: Phone, accent: 'from-[#FFD24A] to-[#49B6FF]' },
-                    { title: 'Website Upgrade', desc: 'Premium UI → clear offer → strong CTA', icon: Building, accent: 'from-[#49B6FF] to-[#FFD24A]' },
-                    { title: 'Automation Layer', desc: 'Lead routing → CRM → follow-ups', icon: Zap, accent: 'from-[#FFD24A] to-[#49B6FF]' },
-                  ].map((row, idx) => (
-                    <div
-                      key={idx}
-                      className="rounded-2xl border border-white/10 bg-[#0B0D10]/60 p-4 flex items-start gap-3"
-                    >
-                      <div className={`h-11 w-11 rounded-xl bg-gradient-to-r ${row.accent} text-black flex items-center justify-center`}>
-                        <row.icon className="h-5 w-5" />
+                    { title: 'AI Phone Agent', desc: 'Answers calls → captures lead → books appointment', icon: Phone, accent: 'gold' as const },
+                    { title: 'Website Upgrade', desc: 'Premium UI → clear offer → strong CTA', icon: Building, accent: 'blue' as const },
+                    { title: 'Automation Layer', desc: 'Lead routing → CRM → follow-ups', icon: Zap, accent: 'gold' as const },
+                  ].map((row, idx) => {
+                    const isBlue = row.accent === 'blue';
+                    return (
+                      <div
+                        key={idx}
+                        className="rounded-2xl border border-white/10 bg-[#0B0D10]/60 p-4 flex items-start gap-3"
+                      >
+                        <div
+                          className={`h-11 w-11 rounded-xl border border-white/10 bg-[#0B0D10]/60 flex items-center justify-center ${
+                            isBlue ? 'ring-1 ring-[#49B6FF]/40' : 'ring-1 ring-[#FFD24A]/40'
+                          }`}
+                        >
+                          <row.icon className={`h-5 w-5 ${isBlue ? 'text-[#49B6FF]' : 'text-[#FFD24A]'}`} />
+                        </div>
+                        <div>
+                          <div className="font-bold">{row.title}</div>
+                          <div className="text-sm text-gray-400">{row.desc}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-bold">{row.title}</div>
-                        <div className="text-sm text-gray-400">{row.desc}</div>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center justify-between">
@@ -436,13 +441,14 @@ export function HomePage() {
                   </div>
                   <button
                     onClick={scrollToLead}
-                    className="px-4 py-2 rounded-xl font-bold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition text-sm"
+                    className="px-4 py-2 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition text-sm"
                   >
                     Build Mine
                   </button>
                 </div>
 
-                <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-[#49B6FF]/18 via-[#FFD24A]/12 to-transparent blur-2xl" />
+                <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-[#49B6FF]/10 blur-2xl" />
+                <div className="absolute -bottom-24 -left-24 w-56 h-56 rounded-full bg-[#FFD24A]/10 blur-2xl" />
               </div>
             </div>
           </div>
@@ -455,7 +461,7 @@ export function HomePage() {
           <div className="text-center mb-10">
             <h2 className="text-3xl sm:text-4xl font-extrabold">
               What we build{' '}
-              <span className="bg-gradient-to-r from-[#FFD24A] via-[#49B6FF] to-[#FFD24A] bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-gray-100 via-gray-300 to-gray-100 bg-clip-text text-transparent">
                 for you
               </span>
             </h2>
@@ -466,34 +472,37 @@ export function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { icon: Brain, title: 'AI Phone Agents', desc: 'Realistic voice agents that answer calls, qualify leads, and book jobs.', pill: '24/7', accent: 'text-[#FFD24A]' },
-              { icon: Building, title: 'Web Design', desc: 'Premium design that makes your business look legit — and drives action.', pill: 'Conversion-first', accent: 'text-[#49B6FF]' },
-              { icon: TrendingUp, title: 'Lead Systems', desc: 'Lead gen + follow-up automation that keeps your pipeline full.', pill: 'Growth', accent: 'text-[#FFD24A]' },
-            ].map((c, i) => (
-              <div key={i} className="relative">
-                <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-white/10 to-white/5 blur-2xl opacity-70" />
-                <div className="relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 hover:bg-white/7 transition">
-                  <div className="flex items-start justify-between">
-                    <div className="h-12 w-12 rounded-xl bg-[#0B0D10]/60 border border-white/10 flex items-center justify-center">
-                      <c.icon className={`h-6 w-6 ${c.accent}`} />
+              { icon: Brain, title: 'AI Phone Agents', desc: 'Realistic voice agents that answer calls, qualify leads, and book jobs.', pill: '24/7', accent: 'gold' as const },
+              { icon: Building, title: 'Web Design', desc: 'Premium design that makes your business look legit — and drives action.', pill: 'Conversion-first', accent: 'blue' as const },
+              { icon: TrendingUp, title: 'Lead Systems', desc: 'Lead gen + follow-up automation that keeps your pipeline full.', pill: 'Growth', accent: 'gold' as const },
+            ].map((c, i) => {
+              const isBlue = c.accent === 'blue';
+              return (
+                <div key={i} className="relative">
+                  <div className="absolute -inset-1 rounded-2xl bg-gradient-to-r from-white/10 to-white/5 blur-2xl opacity-70" />
+                  <div className="relative rounded-2xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 hover:bg-white/7 transition">
+                    <div className="flex items-start justify-between">
+                      <div className="h-12 w-12 rounded-xl bg-[#0B0D10]/60 border border-white/10 flex items-center justify-center">
+                        <c.icon className={`h-6 w-6 ${isBlue ? 'text-[#49B6FF]' : 'text-[#FFD24A]'}`} />
+                      </div>
+                      <span className="text-xs px-3 py-1 rounded-full border border-white/10 bg-white/5 text-gray-300">
+                        {c.pill}
+                      </span>
                     </div>
-                    <span className="text-xs px-3 py-1 rounded-full border border-white/10 bg-white/5 text-gray-300">
-                      {c.pill}
-                    </span>
-                  </div>
-                  <div className="mt-4 text-xl font-extrabold">{c.title}</div>
-                  <div className="mt-2 text-gray-400 text-sm leading-relaxed">{c.desc}</div>
+                    <div className="mt-4 text-xl font-extrabold">{c.title}</div>
+                    <div className="mt-2 text-gray-400 text-sm leading-relaxed">{c.desc}</div>
 
-                  <div className="mt-5 flex items-center gap-2 text-sm text-gray-300">
-                    <CheckCircle className="h-4 w-4 text-[#49B6FF]" />
-                    Premium look
-                    <span className="text-gray-600">•</span>
-                    <CheckCircle className="h-4 w-4 text-[#FFD24A]" />
-                    Built to convert
+                    <div className="mt-5 flex items-center gap-2 text-sm text-gray-300">
+                      <CheckCircle className="h-4 w-4 text-[#49B6FF]" />
+                      Premium look
+                      <span className="text-gray-600">•</span>
+                      <CheckCircle className="h-4 w-4 text-[#FFD24A]" />
+                      Built to convert
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           <div className="mt-10 flex flex-col sm:flex-row gap-3 justify-center">
@@ -501,7 +510,7 @@ export function HomePage() {
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition"
+              className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-bold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition"
             >
               <Calendar className="h-5 w-5" />
               Book a Call
@@ -528,7 +537,7 @@ export function HomePage() {
             </div>
             <h2 className="mt-5 text-3xl sm:text-4xl font-extrabold">
               Get your{' '}
-              <span className="bg-gradient-to-r from-[#FFD24A] via-[#49B6FF] to-[#FFD24A] bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-gray-100 via-gray-300 to-gray-100 bg-clip-text text-transparent">
                 custom plan
               </span>
             </h2>
@@ -538,7 +547,7 @@ export function HomePage() {
           </div>
 
           <div id="lead-capture" className="relative">
-            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-[#FFD24A]/18 via-[#49B6FF]/18 to-[#FFD24A]/18 blur-2xl opacity-70" />
+            <div className="absolute -inset-1 rounded-3xl bg-gradient-to-r from-white/10 via-white/5 to-white/10 blur-2xl opacity-80" />
             <div className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-2xl p-6 sm:p-10 overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-white/20 to-transparent" />
 
@@ -562,7 +571,7 @@ export function HomePage() {
                 </div>
               )}
 
-              {/* Step dots */}
+              {/* Step bars */}
               {submitStatus !== 'success' && (
                 <div className="mb-8">
                   <div className="flex items-center justify-center gap-3">
@@ -571,7 +580,7 @@ export function HomePage() {
                         key={idx}
                         className={`h-2.5 w-10 rounded-full transition-all ${
                           idx === currentStep
-                            ? 'bg-gradient-to-r from-[#FFD24A] to-[#49B6FF]'
+                            ? 'bg-[#FFD24A]'
                             : idx < currentStep
                             ? 'bg-white/25'
                             : 'bg-white/10'
@@ -606,7 +615,6 @@ export function HomePage() {
                           {q.subtitle && <p className="mt-2 text-gray-400">{q.subtitle}</p>}
                         </div>
 
-                        {/* Inputs */}
                         {q.type === 'checkbox' ? (
                           <div className="space-y-3">
                             {q.options?.map((opt) => (
@@ -708,7 +716,6 @@ export function HomePage() {
                 </div>
               )}
 
-              {/* Nav */}
               {submitStatus !== 'success' && (
                 <div className="mt-8 pt-6 border-t border-white/10 flex items-center justify-between gap-3">
                   <button
@@ -729,7 +736,7 @@ export function HomePage() {
                     <button
                       onClick={handleSubmit}
                       disabled={isSubmitting || !isStepValid}
-                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-extrabold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-extrabold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isSubmitting ? (
                         <>
@@ -748,7 +755,7 @@ export function HomePage() {
                       type="button"
                       onClick={handleNext}
                       disabled={!isStepValid}
-                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-extrabold bg-gradient-to-r from-[#FFD24A] to-[#49B6FF] text-black hover:opacity-95 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-extrabold bg-[#FFD24A] text-black hover:bg-[#ffdc6a] transition disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       Next
                       <ArrowRight className="h-5 w-5" />
@@ -757,7 +764,8 @@ export function HomePage() {
                 </div>
               )}
 
-              <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-gradient-to-br from-[#49B6FF]/16 via-[#FFD24A]/10 to-transparent blur-2xl" />
+              <div className="absolute -top-24 -right-24 w-56 h-56 rounded-full bg-[#49B6FF]/10 blur-2xl" />
+              <div className="absolute -bottom-24 -left-24 w-56 h-56 rounded-full bg-[#FFD24A]/10 blur-2xl" />
             </div>
           </div>
         </div>
