@@ -10,7 +10,6 @@ interface DemoPage {
   system_prompt: string;
   first_message: string;
   is_active: boolean;
-  favicon_url?: string; // ✅ NEW
 }
 
 type ChatMsg = { role: 'assistant' | 'user'; content: string };
@@ -20,9 +19,7 @@ const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
-
-  // ✅ Decode + trim so /PacificPlumbing, /pacificplumbing, /PACIFICPLUMBING all work
-  const targetSlug = useMemo(() => decodeURIComponent((slug || 'demo').trim()), [slug]);
+  const targetSlug = useMemo(() => (slug || 'demo').trim(), [slug]);
 
   const [demoPage, setDemoPage] = useState<DemoPage | null>(null);
   const [loading, setLoading] = useState(true);
@@ -89,7 +86,7 @@ export function DynamicDemoPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Fetch demo page record (case-insensitive support)
+  // Fetch demo page record
   useEffect(() => {
     let alive = true;
 
@@ -98,31 +95,18 @@ export function DynamicDemoPage() {
         setLoading(true);
         setError(null);
 
-        const rawSlug = decodeURIComponent(targetSlug);
-
-        // 1) Strict exact match first
-        let { data, error } = await supabase
+        const { data, error } = await supabase
           .from('demo_pages')
           .select('*')
-          .eq('slug', rawSlug)
+          .eq('slug', targetSlug)
           .eq('is_active', true)
           .maybeSingle();
-
-        // 2) Fallback: case-insensitive exact match
-        if (!data) {
-          ({ data, error } = await supabase
-            .from('demo_pages')
-            .select('*')
-            .ilike('slug', rawSlug)
-            .eq('is_active', true)
-            .maybeSingle());
-        }
 
         if (!alive) return;
 
         if (error || !data) {
           setDemoPage(null);
-          setError(`Demo page "${rawSlug}" not found`);
+          setError(`Demo page "${targetSlug}" not found`);
           return;
         }
 
@@ -150,32 +134,32 @@ export function DynamicDemoPage() {
     };
   }, [targetSlug, displayName]);
 
-  // ✅ Realtime updates (case-insensitive)
+  // Realtime updates (optional but you had it)
   useEffect(() => {
     if (!targetSlug) return;
 
-    const rawSlugLower = decodeURIComponent(targetSlug).toLowerCase();
-
     const channel = supabase
-      .channel(`demo_pages:any:${rawSlugLower}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'demo_pages' }, (payload) => {
-        const next = payload.new as DemoPage | null;
-        if (!next || !next.is_active) return;
+      .channel(`demo_pages:${targetSlug}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'demo_pages', filter: `slug=eq.${targetSlug}` },
+        (payload) => {
+          const next = payload.new as DemoPage | null;
+          if (!next || !next.is_active) return;
 
-        if ((next.slug || '').toLowerCase() !== rawSlugLower) return;
-
-        setDemoPage(next);
-        setChatMsgs((prev) => {
-          if (!prev.length) {
-            return [{ role: 'assistant', content: next.first_message || `Hey ${displayName}, how can I help?` }];
-          }
-          const copy = [...prev];
-          if (copy[0]?.role === 'assistant') {
-            copy[0] = { role: 'assistant', content: next.first_message || copy[0].content };
-          }
-          return copy;
-        });
-      })
+          setDemoPage(next);
+          setChatMsgs((prev) => {
+            if (!prev.length) {
+              return [{ role: 'assistant', content: next.first_message || `Hey ${displayName}, how can I help?` }];
+            }
+            const copy = [...prev];
+            if (copy[0]?.role === 'assistant') {
+              copy[0] = { role: 'assistant', content: next.first_message || copy[0].content };
+            }
+            return copy;
+          });
+        }
+      )
       .subscribe();
 
     return () => {
@@ -264,7 +248,7 @@ export function DynamicDemoPage() {
     setModal(null);
   };
 
-  // Chat via Supabase Edge Function
+  // ✅ FIXED CHAT (Option A): call Supabase Edge Function with Authorization + apikey
   const sendChat = async () => {
     if (!demoPage?.assistant_id) return;
     const msg = chatInput.trim();
@@ -284,6 +268,7 @@ export function DynamicDemoPage() {
 
       const publicChatUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-public-chat`;
 
+      // If logged in use session JWT, else fallback to anon JWT
       const { data } = await supabase.auth.getSession();
       const token = data?.session?.access_token || anonKey;
 
@@ -358,21 +343,7 @@ export function DynamicDemoPage() {
 
       {/* Hero */}
       <main className="max-w-3xl mx-auto text-center px-6 pb-16">
-        {/* ✅ NEW: favicon hero badge */}
-        {demoPage.favicon_url ? (
-          <img
-            src={demoPage.favicon_url}
-            alt={`${displayName} logo`}
-            className="mx-auto mt-10 mb-6 h-20 w-20 rounded-2xl bg-white p-3 shadow-[0_0_30px_rgba(255,215,0,0.35)]"
-            loading="lazy"
-          />
-        ) : (
-          <div className="mx-auto mt-10 mb-6 h-20 w-20 rounded-2xl bg-yellow-400 text-black flex items-center justify-center font-extrabold text-3xl shadow-[0_0_30px_rgba(255,215,0,0.25)]">
-            {displayName.charAt(0)}
-          </div>
-        )}
-
-        <h1 className="text-5xl font-extrabold">
+        <h1 className="text-5xl font-extrabold mt-10">
           Hey <span className="text-yellow-400">{displayName}</span>,
         </h1>
 
@@ -387,6 +358,7 @@ export function DynamicDemoPage() {
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center">
+          {/* Call Me */}
           <button
             onClick={() => setModal('voice')}
             className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-2xl hover:bg-yellow-300 transition inline-flex items-center gap-3"
@@ -395,6 +367,7 @@ export function DynamicDemoPage() {
             Call Me
           </button>
 
+          {/* Text Me */}
           <button
             onClick={() => setModal('chat')}
             className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
