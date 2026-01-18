@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader, AlertCircle, X, Phone, PhoneOff, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Loader, AlertCircle, X, Phone, MessageSquare, Calendar } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import Vapi from '@vapi-ai/web';
 
@@ -16,6 +16,13 @@ type ChatMsg = { role: 'assistant' | 'user'; content: string };
 type ModalMode = 'voice' | 'chat' | null;
 
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
+
+// 🔗 Your Calendly (same one you’re using elsewhere)
+const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
+
+// 🎨 Luxury Gold
+const GOLD_PRIMARY = '#C8A24A';
+const GOLD_HOVER = '#E3C36A';
 
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -248,7 +255,7 @@ export function DynamicDemoPage() {
     setModal(null);
   };
 
-  // Chat: call Supabase Edge Function
+  // ✅ Public chat via Edge Function
   const sendChat = async () => {
     if (!demoPage?.assistant_id) return;
     const msg = chatInput.trim();
@@ -304,7 +311,7 @@ export function DynamicDemoPage() {
     return (
       <div className="min-h-screen flex items-center justify-center text-white bg-black">
         <div className="text-center">
-          <Loader className="h-10 w-10 animate-spin text-yellow-400 mx-auto mb-3" />
+          <Loader className="h-10 w-10 animate-spin mx-auto mb-3" style={{ color: GOLD_PRIMARY }} />
           <p className="text-gray-300">Loading demo...</p>
         </div>
       </div>
@@ -332,7 +339,13 @@ export function DynamicDemoPage() {
   }
 
   return (
-    <div className="min-h-screen text-white bg-[radial-gradient(1200px_600px_at_50%_-200px,rgba(255,215,0,0.15),transparent_60%),linear-gradient(to_bottom,#2a2a2a,#0b0b0b,#000)]">
+    <div
+      className="min-h-screen text-white"
+      style={{
+        backgroundImage:
+          'radial-gradient(1200px 600px at 50% -200px, rgba(200, 162, 74, 0.18), transparent 60%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)',
+      }}
+    >
       {/* Header */}
       <header className="px-6 py-6">
         <Link to="/" className="flex items-center text-gray-400 hover:text-white">
@@ -343,24 +356,35 @@ export function DynamicDemoPage() {
       {/* Hero */}
       <main className="max-w-3xl mx-auto text-center px-6 pb-16">
         <h1 className="text-5xl font-extrabold mt-10">
-          Hey <span className="text-yellow-400">{displayName}</span>,
+          Hey{' '}
+          <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
+            {displayName}
+          </span>
+          ,
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
-          I built a tool for you that <span className="text-yellow-400 font-semibold">answers your customer calls</span> for you.
+          I built a tool that{' '}
+          <span className="font-semibold" style={{ color: GOLD_PRIMARY }}>
+            answers your customer calls
+          </span>{' '}
+          for you.
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
+          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what they need — automatically.
         </div>
 
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
-        <div className="mt-6 flex gap-4 justify-center">
+        <div className="mt-6 flex gap-4 justify-center flex-wrap">
           {/* Call Me */}
           <button
             onClick={() => setModal('voice')}
-            className="px-8 py-4 bg-yellow-400 text-black font-bold rounded-2xl hover:bg-yellow-300 transition inline-flex items-center gap-3"
+            className="px-8 py-4 text-black font-bold rounded-2xl transition inline-flex items-center gap-3"
+            style={{ backgroundColor: GOLD_PRIMARY }}
+            onMouseEnter={(e) => ((e.currentTarget.style.backgroundColor = GOLD_HOVER))}
+            onMouseLeave={(e) => ((e.currentTarget.style.backgroundColor = GOLD_PRIMARY))}
           >
             <Phone className="h-5 w-5" />
             Call Me
@@ -374,6 +398,26 @@ export function DynamicDemoPage() {
             <MessageSquare className="h-5 w-5" />
             Text Me
           </button>
+        </div>
+
+        {/* ✅ NEW CTA */}
+        <div className="mt-6">
+          <a
+            href={CALENDLY_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-black transition shadow-[0_12px_50px_rgba(0,0,0,0.55)]"
+            style={{ backgroundColor: GOLD_PRIMARY }}
+            onMouseEnter={(e) => ((e.currentTarget.style.backgroundColor = GOLD_HOVER))}
+            onMouseLeave={(e) => ((e.currentTarget.style.backgroundColor = GOLD_PRIMARY))}
+          >
+            <Calendar className="h-5 w-5" />
+            Book a Brief Intro Call
+          </a>
+
+          <p className="mt-2 text-sm text-gray-400">
+            Takes 2 minutes — we’ll show you how it works for your business.
+          </p>
         </div>
       </main>
 
@@ -391,11 +435,13 @@ export function DynamicDemoPage() {
             <div className="p-5">
               {modal === 'voice' ? (
                 <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
-                  <h3 className="text-xl font-bold mb-2 text-yellow-400">AI Voice Agent</h3>
+                  <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>
+                    AI Voice Agent
+                  </h3>
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — Act like a customer.'}
+                    {voiceStatus === 'live' && 'Live — speak normally.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}
@@ -403,21 +449,32 @@ export function DynamicDemoPage() {
 
                   {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
 
-                  {/* Updated: Hang up icon button */}
                   <button
-                    className="mt-8 w-28 h-28 rounded-full bg-red-600 text-white hover:bg-red-500 transition shadow-[0_18px_60px_rgba(255,0,0,0.18)] inline-flex items-center justify-center"
+                    className="mt-8 w-32 h-32 rounded-full text-black font-bold transition"
+                    style={{ backgroundColor: GOLD_PRIMARY }}
+                    onMouseEnter={(e) => ((e.currentTarget.style.backgroundColor = GOLD_HOVER))}
+                    onMouseLeave={(e) => ((e.currentTarget.style.backgroundColor = GOLD_PRIMARY))}
                     onClick={() => {
                       try {
                         vapiRef.current?.stop();
                       } catch {}
                       setVoiceStatus('ended');
                     }}
-                    aria-label="Hang up"
                   >
-                    <PhoneOff className="h-10 w-10" />
+                    End
                   </button>
 
-                  <p className="mt-3 text-xs text-gray-400">Hang up</p>
+                  {/* Optional: tiny CTA inside modal too */}
+                  <a
+                    href={CALENDLY_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-6 inline-flex items-center gap-2 text-sm font-semibold hover:underline"
+                    style={{ color: GOLD_HOVER }}
+                  >
+                    <Calendar className="h-4 w-4" />
+                    Book a brief intro call
+                  </a>
                 </div>
               ) : (
                 <div className="flex flex-col h-[420px]">
@@ -455,7 +512,8 @@ export function DynamicDemoPage() {
                       value={chatInput}
                       onChange={(e) => setChatInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && sendChat()}
-                      className="flex-1 bg-black/40 border border-gray-700/60 rounded-xl px-4 py-2 text-white placeholder:text-gray-500 outline-none focus:border-yellow-400/70"
+                      className="flex-1 bg-black/40 border border-gray-700/60 rounded-xl px-4 py-2 text-white placeholder:text-gray-500 outline-none"
+                      style={{ borderColor: 'rgba(255,255,255,0.18)' }}
                       placeholder="Type your message…"
                     />
                     <button
@@ -465,6 +523,19 @@ export function DynamicDemoPage() {
                     >
                       Send
                     </button>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-center">
+                    <a
+                      href={CALENDLY_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 text-sm font-semibold hover:underline"
+                      style={{ color: GOLD_HOVER }}
+                    >
+                      <Calendar className="h-4 w-4" />
+                      Book a brief intro call
+                    </a>
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
