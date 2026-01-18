@@ -16,7 +16,7 @@ export function SubscriptionSection() {
     },
     {
       name: 'AI Phone Agents',
-      price: '$99',
+      price: '$199',
       period: '/mo',
       features: [
         'Answers calls after-hours & while busy',
