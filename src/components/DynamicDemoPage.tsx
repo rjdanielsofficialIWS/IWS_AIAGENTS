@@ -1,6 +1,15 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { ArrowLeft, Loader, AlertCircle, X, Phone, MessageSquare, Calendar } from 'lucide-react';
+import {
+  ArrowLeft,
+  Loader,
+  AlertCircle,
+  X,
+  Phone,
+  PhoneOff,
+  MessageSquare,
+  Calendar
+} from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import Vapi from '@vapi-ai/web';
 
@@ -16,11 +25,9 @@ type ChatMsg = { role: 'assistant' | 'user'; content: string };
 type ModalMode = 'voice' | 'chat' | null;
 
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
-
-// 🔗 Your Calendly (same one you’re using elsewhere)
 const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
 
-// 🎨 Luxury Gold
+// Luxury Gold
 const GOLD_PRIMARY = '#C8A24A';
 const GOLD_HOVER = '#E3C36A';
 
@@ -90,7 +97,6 @@ export function DynamicDemoPage() {
       window.clearTimeout(t3);
       obs.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch demo page record
@@ -255,7 +261,7 @@ export function DynamicDemoPage() {
     setModal(null);
   };
 
-  // ✅ Public chat via Edge Function
+  // Public chat via Edge Function
   const sendChat = async () => {
     if (!demoPage?.assistant_id) return;
     const msg = chatInput.trim();
@@ -306,7 +312,6 @@ export function DynamicDemoPage() {
     }
   };
 
-  // UI states
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-white bg-black">
@@ -346,14 +351,12 @@ export function DynamicDemoPage() {
           'radial-gradient(1200px 600px at 50% -200px, rgba(200, 162, 74, 0.18), transparent 60%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)',
       }}
     >
-      {/* Header */}
       <header className="px-6 py-6">
         <Link to="/" className="flex items-center text-gray-400 hover:text-white">
           <ArrowLeft className="h-5 w-5 mr-2" /> Back
         </Link>
       </header>
 
-      {/* Hero */}
       <main className="max-w-3xl mx-auto text-center px-6 pb-16">
         <h1 className="text-5xl font-extrabold mt-10">
           Hey{' '}
@@ -378,7 +381,6 @@ export function DynamicDemoPage() {
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center flex-wrap">
-          {/* Call Me */}
           <button
             onClick={() => setModal('voice')}
             className="px-8 py-4 text-black font-bold rounded-2xl transition inline-flex items-center gap-3"
@@ -390,7 +392,6 @@ export function DynamicDemoPage() {
             Call Me
           </button>
 
-          {/* Text Me */}
           <button
             onClick={() => setModal('chat')}
             className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
@@ -400,23 +401,33 @@ export function DynamicDemoPage() {
           </button>
         </div>
 
-        {/* ✅ NEW CTA */}
-        <div className="mt-6">
+        {/* Smaller + more subtle Calendly CTA */}
+        <div className="mt-6 flex flex-col items-center">
           <a
             href={CALENDLY_URL}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-3 px-8 py-4 rounded-2xl font-bold text-black transition shadow-[0_12px_50px_rgba(0,0,0,0.55)]"
-            style={{ backgroundColor: GOLD_PRIMARY }}
-            onMouseEnter={(e) => ((e.currentTarget.style.backgroundColor = GOLD_HOVER))}
-            onMouseLeave={(e) => ((e.currentTarget.style.backgroundColor = GOLD_PRIMARY))}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl font-semibold transition border"
+            style={{
+              borderColor: 'rgba(200, 162, 74, 0.55)',
+              color: GOLD_HOVER,
+              backgroundColor: 'rgba(0,0,0,0.15)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(227, 195, 106, 0.75)';
+              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.06)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = 'rgba(200, 162, 74, 0.55)';
+              e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.15)';
+            }}
           >
-            <Calendar className="h-5 w-5" />
-            Book a Brief Intro Call
+            <Calendar className="h-4 w-4" />
+            Book a brief intro call
           </a>
 
-          <p className="mt-2 text-sm text-gray-400">
-            Takes 2 minutes — we’ll show you how it works for your business.
+          <p className="mt-2 text-xs text-gray-400">
+            Quick intro + we’ll show you how it fits your business.
           </p>
         </div>
       </main>
@@ -449,22 +460,27 @@ export function DynamicDemoPage() {
 
                   {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
 
+                  {/* Red hang-up button */}
                   <button
-                    className="mt-8 w-32 h-32 rounded-full text-black font-bold transition"
-                    style={{ backgroundColor: GOLD_PRIMARY }}
-                    onMouseEnter={(e) => ((e.currentTarget.style.backgroundColor = GOLD_HOVER))}
-                    onMouseLeave={(e) => ((e.currentTarget.style.backgroundColor = GOLD_PRIMARY))}
+                    className="mt-8 w-28 h-28 rounded-full font-bold transition flex items-center justify-center"
+                    style={{
+                      backgroundColor: '#DC2626',
+                      boxShadow: '0 18px 60px rgba(0,0,0,0.6)',
+                    }}
+                    onMouseEnter={(e) => ((e.currentTarget.style.backgroundColor = '#B91C1C'))}
+                    onMouseLeave={(e) => ((e.currentTarget.style.backgroundColor = '#DC2626'))}
                     onClick={() => {
                       try {
                         vapiRef.current?.stop();
                       } catch {}
                       setVoiceStatus('ended');
                     }}
+                    aria-label="End call"
                   >
-                    End
+                    <PhoneOff className="h-10 w-10 text-white" />
                   </button>
 
-                  {/* Optional: tiny CTA inside modal too */}
+                  {/* Subtle CTA inside modal */}
                   <a
                     href={CALENDLY_URL}
                     target="_blank"
@@ -539,7 +555,7 @@ export function DynamicDemoPage() {
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    Powered by <span className="text-gray-400">Infinite Wealth Solutions AI</span>
+                    Chat uses: <span className="text-gray-400">/functions/v1/vapi-public-chat</span>
                   </p>
                 </div>
               )}
