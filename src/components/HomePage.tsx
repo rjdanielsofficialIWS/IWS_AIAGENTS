@@ -5,6 +5,7 @@ import {
   Zap,
   TrendingUp,
   Phone,
+  PhoneOff,
   Mail,
   User,
   Building,
@@ -16,9 +17,11 @@ import {
   ArrowRight,
   Target,
   Calendar,
-  Users
+  Users,
+  X,
 } from 'lucide-react';
 import { SubscriptionSection } from './SubscriptionSection';
+import Vapi from '@vapi-ai/web';
 
 interface FormData {
   name: string;
@@ -57,6 +60,17 @@ interface Question {
   }[];
 }
 
+// 🎨 Luxury Gold
+const GOLD_PRIMARY = '#C8A24A';
+const GOLD_HOVER = '#E3C36A';
+
+// 📞 Vapi Phone Agent (Homepage floating)
+const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
+const HOME_VAPI_ASSISTANT_ID = '76efe9e0-957c-410a-9163-75acbceec45e';
+const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Avery speaking, how may I help you?';
+
+type PhoneModalMode = 'voice' | null;
+
 export function HomePage() {
   const [bgOffset, setBgOffset] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
@@ -68,7 +82,7 @@ export function HomePage() {
     business: '',
     services: '',
     serviceInterest: [],
-    projectRequirements: ''
+    projectRequirements: '',
   });
   const [currentError, setCurrentError] = useState<string>('');
   const [isStepValid, setIsStepValid] = useState(false);
@@ -76,8 +90,14 @@ export function HomePage() {
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
   const [enhanceState, setEnhanceState] = useState<EnhanceState>({
     isEnhancing: false,
-    hasEnhanced: false
+    hasEnhanced: false,
   });
+
+  // ✅ Floating Phone Agent Modal State
+  const [phoneModal, setPhoneModal] = useState<PhoneModalMode>(null);
+  const vapiRef = React.useRef<Vapi | null>(null);
+  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'live' | 'ended' | 'error'>('idle');
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const questions: Question[] = [
     {
@@ -90,8 +110,8 @@ export function HomePage() {
       options: [
         { value: 'ai-agents', label: 'AI Voice Agents - Automate calls and bookings' },
         { value: 'lead-generation', label: 'Lead Generation - Social media marketing, content creation, and customer acquisition' },
-        { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' }
-      ]
+        { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' },
+      ],
     },
     {
       id: 'projectRequirements',
@@ -100,7 +120,7 @@ export function HomePage() {
       placeholder: 'Describe your specific needs, goals, timeline, and any special requirements...',
       rows: 4,
       icon: MessageSquare,
-      required: true
+      required: true,
     },
     {
       id: 'contactInfo',
@@ -113,7 +133,7 @@ export function HomePage() {
           type: 'input',
           placeholder: 'Your full name',
           icon: User,
-          required: true
+          required: true,
         },
         {
           id: 'email',
@@ -121,7 +141,7 @@ export function HomePage() {
           type: 'email',
           placeholder: 'your@email.com',
           icon: Mail,
-          required: true
+          required: true,
         },
         {
           id: 'phone',
@@ -129,10 +149,10 @@ export function HomePage() {
           type: 'tel',
           placeholder: '(555) 123-4567',
           icon: Phone,
-          required: true
-        }
-      ]
-    }
+          required: true,
+        },
+      ],
+    },
   ];
 
   const validateEmail = (email: string): boolean => {
@@ -232,19 +252,19 @@ export function HomePage() {
       const checkboxValue = (e.target as HTMLInputElement).value;
       const isChecked = (e.target as HTMLInputElement).checked;
 
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         [name]: isChecked
           ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
-          : (prev[name as keyof FormData] as string[]).filter(item => item !== checkboxValue)
+          : (prev[name as keyof FormData] as string[]).filter((item) => item !== checkboxValue),
       }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
   };
 
   const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFormData(prev => ({ ...prev, countryCode: e.target.value }));
+    setFormData((prev) => ({ ...prev, countryCode: e.target.value }));
   };
 
   const handleNext = () => {
@@ -269,9 +289,7 @@ export function HomePage() {
 
       const response = await fetch(WEBHOOK_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: data.name,
           email: data.email,
@@ -280,8 +298,8 @@ export function HomePage() {
           services: data.services,
           serviceInterest: Array.isArray(data.serviceInterest) ? data.serviceInterest.join(', ') : data.serviceInterest,
           projectRequirements: data.projectRequirements,
-          timestamp: new Date().toISOString()
-        })
+          timestamp: new Date().toISOString(),
+        }),
       });
 
       return response.ok;
@@ -313,7 +331,7 @@ export function HomePage() {
           business: '',
           services: '',
           serviceInterest: [],
-          projectRequirements: ''
+          projectRequirements: '',
         });
       } else {
         setSubmitStatus('error');
@@ -328,6 +346,7 @@ export function HomePage() {
 
   React.useEffect(() => {
     validateCurrentStep();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, formData]);
 
   // Subtle background motion on scroll (luxury gold glow)
@@ -348,6 +367,77 @@ export function HomePage() {
       if (raf) window.cancelAnimationFrame(raf);
     };
   }, []);
+
+  // ✅ Start/Stop Vapi Call when phone modal opens/closes
+  React.useEffect(() => {
+    if (phoneModal !== 'voice') return;
+
+    let cancelled = false;
+
+    const startCall = async () => {
+      try {
+        setVoiceError(null);
+        setVoiceStatus('connecting');
+
+        try {
+          vapiRef.current?.stop();
+        } catch {}
+        vapiRef.current = null;
+
+        const vapi = new Vapi(VAPI_PUBLIC_KEY);
+        vapiRef.current = vapi;
+
+        vapi.on('call-start', () => {
+          if (cancelled) return;
+          setVoiceStatus('live');
+        });
+
+        vapi.on('call-end', () => {
+          if (cancelled) return;
+          setVoiceStatus('ended');
+        });
+
+        (vapi as any).on?.('error', (e: any) => {
+          if (cancelled) return;
+          setVoiceStatus('error');
+          setVoiceError(e?.message || 'Voice error');
+        });
+
+        await vapi.start(HOME_VAPI_ASSISTANT_ID);
+
+        // Say first message immediately (your exact line)
+        try {
+          await (vapi as any).say(HOME_VAPI_FIRST_MESSAGE, false);
+        } catch {}
+      } catch (e: any) {
+        if (cancelled) return;
+        setVoiceStatus('error');
+        setVoiceError(e?.message || 'Failed to start voice');
+      }
+    };
+
+    startCall();
+
+    return () => {
+      cancelled = true;
+      try {
+        vapiRef.current?.stop();
+      } catch {}
+      vapiRef.current = null;
+      setVoiceStatus('idle');
+      setVoiceError(null);
+    };
+  }, [phoneModal]);
+
+  const closePhoneModal = () => {
+    try {
+      vapiRef.current?.stop();
+    } catch {}
+    vapiRef.current = null;
+    setVoiceStatus('idle');
+    setVoiceError(null);
+    setPhoneModal(null);
+  };
 
   return (
     <div
@@ -396,15 +486,9 @@ export function HomePage() {
               onClick={() => {
                 const leadCaptureSection = document.getElementById('lead-capture');
                 if (leadCaptureSection) {
-                  leadCaptureSection.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                  });
+                  leadCaptureSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 } else {
-                  window.scrollTo({
-                    top: document.body.scrollHeight,
-                    behavior: 'smooth'
-                  });
+                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
                 }
               }}
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
@@ -429,12 +513,8 @@ export function HomePage() {
             className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto"
           >
             <div className="text-center mb-12">
-              <h3 className="text-2xl sm:text-3xl font-bold mb-4">
-                Get Your Custom Solution Quote
-              </h3>
-              <p className="text-gray-300 text-base">
-                Tell us about your project and we'll create the perfect solution for your business
-              </p>
+              <h3 className="text-2xl sm:text-3xl font-bold mb-4">Get Your Custom Solution Quote</h3>
+              <p className="text-gray-300 text-base">Tell us about your project and we'll create the perfect solution for your business</p>
             </div>
 
             {submitStatus === 'success' && (
@@ -465,18 +545,10 @@ export function HomePage() {
                               : 'bg-gray-600 text-gray-400'
                         }`}
                       >
-                        {index < currentStep ? (
-                          <CheckCircle className="h-6 w-6" />
-                        ) : (
-                          index + 1
-                        )}
+                        {index < currentStep ? <CheckCircle className="h-6 w-6" /> : index + 1}
                       </div>
                       {index < questions.length - 1 && (
-                        <div
-                          className={`w-8 h-1 transition-all duration-300 ${
-                            index < currentStep ? 'bg-green-500' : 'bg-gray-600'
-                          }`}
-                        ></div>
+                        <div className={`w-8 h-1 transition-all duration-300 ${index < currentStep ? 'bg-green-500' : 'bg-gray-600'}`}></div>
                       )}
                     </React.Fragment>
                   ))}
@@ -493,19 +565,12 @@ export function HomePage() {
                   <CheckCircle className="h-12 w-12 text-green-400" />
                 </div>
                 <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
-                <p className="text-xl text-gray-300 mb-6">
-                  Your submission has been received successfully.
-                </p>
-                <p className="text-gray-400">
-                  We'll be in touch soon to discuss your custom solution.
-                </p>
+                <p className="text-xl text-gray-300 mb-6">Your submission has been received successfully.</p>
+                <p className="text-gray-400">We'll be in touch soon to discuss your custom solution.</p>
               </div>
             ) : (
               <div className="relative overflow-hidden">
-                <div
-                  className="flex transition-transform duration-500 ease-in-out"
-                  style={{ transform: `translateX(-${currentStep * 100}%)` }}
-                >
+                <div className="flex transition-transform duration-500 ease-in-out" style={{ transform: `translateX(-${currentStep * 100}%)` }}>
                   {questions.map((question, index) => (
                     <div key={question.id} className="w-full flex-shrink-0 px-4">
                       {question.title && (
@@ -513,26 +578,23 @@ export function HomePage() {
                           <h4 className="text-2xl sm:text-3xl font-bold mb-4">
                             {question.title}
                             {question.subtitle && (
-                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">
-                                {question.subtitle}
-                              </span>
+                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">{question.subtitle}</span>
                             )}
                           </h4>
                         </div>
                       )}
 
                       <div className="space-y-2 sm:space-y-4">
-                        {question.type !== 'multi-input' &&
-                          question.label && (
-                            <label className="block text-sm font-medium text-gray-300 mb-3">
-                              <question.icon className="inline h-4 w-4 mr-2" />
-                              {question.label} *
-                            </label>
-                          )}
+                        {question.type !== 'multi-input' && question.label && (
+                          <label className="block text-sm font-medium text-gray-300 mb-3">
+                            {question.icon && <question.icon className="inline h-4 w-4 mr-2" />}
+                            {question.label} *
+                          </label>
+                        )}
 
                         {question.type === 'multi-input' ? (
                           <div className="space-y-4 sm:space-y-6">
-                            {question.fields?.map(field => (
+                            {question.fields?.map((field) => (
                               <div key={field.id}>
                                 <label className="block text-sm font-medium text-gray-300 mb-3">
                                   <field.icon className="inline h-4 w-4 mr-2" />
@@ -600,7 +662,7 @@ export function HomePage() {
                           </div>
                         ) : question.type === 'checkbox' ? (
                           <div className="space-y-4">
-                            {question.options?.map(option => (
+                            {question.options?.map((option) => (
                               <label
                                 key={option.value}
                                 className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-[#C8A24A]/35 transition-all group"
@@ -614,9 +676,7 @@ export function HomePage() {
                                   className="mt-1 w-5 h-5 text-[#C8A24A] bg-gray-900 border-gray-600 rounded focus:ring-[#C8A24A] focus:ring-2"
                                 />
                                 <div className="flex-1">
-                                  <span className="text-white font-medium group-hover:text-[#E3C36A] transition-colors">
-                                    {option.label}
-                                  </span>
+                                  <span className="text-white font-medium group-hover:text-[#E3C36A] transition-colors">{option.label}</span>
                                 </div>
                               </label>
                             ))}
@@ -635,9 +695,7 @@ export function HomePage() {
                           />
                         )}
 
-                        {currentError && index === currentStep && (
-                          <p className="mt-2 text-sm text-red-400">{currentError}</p>
-                        )}
+                        {currentError && index === currentStep && <p className="mt-2 text-sm text-red-400">{currentError}</p>}
                       </div>
                     </div>
                   ))}
@@ -652,9 +710,7 @@ export function HomePage() {
                   onClick={handlePrevious}
                   disabled={currentStep === 0}
                   className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
-                    currentStep === 0
-                      ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                      : 'bg-gray-600 text-white hover:bg-gray-700'
+                    currentStep === 0 ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' : 'bg-gray-600 text-white hover:bg-gray-700'
                   }`}
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -702,9 +758,7 @@ export function HomePage() {
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-bold mb-6">
               Our{' '}
-              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
-                Premium Services
-              </span>
+              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Premium Services</span>
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
               Professional digital solutions designed to elevate your business and drive real results
@@ -774,9 +828,7 @@ export function HomePage() {
           </div>
 
           <div className="text-center mt-16">
-            <p className="text-lg text-gray-300 mb-8">
-              Ready to transform your business with our premium digital solutions?
-            </p>
+            <p className="text-lg text-gray-300 mb-8">Ready to transform your business with our premium digital solutions?</p>
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
@@ -804,22 +856,106 @@ export function HomePage() {
             © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
           </p>
           <div className="flex items-center justify-center gap-6">
-            <Link
-              to="/demo"
-              className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-            >
+            <Link to="/demo" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
               Try AI Agent Demos
             </Link>
 
-            <Link
-              to="/privacy-policy"
-              className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-            >
+            <Link to="/privacy-policy" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
               Privacy Policy
             </Link>
           </div>
         </div>
       </footer>
+
+      {/* ✅ Floating "Try Our AI Phone Agent" (Bottom Right) */}
+      <div className="fixed bottom-5 right-5 z-[60]">
+        <button
+          onClick={() => setPhoneModal('voice')}
+          className="group flex items-center gap-3 rounded-2xl px-4 py-3 border backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition"
+          style={{
+            borderColor: 'rgba(200, 162, 74, 0.40)',
+            backgroundColor: 'rgba(0,0,0,0.35)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(227, 195, 106, 0.65)';
+            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.45)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(200, 162, 74, 0.40)';
+            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.35)';
+          }}
+        >
+          <div
+            className="h-10 w-10 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(200, 162, 74, 0.18)' }}
+          >
+            <Phone className="h-5 w-5" style={{ color: GOLD_HOVER }} />
+          </div>
+
+          <div className="text-left">
+            <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>
+              Try Our AI Phone Agent
+            </div>
+            <div className="text-[11px] text-gray-300 leading-tight">Avery answers instantly</div>
+          </div>
+        </button>
+      </div>
+
+      {/* ✅ Phone Agent Modal */}
+      {phoneModal === 'voice' && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" data-homephone-modal="true">
+          <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60">
+              <div className="font-bold">Try Our AI Phone Agent</div>
+              <button className="text-gray-300 hover:text-white" onClick={closePhoneModal} aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
+                <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>
+                  Avery — AI Voice Agent
+                </h3>
+
+                <p className="text-gray-300">
+                  {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
+                  {voiceStatus === 'live' && 'Live — speak normally.'}
+                  {voiceStatus === 'ended' && 'Call ended.'}
+                  {voiceStatus === 'error' && 'Could not start the call.'}
+                  {voiceStatus === 'idle' && 'Ready.'}
+                </p>
+
+                {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
+
+                {/* Red hang-up button */}
+                <button
+                  className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
+                  style={{
+                    backgroundColor: '#DC2626',
+                    boxShadow: '0 18px 60px rgba(0,0,0,0.6)',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
+                  onClick={() => {
+                    try {
+                      vapiRef.current?.stop();
+                    } catch {}
+                    setVoiceStatus('ended');
+                  }}
+                  aria-label="End call"
+                >
+                  <PhoneOff className="h-10 w-10 text-white" />
+                </button>
+
+                <p className="mt-6 text-xs text-gray-400 max-w-sm">
+                  Your mic may prompt for permission. If it doesn’t connect, close and try again.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
