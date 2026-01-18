@@ -367,7 +367,7 @@ export function DynamicDemoPage() {
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
-          I built a tool that{' '}
+          I built a tool for you that{' '}
           <span className="font-semibold" style={{ color: GOLD_PRIMARY }}>
             answers your customer calls
           </span>{' '}
