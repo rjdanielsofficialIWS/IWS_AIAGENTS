@@ -539,7 +539,7 @@ export function DynamicDemoPage() {
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    Chat uses: <span className="text-gray-400">/functions/v1/vapi-public-chat</span>
+                    Powered by Infinite Wealth Solutions AI: <span className="text-gray-400">/Instant Replies</span>
                   </p>
                 </div>
               )}
