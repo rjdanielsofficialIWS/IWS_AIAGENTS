@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { SubscriptionSection } from './SubscriptionSection';
 import Vapi from '@vapi-ai/web';
+import { trackHighIntent } from '../lib/analytics';
 
 interface FormData {
   name: string;
@@ -317,12 +318,16 @@ export function HomePage() {
 
     setIsSubmitting(true);
     setSubmitStatus(null);
+    // High-intent signal: user attempted to submit the lead form
+    trackHighIntent({ name: 'form_submit', label: 'package_quote_form' });
 
     try {
       const success = await submitToWebhook(formData);
 
       if (success) {
         setSubmitStatus('success');
+        // High-intent conversion: lead successfully captured
+        trackHighIntent({ name: 'form_success', label: 'package_quote_form' });
         setFormData({
           name: '',
           email: '',
@@ -483,6 +488,8 @@ export function HomePage() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
             <button
+              data-track="cta"
+              data-track-label="Get a Package Quote"
               onClick={() => {
                 const leadCaptureSection = document.getElementById('lead-capture');
                 if (leadCaptureSection) {
@@ -498,6 +505,8 @@ export function HomePage() {
             </button>
 
             <a
+              data-track="book"
+              data-track-label="Get Started"
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
