@@ -30,7 +30,7 @@ const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents
 const GOLD_PRIMARY = '#C8A24A';
 const GOLD_HOVER = '#E3C36A';
 
-// Fine print (your exact copy)
+// Fine print (exact copy)
 const FINE_PRINT =
   'You can connect your own business phone number and update it across your website and profiles at any time.';
 
@@ -406,7 +406,6 @@ export function DynamicDemoPage() {
 
         {/* Calendly CTA (smaller + subtle) */}
         <div className="mt-5 flex flex-col items-center">
-          {/* Fine print (your exact copy) */}
           <p className="mb-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
 
           <a
@@ -464,7 +463,7 @@ export function DynamicDemoPage() {
 
                   {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
 
-                  {/* Red hang-up button (CLOSES MODAL ENTIRELY) */}
+                  {/* Red hang-up button (closes widget entirely) */}
                   <button
                     className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
                     style={{
@@ -474,12 +473,11 @@ export function DynamicDemoPage() {
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
                     onClick={() => {
-                      // End call + close the widget entirely
                       try {
                         vapiRef.current?.stop();
                       } catch {}
                       setVoiceStatus('ended');
-                      closeModal();
+                      closeModal(); // ✅ close the modal entirely
                     }}
                     aria-label="End call"
                   >
@@ -497,7 +495,7 @@ export function DynamicDemoPage() {
                     Book intro call
                   </a>
 
-                  {/* NEW fine print under the button inside the Vapi voice modal */}
+                  {/* Fine print under Book intro call (inside widget) */}
                   <p className="mt-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
                 </div>
               ) : (
