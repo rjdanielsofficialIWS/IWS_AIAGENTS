@@ -370,7 +370,7 @@ export function DynamicDemoPage() {
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
-          I built a tool that{' '}
+          I built a tool for you that{' '}
           <span className="font-semibold" style={{ color: GOLD_PRIMARY }}>
             answers your customer calls
           </span>{' '}
@@ -378,7 +378,7 @@ export function DynamicDemoPage() {
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what
+          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what
           they need — automatically.
         </div>
 
