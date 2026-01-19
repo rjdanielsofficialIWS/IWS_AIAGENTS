@@ -1,3 +1,6 @@
+import { GA4Tracker } from './components/GA4Tracker';
+import { BehaviorTracker } from './components/BehaviorTracker';
+import { ClarityLoader } from './components/ClarityLoader';
 import { MetaPixel } from './components/MetaPixel';
 import { MetaPixelTracker } from './components/MetaPixelTracker';
 import React from 'react';
