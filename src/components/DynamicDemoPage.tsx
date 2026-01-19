@@ -30,6 +30,10 @@ const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents
 const GOLD_PRIMARY = '#C8A24A';
 const GOLD_HOVER = '#E3C36A';
 
+// Fine print (your exact copy)
+const FINE_PRINT =
+  'You can connect your own business phone number and update it across your website and profiles at any time.';
+
 export function DynamicDemoPage() {
   const { slug } = useParams<{ slug: string }>();
   const targetSlug = useMemo(() => (slug || 'demo').trim(), [slug]);
@@ -249,14 +253,14 @@ export function DynamicDemoPage() {
   }, [modal, demoPage]);
 
   const closeModal = () => {
-    if (modal === 'voice') {
-      try {
-        vapiRef.current?.stop();
-      } catch {}
-      vapiRef.current = null;
-      setVoiceStatus('idle');
-      setVoiceError(null);
-    }
+    // Close entirely (voice or chat) + clean up any active voice call
+    try {
+      vapiRef.current?.stop();
+    } catch {}
+    vapiRef.current = null;
+    setVoiceStatus('idle');
+    setVoiceError(null);
+    setChatError(null);
     setModal(null);
   };
 
@@ -374,7 +378,7 @@ export function DynamicDemoPage() {
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what
+          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what
           they need — automatically.
         </div>
 
@@ -402,10 +406,8 @@ export function DynamicDemoPage() {
 
         {/* Calendly CTA (smaller + subtle) */}
         <div className="mt-5 flex flex-col items-center">
-          {/* NEW fine print */}
-          <p className="mb-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">
-            You can connect your own business phone number and update it across your website and profiles at any time.
-          </p>
+          {/* Fine print (your exact copy) */}
+          <p className="mb-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
 
           <a
             href={CALENDLY_URL}
@@ -454,7 +456,7 @@ export function DynamicDemoPage() {
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — Act like a customer.'}
+                    {voiceStatus === 'live' && 'Live — speak normally.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}
@@ -462,7 +464,7 @@ export function DynamicDemoPage() {
 
                   {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
 
-                  {/* Red hang-up button */}
+                  {/* Red hang-up button (CLOSES MODAL ENTIRELY) */}
                   <button
                     className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
                     style={{
@@ -472,10 +474,12 @@ export function DynamicDemoPage() {
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
                     onClick={() => {
+                      // End call + close the widget entirely
                       try {
                         vapiRef.current?.stop();
                       } catch {}
                       setVoiceStatus('ended');
+                      closeModal();
                     }}
                     aria-label="End call"
                   >
@@ -492,6 +496,9 @@ export function DynamicDemoPage() {
                     <Calendar className="h-4 w-4" />
                     Book intro call
                   </a>
+
+                  {/* NEW fine print under the button inside the Vapi voice modal */}
+                  <p className="mt-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
                 </div>
               ) : (
                 <div className="flex flex-col h-[420px]">
@@ -556,7 +563,7 @@ export function DynamicDemoPage() {
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    Powered By IWS: <span className="text-gray-400">You can connect your own business phone number and update it across your website and profiles at any time.</span>
+                    Chat uses: <span className="text-gray-400">/functions/v1/vapi-public-chat</span>
                   </p>
                 </div>
               )}
