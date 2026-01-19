@@ -556,7 +556,7 @@ export function DynamicDemoPage() {
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    Chat uses: <span className="text-gray-400">/functions/v1/vapi-public-chat</span>
+                    Powered By IWS: <span className="text-gray-400">/You can connect your own business phone number and update it across your website and profiles at any time.</span>
                   </p>
                 </div>
               )}
