@@ -1,8 +1,9 @@
+import { MetaPixel } from './components/MetaPixel';
+import { MetaPixelTracker } from './components/MetaPixelTracker';
 import { GA4Tracker } from './components/GA4Tracker';
 import { BehaviorTracker } from './components/BehaviorTracker';
 import { ClarityLoader } from './components/ClarityLoader';
-import { MetaPixel } from './components/MetaPixel';
-import { MetaPixelTracker } from './components/MetaPixelTracker';
+
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -58,14 +59,14 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
           <div className="space-y-4">
             <button
-              onClick={() => window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding'}
+              onClick={() => (window.location.href = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding')}
               className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25"
             >
               Book Your Onboarding Call
             </button>
 
             <button
-              onClick={() => window.location.href = '/'}
+              onClick={() => (window.location.href = '/')}
               className="w-full text-gray-400 hover:text-gray-300 transition-colors text-sm"
             >
               Back to main page
@@ -107,11 +108,7 @@ function Dashboard() {
   if (showAssistantBuilder) {
     return (
       <DashboardLayout currentPage="assistants" onPageChange={setCurrentPage}>
-        <AssistantBuilder
-          assistantId={currentAssistant?.id}
-          onBack={handleBackFromBuilder}
-          onSave={handleSaveAssistant}
-        />
+        <AssistantBuilder assistantId={currentAssistant?.id} onBack={handleBackFromBuilder} onSave={handleSaveAssistant} />
       </DashboardLayout>
     );
   }
@@ -119,12 +116,7 @@ function Dashboard() {
   return (
     <DashboardLayout currentPage={currentPage} onPageChange={setCurrentPage}>
       {currentPage === 'dashboard' && <DashboardOverview />}
-      {currentPage === 'assistants' && (
-        <AssistantsList
-          onCreateNew={handleCreateAssistant}
-          onEdit={handleEditAssistant}
-        />
-      )}
+      {currentPage === 'assistants' && <AssistantsList onCreateNew={handleCreateAssistant} onEdit={handleEditAssistant} />}
       {currentPage === 'widgets' && <WidgetManager />}
       {currentPage === 'demo-pages' && <DemoPagesManager />}
       {currentPage === 'phone-numbers' && (
@@ -191,15 +183,9 @@ function AuthPage({ isSignUp }: { isSignUp: boolean }) {
       </div>
 
       {showSignUp ? (
-        <RegisterForm
-          onSwitchToLogin={() => setShowSignUp(false)}
-          onBack={() => window.location.href = '/'}
-        />
+        <RegisterForm onSwitchToLogin={() => setShowSignUp(false)} onBack={() => (window.location.href = '/')} />
       ) : (
-        <LoginForm
-          onSwitchToRegister={() => setShowSignUp(true)}
-          onBack={() => window.location.href = '/'}
-        />
+        <LoginForm onSwitchToRegister={() => setShowSignUp(true)} onBack={() => (window.location.href = '/')} />
       )}
     </div>
   );
@@ -210,6 +196,11 @@ function AppContent() {
     <>
       <MetaPixel />
       <MetaPixelTracker />
+
+      {/* ✅ New tracking mounts */}
+      <GA4Tracker />
+      <BehaviorTracker />
+      <ClarityLoader />
 
       <Routes>
         <Route path="/" element={<HomePage />} />
