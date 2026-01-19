@@ -1,9 +1,27 @@
 import React, { useState } from 'react';
-import Vapi from '@vapi-ai/web';
-import { supabase } from '../services/vapiAI';
 import { Link } from 'react-router-dom';
-import {Brain, Zap, TrendingUp, Phone, Mail, User, Building, MessageSquare, CheckCircle, AlertCircle, Loader, ArrowLeft, ArrowRight, Target, Calendar, Users, X, PhoneOff } from 'lucide-react';
+import {
+  Brain,
+  Zap,
+  TrendingUp,
+  Phone,
+  PhoneOff,
+  Mail,
+  User,
+  Building,
+  MessageSquare,
+  CheckCircle,
+  AlertCircle,
+  Loader,
+  ArrowLeft,
+  ArrowRight,
+  Target,
+  Calendar,
+  Users,
+  X,
+} from 'lucide-react';
 import { SubscriptionSection } from './SubscriptionSection';
+import Vapi from '@vapi-ai/web';
 
 interface FormData {
   name: string;
@@ -42,19 +60,19 @@ interface Question {
   }[];
 }
 
-type ChatMsg = { role: 'assistant' | 'user'; content: string };
-
+// 🎨 Luxury Gold
 const GOLD_PRIMARY = '#C8A24A';
 const GOLD_HOVER = '#E3C36A';
-const CHROME_TOP = '#2a2a2a';
-const CHROME_MID = '#0b0b0b';
-const CHROME_BOTTOM = '#000000';
 
+// 📞 Vapi Phone Agent (Homepage floating)
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
-const HOME_ASSISTANT_ID = '76efe9e0-957c-410a-9163-75acbceec45e';
-const HOME_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Avery speaking, how may I help you?';
+const HOME_VAPI_ASSISTANT_ID = '76efe9e0-957c-410a-9163-75acbceec45e';
+const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Avery speaking, how may I help you?';
+
+type PhoneModalMode = 'voice' | null;
 
 export function HomePage() {
+  const [bgOffset, setBgOffset] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
   const [formData, setFormData] = useState<FormData>({
     name: '',
@@ -64,7 +82,7 @@ export function HomePage() {
     business: '',
     services: '',
     serviceInterest: [],
-    projectRequirements: ''
+    projectRequirements: '',
   });
   const [currentError, setCurrentError] = useState<string>('');
   const [isStepValid, setIsStepValid] = useState(false);
@@ -72,27 +90,14 @@ export function HomePage() {
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
   const [enhanceState, setEnhanceState] = useState<EnhanceState>({
     isEnhancing: false,
-    hasEnhanced: false
+    hasEnhanced: false,
   });
 
-  // Dynamic background scroll
-  const [scrollT, setScrollT] = useState(0);
-
-  // Homepage AI Agent widget
-  const [agentModalOpen, setAgentModalOpen] = useState(false);
-  const [agentMode, setAgentMode] = useState<'voice' | 'chat' | null>(null);
+  // ✅ Floating Phone Agent Modal State
+  const [phoneModal, setPhoneModal] = useState<PhoneModalMode>(null);
   const vapiRef = React.useRef<Vapi | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'live' | 'ended' | 'error'>('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
-
-  const [chatMsgs, setChatMsgs] = useState<ChatMsg[]>([
-    { role: 'assistant', content: HOME_FIRST_MESSAGE },
-  ]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
-  const [chatError, setChatError] = useState<string | null>(null);
-  const chatScrollRef = React.useRef<HTMLDivElement>(null);
-
 
   const questions: Question[] = [
     {
@@ -105,8 +110,8 @@ export function HomePage() {
       options: [
         { value: 'ai-agents', label: 'AI Voice Agents - Automate calls and bookings' },
         { value: 'lead-generation', label: 'Lead Generation - Social media marketing, content creation, and customer acquisition' },
-        { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' }
-      ]
+        { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' },
+      ],
     },
     {
       id: 'projectRequirements',
@@ -115,7 +120,7 @@ export function HomePage() {
       placeholder: 'Describe your specific needs, goals, timeline, and any special requirements...',
       rows: 4,
       icon: MessageSquare,
-      required: true
+      required: true,
     },
     {
       id: 'contactInfo',
@@ -128,7 +133,7 @@ export function HomePage() {
           type: 'input',
           placeholder: 'Your full name',
           icon: User,
-          required: true
+          required: true,
         },
         {
           id: 'email',
@@ -136,7 +141,7 @@ export function HomePage() {
           type: 'email',
           placeholder: 'your@email.com',
           icon: Mail,
-          required: true
+          required: true,
         },
         {
           id: 'phone',
@@ -144,10 +149,10 @@ export function HomePage() {
           type: 'tel',
           placeholder: '(555) 123-4567',
           icon: Phone,
-          required: true
-        }
-      ]
-    }
+          required: true,
+        },
+      ],
+    },
   ];
 
   const validateEmail = (email: string): boolean => {
@@ -247,24 +252,19 @@ export function HomePage() {
       const checkboxValue = (e.target as HTMLInputElement).value;
       const isChecked = (e.target as HTMLInputElement).checked;
 
-      setFormData(prev => ({
+      setFormData((prev) => ({
         ...prev,
         [name]: isChecked
           ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
-          : (prev[name as keyof FormData] as string[]).filter(item => item !== checkboxValue)
+          : (prev[name as keyof FormData] as string[]).filter((item) => item !== checkboxValue),
       }));
     } else {
-      setFormData(prev => ({ ...prev, [name]: value }));
+      setFormData((prev) => ({ ...prev, [name]: value }));
     }
   };
 
-  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
   const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFormData(prev => ({ ...prev, countryCode: e.target.value }));
+    setFormData((prev) => ({ ...prev, countryCode: e.target.value }));
   };
 
   const handleNext = () => {
@@ -289,9 +289,7 @@ export function HomePage() {
 
       const response = await fetch(WEBHOOK_URL, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: data.name,
           email: data.email,
@@ -300,71 +298,14 @@ export function HomePage() {
           services: data.services,
           serviceInterest: Array.isArray(data.serviceInterest) ? data.serviceInterest.join(', ') : data.serviceInterest,
           projectRequirements: data.projectRequirements,
-          timestamp: new Date().toISOString()
-        })
+          timestamp: new Date().toISOString(),
+        }),
       });
 
       return response.ok;
     } catch (error) {
       console.error('Error submitting to webhook:', error);
       return false;
-    }
-  };
-
-  const closeAgent = () => {
-    try {
-      vapiRef.current?.stop();
-    } catch {}
-    vapiRef.current = null;
-    setVoiceStatus('idle');
-    setVoiceError(null);
-    setChatError(null);
-    setAgentMode(null);
-    setAgentModalOpen(false);
-  };
-
-  const sendHomeChat = async () => {
-    const msg = chatInput.trim();
-    if (!msg || chatLoading) return;
-
-    setChatError(null);
-    setChatLoading(true);
-    setChatInput('');
-    setChatMsgs(prev => [...prev, { role: 'user', content: msg }]);
-
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      if (!supabaseUrl) throw new Error('Missing VITE_SUPABASE_URL');
-      if (!anonKey) throw new Error('Missing VITE_SUPABASE_ANON_KEY');
-
-      const publicChatUrl = `${supabaseUrl.replace(/\/$/, '')}/functions/v1/vapi-public-chat`;
-
-      const { data } = await supabase.auth.getSession();
-      const token = data?.session?.access_token || anonKey;
-
-      const res = await fetch(publicChatUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: anonKey,
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          assistantId: HOME_ASSISTANT_ID,
-          input: msg,
-        }),
-      });
-
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(json?.error || json?.message || `Chat failed (${res.status})`);
-
-      const reply = json?.response || '…';
-      setChatMsgs(prev => [...prev, { role: 'assistant', content: reply }]);
-    } catch (e: any) {
-      setChatError(e?.message || 'Chat failed');
-    } finally {
-      setChatLoading(false);
     }
   };
 
@@ -390,7 +331,7 @@ export function HomePage() {
           business: '',
           services: '',
           serviceInterest: [],
-          projectRequirements: ''
+          projectRequirements: '',
         });
       } else {
         setSubmitStatus('error');
@@ -403,33 +344,37 @@ export function HomePage() {
     }
   };
 
-
-  // Dynamic scroll effect
   React.useEffect(() => {
+    validateCurrentStep();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentStep, formData]);
+
+  // Subtle background motion on scroll (luxury gold glow)
+  React.useEffect(() => {
+    let raf = 0;
     const onScroll = () => {
-      const doc = document.documentElement;
-      const max = Math.max(1, doc.scrollHeight - window.innerHeight);
-      const t = Math.min(1, Math.max(0, window.scrollY / max));
-      setScrollT(t);
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        setBgOffset(window.scrollY * 0.15);
+        raf = 0;
+      });
     };
+
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
   }, []);
 
-  // Auto-scroll the chat
+  // ✅ Start/Stop Vapi Call when phone modal opens/closes
   React.useEffect(() => {
-    if (!chatScrollRef.current) return;
-    chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
-  }, [chatMsgs, chatLoading]);
-
-  // Start/stop voice when switching modes
-  React.useEffect(() => {
-    if (!agentModalOpen || agentMode !== 'voice') return;
+    if (phoneModal !== 'voice') return;
 
     let cancelled = false;
 
-    const start = async () => {
+    const startCall = async () => {
       try {
         setVoiceError(null);
         setVoiceStatus('connecting');
@@ -458,10 +403,11 @@ export function HomePage() {
           setVoiceError(e?.message || 'Voice error');
         });
 
-        await vapi.start(HOME_ASSISTANT_ID);
+        await vapi.start(HOME_VAPI_ASSISTANT_ID);
 
+        // Say first message immediately (your exact line)
         try {
-          await (vapi as any).say(HOME_FIRST_MESSAGE, false);
+          await (vapi as any).say(HOME_VAPI_FIRST_MESSAGE, false);
         } catch {}
       } catch (e: any) {
         if (cancelled) return;
@@ -470,7 +416,7 @@ export function HomePage() {
       }
     };
 
-    start();
+    startCall();
 
     return () => {
       cancelled = true;
@@ -481,72 +427,43 @@ export function HomePage() {
       setVoiceStatus('idle');
       setVoiceError(null);
     };
-  }, [agentModalOpen, agentMode]);
+  }, [phoneModal]);
 
-  React.useEffect(() => {
-    validateCurrentStep();
-  }, [currentStep, formData]);
+  const closePhoneModal = () => {
+    try {
+      vapiRef.current?.stop();
+    } catch {}
+    vapiRef.current = null;
+    setVoiceStatus('idle');
+    setVoiceError(null);
+    setPhoneModal(null);
+  };
 
   return (
     <div
-  className="min-h-screen text-white overflow-x-hidden"
-  style={{
-    background:
-      'linear-gradient(180deg, #2a2a2a 0%, #0b0b0b 45%, #000000 100%)',
-  }}
->
+      className="min-h-screen text-white overflow-x-hidden"
+      style={{
+        backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
+        backgroundAttachment: 'fixed',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: 'cover',
+      }}
+    >
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
+      </div>
 
-      <header className="relative z-10 py-6 px-4 sm:px-6 lg:px-8">
+      <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-between">
-            <Link to="/" className="inline-flex items-center gap-3">
-              <div
-                className="h-10 w-10 rounded-xl border flex items-center justify-center bg-black/40"
-                style={{
-                  borderColor: 'rgba(200, 162, 74, 0.45)',
-                  boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
-                }}
-              >
-                <img
-                  src="/favicon.svg"
-                  alt="IWS"
-                  className="h-6 w-6"
-                  style={{ filter: 'drop-shadow(0 6px 14px rgba(0,0,0,0.55))' }}
-                />
+          <div className="flex flex-col items-center text-center">
+            <div className="flex items-center space-x-3 mb-6">
+              <div>
+                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
+                  Infinite Wealth Solutions
+                </h1>
+                <p className="text-gray-300 text-base sm:text-lg">Digital Innovation Studio</p>
               </div>
-
-              <div className="leading-tight">
-                <div className="text-white font-extrabold text-base sm:text-lg tracking-tight">
-                  Infinite Wealth Solutions <span style={{ color: GOLD_PRIMARY }}>AI</span>
-                </div>
-                <div className="text-white/60 text-xs sm:text-sm font-semibold">
-                  Try our AI Phone Agent
-                </div>
-              </div>
-            </Link>
-
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hidden sm:inline-flex items-center gap-2 px-4 py-2 rounded-xl font-bold transition border"
-              style={{
-                borderColor: 'rgba(200, 162, 74, 0.35)',
-                color: '#ffffff',
-                backgroundColor: 'rgba(0,0,0,0.18)',
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(227, 195, 106, 0.55)';
-                e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(200, 162, 74, 0.35)';
-                e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.18)';
-              }}
-            >
-              <Calendar className="h-4 w-4" />
-              <span>Book Intro Call</span>
-            </a>
+            </div>
           </div>
         </div>
       </header>
@@ -569,15 +486,9 @@ export function HomePage() {
               onClick={() => {
                 const leadCaptureSection = document.getElementById('lead-capture');
                 if (leadCaptureSection) {
-                  leadCaptureSection.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'start'
-                  });
+                  leadCaptureSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
                 } else {
-                  window.scrollTo({
-                    top: document.body.scrollHeight,
-                    behavior: 'smooth'
-                  });
+                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
                 }
               }}
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
@@ -590,21 +501,20 @@ export function HomePage() {
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full sm:w-auto bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] hover:from-[#E3C36A] hover:to-[#C8A24A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/25 flex items-center justify-center space-x-3"
+              className="w-full sm:w-auto bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 flex items-center justify-center space-x-3"
             >
               <Calendar className="h-6 w-6" />
               <span>Get Started</span>
             </a>
           </div>
 
-          <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto">
+          <div
+            id="lead-capture"
+            className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto"
+          >
             <div className="text-center mb-12">
-              <h3 className="text-2xl sm:text-3xl font-bold mb-4">
-                Get Your Custom Solution Quote
-              </h3>
-              <p className="text-gray-300 text-base">
-                Tell us about your project and we'll create the perfect solution for your business
-              </p>
+              <h3 className="text-2xl sm:text-3xl font-bold mb-4">Get Your Custom Solution Quote</h3>
+              <p className="text-gray-300 text-base">Tell us about your project and we'll create the perfect solution for your business</p>
             </div>
 
             {submitStatus === 'success' && (
@@ -626,23 +536,19 @@ export function HomePage() {
                 <div className="flex items-center justify-center space-x-4 mb-6">
                   {questions.map((_, index) => (
                     <React.Fragment key={index}>
-                      <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
-                        index < currentStep
-                          ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
-                          : index === currentStep
-                          ? 'bg-yellow-400 text-black shadow-lg shadow-yellow-400/50'
-                          : 'bg-gray-600 text-gray-400'
-                      }`}>
-                        {index < currentStep ? (
-                          <CheckCircle className="h-6 w-6" />
-                        ) : (
-                          index + 1
-                        )}
+                      <div
+                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
+                          index < currentStep
+                            ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
+                            : index === currentStep
+                              ? 'bg-[#C8A24A] text-black shadow-lg shadow-black/40'
+                              : 'bg-gray-600 text-gray-400'
+                        }`}
+                      >
+                        {index < currentStep ? <CheckCircle className="h-6 w-6" /> : index + 1}
                       </div>
                       {index < questions.length - 1 && (
-                        <div className={`w-8 h-1 transition-all duration-300 ${
-                          index < currentStep ? 'bg-green-500' : 'bg-gray-600'
-                        }`}></div>
+                        <div className={`w-8 h-1 transition-all duration-300 ${index < currentStep ? 'bg-green-500' : 'bg-gray-600'}`}></div>
                       )}
                     </React.Fragment>
                   ))}
@@ -659,19 +565,12 @@ export function HomePage() {
                   <CheckCircle className="h-12 w-12 text-green-400" />
                 </div>
                 <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
-                <p className="text-xl text-gray-300 mb-6">
-                  Your submission has been received successfully.
-                </p>
-                <p className="text-gray-400">
-                  We'll be in touch soon to discuss your custom solution.
-                </p>
+                <p className="text-xl text-gray-300 mb-6">Your submission has been received successfully.</p>
+                <p className="text-gray-400">We'll be in touch soon to discuss your custom solution.</p>
               </div>
             ) : (
               <div className="relative overflow-hidden">
-                <div
-                  className="flex transition-transform duration-500 ease-in-out"
-                  style={{ transform: `translateX(-${currentStep * 100}%)` }}
-                >
+                <div className="flex transition-transform duration-500 ease-in-out" style={{ transform: `translateX(-${currentStep * 100}%)` }}>
                   {questions.map((question, index) => (
                     <div key={question.id} className="w-full flex-shrink-0 px-4">
                       {question.title && (
@@ -679,32 +578,29 @@ export function HomePage() {
                           <h4 className="text-2xl sm:text-3xl font-bold mb-4">
                             {question.title}
                             {question.subtitle && (
-                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">
-                                {question.subtitle}
-                              </span>
+                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">{question.subtitle}</span>
                             )}
                           </h4>
                         </div>
                       )}
 
                       <div className="space-y-2 sm:space-y-4">
-                        {question.type !== 'multi-input' && (
-                          question.label && (
-                            <label className="block text-sm font-medium text-gray-300 mb-3">
-                              <question.icon className="inline h-4 w-4 mr-2" />
-                              {question.label} *
-                            </label>
-                          )
+                        {question.type !== 'multi-input' && question.label && (
+                          <label className="block text-sm font-medium text-gray-300 mb-3">
+                            {question.icon && <question.icon className="inline h-4 w-4 mr-2" />}
+                            {question.label} *
+                          </label>
                         )}
 
                         {question.type === 'multi-input' ? (
                           <div className="space-y-4 sm:space-y-6">
-                            {question.fields?.map(field => (
+                            {question.fields?.map((field) => (
                               <div key={field.id}>
                                 <label className="block text-sm font-medium text-gray-300 mb-3">
                                   <field.icon className="inline h-4 w-4 mr-2" />
                                   {field.label} *
                                 </label>
+
                                 {field.id === 'phone' ? (
                                   <div className="flex">
                                     <select
@@ -712,7 +608,7 @@ export function HomePage() {
                                       onChange={handleCountryCodeChange}
                                       className={`px-3 py-3 bg-gray-900/50 border ${
                                         currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                      } border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
                                     >
                                       <option value="+1">🇨🇦 +1</option>
                                       <option value="+1">🇺🇸 +1</option>
@@ -735,6 +631,7 @@ export function HomePage() {
                                       <option value="+43">🇦🇹 +43</option>
                                       <option value="+32">🇧🇪 +32</option>
                                     </select>
+
                                     <input
                                       type={field.type}
                                       id={field.id}
@@ -743,7 +640,7 @@ export function HomePage() {
                                       onChange={handleInputChange}
                                       className={`flex-1 px-4 py-3 bg-gray-900/50 border ${
                                         currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                      } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
                                       placeholder="555-123-4567"
                                     />
                                   </div>
@@ -756,7 +653,7 @@ export function HomePage() {
                                     onChange={handleInputChange}
                                     className={`w-full px-4 py-3 bg-gray-900/50 border ${
                                       currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all`}
+                                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
                                     placeholder={field.placeholder}
                                   />
                                 )}
@@ -765,10 +662,10 @@ export function HomePage() {
                           </div>
                         ) : question.type === 'checkbox' ? (
                           <div className="space-y-4">
-                            {question.options?.map(option => (
+                            {question.options?.map((option) => (
                               <label
                                 key={option.value}
-                                className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-yellow-400/30 transition-all group"
+                                className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-[#C8A24A]/35 transition-all group"
                               >
                                 <input
                                   type="checkbox"
@@ -776,12 +673,10 @@ export function HomePage() {
                                   value={option.value}
                                   checked={(formData[question.id as keyof FormData] as string[])?.includes(option.value) || false}
                                   onChange={handleInputChange}
-                                  className="mt-1 w-5 h-5 text-[#C8A24A] bg-gray-900 border-gray-600 rounded focus:ring-yellow-400 focus:ring-2"
+                                  className="mt-1 w-5 h-5 text-[#C8A24A] bg-gray-900 border-gray-600 rounded focus:ring-[#C8A24A] focus:ring-2"
                                 />
                                 <div className="flex-1">
-                                  <span className="text-white font-medium group-hover:text-[#C8A24A] transition-colors">
-                                    {option.label}
-                                  </span>
+                                  <span className="text-white font-medium group-hover:text-[#E3C36A] transition-colors">{option.label}</span>
                                 </div>
                               </label>
                             ))}
@@ -795,14 +690,12 @@ export function HomePage() {
                             rows={question.rows || 4}
                             className={`w-full px-4 py-3 bg-gray-900/50 border ${
                               currentError ? 'border-red-500' : 'border-gray-600'
-                            } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 focus:border-yellow-400 transition-all resize-vertical`}
+                            } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all resize-vertical`}
                             placeholder={question.placeholder}
                           />
                         )}
 
-                        {currentError && index === currentStep && (
-                          <p className="mt-2 text-sm text-red-400">{currentError}</p>
-                        )}
+                        {currentError && index === currentStep && <p className="mt-2 text-sm text-red-400">{currentError}</p>}
                       </div>
                     </div>
                   ))}
@@ -817,9 +710,7 @@ export function HomePage() {
                   onClick={handlePrevious}
                   disabled={currentStep === 0}
                   className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
-                    currentStep === 0
-                      ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                      : 'bg-gray-600 text-white hover:bg-gray-700'
+                    currentStep === 0 ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' : 'bg-gray-600 text-white hover:bg-gray-700'
                   }`}
                 >
                   <ArrowLeft className="h-5 w-5" />
@@ -830,7 +721,7 @@ export function HomePage() {
                   <button
                     onClick={handleSubmit}
                     disabled={isSubmitting || !isStepValid}
-                    className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] hover:from-[#E3C36A] hover:to-[#C8A24A] text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-center flex-shrink-0 min-w-0"
+                    className="bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-center flex-shrink-0 min-w-0"
                   >
                     {isSubmitting ? (
                       <>
@@ -850,7 +741,7 @@ export function HomePage() {
                     type="button"
                     onClick={handleNext}
                     disabled={!isStepValid}
-                    className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] hover:from-[#E3C36A] hover:to-[#C8A24A] text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-yellow-400/20 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 flex-shrink-0"
+                    className="bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 flex-shrink-0"
                   >
                     <span>Next</span>
                     <ArrowRight className="h-5 w-5" />
@@ -866,7 +757,8 @@ export function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-              Our <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Premium Services</span>
+              Our{' '}
+              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Premium Services</span>
             </h2>
             <p className="text-xl text-gray-300 max-w-3xl mx-auto">
               Professional digital solutions designed to elevate your business and drive real results
@@ -874,8 +766,8 @@ export function HomePage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
-              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
+              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
                 <Brain className="h-10 w-10 text-[#C8A24A]" />
               </div>
               <h3 className="text-2xl font-bold mb-4 text-center">AI Voice Agents</h3>
@@ -894,8 +786,8 @@ export function HomePage() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-yellow-400/50 transition-all duration-300 group">
-              <div className="bg-yellow-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-yellow-400/20 transition-colors">
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
+              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
                 <TrendingUp className="h-10 w-10 text-[#C8A24A]" />
               </div>
               <h3 className="text-2xl font-bold mb-4 text-center">Lead Generation</h3>
@@ -914,9 +806,9 @@ export function HomePage() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-green-400/50 transition-all duration-300 group">
-              <div className="bg-green-400/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-green-400/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-green-400" />
+            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
+              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
+                <TrendingUp className="h-10 w-10 text-[#C8A24A]" />
               </div>
               <h3 className="text-2xl font-bold mb-4 text-center">Custom Website Development</h3>
               <p className="text-gray-400 text-center leading-relaxed">
@@ -936,14 +828,12 @@ export function HomePage() {
           </div>
 
           <div className="text-center mt-16">
-            <p className="text-lg text-gray-300 mb-8">
-              Ready to transform your business with our premium digital solutions?
-            </p>
+            <p className="text-lg text-gray-300 mb-8">Ready to transform your business with our premium digital solutions?</p>
             <a
               href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] hover:from-[#E3C36A] hover:to-[#C8A24A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-yellow-400/20 flex items-center justify-center space-x-3 mx-auto"
+              className="bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/30 flex items-center justify-center space-x-3 mx-auto"
             >
               <Calendar className="h-6 w-6" />
               <span>Schedule Your Consultation</span>
@@ -953,197 +843,6 @@ export function HomePage() {
       </section>
 
       <SubscriptionSection />
-
-      {/* Floating AI Phone Agent */}
-      <div className="fixed bottom-5 right-5 z-50">
-        <button
-          onClick={() => {
-            setAgentModalOpen(true);
-            setAgentMode(null);
-            setChatError(null);
-            setVoiceError(null);
-            setChatMsgs([{ role: 'assistant', content: HOME_FIRST_MESSAGE }]);
-          }}
-          className="group inline-flex items-center gap-3 px-4 py-3 rounded-2xl border bg-black/40 backdrop-blur-md transition hover:scale-[1.02]"
-          style={{
-            borderColor: 'rgba(200,162,74,0.45)',
-            boxShadow: '0 16px 60px rgba(0,0,0,0.65)',
-          }}
-        >
-          <span
-            className="h-10 w-10 rounded-xl flex items-center justify-center"
-            style={{
-              background: 'linear-gradient(135deg, rgba(200,162,74,0.18), rgba(227,195,106,0.08))',
-              border: '1px solid rgba(200,162,74,0.35)',
-            }}
-          >
-            <Phone className="h-5 w-5" style={{ color: GOLD_PRIMARY }} />
-          </span>
-          <div className="text-left">
-            <div className="text-sm font-extrabold text-white">Try Our AI Phone Agent</div>
-            <div className="text-[12px] text-white/60 font-semibold">Avery answers calls 24/7</div>
-          </div>
-        </button>
-      </div>
-
-      {agentModalOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4" data-demo-modal="true">
-          <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60">
-              <div className="font-extrabold">Try Our AI Phone Agent</div>
-              <button className="text-gray-300 hover:text-white" onClick={closeAgent} aria-label="Close">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="p-5">
-              {agentMode === null && (
-                <div className="text-center">
-                  <div className="text-white/70 font-semibold">Choose how you want to try Avery:</div>
-
-                  <div className="mt-4 flex gap-3 justify-center flex-wrap">
-                    <button
-                      onClick={() => setAgentMode('voice')}
-                      className="px-6 py-3 rounded-xl font-extrabold text-black transition"
-                      style={{ backgroundColor: GOLD_PRIMARY }}
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = GOLD_HOVER)}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = GOLD_PRIMARY)}
-                    >
-                      Call Me
-                    </button>
-
-                    <button
-                      onClick={() => setAgentMode('chat')}
-                      className="px-6 py-3 rounded-xl font-extrabold bg-white text-black hover:bg-gray-100 transition"
-                    >
-                      Text Me
-                    </button>
-                  </div>
-
-                  <div className="mt-4 text-xs text-white/60">No pressure — this is just a quick demo.</div>
-                </div>
-              )}
-
-              {agentMode === 'voice' && (
-                <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
-                  <h3 className="text-xl font-extrabold mb-2" style={{ color: GOLD_PRIMARY }}>Avery (Live Call)</h3>
-
-                  <p className="text-white/75">
-                    {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — speak normally.'}
-                    {voiceStatus === 'ended' && 'Call ended.'}
-                    {voiceStatus === 'error' && 'Could not start the call.'}
-                    {voiceStatus === 'idle' && 'Ready.'}
-                  </p>
-
-                  {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
-
-                  <button
-                    className="mt-8 w-24 h-24 rounded-full transition flex items-center justify-center"
-                    style={{
-                      backgroundColor: '#DC2626',
-                      boxShadow: '0 18px 60px rgba(0,0,0,0.6)',
-                    }}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
-                    onClick={() => {
-                      try {
-                        vapiRef.current?.stop();
-                      } catch {}
-                      setVoiceStatus('ended');
-                      closeAgent();
-                    }}
-                    aria-label="End call"
-                  >
-                    <PhoneOff className="h-9 w-9 text-white" />
-                  </button>
-
-                  <button
-                    className="mt-6 text-sm font-bold underline text-white/70 hover:text-white"
-                    onClick={() => {
-                      try {
-                        vapiRef.current?.stop();
-                      } catch {}
-                      vapiRef.current = null;
-                      setVoiceStatus('idle');
-                      setVoiceError(null);
-                      setAgentMode(null);
-                    }}
-                  >
-                    Back
-                  </button>
-                </div>
-              )}
-
-              {agentMode === 'chat' && (
-                <div className="flex flex-col h-[420px]">
-                  <div
-                    ref={chatScrollRef}
-                    className="flex-1 overflow-y-auto border border-gray-700/60 rounded-xl p-4 bg-black/40"
-                  >
-                    {chatMsgs.map((m, i) => (
-                      <div key={i} className={`mb-2 ${m.role === 'user' ? 'text-right' : 'text-left'}`}>
-                        <span
-                          className={`inline-block px-4 py-2 rounded-xl ${
-                            m.role === 'user'
-                              ? 'bg-white text-black'
-                              : 'bg-white/10 text-white border border-gray-700/50'
-                          }`}
-                        >
-                          {m.content}
-                        </span>
-                      </div>
-                    ))}
-
-                    {chatLoading && (
-                      <div className="mb-2 text-left">
-                        <span className="inline-block px-4 py-2 rounded-xl bg-white/10 text-white border border-gray-700/50">
-                          Typing…
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {chatError && <div className="mt-2 text-xs text-red-300">{chatError}</div>}
-
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      value={chatInput}
-                      onChange={(e) => setChatInput(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && sendHomeChat()}
-                      className="flex-1 bg-black/40 border border-gray-700/60 rounded-xl px-4 py-2 text-white placeholder:text-gray-500 outline-none"
-                      style={{ borderColor: 'rgba(255,255,255,0.18)' }}
-                      placeholder="Type your message…"
-                    />
-                    <button
-                      onClick={sendHomeChat}
-                      disabled={chatLoading || !chatInput.trim()}
-                      className="px-4 py-2 bg-white text-black rounded-xl font-extrabold disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-100 transition"
-                    >
-                      Send
-                    </button>
-                  </div>
-
-                  <button
-                    className="mt-4 text-sm font-bold underline text-white/70 hover:text-white"
-                    onClick={() => setAgentMode(null)}
-                  >
-                    Back
-                  </button>
-
-                  <button
-                    className="mt-2 text-sm font-bold underline text-white/70 hover:text-white"
-                    onClick={closeAgent}
-                  >
-                    Close
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
 
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
         <div className="max-w-7xl mx-auto text-center">
@@ -1157,22 +856,106 @@ export function HomePage() {
             © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
           </p>
           <div className="flex items-center justify-center gap-6">
-  <Link
-    to="/demo"
-    className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-  >
-    Try AI Agent Demos
-  </Link>
+            <Link to="/demo" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
+              Try AI Agent Demos
+            </Link>
 
-  <Link
-    to="/privacy-policy"
-    className="text-gray-500 hover:text-gray-400 text-xs transition-colors"
-  >
-    Privacy Policy
-  </Link>
-</div>
+            <Link to="/privacy-policy" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
+              Privacy Policy
+            </Link>
+          </div>
         </div>
       </footer>
+
+      {/* ✅ Floating "Try Our AI Phone Agent" (Bottom Right) */}
+      <div className="fixed bottom-5 right-5 z-[60]">
+        <button
+          onClick={() => setPhoneModal('voice')}
+          className="group flex items-center gap-3 rounded-2xl px-4 py-3 border backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition"
+          style={{
+            borderColor: 'rgba(200, 162, 74, 0.40)',
+            backgroundColor: 'rgba(0,0,0,0.35)',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(227, 195, 106, 0.65)';
+            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.45)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = 'rgba(200, 162, 74, 0.40)';
+            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.35)';
+          }}
+        >
+          <div
+            className="h-10 w-10 rounded-xl flex items-center justify-center"
+            style={{ backgroundColor: 'rgba(200, 162, 74, 0.18)' }}
+          >
+            <Phone className="h-5 w-5" style={{ color: GOLD_HOVER }} />
+          </div>
+
+          <div className="text-left">
+            <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>
+              Try Our AI Phone Agent
+            </div>
+            <div className="text-[11px] text-gray-300 leading-tight">Avery answers instantly</div>
+          </div>
+        </button>
+      </div>
+
+      {/* ✅ Phone Agent Modal */}
+      {phoneModal === 'voice' && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" data-homephone-modal="true">
+          <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60">
+              <div className="font-bold">Try Our AI Phone Agent</div>
+              <button className="text-gray-300 hover:text-white" onClick={closePhoneModal} aria-label="Close">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5">
+              <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
+                <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>
+                  Avery — AI Voice Agent
+                </h3>
+
+                <p className="text-gray-300">
+                  {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
+                  {voiceStatus === 'live' && 'Live — speak normally.'}
+                  {voiceStatus === 'ended' && 'Call ended.'}
+                  {voiceStatus === 'error' && 'Could not start the call.'}
+                  {voiceStatus === 'idle' && 'Ready.'}
+                </p>
+
+                {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
+
+                {/* Red hang-up button */}
+                <button
+                  className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
+                  style={{
+                    backgroundColor: '#DC2626',
+                    boxShadow: '0 18px 60px rgba(0,0,0,0.6)',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
+                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
+                  onClick={() => {
+                    try {
+                      vapiRef.current?.stop();
+                    } catch {}
+                    setVoiceStatus('ended');
+                  }}
+                  aria-label="End call"
+                >
+                  <PhoneOff className="h-10 w-10 text-white" />
+                </button>
+
+                <p className="mt-6 text-xs text-gray-400 max-w-sm">
+                  Your mic may prompt for permission. If it doesn’t connect, close and try again.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
