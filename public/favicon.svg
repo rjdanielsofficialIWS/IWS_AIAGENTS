@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#8F6B1E"/>
+      <stop offset="40%" stop-color="#C8A24A"/>
+      <stop offset="75%" stop-color="#E3C36A"/>
+      <stop offset="100%" stop-color="#A77D27"/>
+    </linearGradient>
+
+    <radialGradient id="bg" cx="40%" cy="30%" r="80%">
+      <stop offset="0%" stop-color="#262626"/>
+      <stop offset="60%" stop-color="#0b0b0b"/>
+      <stop offset="100%" stop-color="#000000"/>
+    </radialGradient>
+
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="128" fill="url(#bg)"/>
+
+  <path
+    d="M256 86
+       C306 110 352 116 388 126
+       V258
+       C388 320 326 368 256 418
+       C186 368 124 320 124 258
+       V126
+       C160 116 206 110 256 86 Z"
+    fill="none"
+    stroke="url(#gold)"
+    stroke-width="18"
+    filter="url(#glow)"
+  />
+
+  <path
+    d="M256 114
+       C300 134 336 140 362 148
+       V254
+       C362 304 308 340 256 378
+       C204 340 150 304 150 254
+       V148
+       C176 140 212 134 256 114 Z"
+    fill="#0b0b0b"
+    stroke="url(#gold)"
+    stroke-width="7"
+    opacity="0.9"
+  />
+
+  <text
+    x="256"
+    y="268"
+    dx="-2"
+    dy="2"
+    text-anchor="middle"
+    dominant-baseline="middle"
+    font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial"
+    font-size="84"
+    font-weight="900"
+    letter-spacing="4"
+    fill="url(#gold)">
+    IWS
+  </text>
+</svg>
