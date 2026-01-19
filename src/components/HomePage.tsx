@@ -454,19 +454,18 @@ export function HomePage() {
       </div>
 
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex items-center space-x-3 mb-6">
-              <div>
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
-                  Infinite Wealth Solutions
-                </h1>
-                <p className="text-gray-300 text-base sm:text-lg">Digital Innovation Studio</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </header>
+  <div className="max-w-7xl mx-auto">
+    <div className="flex justify-center">
+      <Link to="/" className="inline-flex items-center">
+        <img
+          src="/logo.svg"
+          alt="Infinite Wealth Solutions AI"
+          className="h-14 sm:h-16 md:h-20 w-auto"
+        />
+      </Link>
+    </div>
+  </div>
+</header>
 
       <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
