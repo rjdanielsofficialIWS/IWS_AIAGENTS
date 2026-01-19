@@ -5,7 +5,6 @@ import {
   Loader,
   AlertCircle,
   X,
-  Phone,
   PhoneOff,
   MessageSquare,
   Calendar,
@@ -367,7 +366,7 @@ export function DynamicDemoPage() {
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
-          I built a tool for you that{' '}
+          I built a tool that{' '}
           <span className="font-semibold" style={{ color: GOLD_PRIMARY }}>
             answers your customer calls
           </span>{' '}
@@ -375,7 +374,7 @@ export function DynamicDemoPage() {
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what
+          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what
           they need — automatically.
         </div>
 
@@ -389,8 +388,7 @@ export function DynamicDemoPage() {
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = GOLD_HOVER)}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = GOLD_PRIMARY)}
           >
-            <Phone className="h-5 w-5" />
-            Call Me
+            <span>Call Me</span>
           </button>
 
           <button
@@ -398,12 +396,18 @@ export function DynamicDemoPage() {
             className="px-8 py-4 bg-white text-black font-bold rounded-2xl hover:bg-gray-100 transition inline-flex items-center gap-3"
           >
             <MessageSquare className="h-5 w-5" />
-            Text Me
+            <span>Text Me</span>
           </button>
         </div>
 
-        {/* Smaller + more subtle Calendly CTA */}
+        {/* Calendly CTA (smaller + subtle) */}
         <div className="mt-5 flex flex-col items-center">
+          {/* NEW fine print */}
+          <p className="mb-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">
+            You can connect your own business phone number and update it across your website, Google profile, and
+            listings at any time.
+          </p>
+
           <a
             href={CALENDLY_URL}
             target="_blank"
@@ -451,7 +455,7 @@ export function DynamicDemoPage() {
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — Act like a customer.'}
+                    {voiceStatus === 'live' && 'Live — speak normally.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}
@@ -479,7 +483,6 @@ export function DynamicDemoPage() {
                     <PhoneOff className="h-10 w-10 text-white" />
                   </button>
 
-                  {/* Optional: subtle CTA inside modal too */}
                   <a
                     href={CALENDLY_URL}
                     target="_blank"
