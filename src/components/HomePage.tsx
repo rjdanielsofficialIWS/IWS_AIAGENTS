@@ -489,13 +489,12 @@ export function HomePage() {
 
   return (
     <div
-      className="min-h-screen text-white overflow-x-hidden"
-      style={{
-        backgroundImage: `radial-gradient(1000px 520px at ${50 + scrollT * 18}% ${-220 + scrollT * 520}px, rgba(200,162,74,0.22), transparent 62%),
-radial-gradient(900px 520px at ${18 + (1 - scrollT) * 22}% ${160 + (1 - scrollT) * 320}px, rgba(227,195,106,0.12), transparent 64%),
-linear-gradient(to bottom, ${CHROME_TOP}, ${CHROME_MID}, ${CHROME_BOTTOM})`,
-      }}
-    >
+  className="min-h-screen text-white overflow-x-hidden"
+  style={{
+    background:
+      'linear-gradient(180deg, #2a2a2a 0%, #0b0b0b 45%, #000000 100%)',
+  }}
+>
 
       <header className="relative z-10 py-6 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
