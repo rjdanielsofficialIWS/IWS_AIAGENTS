@@ -374,7 +374,7 @@ export function DynamicDemoPage() {
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          It&apos;s a robot that talks to your customers on the phone, answers their questions, and helps them get what
+          It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what
           they need — automatically.
         </div>
 
@@ -404,8 +404,7 @@ export function DynamicDemoPage() {
         <div className="mt-5 flex flex-col items-center">
           {/* NEW fine print */}
           <p className="mb-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">
-            You can connect your own business phone number and update it across your website, Google profile, and
-            listings at any time.
+            You can connect your own business phone number and update it across your website and profiles at any time.
           </p>
 
           <a
@@ -455,7 +454,7 @@ export function DynamicDemoPage() {
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — speak normally.'}
+                    {voiceStatus === 'live' && 'Live — Act like a customer.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}
