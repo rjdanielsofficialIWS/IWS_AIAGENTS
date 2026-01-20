@@ -8,7 +8,6 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { HomePage } from './components/HomePage';
-import { DemoPage } from './components/DemoPage';
 import { DynamicDemoPage } from './components/DynamicDemoPage';
 import { OnboardingBookingPage } from './components/OnboardingBookingPage';
 import { LoginForm } from './components/auth/LoginForm';
