@@ -5,6 +5,7 @@ import {
   Loader,
   AlertCircle,
   X,
+  Phone,
   PhoneOff,
   MessageSquare,
   Calendar,
@@ -26,11 +27,10 @@ type ModalMode = 'voice' | 'chat' | null;
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
 
-// Luxury Gold
-const GOLD_PRIMARY = '#C8A24A';
-const GOLD_HOVER = '#E3C36A';
+// ✅ Slightly richer/less dull gold
+const GOLD_PRIMARY = '#D6B25E'; // slightly brighter + richer
+const GOLD_HOVER = '#F0D27C'; // warmer hover gold
 
-// Fine print (exact copy)
 const FINE_PRINT =
   'You can connect your own business phone number and update it across your website and profiles at any time.';
 
@@ -253,7 +253,6 @@ export function DynamicDemoPage() {
   }, [modal, demoPage]);
 
   const closeModal = () => {
-    // Close entirely (voice or chat) + clean up any active voice call
     try {
       vapiRef.current?.stop();
     } catch {}
@@ -351,7 +350,7 @@ export function DynamicDemoPage() {
       className="min-h-screen text-white"
       style={{
         backgroundImage:
-          'radial-gradient(1200px 600px at 50% -200px, rgba(200, 162, 74, 0.18), transparent 60%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)',
+          'radial-gradient(1200px 600px at 50% -200px, rgba(214, 178, 94, 0.18), transparent 60%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)',
       }}
     >
       <header className="px-6 py-6">
@@ -363,7 +362,7 @@ export function DynamicDemoPage() {
       <main className="max-w-3xl mx-auto text-center px-6 pb-16">
         <h1 className="text-5xl font-extrabold mt-10">
           Hey{' '}
-          <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
+          <span className="bg-gradient-to-r from-[#D6B25E] to-[#F0D27C] bg-clip-text text-transparent font-extrabold">
             {displayName}
           </span>
           ,
@@ -371,7 +370,7 @@ export function DynamicDemoPage() {
 
         <p className="mt-6 text-xl text-gray-200">
           I built a tool for you that{' '}
-          <span className="font-semibold" style={{ color: GOLD_PRIMARY }}>
+          <span className="font-bold" style={{ color: GOLD_PRIMARY }}>
             answers your customer calls
           </span>{' '}
           for you.
@@ -385,6 +384,7 @@ export function DynamicDemoPage() {
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center flex-wrap">
+          {/* ✅ Call Me now has a phone icon */}
           <button
             onClick={() => setModal('voice')}
             className="px-8 py-4 text-black font-bold rounded-2xl transition inline-flex items-center gap-3"
@@ -392,6 +392,7 @@ export function DynamicDemoPage() {
             onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = GOLD_HOVER)}
             onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = GOLD_PRIMARY)}
           >
+            <Phone className="h-5 w-5" />
             <span>Call Me</span>
           </button>
 
@@ -416,16 +417,16 @@ export function DynamicDemoPage() {
             data-track-label="Book intro call"
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition border"
             style={{
-              borderColor: 'rgba(200, 162, 74, 0.45)',
+              borderColor: 'rgba(214, 178, 94, 0.55)',
               color: GOLD_HOVER,
               backgroundColor: 'rgba(0,0,0,0.10)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(227, 195, 106, 0.65)';
+              e.currentTarget.style.borderColor = 'rgba(240, 210, 124, 0.75)';
               e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(200, 162, 74, 0.45)';
+              e.currentTarget.style.borderColor = 'rgba(214, 178, 94, 0.55)';
               e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.10)';
             }}
           >
@@ -479,7 +480,7 @@ export function DynamicDemoPage() {
                         vapiRef.current?.stop();
                       } catch {}
                       setVoiceStatus('ended');
-                      closeModal(); // ✅ close the modal entirely
+                      closeModal();
                     }}
                     aria-label="End call"
                   >
@@ -499,7 +500,6 @@ export function DynamicDemoPage() {
                     Book intro call
                   </a>
 
-                  {/* Fine print under Book intro call (inside widget) */}
                   <p className="mt-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
                 </div>
               ) : (
