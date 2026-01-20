@@ -92,6 +92,8 @@ export function SubscriptionSection() {
                 href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
                 target="_blank"
                 rel="noopener noreferrer"
+                data-track="book"
+                data-track-label={plan.name}
                 className={`block w-full text-center py-3 px-6 rounded-xl font-bold transition-all ${
                   plan.popular
                     ? 'bg-[#C8A24A] text-black hover:bg-[#E3C36A]'
