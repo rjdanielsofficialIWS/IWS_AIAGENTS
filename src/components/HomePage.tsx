@@ -446,62 +446,50 @@ export function HomePage() {
 
   return (
     <div
-  className="min-h-screen text-white overflow-x-hidden"
-  style={{
-    backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
-    backgroundAttachment: 'fixed',
-    backgroundRepeat: 'no-repeat',
-    backgroundSize: 'cover',
-  }}
->
-  {/* Gold shimmer animation (homepage hero only) */}
-  <style>
-    {`
-      .gold-shimmer {
-        background-image: linear-gradient(
-          110deg,
-          #b9892b 0%,
-          #f7dc8a 20%,
-          #ffffff 30%,
-          #f1d27b 40%,
-          #b9892b 60%,
-          #f7dc8a 80%,
-          #ffffff 90%,
-          #b9892b 100%
-        );
-        background-size: 240% 100%;
-        background-position: 0% 50%;
-        -webkit-background-clip: text;
-        background-clip: text;
-        color: transparent;
-        animation: goldShimmerSweep 4.8s ease-in-out infinite;
-        filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.12));
-      }
+      className="min-h-screen text-white overflow-x-hidden"
+      style={{
+        backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
+        backgroundAttachment: 'fixed',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: 'cover',
+      }}
+    >
+      {/* Gold shimmer animation (homepage hero) */}
+      <style>
+        {`
+          .gold-shimmer {
+            background-image: linear-gradient(
+              110deg,
+              #b9892b 0%,
+              #f7dc8a 20%,
+              #ffffff 30%,
+              #f1d27b 40%,
+              #b9892b 60%,
+              #f7dc8a 80%,
+              #ffffff 90%,
+              #b9892b 100%
+            );
+            background-size: 240% 100%;
+            background-position: 0% 50%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: goldShimmerSweep 4.8s ease-in-out infinite;
+            filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.12));
+          }
 
-      @keyframes goldShimmerSweep {
-        0% { background-position: 0% 50%; }
-        55% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-      }
+          @keyframes goldShimmerSweep {
+            0% { background-position: 0% 50%; }
+            55% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+          }
 
-      @media (prefers-reduced-motion: reduce) {
-        .gold-shimmer { animation: none; }
-      }
-    `}
-  </style>
+          @media (prefers-reduced-motion: reduce) {
+            .gold-shimmer { animation: none; }
+          }
+        `}
+      </style>
 
-  {/* Hero content */}
-  <div className="relative z-10 max-w-6xl mx-auto px-6 pt-32 pb-24 text-center">
-    <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold leading-tight">
-      <span className="gold-shimmer block">
-        Infinite Wealth Solutions
-      </span>
-      <span className="block mt-3 text-white font-bold">
-        Transform your business with AI
-      </span>
-    </h1>
-  </div>
-</div>
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
       </div>
@@ -524,10 +512,8 @@ export function HomePage() {
       <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-8 leading-tight">
-            Transform Your Business with{' '}
-            <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
-              Cutting-Edge Digital Solutions
-            </span>
+            <span className="gold-shimmer block font-extrabold">Infinite Wealth Solutions</span>
+            <span className="block mt-3 text-white font-bold">Transform your business with AI</span>
           </h2>
 
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
