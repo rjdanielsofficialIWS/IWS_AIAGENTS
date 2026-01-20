@@ -498,12 +498,6 @@ export function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center text-center">
             <div className="flex items-center space-x-3 mb-6">
-              <div>
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
-                  Infinite Wealth Solutions
-                </h1>
-                <p className="text-gray-300 text-base sm:text-lg">Digital Innovation Studio</p>
-              </div>
             </div>
           </div>
         </div>
