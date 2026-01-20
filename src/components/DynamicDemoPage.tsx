@@ -28,8 +28,8 @@ const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
 
 // ✅ Slightly richer/less dull gold
-const GOLD_PRIMARY = '#D6B25E'; // slightly brighter + richer
-const GOLD_HOVER = '#F0D27C'; // warmer hover gold
+const GOLD_PRIMARY = '#D6B25E';
+const GOLD_HOVER = '#F0D27C';
 
 const FINE_PRINT =
   'You can connect your own business phone number and update it across your website and profiles at any time.';
@@ -43,6 +43,9 @@ export function DynamicDemoPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [modal, setModal] = useState<ModalMode>(null);
+
+  // ✅ Match HomePage desktop background “glow motion”
+  const [bgOffset, setBgOffset] = useState(0);
 
   // Voice
   const vapiRef = useRef<Vapi | null>(null);
@@ -63,6 +66,25 @@ export function DynamicDemoPage() {
       .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
       .join(' ');
   }, [targetSlug]);
+
+  // ✅ Same scroll offset behavior as HomePage
+  useEffect(() => {
+    let raf = 0;
+    const onScroll = () => {
+      if (raf) return;
+      raf = window.requestAnimationFrame(() => {
+        setBgOffset(window.scrollY * 0.15);
+        raf = 0;
+      });
+    };
+
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      if (raf) window.cancelAnimationFrame(raf);
+    };
+  }, []);
 
   // Remove any floating Vapi launcher widgets (but don't mess with modal content)
   const nukeVapiLauncher = () => {
@@ -347,62 +369,34 @@ export function DynamicDemoPage() {
 
   return (
     <div
-      className="min-h-screen text-white"
+      className="min-h-screen text-white overflow-x-hidden"
       style={{
-        backgroundImage:
-          'radial-gradient(1200px 600px at 50% -200px, rgba(214, 178, 94, 0.18), transparent 60%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)',
+        backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
+        backgroundAttachment: 'fixed',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: 'cover',
       }}
     >
-      {/* ✅ Gold shimmer animation (only affects elements with className="gold-shimmer") */}
-      <style>
-        {`
-          .gold-shimmer {
-            background-image: linear-gradient(
-              110deg,
-              #b9892b 0%,
-              #f7dc8a 20%,
-              #ffffff 30%,
-              #f1d27b 40%,
-              #b9892b 60%,
-              #f7dc8a 80%,
-              #ffffff 90%,
-              #b9892b 100%
-            );
-            background-size: 240% 100%;
-            background-position: 0% 50%;
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            animation: goldShimmerSweep 4.8s ease-in-out infinite;
-            filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.10));
-          }
+      {/* ✅ Same overlay layer as HomePage */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
+      </div>
 
-          @keyframes goldShimmerSweep {
-            0% { background-position: 0% 50%; }
-            55% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            .gold-shimmer { animation: none; }
-          }
-        `}
-      </style>
-
-      <header className="px-6 py-6">
+      <header className="relative z-10 px-6 py-6">
         <Link to="/" className="flex items-center text-gray-400 hover:text-white">
           <ArrowLeft className="h-5 w-5 mr-2" /> Back
         </Link>
       </header>
 
-      <main className="max-w-3xl mx-auto text-center px-6 pb-16">
+      <main className="relative z-10 max-w-3xl mx-auto text-center px-6 pb-16">
         <h1 className="text-5xl font-extrabold mt-10">
           Hey{' '}
-          <span className="gold-shimmer font-extrabold">{displayName}</span>
+          <span className="bg-gradient-to-r from-[#D6B25E] to-[#F0D27C] bg-clip-text text-transparent font-extrabold">
+            {displayName}
+          </span>
           ,
         </h1>
 
-        {/* ✅ Keep this static gold (NO shimmer) */}
         <p className="mt-6 text-xl text-gray-200">
           I built a tool for you that{' '}
           <span className="font-bold" style={{ color: GOLD_PRIMARY }}>
@@ -451,6 +445,7 @@ export function DynamicDemoPage() {
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition border"
             style={{
               borderColor: 'rgba(214, 178, 94, 0.55)',
+              color: GOLD_HOVER,
               backgroundColor: 'rgba(0,0,0,0.10)',
             }}
             onMouseEnter={(e) => {
@@ -463,7 +458,7 @@ export function DynamicDemoPage() {
             }}
           >
             <Calendar className="h-3.5 w-3.5" />
-            <span className="gold-shimmer font-bold">Book intro call</span>
+            Book intro call
           </a>
 
           <p className="mt-1 text-[11px] text-gray-400">Quick intro + we’ll show how it fits.</p>
@@ -483,8 +478,8 @@ export function DynamicDemoPage() {
             <div className="p-5">
               {modal === 'voice' ? (
                 <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
-                  <h3 className="text-xl font-bold mb-2">
-                    <span className="gold-shimmer">AI Voice Agent</span>
+                  <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>
+                    AI Voice Agent
                   </h3>
 
                   <p className="text-gray-300">
@@ -527,7 +522,7 @@ export function DynamicDemoPage() {
                     style={{ color: GOLD_HOVER }}
                   >
                     <Calendar className="h-4 w-4" />
-                    <span className="gold-shimmer font-bold">Book intro call</span>
+                    Book intro call
                   </a>
 
                   <p className="mt-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
@@ -592,7 +587,7 @@ export function DynamicDemoPage() {
                       style={{ color: GOLD_HOVER }}
                     >
                       <Calendar className="h-4 w-4" />
-                      <span className="gold-shimmer font-bold">Book intro call</span>
+                      Book intro call
                     </a>
                   </div>
 
