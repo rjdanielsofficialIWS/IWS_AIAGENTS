@@ -203,7 +203,6 @@ function AppContent() {
 
       <Routes>
         <Route path="/" element={<HomePage />} />
-        <Route path="/demos" element={<DemoPage />} />
         <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/login" element={<AuthPage isSignUp={false} />} />
