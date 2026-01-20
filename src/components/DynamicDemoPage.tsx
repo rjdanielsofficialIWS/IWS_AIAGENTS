@@ -27,9 +27,9 @@ type ModalMode = 'voice' | 'chat' | null;
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
 
-// ✅ Slightly richer/less dull gold
-const GOLD_PRIMARY = '#D6B25E'; // slightly brighter + richer
-const GOLD_HOVER = '#F0D27C'; // warmer hover gold
+// ✅ Richer base gold (still luxury)
+const GOLD_PRIMARY = '#D6B25E';
+const GOLD_HOVER = '#F0D27C';
 
 const FINE_PRINT =
   'You can connect your own business phone number and update it across your website and profiles at any time.';
@@ -353,6 +353,43 @@ export function DynamicDemoPage() {
           'radial-gradient(1200px 600px at 50% -200px, rgba(214, 178, 94, 0.18), transparent 60%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)',
       }}
     >
+      {/* ✅ Shiny gold “sweep” animation (applies to any element with className="gold-shine") */}
+      <style>
+        {`
+          .gold-shine {
+            background-image: linear-gradient(
+              110deg,
+              #b9892b 0%,
+              #f7dc8a 18%,
+              #ffffff 25%,
+              #f1d27b 34%,
+              #b9892b 55%,
+              #f7dc8a 72%,
+              #ffffff 78%,
+              #f1d27b 86%,
+              #b9892b 100%
+            );
+            background-size: 240% 100%;
+            background-position: 0% 50%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: goldShine 3.2s ease-in-out infinite;
+            filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.10));
+          }
+
+          @keyframes goldShine {
+            0% { background-position: 0% 50%; }
+            55% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .gold-shine { animation: none; }
+          }
+        `}
+      </style>
+
       <header className="px-6 py-6">
         <Link to="/" className="flex items-center text-gray-400 hover:text-white">
           <ArrowLeft className="h-5 w-5 mr-2" /> Back
@@ -362,18 +399,12 @@ export function DynamicDemoPage() {
       <main className="max-w-3xl mx-auto text-center px-6 pb-16">
         <h1 className="text-5xl font-extrabold mt-10">
           Hey{' '}
-          <span className="bg-gradient-to-r from-[#D6B25E] to-[#F0D27C] bg-clip-text text-transparent font-extrabold">
-            {displayName}
-          </span>
-          ,
+          <span className="gold-shine font-extrabold">{displayName}</span>,
         </h1>
 
         <p className="mt-6 text-xl text-gray-200">
           I built a tool for you that{' '}
-          <span className="font-bold" style={{ color: GOLD_PRIMARY }}>
-            answers your customer calls
-          </span>{' '}
-          for you.
+          <span className="gold-shine font-extrabold">answers your customer calls</span> for you.
         </p>
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
@@ -384,7 +415,6 @@ export function DynamicDemoPage() {
         <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
 
         <div className="mt-6 flex gap-4 justify-center flex-wrap">
-          {/* ✅ Call Me now has a phone icon */}
           <button
             onClick={() => setModal('voice')}
             className="px-8 py-4 text-black font-bold rounded-2xl transition inline-flex items-center gap-3"
@@ -405,7 +435,6 @@ export function DynamicDemoPage() {
           </button>
         </div>
 
-        {/* Calendly CTA (smaller + subtle) */}
         <div className="mt-5 flex flex-col items-center">
           <p className="mb-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
 
@@ -418,20 +447,11 @@ export function DynamicDemoPage() {
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition border"
             style={{
               borderColor: 'rgba(214, 178, 94, 0.55)',
-              color: GOLD_HOVER,
               backgroundColor: 'rgba(0,0,0,0.10)',
-            }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(240, 210, 124, 0.75)';
-              e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(214, 178, 94, 0.55)';
-              e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.10)';
             }}
           >
             <Calendar className="h-3.5 w-3.5" />
-            Book intro call
+            <span className="gold-shine font-bold">Book intro call</span>
           </a>
 
           <p className="mt-1 text-[11px] text-gray-400">Quick intro + we’ll show how it fits.</p>
@@ -452,8 +472,8 @@ export function DynamicDemoPage() {
             <div className="p-5">
               {modal === 'voice' ? (
                 <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
-                  <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>
-                    AI Voice Agent
+                  <h3 className="text-xl font-extrabold mb-2">
+                    <span className="gold-shine">AI Voice Agent</span>
                   </h3>
 
                   <p className="text-gray-300">
@@ -466,7 +486,6 @@ export function DynamicDemoPage() {
 
                   {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
 
-                  {/* Red hang-up button (closes widget entirely) */}
                   <button
                     className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
                     style={{
@@ -494,10 +513,9 @@ export function DynamicDemoPage() {
                     data-track="book"
                     data-track-label="Book intro call (voice modal)"
                     className="mt-6 inline-flex items-center gap-2 text-sm font-semibold hover:underline"
-                    style={{ color: GOLD_HOVER }}
                   >
                     <Calendar className="h-4 w-4" />
-                    Book intro call
+                    <span className="gold-shine font-bold">Book intro call</span>
                   </a>
 
                   <p className="mt-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
@@ -559,10 +577,9 @@ export function DynamicDemoPage() {
                       data-track="book"
                       data-track-label="Book intro call (chat modal)"
                       className="inline-flex items-center gap-2 text-sm font-semibold hover:underline"
-                      style={{ color: GOLD_HOVER }}
                     >
                       <Calendar className="h-4 w-4" />
-                      Book intro call
+                      <span className="gold-shine font-bold">Book intro call</span>
                     </a>
                   </div>
 
