@@ -377,7 +377,43 @@ export function DynamicDemoPage() {
         backgroundSize: 'cover',
       }}
     >
-      {/* ✅ Same overlay layer as HomePage */}
+      {/* ✅ Gold shimmer animation (used on displayName + all “Book intro call” CTAs) */}
+      <style>
+        {`
+          .gold-shimmer {
+            background-image: linear-gradient(
+              110deg,
+              #b9892b 0%,
+              #f7dc8a 20%,
+              #ffffff 30%,
+              #f1d27b 40%,
+              #b9892b 60%,
+              #f7dc8a 80%,
+              #ffffff 90%,
+              #b9892b 100%
+            );
+            background-size: 240% 100%;
+            background-position: 0% 50%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: goldShimmerSweep 4.8s ease-in-out infinite;
+            filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.12));
+          }
+
+          @keyframes goldShimmerSweep {
+            0% { background-position: 0% 50%; }
+            55% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .gold-shimmer { animation: none; }
+          }
+        `}
+      </style>
+
+      {/* ✅ Same overlay layer as HomePage desktop */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
       </div>
@@ -391,7 +427,7 @@ export function DynamicDemoPage() {
       <main className="relative z-10 max-w-3xl mx-auto text-center px-6 pb-16">
         <h1 className="text-5xl font-extrabold mt-10">
           Hey{' '}
-          <span className="bg-gradient-to-r from-[#D6B25E] to-[#F0D27C] bg-clip-text text-transparent font-extrabold">
+          <span className="gold-shimmer font-extrabold">
             {displayName}
           </span>
           ,
@@ -458,13 +494,14 @@ export function DynamicDemoPage() {
             }}
           >
             <Calendar className="h-3.5 w-3.5" />
-            Book intro call
+            <span className="gold-shimmer font-bold">Book intro call</span>
           </a>
 
           <p className="mt-1 text-[11px] text-gray-400">Quick intro + we’ll show how it fits.</p>
         </div>
       </main>
 
+      {/* Modal */}
       {modal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" data-demo-modal="true">
           <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
@@ -522,7 +559,7 @@ export function DynamicDemoPage() {
                     style={{ color: GOLD_HOVER }}
                   >
                     <Calendar className="h-4 w-4" />
-                    Book intro call
+                    <span className="gold-shimmer font-bold">Book intro call</span>
                   </a>
 
                   <p className="mt-2 text-xs sm:text-sm text-white/70 text-center max-w-sm">{FINE_PRINT}</p>
@@ -587,7 +624,7 @@ export function DynamicDemoPage() {
                       style={{ color: GOLD_HOVER }}
                     >
                       <Calendar className="h-4 w-4" />
-                      Book intro call
+                      <span className="gold-shimmer font-bold">Book intro call</span>
                     </a>
                   </div>
 
