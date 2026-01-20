@@ -412,6 +412,8 @@ export function DynamicDemoPage() {
             href={CALENDLY_URL}
             target="_blank"
             rel="noopener noreferrer"
+            data-track="book"
+            data-track-label="Book intro call"
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition border"
             style={{
               borderColor: 'rgba(200, 162, 74, 0.45)',
@@ -488,6 +490,8 @@ export function DynamicDemoPage() {
                     href={CALENDLY_URL}
                     target="_blank"
                     rel="noopener noreferrer"
+                    data-track="book"
+                    data-track-label="Book intro call (voice modal)"
                     className="mt-6 inline-flex items-center gap-2 text-sm font-semibold hover:underline"
                     style={{ color: GOLD_HOVER }}
                   >
@@ -552,6 +556,8 @@ export function DynamicDemoPage() {
                       href={CALENDLY_URL}
                       target="_blank"
                       rel="noopener noreferrer"
+                      data-track="book"
+                      data-track-label="Book intro call (chat modal)"
                       className="inline-flex items-center gap-2 text-sm font-semibold hover:underline"
                       style={{ color: GOLD_HOVER }}
                     >
@@ -561,7 +567,10 @@ export function DynamicDemoPage() {
                   </div>
 
                   <p className="mt-3 text-xs text-gray-500">
-                    Powered by IWS: <span className="text-gray-400">You can connect your own business phone number and update it across your website and profiles at any time.</span>
+                    Powered by IWS:{' '}
+                    <span className="text-gray-400">
+                      You can connect your own business phone number and update it across your website and profiles at any time.
+                    </span>
                   </p>
                 </div>
               )}
