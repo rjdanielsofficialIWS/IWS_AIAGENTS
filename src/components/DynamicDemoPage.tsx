@@ -166,7 +166,24 @@ export function DynamicDemoPage() {
   }
 
   return (
-    <div className="min-h-screen text-white bg-black">
+    <div
+  className="min-h-screen text-white"
+  style={{
+    backgroundImage: `
+      radial-gradient(
+        1200px 600px at 50% -200px,
+        rgba(214, 178, 94, 0.22),
+        transparent 60%
+      ),
+      linear-gradient(
+        to bottom,
+        #2a2a2a,
+        #0b0b0b,
+        #000000
+      )
+    `,
+  }}
+>
       <style>
         {`
           .gold-shine {
