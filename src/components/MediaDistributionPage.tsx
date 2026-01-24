@@ -541,7 +541,7 @@ export function MediaDistributionPage() {
           )}
 
           <div className="text-xs text-gray-400 text-center max-w-md">
-            Your webhook receives both URLs + metadata.
+            Powered by Infinite Wealth Solutions AI.
           </div>
         </div>
       </main>
