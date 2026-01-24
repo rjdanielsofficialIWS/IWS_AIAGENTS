@@ -1,37 +1,57 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowLeft, Loader, UploadCloud, CheckCircle2, AlertCircle } from 'lucide-react';
+import {
+  ArrowLeft,
+  Loader,
+  UploadCloud,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+} from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
 const GOLD_PRIMARY = '#D6B25E';
 const GOLD_HOVER = '#F0D27C';
 
-// ✅ Set this later (or keep as env var)
-const WEBHOOK_URL = import.meta.env.VITE_MEDIA_WEBHOOK_URL || '';
+// ✅ Your NEW n8n test webhook URL
+const WEBHOOK_URL =
+  'https://iwsaiagents.app.n8n.cloud/webhook-test/f8390721-73cc-4594-921c-3afff87774c0';
 
-// ✅ Storage bucket (create in Supabase Storage). Must exist.
-const BUCKET = import.meta.env.VITE_MEDIA_BUCKET || 'media';
+// ✅ Supabase Storage bucket name
+const BUCKET = 'media';
 
-// If your bucket is private, we’ll fallback to signed URLs (7 days)
+// ✅ Supabase free plan safe limit (use 49MB to avoid edge cases)
+const MAX_BYTES = 49 * 1024 * 1024; // 49MB
+
+// Signed URL fallback duration (only used if bucket is private)
 const SIGNED_URL_SECONDS = 60 * 60 * 24 * 7;
 
 type UploadState =
   | { status: 'idle' }
-  | { status: 'uploading'; progress?: number }
-  | { status: 'done'; path: string; url: string; fileName: string; mime: string; size: number }
+  | { status: 'uploading' }
+  | {
+      status: 'done';
+      path: string;
+      url: string;
+      fileName: string;
+      mime: string;
+      size: number;
+    }
   | { status: 'error'; message: string };
 
 export function MediaDistributionPage() {
-  // ✅ Match the HomePage desktop background “glow motion”
+  // ✅ Match HomePage / Demo background “glow motion”
   const [bgOffset, setBgOffset] = useState(0);
 
-  // File states
+  // Files
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
 
+  // Upload states
   const [videoUpload, setVideoUpload] = useState<UploadState>({ status: 'idle' });
   const [audioUpload, setAudioUpload] = useState<UploadState>({ status: 'idle' });
 
+  // Submit states
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitOk, setSubmitOk] = useState(false);
@@ -45,7 +65,7 @@ export function MediaDistributionPage() {
     );
   }, [submitting, videoUpload.status, audioUpload.status]);
 
-  // ✅ Same scroll offset behavior as your other pages
+  // ✅ Same scroll offset behavior
   useEffect(() => {
     let raf = 0;
     const onScroll = () => {
@@ -77,21 +97,43 @@ export function MediaDistributionPage() {
     return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
   };
 
+  const sizeGuard = (file: File, kind: 'video' | 'audio') => {
+    if (file.size > MAX_BYTES) {
+      return (
+        `${kind === 'video' ? 'Video' : 'Audio'} file is too large (${prettyBytes(file.size)}). ` +
+        `Max allowed is ${prettyBytes(MAX_BYTES)} on the free plan. ` +
+        `Please compress the file and try again.`
+      );
+    }
+    return null;
+  };
+
   const getPublicOrSignedUrl = async (path: string) => {
-    // Try public URL first (works if bucket is public)
+    // ✅ Public URL if bucket is public
     const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
     const publicUrl = pub?.data?.publicUrl;
 
     if (publicUrl) return publicUrl;
 
-    // Otherwise fallback to signed URL (works if bucket private)
+    // ✅ Signed URL fallback if bucket is private
     const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_SECONDS);
     if (error || !data?.signedUrl) throw new Error(error?.message || 'Failed to create signed URL');
     return data.signedUrl;
   };
 
-  const uploadFile = async (file: File, kind: 'video' | 'audio', setState: (s: UploadState) => void) => {
+  const uploadFile = async (
+    file: File,
+    kind: 'video' | 'audio',
+    setState: (s: UploadState) => void
+  ) => {
     resetSubmitState();
+
+    const guardMsg = sizeGuard(file, kind);
+    if (guardMsg) {
+      setState({ status: 'error', message: guardMsg });
+      return;
+    }
+
     setState({ status: 'uploading' });
 
     try {
@@ -101,16 +143,23 @@ export function MediaDistributionPage() {
       const random = Math.random().toString(16).slice(2);
       const path = `transferrable-everything/${kind}/${ts}-${random}${ext ? `.${ext}` : ''}`;
 
-      // Upload
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, {
         cacheControl: '3600',
         upsert: false,
         contentType: file.type || undefined,
       });
 
-      if (upErr) throw new Error(upErr.message || 'Upload failed');
+      if (upErr) {
+        const raw = upErr.message || 'Upload failed';
+        if (raw.toLowerCase().includes('maximum allowed size') || raw.toLowerCase().includes('exceeded')) {
+          throw new Error(
+            `${kind === 'video' ? 'Video' : 'Audio'} is too large for free storage uploads. ` +
+              `Max is about ${prettyBytes(MAX_BYTES)}. Compress and retry.`
+          );
+        }
+        throw new Error(raw);
+      }
 
-      // URL
       const url = await getPublicOrSignedUrl(path);
 
       setState({
@@ -126,6 +175,7 @@ export function MediaDistributionPage() {
     }
   };
 
+  // ✅ #3: send as text/plain to avoid CORS preflight issues
   const submitWebhook = async () => {
     if (videoUpload.status !== 'done' || audioUpload.status !== 'done') return;
 
@@ -134,8 +184,6 @@ export function MediaDistributionPage() {
     setSubmitOk(false);
 
     try {
-      if (!WEBHOOK_URL) throw new Error('Missing webhook URL. Set VITE_MEDIA_WEBHOOK_URL.');
-
       const payload = {
         source: 'media-distribution-landing',
         brand: 'Transferrable Everything',
@@ -158,7 +206,10 @@ export function MediaDistributionPage() {
 
       const res = await fetch(WEBHOOK_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          // ✅ avoids OPTIONS preflight in many cases
+          'Content-Type': 'text/plain;charset=UTF-8',
+        },
         body: JSON.stringify(payload),
       });
 
@@ -185,7 +236,7 @@ export function MediaDistributionPage() {
         backgroundSize: 'cover',
       }}
     >
-      {/* ✅ Gold shimmer animation (same vibe as DynamicDemoPage) */}
+      {/* ✅ Gold shimmer animation */}
       <style>
         {`
           .gold-shimmer {
@@ -221,7 +272,7 @@ export function MediaDistributionPage() {
         `}
       </style>
 
-      {/* ✅ Same overlay layer as HomePage desktop */}
+      {/* ✅ Same overlay glow */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
       </div>
@@ -235,32 +286,32 @@ export function MediaDistributionPage() {
       <main className="relative z-10 max-w-3xl mx-auto px-6 pb-16">
         <div className="text-center mt-10">
           <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
-            Welcome{' '}
-            <span className="gold-shimmer font-extrabold">
-              Transferrable Everything
-            </span>
+            Welcome <span className="gold-shimmer font-extrabold">Transferrable Everything</span>
           </h1>
 
           <p className="mt-4 text-gray-200 text-lg">
-            Upload a video + audio file, then submit to send both links to your automation webhook.
+            Upload a video + audio file, then submit to send both links to your n8n webhook.
           </p>
 
-          {!WEBHOOK_URL && (
-            <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-400/30 bg-red-500/10 text-red-200 text-sm">
-              <AlertCircle className="h-4 w-4" />
-              Webhook not set. Add <span className="font-mono">VITE_MEDIA_WEBHOOK_URL</span> to your env.
+          <div className="mt-4 inline-flex items-start gap-2 px-4 py-3 rounded-2xl border border-white/10 bg-white/5 text-sm text-white/80 text-left max-w-xl">
+            <Info className="h-4 w-4 mt-0.5" />
+            <div>
+              <div className="font-semibold text-white/90">Free upload limit</div>
+              <div>
+                Files must be under <span className="font-semibold">{prettyBytes(MAX_BYTES)}</span>. If your video is larger,
+                export at 720p or lower bitrate, then retry.
+              </div>
             </div>
-          )}
+          </div>
         </div>
 
-        {/* Upload cards */}
         <div className="mt-10 grid gap-5">
           {/* Video */}
           <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold">1) Upload Video</h2>
-                <p className="text-gray-300 text-sm mt-1">Accepted: MP4, MOV, WebM (any video format).</p>
+                <p className="text-gray-300 text-sm mt-1">Max {prettyBytes(MAX_BYTES)} • MP4/MOV/WebM recommended.</p>
               </div>
 
               {videoUpload.status === 'done' && (
@@ -281,18 +332,24 @@ export function MediaDistributionPage() {
                   setVideoFile(f);
                   setVideoUpload({ status: 'idle' });
                   resetSubmitState();
+
+                  if (f) {
+                    const msg = sizeGuard(f, 'video');
+                    if (msg) setVideoUpload({ status: 'error', message: msg });
+                  }
                 }}
               />
 
               <button
                 type="button"
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold transition border"
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold transition border disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   borderColor: 'rgba(214, 178, 94, 0.45)',
                   backgroundColor: 'rgba(0,0,0,0.15)',
                   color: GOLD_HOVER,
                 }}
                 onMouseEnter={(e) => {
+                  if (videoUpload.status === 'uploading') return;
                   e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
                   e.currentTarget.style.borderColor = 'rgba(240, 210, 124, 0.70)';
                 }}
@@ -300,7 +357,7 @@ export function MediaDistributionPage() {
                   e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.15)';
                   e.currentTarget.style.borderColor = 'rgba(214, 178, 94, 0.45)';
                 }}
-                disabled={!videoFile || videoUpload.status === 'uploading'}
+                disabled={!videoFile || videoUpload.status === 'uploading' || videoUpload.status === 'error'}
                 onClick={() => {
                   if (!videoFile) return;
                   uploadFile(videoFile, 'video', setVideoUpload);
@@ -327,12 +384,18 @@ export function MediaDistributionPage() {
                     <span className="font-semibold">File:</span> {videoUpload.fileName} • {prettyBytes(videoUpload.size)}
                   </div>
                   <div className="mt-1 break-all">
-                    <span className="font-semibold">URL:</span> <a className="underline" href={videoUpload.url} target="_blank" rel="noreferrer">{videoUpload.url}</a>
+                    <span className="font-semibold">URL:</span>{' '}
+                    <a className="underline" href={videoUpload.url} target="_blank" rel="noreferrer">
+                      {videoUpload.url}
+                    </a>
                   </div>
                 </div>
               )}
               {videoUpload.status === 'error' && (
-                <div className="text-sm text-red-200 mt-2">{videoUpload.message}</div>
+                <div className="text-sm text-red-200 mt-2 inline-flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5" />
+                  <span>{videoUpload.message}</span>
+                </div>
               )}
             </div>
           </div>
@@ -342,7 +405,7 @@ export function MediaDistributionPage() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold">2) Upload Audio</h2>
-                <p className="text-gray-300 text-sm mt-1">Accepted: MP3, WAV, M4A (any audio format).</p>
+                <p className="text-gray-300 text-sm mt-1">Max {prettyBytes(MAX_BYTES)} • MP3/WAV/M4A recommended.</p>
               </div>
 
               {audioUpload.status === 'done' && (
@@ -363,18 +426,24 @@ export function MediaDistributionPage() {
                   setAudioFile(f);
                   setAudioUpload({ status: 'idle' });
                   resetSubmitState();
+
+                  if (f) {
+                    const msg = sizeGuard(f, 'audio');
+                    if (msg) setAudioUpload({ status: 'error', message: msg });
+                  }
                 }}
               />
 
               <button
                 type="button"
-                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold transition border"
+                className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold transition border disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   borderColor: 'rgba(214, 178, 94, 0.45)',
                   backgroundColor: 'rgba(0,0,0,0.15)',
                   color: GOLD_HOVER,
                 }}
                 onMouseEnter={(e) => {
+                  if (audioUpload.status === 'uploading') return;
                   e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
                   e.currentTarget.style.borderColor = 'rgba(240, 210, 124, 0.70)';
                 }}
@@ -382,7 +451,7 @@ export function MediaDistributionPage() {
                   e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.15)';
                   e.currentTarget.style.borderColor = 'rgba(214, 178, 94, 0.45)';
                 }}
-                disabled={!audioFile || audioUpload.status === 'uploading'}
+                disabled={!audioFile || audioUpload.status === 'uploading' || audioUpload.status === 'error'}
                 onClick={() => {
                   if (!audioFile) return;
                   uploadFile(audioFile, 'audio', setAudioUpload);
@@ -409,12 +478,18 @@ export function MediaDistributionPage() {
                     <span className="font-semibold">File:</span> {audioUpload.fileName} • {prettyBytes(audioUpload.size)}
                   </div>
                   <div className="mt-1 break-all">
-                    <span className="font-semibold">URL:</span> <a className="underline" href={audioUpload.url} target="_blank" rel="noreferrer">{audioUpload.url}</a>
+                    <span className="font-semibold">URL:</span>{' '}
+                    <a className="underline" href={audioUpload.url} target="_blank" rel="noreferrer">
+                      {audioUpload.url}
+                    </a>
                   </div>
                 </div>
               )}
               {audioUpload.status === 'error' && (
-                <div className="text-sm text-red-200 mt-2">{audioUpload.message}</div>
+                <div className="text-sm text-red-200 mt-2 inline-flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5" />
+                  <span>{audioUpload.message}</span>
+                </div>
               )}
             </div>
           </div>
@@ -460,7 +535,7 @@ export function MediaDistributionPage() {
           )}
 
           <div className="text-xs text-gray-400 text-center max-w-md">
-            Your webhook will receive both URLs + metadata. If your bucket is private, links will be signed (7 days).
+            Your webhook receives both URLs + metadata. Keep files under {prettyBytes(MAX_BYTES)} on free plan.
           </div>
         </div>
       </main>
