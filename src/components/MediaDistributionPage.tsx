@@ -6,14 +6,13 @@ import {
   UploadCloud,
   CheckCircle2,
   AlertCircle,
-  Info,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
 const GOLD_PRIMARY = '#D6B25E';
 const GOLD_HOVER = '#F0D27C';
 
-// ✅ Your NEW n8n test webhook URL
+// ✅ Your n8n test webhook URL
 const WEBHOOK_URL =
   'https://iwsaiagents.app.n8n.cloud/webhook-test/f8390721-73cc-4594-921c-3afff87774c0';
 
@@ -101,8 +100,7 @@ export function MediaDistributionPage() {
     if (file.size > MAX_BYTES) {
       return (
         `${kind === 'video' ? 'Video' : 'Audio'} file is too large (${prettyBytes(file.size)}). ` +
-        `Max allowed is ${prettyBytes(MAX_BYTES)} on the free plan. ` +
-        `Please compress the file and try again.`
+        `Max allowed is ${prettyBytes(MAX_BYTES)}. Please compress and try again.`
       );
     }
     return null;
@@ -153,8 +151,7 @@ export function MediaDistributionPage() {
         const raw = upErr.message || 'Upload failed';
         if (raw.toLowerCase().includes('maximum allowed size') || raw.toLowerCase().includes('exceeded')) {
           throw new Error(
-            `${kind === 'video' ? 'Video' : 'Audio'} is too large for free storage uploads. ` +
-              `Max is about ${prettyBytes(MAX_BYTES)}. Compress and retry.`
+            `${kind === 'video' ? 'Video' : 'Audio'} is too large. Max is about ${prettyBytes(MAX_BYTES)}.`
           );
         }
         throw new Error(raw);
@@ -175,7 +172,7 @@ export function MediaDistributionPage() {
     }
   };
 
-  // ✅ #3: send as text/plain to avoid CORS preflight issues
+  // ✅ Send as text/plain to avoid CORS preflight issues
   const submitWebhook = async () => {
     if (videoUpload.status !== 'done' || audioUpload.status !== 'done') return;
 
@@ -292,17 +289,6 @@ export function MediaDistributionPage() {
           <p className="mt-4 text-gray-200 text-lg">
             Upload a video + audio file, then submit to send both links to your n8n webhook.
           </p>
-
-          <div className="mt-4 inline-flex items-start gap-2 px-4 py-3 rounded-2xl border border-white/10 bg-white/5 text-sm text-white/80 text-left max-w-xl">
-            <Info className="h-4 w-4 mt-0.5" />
-            <div>
-              <div className="font-semibold text-white/90">Free upload limit</div>
-              <div>
-                Files must be under <span className="font-semibold">{prettyBytes(MAX_BYTES)}</span>. If your video is larger,
-                export at 720p or lower bitrate, then retry.
-              </div>
-            </div>
-          </div>
         </div>
 
         <div className="mt-10 grid gap-5">
@@ -535,7 +521,7 @@ export function MediaDistributionPage() {
           )}
 
           <div className="text-xs text-gray-400 text-center max-w-md">
-            Your webhook receives both URLs + metadata. Keep files under {prettyBytes(MAX_BYTES)} on free plan.
+            Your webhook receives both URLs + metadata.
           </div>
         </div>
       </main>
