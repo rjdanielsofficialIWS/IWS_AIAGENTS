@@ -53,6 +53,7 @@ export function MediaDistributionPage() {
     );
   }, [submitting, videoUpload.status, audioUpload.status]);
 
+  /* ---------------- background motion ---------------- */
   useEffect(() => {
     let raf = 0;
     const onScroll = () => {
@@ -67,6 +68,7 @@ export function MediaDistributionPage() {
     return () => window.removeEventListener('scroll', onScroll);
   }, []);
 
+  /* ---------------- helpers ---------------- */
   const prettyBytes = (bytes: number) => {
     const units = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
@@ -94,6 +96,7 @@ export function MediaDistributionPage() {
     return data.signedUrl;
   };
 
+  /* ---------------- upload ---------------- */
   const uploadFile = async (
     file: File,
     kind: 'video' | 'audio',
@@ -113,7 +116,11 @@ export function MediaDistributionPage() {
         .toString(16)
         .slice(2)}.${ext}`;
 
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file);
+      const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+        upsert: false,
+        contentType: file.type,
+      });
+
       if (error) throw error;
 
       const url = await getPublicOrSignedUrl(path);
@@ -131,6 +138,7 @@ export function MediaDistributionPage() {
     }
   };
 
+  /* ---------------- submit ---------------- */
   const submitWebhook = async () => {
     if (!canSubmit) return;
 
@@ -141,9 +149,9 @@ export function MediaDistributionPage() {
     try {
       const payload = {
         brand: 'Transferrable Everything',
+        submittedAt: new Date().toISOString(),
         video: videoUpload,
         audio: audioUpload,
-        submittedAt: new Date().toISOString(),
       };
 
       const res = await fetch(WEBHOOK_URL, {
@@ -152,7 +160,8 @@ export function MediaDistributionPage() {
         body: JSON.stringify(payload),
       });
 
-      if (!res.ok) knownError(res.status);
+      const text = await res.text();
+      if (!res.ok) throw new Error(text || `Webhook failed (${res.status})`);
 
       setSubmitOk(true);
     } catch (e: any) {
@@ -170,7 +179,7 @@ export function MediaDistributionPage() {
         backgroundAttachment: 'fixed',
       }}
     >
-      {/* Gold shimmer */}
+      {/* shimmer */}
       <style>{`
         .gold-shimmer {
           background: linear-gradient(
@@ -184,6 +193,7 @@ export function MediaDistributionPage() {
           background-size: 240% 100%;
           animation: shimmer 4.8s ease-in-out infinite;
           -webkit-background-clip: text;
+          background-clip: text;
           color: transparent;
         }
         @keyframes shimmer {
@@ -204,25 +214,51 @@ export function MediaDistributionPage() {
           Welcome <span className="gold-shimmer">Transferrable Everything</span>
         </h1>
 
-        {/* Upload sections unchanged */}
+        {/* VIDEO */}
+        <section className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-4">1) Upload Video</h2>
+          <input type="file" accept="video/*" onChange={e => setVideoFile(e.target.files?.[0] || null)} />
+          <button
+            className="mt-3 px-4 py-2 bg-white text-black rounded-xl font-bold"
+            onClick={() => videoFile && uploadFile(videoFile, 'video', setVideoUpload)}
+          >
+            Upload Video
+          </button>
+          {videoUpload.status === 'done' && <p className="text-green-300 mt-2">Video uploaded</p>}
+          {videoUpload.status === 'error' && <p className="text-red-300 mt-2">{videoUpload.message}</p>}
+        </section>
 
-        {/* Submit – now matches Book Intro Call button exactly */}
+        {/* AUDIO */}
+        <section className="mt-6 bg-white/5 border border-gray-700/50 rounded-2xl p-6">
+          <h2 className="text-xl font-bold mb-4">2) Upload Audio</h2>
+          <input type="file" accept="audio/*" onChange={e => setAudioFile(e.target.files?.[0] || null)} />
+          <button
+            className="mt-3 px-4 py-2 bg-white text-black rounded-xl font-bold"
+            onClick={() => audioFile && uploadFile(audioFile, 'audio', setAudioUpload)}
+          >
+            Upload Audio
+          </button>
+          {audioUpload.status === 'done' && <p className="text-green-300 mt-2">Audio uploaded</p>}
+          {audioUpload.status === 'error' && <p className="text-red-300 mt-2">{audioUpload.message}</p>}
+        </section>
+
+        {/* SUBMIT */}
         <div className="mt-10 flex flex-col items-center">
           <button
             onClick={submitWebhook}
             disabled={!canSubmit}
             className="inline-flex items-center gap-2 px-6 py-3 rounded-lg text-sm font-semibold transition border disabled:opacity-50"
             style={{
-              borderColor: 'rgba(214, 178, 94, 0.55)',
+              borderColor: 'rgba(214,178,94,0.55)',
               color: GOLD_HOVER,
               backgroundColor: 'rgba(0,0,0,0.10)',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(240, 210, 124, 0.75)';
+              e.currentTarget.style.borderColor = 'rgba(240,210,124,0.75)';
               e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.borderColor = 'rgba(214, 178, 94, 0.55)';
+              e.currentTarget.style.borderColor = 'rgba(214,178,94,0.55)';
               e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.10)';
             }}
           >
@@ -230,18 +266,10 @@ export function MediaDistributionPage() {
             <span className="gold-shimmer">Submit</span>
           </button>
 
-          {submitOk && (
-            <p className="mt-3 text-sm text-green-300">Submitted successfully.</p>
-          )}
-          {submitError && (
-            <p className="mt-3 text-sm text-red-300">{submitError}</p>
-          )}
+          {submitOk && <p className="mt-3 text-green-300">Submitted successfully.</p>}
+          {submitError && <p className="mt-3 text-red-300">{submitError}</p>}
         </div>
       </main>
     </div>
   );
-}
-
-function knownError(code: number): never {
-  throw new Error(`Webhook failed (${code})`);
 }
