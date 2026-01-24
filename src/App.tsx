@@ -1,3 +1,4 @@
+import { MediaDistributionPage } from './components/MediaDistributionPage';
 import { MetaPixel } from './components/MetaPixel';
 import { MetaPixelTracker } from './components/MetaPixelTracker';
 import { GA4Tracker } from './components/GA4Tracker';
