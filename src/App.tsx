@@ -203,6 +203,7 @@ function AppContent() {
       <ClarityLoader />
 
       <Routes>
+        <Route path="/media-distribution" element={<MediaDistributionPage />} />
         <Route path="/" element={<HomePage />} />
         <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
