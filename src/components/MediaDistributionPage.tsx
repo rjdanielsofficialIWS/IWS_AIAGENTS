@@ -299,7 +299,7 @@ export function MediaDistributionPage() {
           </h1>
 
           <p className="mt-4 text-gray-200 text-lg">
-            Upload a video + audio file, then submit to send both links to your n8n webhook.
+            Upload a video + audio file, then submit the remaining details to distribute your content.
           </p>
         </div>
 
