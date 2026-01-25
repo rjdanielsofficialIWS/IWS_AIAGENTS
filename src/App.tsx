@@ -20,6 +20,7 @@ import { AssistantBuilder } from './components/assistants/AssistantBuilder';
 import { WidgetManager } from './components/widgets/WidgetManager';
 import { DemoPagesManager } from './components/demo-pages/DemoPagesManager';
 import { PrivacyPolicyPage } from './components/PrivacyPolicyPage';
+import { TermsAndConditionsPage } from './components/TermsAndConditionsPage';
 import { Brain, Phone, MessageSquare, User } from 'lucide-react';
 import { VapiAssistant } from './types/vapi';
 
@@ -207,6 +208,7 @@ function AppContent() {
         <Route path="/" element={<HomePage />} />
         <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+        <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
         <Route path="/login" element={<AuthPage isSignUp={false} />} />
         <Route path="/register" element={<AuthPage isSignUp={true} />} />
         <Route
