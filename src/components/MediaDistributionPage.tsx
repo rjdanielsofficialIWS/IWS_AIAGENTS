@@ -141,7 +141,7 @@ export function MediaDistributionPage() {
       const ext = safeName.includes('.') ? safeName.split('.').pop() : '';
       const ts = Date.now();
       const random = Math.random().toString(16).slice(2);
-      const path = `transferrable-everything/${kind}/${ts}-${random}${ext ? `.${ext}` : ''}`;
+      const path = `transferable-everything/${kind}/${ts}-${random}${ext ? `.${ext}` : ''}`;
 
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, {
         cacheControl: '3600',
@@ -188,7 +188,7 @@ export function MediaDistributionPage() {
     try {
       const payload = {
         source: 'media-distribution-landing',
-        brand: 'Transferrable Everything',
+        brand: 'Transferable Everything',
         submittedAt: new Date().toISOString(),
         video: {
           url: videoUpload.url,
@@ -294,7 +294,7 @@ export function MediaDistributionPage() {
           <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
             Welcome{' '}
             <span className="gold-shimmer font-extrabold">
-              Transferrable Everything
+              Transferable Everything
             </span>
           </h1>
 
