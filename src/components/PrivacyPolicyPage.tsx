@@ -1,6 +1,49 @@
 import React from "react";
 
+function upsertMetaTag(name: string, content: string) {
+  let el = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null;
+  if (!el) {
+    el = document.createElement("meta");
+    el.setAttribute("name", name);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", content);
+}
+
+function upsertMetaProperty(property: string, content: string) {
+  let el = document.querySelector(`meta[property="${property}"]`) as HTMLMetaElement | null;
+  if (!el) {
+    el = document.createElement("meta");
+    el.setAttribute("property", property);
+    document.head.appendChild(el);
+  }
+  el.setAttribute("content", content);
+}
+
+function upsertCanonical(href: string) {
+  let el = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+  if (!el) {
+    el = document.createElement("link");
+    el.setAttribute("rel", "canonical");
+    document.head.appendChild(el);
+  }
+  el.setAttribute("href", href);
+}
+
 export function PrivacyPolicyPage() {
+  React.useEffect(() => {
+    document.title = "Privacy Policy | Infinite Wealth Solutions AI";
+    const desc =
+      "Read the Privacy Policy for Infinite Wealth Solutions AI, including how we collect, use, and protect your information.";
+    upsertMetaTag("description", desc);
+    upsertMetaProperty("og:title", "Privacy Policy | Infinite Wealth Solutions AI");
+    upsertMetaProperty("og:description", desc);
+    upsertMetaTag("twitter:card", "summary");
+    upsertMetaTag("twitter:title", "Privacy Policy | Infinite Wealth Solutions AI");
+    upsertMetaTag("twitter:description", desc);
+    upsertCanonical(`${window.location.origin}/privacy-policy`);
+  }, []);
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-gray-900 via-black to-gray-900 text-white">
       <div className="mx-auto max-w-3xl px-6 py-12">
