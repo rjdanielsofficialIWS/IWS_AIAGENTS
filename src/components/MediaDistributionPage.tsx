@@ -515,6 +515,19 @@ export function MediaDistributionPage() {
           @media (prefers-reduced-motion: reduce) {
             .gold-shimmer { animation: none; }
           }
+
+          /* Make native date/time picker icons white (Chrome/Safari/Edge) */
+          input[type="date"],
+          input[type="time"] {
+            color-scheme: dark;
+          }
+
+          input[type="date"]::-webkit-calendar-picker-indicator,
+          input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            opacity: 0.9;
+            cursor: pointer;
+          }
         `}
       </style>
 
@@ -961,33 +974,17 @@ export function MediaDistributionPage() {
 
             <div className="mt-5">
               {scheduleInfo.ok ? (
-                <div className="text-sm text-gray-200 space-y-2">
-                  <div className="text-gray-300">
-                    <span className="font-semibold">ET:</span> {scheduleInfo.etDisplay}
-                  </div>
-
-                  <div className="break-all">
-                    <span className="font-semibold">RFC3339 (with ET offset):</span>{' '}
-                    <span className="text-gray-100">{scheduleInfo.rfc3339WithOffset}</span>
-                  </div>
-
-                  <div className="break-all">
-                    <span className="font-semibold">UTC ISO:</span>{' '}
-                    <span className="text-gray-100">{scheduleInfo.utcIso}</span>
-                  </div>
-
-                  <div className="break-all">
-                    <span className="font-semibold">Unix (seconds):</span>{' '}
-                    <span className="text-gray-100">{scheduleInfo.unixSeconds}</span>
-                  </div>
-
-                  <div className="break-all">
-                    <span className="font-semibold">Unix (ms):</span>{' '}
-                    <span className="text-gray-100">{scheduleInfo.unixMillis}</span>
-                  </div>
-
-                  <div className="mt-3 text-xs text-gray-400">
-                    Tip: Meta scheduling usually wants unix seconds. YouTube scheduling wants RFC3339.
+                <div className="text-sm text-gray-200">
+                  <div className="inline-flex items-center gap-2 rounded-xl border border-gray-700/60 bg-black/20 px-4 py-3">
+                    <CheckCircle2 className="h-4 w-4" style={{ color: GOLD_HOVER }} />
+                    <div>
+                      <div className="text-gray-300">
+                        Scheduled for <span className="font-semibold">{scheduleInfo.etDisplay}</span>
+                      </div>
+                      <div className="text-xs text-gray-400 mt-0.5">
+                        We’ll handle the platform-specific time formatting behind the scenes.
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
