@@ -374,7 +374,7 @@ function ProgressBarLine({
 
         {/* On very small screens, if labels wrap awkwardly, we keep it readable */}
         <div className="mt-3 text-[11px] text-white/45 text-center sm:hidden">
-          Tip: scroll the page — the edit screens open fullscreen to avoid long scrolling.
+          Post content on all platforms in 2 minutes.
         </div>
       </div>
     </div>
