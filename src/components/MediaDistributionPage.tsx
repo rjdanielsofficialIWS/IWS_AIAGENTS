@@ -9,6 +9,7 @@ import {
   Sparkles,
   Calendar,
   Clock,
+  X,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
@@ -93,18 +94,74 @@ function prettyBytes(bytes: number) {
   return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+function PlatformBadge({ ok }: { ok: boolean }) {
+  return ok ? (
+    <span className="inline-flex items-center gap-1 text-xs font-extrabold text-green-200">
+      <CheckCircle2 className="h-4 w-4" /> Ready
+    </span>
+  ) : (
+    <span className="text-xs font-bold text-white/50">Missing</span>
+  );
+}
+
+function FullscreenModal({
+  open,
+  title,
+  subtitle,
+  onClose,
+  children,
+}: {
+  open: boolean;
+  title: string;
+  subtitle?: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[999]">
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+        onClick={onClose}
+        role="button"
+        tabIndex={0}
+      />
+      <div className="absolute inset-0 p-4 sm:p-8">
+        <div className="h-full w-full rounded-3xl border border-white/10 bg-[#0b0b0b] shadow-[0_30px_120px_rgba(0,0,0,0.85)] overflow-hidden">
+          <div className="flex items-start justify-between gap-4 p-5 sm:p-7 border-b border-white/10">
+            <div className="min-w-0">
+              <div className="text-xl sm:text-2xl font-extrabold text-white truncate">{title}</div>
+              {subtitle ? <div className="text-sm text-white/60 mt-1">{subtitle}</div> : null}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="shrink-0 rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-2 font-extrabold inline-flex items-center gap-2"
+            >
+              <X className="h-4 w-4" />
+              Close
+            </button>
+          </div>
+          <div className="h-[calc(100%-76px)] overflow-y-auto p-5 sm:p-7">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MediaDistributionPage() {
   const [bgOffset, setBgOffset] = useState(0);
 
   // ---- Wizard steps ----
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
 
-  // Step 1: platforms
+  // Step 1: platforms (✅ default all unselected)
   const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
-    instagram: true,
-    tiktok: true,
-    facebook: true,
-    youtube: true,
+    instagram: false,
+    tiktok: false,
+    facebook: false,
+    youtube: false,
     twitter: false,
     linkedin: false,
   });
@@ -113,7 +170,7 @@ export function MediaDistributionPage() {
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUpload, setVideoUpload] = useState<UploadState>({ status: 'idle' });
 
-  // Optional thumbnail (kept as optional, NOT required)
+  // Optional thumbnail
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailUpload, setThumbnailUpload] = useState<UploadState>({ status: 'idle' });
 
@@ -153,6 +210,10 @@ export function MediaDistributionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitOk, setSubmitOk] = useState(false);
+
+  // Modal selection (captions + schedule)
+  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<PlatformKey | null>(null);
+  const [activeSchedulePlatform, setActiveSchedulePlatform] = useState<PlatformKey | null>(null);
 
   useEffect(() => {
     let raf = 0;
@@ -277,7 +338,7 @@ export function MediaDistributionPage() {
 
   const toUtcFromEtLocal = (dateStr: string, timeStr: string): ScheduleInfo => {
     if (!dateStr || !timeStr) {
-      return { ok: false, message: 'Please choose a schedule date and time (ET).' };
+      return { ok: false, message: 'Choose a schedule date and time (ET).' };
     }
 
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
@@ -352,11 +413,9 @@ export function MediaDistributionPage() {
   }, [selected]);
 
   const hasAnyPlatform = enabledPlatforms.length > 0;
-
   const videoReady = videoUpload.status === 'done';
 
   const captionsReady = useMemo(() => {
-    // Require content ONLY for selected platforms
     const needs = (k: PlatformKey) => selected[k];
 
     const okInstagram = !needs('instagram') || captionInstagram.trim().length > 0;
@@ -432,11 +491,29 @@ export function MediaDistributionPage() {
   }, [step, hasAnyPlatform, videoReady, captionsReady, scheduleReady]);
 
   const stepTitle = useMemo(() => {
-    if (step === 1) return 'Step 1 — Choose Platforms';
-    if (step === 2) return 'Step 2 — Upload Video';
-    if (step === 3) return 'Step 3 — Captions (and optional AI)';
-    return 'Step 4 — Scheduling';
+    if (step === 1) return 'Platforms';
+    if (step === 2) return 'Video';
+    if (step === 3) return 'Captions';
+    return 'Schedule';
   }, [step]);
+
+  const copyOkForPlatform = (k: PlatformKey) => {
+    if (!selected[k]) return true;
+    if (k === 'instagram') return captionInstagram.trim().length > 0;
+    if (k === 'tiktok') return captionTikTok.trim().length > 0;
+    if (k === 'facebook') return captionFacebook.trim().length > 0;
+    if (k === 'youtube') return youtubeTitle.trim().length > 0;
+    if (k === 'twitter') return twitterText.trim().length > 0;
+    if (k === 'linkedin') return linkedinText.trim().length > 0;
+    return false;
+  };
+
+  const getCopyLabel = (k: PlatformKey) => {
+    const meta = PLATFORM_META[k];
+    if (meta.kind === 'title') return 'Title';
+    if (meta.kind === 'text') return 'Text';
+    return 'Caption';
+  };
 
   const runAi = async () => {
     setAiError(null);
@@ -454,7 +531,9 @@ export function MediaDistributionPage() {
       });
 
       if (error) {
-        throw new Error((error as any)?.context?.body?.details || error.message || 'AI generation failed.');
+        throw new Error(
+          (error as any)?.context?.body?.details || error.message || 'AI generation failed.'
+        );
       }
 
       const res = data as AiGenResponse;
@@ -551,107 +630,23 @@ export function MediaDistributionPage() {
 
         const requestedLocal = getLocal(k);
 
-        if (k === 'instagram') {
-          platformPayload.instagram = {
-            enabled: true,
-            copy: { caption: captionInstagram },
-            schedule: {
-              inputTimezone: TZ_ET,
-              utcIso: info.utcIso,
-              unixSeconds: info.unixSeconds,
-              unixMillis: info.unixMillis,
-              rfc3339WithOffset: info.rfc3339WithOffset,
-              etDisplay: info.etDisplay,
-              requestedLocal,
-              mode: scheduleMode,
-            },
-          };
-        }
+        const scheduleObj = {
+          inputTimezone: TZ_ET as 'America/New_York',
+          utcIso: info.utcIso,
+          unixSeconds: info.unixSeconds,
+          unixMillis: info.unixMillis,
+          rfc3339WithOffset: info.rfc3339WithOffset,
+          etDisplay: info.etDisplay,
+          requestedLocal,
+          mode: scheduleMode as 'same' | 'different',
+        };
 
-        if (k === 'tiktok') {
-          platformPayload.tiktok = {
-            enabled: true,
-            copy: { caption: captionTikTok },
-            schedule: {
-              inputTimezone: TZ_ET,
-              utcIso: info.utcIso,
-              unixSeconds: info.unixSeconds,
-              unixMillis: info.unixMillis,
-              rfc3339WithOffset: info.rfc3339WithOffset,
-              etDisplay: info.etDisplay,
-              requestedLocal,
-              mode: scheduleMode,
-            },
-          };
-        }
-
-        if (k === 'facebook') {
-          platformPayload.facebook = {
-            enabled: true,
-            copy: { caption: captionFacebook },
-            schedule: {
-              inputTimezone: TZ_ET,
-              utcIso: info.utcIso,
-              unixSeconds: info.unixSeconds,
-              unixMillis: info.unixMillis,
-              rfc3339WithOffset: info.rfc3339WithOffset,
-              etDisplay: info.etDisplay,
-              requestedLocal,
-              mode: scheduleMode,
-            },
-          };
-        }
-
-        if (k === 'youtube') {
-          platformPayload.youtube = {
-            enabled: true,
-            copy: { title: youtubeTitle },
-            schedule: {
-              inputTimezone: TZ_ET,
-              utcIso: info.utcIso,
-              unixSeconds: info.unixSeconds,
-              unixMillis: info.unixMillis,
-              rfc3339WithOffset: info.rfc3339WithOffset,
-              etDisplay: info.etDisplay,
-              requestedLocal,
-              mode: scheduleMode,
-            },
-          };
-        }
-
-        if (k === 'twitter') {
-          platformPayload.twitter = {
-            enabled: true,
-            copy: { text: twitterText },
-            schedule: {
-              inputTimezone: TZ_ET,
-              utcIso: info.utcIso,
-              unixSeconds: info.unixSeconds,
-              unixMillis: info.unixMillis,
-              rfc3339WithOffset: info.rfc3339WithOffset,
-              etDisplay: info.etDisplay,
-              requestedLocal,
-              mode: scheduleMode,
-            },
-          };
-        }
-
-        if (k === 'linkedin') {
-          platformPayload.linkedin = {
-            enabled: true,
-            copy: { text: linkedinText },
-            schedule: {
-              inputTimezone: TZ_ET,
-              utcIso: info.utcIso,
-              unixSeconds: info.unixSeconds,
-              unixMillis: info.unixMillis,
-              rfc3339WithOffset: info.rfc3339WithOffset,
-              etDisplay: info.etDisplay,
-              requestedLocal,
-              mode: scheduleMode,
-            },
-          };
-        }
+        if (k === 'instagram') platformPayload.instagram = { enabled: true, copy: { caption: captionInstagram }, schedule: scheduleObj };
+        if (k === 'tiktok') platformPayload.tiktok = { enabled: true, copy: { caption: captionTikTok }, schedule: scheduleObj };
+        if (k === 'facebook') platformPayload.facebook = { enabled: true, copy: { caption: captionFacebook }, schedule: scheduleObj };
+        if (k === 'youtube') platformPayload.youtube = { enabled: true, copy: { title: youtubeTitle }, schedule: scheduleObj };
+        if (k === 'twitter') platformPayload.twitter = { enabled: true, copy: { text: twitterText }, schedule: scheduleObj };
+        if (k === 'linkedin') platformPayload.linkedin = { enabled: true, copy: { text: linkedinText }, schedule: scheduleObj };
       });
 
       const payload = {
@@ -716,7 +711,7 @@ export function MediaDistributionPage() {
                 }
               : null,
         },
-        platforms: platformPayload, // ✅ Fully separated platform objects with their own copy + schedule
+        platforms: platformPayload, // ✅ Fully separated platform objects
       };
 
       const res = await fetch(WEBHOOK_URL, {
@@ -753,7 +748,6 @@ export function MediaDistributionPage() {
     <button
       onClick={() => {
         resetSubmitState();
-        // only allow going backwards freely; going forward requires passing checks
         if (n < step) setStep(n);
       }}
       className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
@@ -775,7 +769,6 @@ export function MediaDistributionPage() {
       </div>
       <div className="min-w-0">
         <div className="font-extrabold text-white">{label}</div>
-        <div className="text-xs text-white/60">Step {n}</div>
       </div>
     </button>
   );
@@ -959,58 +952,21 @@ export function MediaDistributionPage() {
             Welcome <span className="gold-shimmer font-extrabold">Transferrable Everything</span>
           </h1>
           <p className="mt-4 text-gray-200 text-lg">
-            Step-by-step media distribution: pick platforms → upload video → generate/write captions → schedule.
+            Step-by-step media distribution.
           </p>
         </div>
 
         <div className="mt-8 grid gap-3 sm:grid-cols-4">
-          <WizardPill
-            n={1}
-            label="Platforms"
-            active={step === 1}
-            done={hasAnyPlatform}
-          />
-          <WizardPill
-            n={2}
-            label="Video"
-            active={step === 2}
-            done={videoReady}
-          />
-          <WizardPill
-            n={3}
-            label="Captions"
-            active={step === 3}
-            done={captionsReady}
-          />
-          <WizardPill
-            n={4}
-            label="Schedule"
-            active={step === 4}
-            done={scheduleReady && submitOk}
-          />
+          <WizardPill n={1} label="Platforms" active={step === 1} done={hasAnyPlatform} />
+          <WizardPill n={2} label="Video" active={step === 2} done={videoReady} />
+          <WizardPill n={3} label="Captions" active={step === 3} done={captionsReady} />
+          <WizardPill n={4} label="Schedule" active={step === 4} done={scheduleReady && submitOk} />
         </div>
 
+        {/* ✅ Removed the “subtitle for each step” box */}
         <div className="mt-6 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
-            <div>
-              <div className="text-sm font-extrabold text-white/80">{stepTitle}</div>
-              <div className="text-2xl font-extrabold mt-1">
-                {step === 1 && 'Choose where you want to post'}
-                {step === 2 && 'Upload your video'}
-                {step === 3 && 'Create captions per platform'}
-                {step === 4 && 'Choose scheduling options'}
-              </div>
-              <div className="text-sm text-white/70 mt-2">
-                {step === 1 &&
-                  'Select the platforms you want. Only selected platforms will be required + sent.'}
-                {step === 2 &&
-                  'Upload the video file. (Optional thumbnail is available for workflows that want it.)'}
-                {step === 3 &&
-                  'Fill in the text for each selected platform. You can optionally use AI (audio-based) to generate.'}
-                {step === 4 &&
-                  'Schedule all platforms at the same time or set different times per platform. Then submit.'}
-              </div>
-            </div>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="text-2xl font-extrabold">{stepTitle}</div>
 
             <div className="flex items-center gap-3">
               <button
@@ -1067,69 +1023,90 @@ export function MediaDistributionPage() {
               )}
             </div>
           </div>
+
+          {submitOk && (
+            <div className="mt-4 bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
+              <div className="flex items-start gap-2 text-green-100">
+                <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-300" />
+                <div>
+                  <div className="font-extrabold">Scheduled successfully.</div>
+                  <div className="text-sm text-green-100/80">
+                    Your content package was submitted to the automation webhook.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {submitError && (
+            <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
+              <div className="flex items-start gap-2 text-red-100">
+                <AlertCircle className="h-5 w-5 mt-0.5 text-red-300" />
+                <div className="text-sm">{submitError}</div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Step content */}
         <div className="mt-6 space-y-5">
           {/* STEP 1 */}
           {step === 1 && (
-            <div className="grid gap-5">
-              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="text-lg font-extrabold">Platforms</h3>
-                    <p className="text-gray-300 text-sm mt-1">
-                      Choose the platforms you want to post to. We’ll only require + send details for what you select.
-                    </p>
-                  </div>
-                  <div className="text-xs text-white/60">
-                    Selected: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
-                  </div>
+            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-extrabold">Choose platforms</h3>
+                  <p className="text-gray-300 text-sm mt-1">
+                    Select the platforms you want to post to.
+                  </p>
                 </div>
-
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  {(Object.keys(PLATFORM_META) as PlatformKey[]).map((k) => {
-                    const on = selected[k];
-                    const meta = PLATFORM_META[k];
-                    return (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => {
-                          resetSubmitState();
-                          setSelected((prev) => ({ ...prev, [k]: !prev[k] }));
-                        }}
-                        className={`rounded-2xl border p-5 text-left transition ${
-                          on
-                            ? 'bg-white/10 border-white/15'
-                            : 'bg-white/5 border-gray-700/50 hover:bg-white/10 hover:border-white/15'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <div className="text-base font-extrabold">{meta.label}</div>
-                            <div className="text-sm text-white/60 mt-1">{meta.sub}</div>
-                          </div>
-                          <div
-                            className={`h-6 w-6 rounded-full border flex items-center justify-center ${
-                              on ? 'border-green-300/60 bg-green-300/10' : 'border-white/15 bg-transparent'
-                            }`}
-                          >
-                            {on ? <CheckCircle2 className="h-4 w-4 text-green-200" /> : null}
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
+                <div className="text-xs text-white/60">
+                  Selected: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
                 </div>
-
-                {!hasAnyPlatform && (
-                  <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 mt-0.5" />
-                    <span>Please choose at least one platform to continue.</span>
-                  </div>
-                )}
               </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {(Object.keys(PLATFORM_META) as PlatformKey[]).map((k) => {
+                  const on = selected[k];
+                  const meta = PLATFORM_META[k];
+                  return (
+                    <button
+                      key={k}
+                      type="button"
+                      onClick={() => {
+                        resetSubmitState();
+                        setSelected((prev) => ({ ...prev, [k]: !prev[k] }));
+                      }}
+                      className={`rounded-2xl border p-5 text-left transition ${
+                        on
+                          ? 'bg-white/10 border-white/15'
+                          : 'bg-white/5 border-gray-700/50 hover:bg-white/10 hover:border-white/15'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div>
+                          <div className="text-base font-extrabold">{meta.label}</div>
+                          <div className="text-sm text-white/60 mt-1">{meta.sub}</div>
+                        </div>
+                        <div
+                          className={`h-6 w-6 rounded-full border flex items-center justify-center ${
+                            on ? 'border-green-300/60 bg-green-300/10' : 'border-white/15 bg-transparent'
+                          }`}
+                        >
+                          {on ? <CheckCircle2 className="h-4 w-4 text-green-200" /> : null}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {!hasAnyPlatform && (
+                <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5" />
+                  <span>Please choose at least one platform to continue.</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -1150,7 +1127,7 @@ export function MediaDistributionPage() {
 
               <FileUploadCard
                 title="Upload Thumbnail (Optional)"
-                subtitle="Optional. JPG/PNG/WebP recommended. If your workflow uses thumbnails, this will be included."
+                subtitle="Optional. JPG/PNG/WebP recommended."
                 kind="thumbnail"
                 accept="image/*"
                 file={thumbnailFile}
@@ -1171,9 +1148,9 @@ export function MediaDistributionPage() {
               <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="text-lg font-extrabold">Captions per selected platform</h3>
+                    <h3 className="text-lg font-extrabold">Captions</h3>
                     <p className="text-gray-300 text-sm mt-1">
-                      Only the platforms you selected will show up here and be required for submission.
+                      Tap a platform to edit it (fullscreen). Less scrolling.
                     </p>
                   </div>
                   <button
@@ -1196,9 +1173,6 @@ export function MediaDistributionPage() {
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                         <div className="flex-1">
                           <div className="text-sm font-extrabold">Tone</div>
-                          <div className="text-xs text-white/60 mt-1">
-                            Examples: Alex Hormozi • Gary Vee • Luxury • Professional • Casual
-                          </div>
                           <input
                             value={tone}
                             onChange={(e) => {
@@ -1237,14 +1211,10 @@ export function MediaDistributionPage() {
 
                       <div className="mt-4">
                         <div className="text-sm font-extrabold">Audio Upload (required for AI)</div>
-                        <div className="text-xs text-white/60 mt-1">
-                          Upload audio, then click “Generate Now”. (Max {prettyBytes(MAX_BYTES)})
-                        </div>
-
                         <div className="mt-3">
                           <FileUploadCard
                             title="Upload Audio"
-                            subtitle={`MP3/WAV/M4A recommended.`}
+                            subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP3/WAV/M4A recommended.`}
                             kind="audio"
                             accept="audio/*"
                             file={audioFile}
@@ -1261,10 +1231,6 @@ export function MediaDistributionPage() {
                             <span>{aiError}</span>
                           </div>
                         )}
-
-                        <div className="mt-4 text-xs text-white/60">
-                          AI fills: Instagram / TikTok / Facebook captions + YouTube title. It may also suggest text you can use for Twitter/LinkedIn.
-                        </div>
                       </div>
                     </div>
 
@@ -1299,110 +1265,159 @@ export function MediaDistributionPage() {
                 )}
               </div>
 
-              {/* Platform fields */}
-              <div className="grid gap-5">
-                {selected.instagram && (
-                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                    <div className="text-sm font-extrabold">Instagram Caption</div>
-                    <textarea
-                      value={captionInstagram}
-                      onChange={(e) => {
-                        setCaptionInstagram(e.target.value);
-                        resetSubmitState();
-                      }}
-                      rows={5}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                      placeholder="Write / paste your Instagram caption…"
-                    />
+              {/* ✅ Platform list (no scrolling fields) */}
+              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-lg font-extrabold">Selected platforms</div>
+                  <div className="text-xs text-white/60">
+                    Required: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
+                  </div>
+                </div>
+
+                {!hasAnyPlatform ? (
+                  <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5" />
+                    <span>No platforms selected. Go back to Step 1.</span>
+                  </div>
+                ) : (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                    {enabledPlatforms.map((k) => (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => setActiveCaptionPlatform(k)}
+                        className="rounded-2xl border border-gray-700/50 bg-white/5 hover:bg-white/10 hover:border-white/15 transition p-5 text-left"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="font-extrabold text-white">{PLATFORM_META[k].label}</div>
+                            <div className="text-sm text-white/60 mt-1">
+                              {getCopyLabel(k)} required
+                            </div>
+                          </div>
+                          <PlatformBadge ok={copyOkForPlatform(k)} />
+                        </div>
+                      </button>
+                    ))}
                   </div>
                 )}
 
-                {selected.tiktok && (
-                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                    <div className="text-sm font-extrabold">TikTok Caption</div>
-                    <textarea
-                      value={captionTikTok}
-                      onChange={(e) => {
-                        setCaptionTikTok(e.target.value);
-                        resetSubmitState();
-                      }}
-                      rows={4}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                      placeholder="Write / paste your TikTok caption…"
-                    />
-                  </div>
-                )}
-
-                {selected.facebook && (
-                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                    <div className="text-sm font-extrabold">Facebook Caption</div>
-                    <textarea
-                      value={captionFacebook}
-                      onChange={(e) => {
-                        setCaptionFacebook(e.target.value);
-                        resetSubmitState();
-                      }}
-                      rows={5}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                      placeholder="Write / paste your Facebook caption…"
-                    />
-                  </div>
-                )}
-
-                {selected.youtube && (
-                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                    <div className="text-sm font-extrabold">YouTube Shorts Title</div>
-                    <input
-                      value={youtubeTitle}
-                      onChange={(e) => {
-                        setYoutubeTitle(e.target.value);
-                        resetSubmitState();
-                      }}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
-                      placeholder="Enter a title for YouTube Shorts…"
-                    />
-                  </div>
-                )}
-
-                {selected.twitter && (
-                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                    <div className="text-sm font-extrabold">Twitter (X) Text</div>
-                    <textarea
-                      value={twitterText}
-                      onChange={(e) => {
-                        setTwitterText(e.target.value);
-                        resetSubmitState();
-                      }}
-                      rows={4}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                      placeholder="Write / paste your Twitter (X) post…"
-                    />
-                  </div>
-                )}
-
-                {selected.linkedin && (
-                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                    <div className="text-sm font-extrabold">LinkedIn Text</div>
-                    <textarea
-                      value={linkedinText}
-                      onChange={(e) => {
-                        setLinkedinText(e.target.value);
-                        resetSubmitState();
-                      }}
-                      rows={5}
-                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                      placeholder="Write / paste your LinkedIn post…"
-                    />
+                {!captionsReady && hasAnyPlatform && (
+                  <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5" />
+                    <span>Fill in required text for each selected platform to continue.</span>
                   </div>
                 )}
               </div>
 
-              {!captionsReady && (
-                <div className="text-sm text-red-200 inline-flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 mt-0.5" />
-                  <span>Fill in the required text for every selected platform to continue.</span>
-                </div>
-              )}
+              {/* Fullscreen Caption Modal */}
+              <FullscreenModal
+                open={Boolean(activeCaptionPlatform)}
+                title={
+                  activeCaptionPlatform
+                    ? `${PLATFORM_META[activeCaptionPlatform].label} — ${getCopyLabel(
+                        activeCaptionPlatform
+                      )}`
+                    : 'Platform'
+                }
+                subtitle={activeCaptionPlatform ? PLATFORM_META[activeCaptionPlatform].sub : undefined}
+                onClose={() => setActiveCaptionPlatform(null)}
+              >
+                {activeCaptionPlatform && (
+                  <div className="space-y-4">
+                    {activeCaptionPlatform === 'youtube' ? (
+                      <>
+                        <div className="text-sm font-extrabold">YouTube Shorts Title</div>
+                        <input
+                          value={youtubeTitle}
+                          onChange={(e) => {
+                            setYoutubeTitle(e.target.value);
+                            resetSubmitState();
+                          }}
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                          placeholder="Enter a title…"
+                        />
+                      </>
+                    ) : activeCaptionPlatform === 'twitter' ? (
+                      <>
+                        <div className="text-sm font-extrabold">Twitter (X) Text</div>
+                        <textarea
+                          value={twitterText}
+                          onChange={(e) => {
+                            setTwitterText(e.target.value);
+                            resetSubmitState();
+                          }}
+                          rows={10}
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                          placeholder="Write your post…"
+                        />
+                      </>
+                    ) : activeCaptionPlatform === 'linkedin' ? (
+                      <>
+                        <div className="text-sm font-extrabold">LinkedIn Text</div>
+                        <textarea
+                          value={linkedinText}
+                          onChange={(e) => {
+                            setLinkedinText(e.target.value);
+                            resetSubmitState();
+                          }}
+                          rows={12}
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                          placeholder="Write your post…"
+                        />
+                      </>
+                    ) : activeCaptionPlatform === 'instagram' ? (
+                      <>
+                        <div className="text-sm font-extrabold">Instagram Caption</div>
+                        <textarea
+                          value={captionInstagram}
+                          onChange={(e) => {
+                            setCaptionInstagram(e.target.value);
+                            resetSubmitState();
+                          }}
+                          rows={12}
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                          placeholder="Write your caption…"
+                        />
+                      </>
+                    ) : activeCaptionPlatform === 'tiktok' ? (
+                      <>
+                        <div className="text-sm font-extrabold">TikTok Caption</div>
+                        <textarea
+                          value={captionTikTok}
+                          onChange={(e) => {
+                            setCaptionTikTok(e.target.value);
+                            resetSubmitState();
+                          }}
+                          rows={10}
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                          placeholder="Write your caption…"
+                        />
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-sm font-extrabold">Facebook Caption</div>
+                        <textarea
+                          value={captionFacebook}
+                          onChange={(e) => {
+                            setCaptionFacebook(e.target.value);
+                            resetSubmitState();
+                          }}
+                          rows={12}
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                          placeholder="Write your caption…"
+                        />
+                      </>
+                    )}
+
+                    <div className="pt-2">
+                      <div className="text-xs text-white/50">
+                        Tip: Close this modal when you’re done, then tap the next platform.
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </FullscreenModal>
             </div>
           )}
 
@@ -1410,10 +1425,7 @@ export function MediaDistributionPage() {
           {step === 4 && (
             <div className="space-y-5">
               <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <h3 className="text-lg font-extrabold">Scheduling Mode</h3>
-                <p className="text-gray-300 text-sm mt-1">
-                  Schedule everything at the same time, or schedule platforms at different times.
-                </p>
+                <h3 className="text-lg font-extrabold">Scheduling mode</h3>
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   <button
@@ -1429,7 +1441,6 @@ export function MediaDistributionPage() {
                     }`}
                   >
                     <div className="font-extrabold">Schedule all at the same time</div>
-                    <div className="text-sm text-white/60 mt-1">One date/time (ET) applies to all selected platforms.</div>
                   </button>
 
                   <button
@@ -1445,7 +1456,6 @@ export function MediaDistributionPage() {
                     }`}
                   >
                     <div className="font-extrabold">Schedule at different times</div>
-                    <div className="text-sm text-white/60 mt-1">Set a date/time (ET) for each selected platform.</div>
                   </button>
                 </div>
               </div>
@@ -1453,7 +1463,6 @@ export function MediaDistributionPage() {
               {scheduleMode === 'same' ? (
                 <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                   <h3 className="text-lg font-extrabold">Schedule (ET)</h3>
-                  <p className="text-gray-300 text-sm mt-1">Choose a date and time in Eastern Time.</p>
 
                   <div className="mt-5 grid gap-4 sm:grid-cols-2">
                     <div>
@@ -1501,94 +1510,131 @@ export function MediaDistributionPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {enabledPlatforms.map((k) => (
-                    <div
-                      key={k}
-                      className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]"
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="text-lg font-extrabold">{PLATFORM_META[k].label}</div>
-                          <div className="text-xs text-white/60 mt-1">Schedule this platform in ET</div>
-                        </div>
-                        <div className="text-xs text-white/60">
-                          {scheduleInfoByPlatform[k].ok ? (
-                            <span className="text-green-200 font-extrabold">Ready</span>
-                          ) : (
-                            <span className="text-white/50">Missing</span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <div className="text-sm font-bold">Date</div>
-                          <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
-                            <Calendar className="h-4 w-4 text-white" />
-                            <input
-                              type="date"
-                              value={scheduleByPlatform[k].date}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                resetSubmitState();
-                                setScheduleByPlatform((prev) => ({
-                                  ...prev,
-                                  [k]: { ...prev[k], date: v },
-                                }));
-                              }}
-                              className="w-full bg-transparent text-sm text-white outline-none"
-                            />
-                          </div>
-                        </div>
-
-                        <div>
-                          <div className="text-sm font-bold">Time</div>
-                          <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
-                            <Clock className="h-4 w-4 text-white" />
-                            <input
-                              type="time"
-                              value={scheduleByPlatform[k].time}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                resetSubmitState();
-                                setScheduleByPlatform((prev) => ({
-                                  ...prev,
-                                  [k]: { ...prev[k], time: v },
-                                }));
-                              }}
-                              className="w-full bg-transparent text-sm text-white outline-none"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-3 text-sm text-white/80">
-                        {scheduleInfoByPlatform[k].ok ? (
-                          <>
-                            Scheduled for{' '}
-                            <span className="font-extrabold">{scheduleInfoByPlatform[k].etDisplay}</span>
-                          </>
-                        ) : (
-                          <span className="text-white/60">{scheduleInfoByPlatform[k].message}</span>
-                        )}
+                  {/* ✅ Platform list for schedule (tap -> fullscreen modal) */}
+                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="text-lg font-extrabold">Schedule per platform (ET)</div>
+                      <div className="text-xs text-white/60">
+                        Selected: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
                       </div>
                     </div>
-                  ))}
+
+                    {!hasAnyPlatform ? (
+                      <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 mt-0.5" />
+                        <span>No platforms selected. Go back to Step 1.</span>
+                      </div>
+                    ) : (
+                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                        {enabledPlatforms.map((k) => (
+                          <button
+                            key={k}
+                            type="button"
+                            onClick={() => setActiveSchedulePlatform(k)}
+                            className="rounded-2xl border border-gray-700/50 bg-white/5 hover:bg-white/10 hover:border-white/15 transition p-5 text-left"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-extrabold text-white">{PLATFORM_META[k].label}</div>
+                                <div className="text-sm text-white/60 mt-1">Tap to set date/time</div>
+                              </div>
+                              <PlatformBadge ok={scheduleInfoByPlatform[k].ok} />
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {!scheduleReady && hasAnyPlatform && (
+                      <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 mt-0.5" />
+                        <span>Set a date/time for each selected platform to continue.</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Fullscreen Schedule Modal */}
+                  <FullscreenModal
+                    open={Boolean(activeSchedulePlatform)}
+                    title={
+                      activeSchedulePlatform
+                        ? `${PLATFORM_META[activeSchedulePlatform].label} — Schedule (ET)`
+                        : 'Schedule'
+                    }
+                    onClose={() => setActiveSchedulePlatform(null)}
+                  >
+                    {activeSchedulePlatform && (
+                      <div className="space-y-5">
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <div className="text-sm font-bold">Date</div>
+                            <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
+                              <Calendar className="h-4 w-4 text-white" />
+                              <input
+                                type="date"
+                                value={scheduleByPlatform[activeSchedulePlatform].date}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  resetSubmitState();
+                                  setScheduleByPlatform((prev) => ({
+                                    ...prev,
+                                    [activeSchedulePlatform]: { ...prev[activeSchedulePlatform], date: v },
+                                  }));
+                                }}
+                                className="w-full bg-transparent text-sm text-white outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div>
+                            <div className="text-sm font-bold">Time</div>
+                            <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
+                              <Clock className="h-4 w-4 text-white" />
+                              <input
+                                type="time"
+                                value={scheduleByPlatform[activeSchedulePlatform].time}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  resetSubmitState();
+                                  setScheduleByPlatform((prev) => ({
+                                    ...prev,
+                                    [activeSchedulePlatform]: { ...prev[activeSchedulePlatform], time: v },
+                                  }));
+                                }}
+                                className="w-full bg-transparent text-sm text-white outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-sm text-white/80">
+                          {scheduleInfoByPlatform[activeSchedulePlatform].ok ? (
+                            <>
+                              Scheduled for{' '}
+                              <span className="font-extrabold">{scheduleInfoByPlatform[activeSchedulePlatform].etDisplay}</span>
+                            </>
+                          ) : (
+                            <span className="text-white/60">{scheduleInfoByPlatform[activeSchedulePlatform].message}</span>
+                          )}
+                        </div>
+
+                        <div className="text-xs text-white/50">
+                          Close when done, then tap the next platform.
+                        </div>
+                      </div>
+                    )}
+                  </FullscreenModal>
                 </div>
               )}
 
-              {/* Ready check + results */}
+              {/* Ready check */}
               <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <h3 className="text-lg font-extrabold">Ready Check</h3>
+                <h3 className="text-lg font-extrabold">Ready check</h3>
 
                 <div className="mt-4 space-y-2 text-sm text-white/80">
                   <div className="flex items-center justify-between">
                     <span>Platforms selected</span>
-                    {hasAnyPlatform ? (
-                      <span className="text-green-200">Done</span>
-                    ) : (
-                      <span className="text-white/50">Missing</span>
-                    )}
+                    {hasAnyPlatform ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
                   </div>
                   <div className="flex items-center justify-between">
                     <span>Video uploaded</span>
@@ -1604,29 +1650,6 @@ export function MediaDistributionPage() {
                   </div>
                 </div>
               </div>
-
-              {submitOk && (
-                <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
-                  <div className="flex items-start gap-2 text-green-100">
-                    <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-300" />
-                    <div>
-                      <div className="font-extrabold">Scheduled successfully.</div>
-                      <div className="text-sm text-green-100/80">
-                        Your content package was submitted to the automation webhook.
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {submitError && (
-                <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
-                  <div className="flex items-start gap-2 text-red-100">
-                    <AlertCircle className="h-5 w-5 mt-0.5 text-red-300" />
-                    <div className="text-sm">{submitError}</div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
