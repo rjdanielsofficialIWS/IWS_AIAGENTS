@@ -253,56 +253,6 @@ function SlideToSubmit({
   );
 }
 
-function ProgressBar({
-  labels,
-  activeIndex,
-}: {
-  labels: string[];
-  activeIndex: number; // 0-based
-}) {
-  const pct = labels.length <= 1 ? 100 : Math.round((activeIndex / (labels.length - 1)) * 100);
-
-  return (
-    <div className="mt-5">
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="flex items-center justify-between">
-          <div className="text-sm font-extrabold text-white">
-            Step <span style={{ color: '#86efac' }}>{activeIndex + 1}</span> / {labels.length}
-          </div>
-          <div className="text-xs text-white/60">{pct}%</div>
-        </div>
-
-        <div className="mt-3 h-3 w-full rounded-full bg-black/30 border border-white/10 overflow-hidden">
-          <div
-            className="h-full rounded-full"
-            style={{
-              width: `${pct}%`,
-              background: `linear-gradient(90deg, ${GREEN_PROGRESS}, rgba(34,197,94,0.55))`,
-            }}
-          />
-        </div>
-
-        {/* labels in 2 columns on mobile like you asked */}
-        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-          {labels.map((l, i) => (
-            <div
-              key={l}
-              className="rounded-xl border px-3 py-2 font-extrabold"
-              style={{
-                borderColor: i <= activeIndex ? 'rgba(34,197,94,0.35)' : 'rgba(255,255,255,0.08)',
-                backgroundColor: i === activeIndex ? 'rgba(34,197,94,0.12)' : 'rgba(255,255,255,0.04)',
-                color: i <= activeIndex ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.55)',
-              }}
-            >
-              {l}
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ListRow({
   icon,
   title,
@@ -350,6 +300,87 @@ function ListRow({
   );
 }
 
+/**
+ * ✅ Progress bar with labels horizontally across (no box pills)
+ * ✅ Excludes Review from the label row (per your request)
+ */
+function ProgressBarLine({
+  labels,
+  activeIndex,
+}: {
+  labels: string[];
+  activeIndex: number; // 0-based
+}) {
+  const pct = labels.length <= 1 ? 100 : Math.round((activeIndex / (labels.length - 1)) * 100);
+
+  return (
+    <div className="mt-5">
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-extrabold text-white">
+            Step <span style={{ color: '#86efac' }}>{activeIndex + 1}</span> / {labels.length}
+          </div>
+          <div className="text-xs text-white/60">{pct}%</div>
+        </div>
+
+        {/* progress bar */}
+        <div className="mt-3 h-3 w-full rounded-full bg-black/30 border border-white/10 overflow-hidden">
+          <div
+            className="h-full rounded-full"
+            style={{
+              width: `${pct}%`,
+              background: `linear-gradient(90deg, ${GREEN_PROGRESS}, rgba(34,197,94,0.55))`,
+            }}
+          />
+        </div>
+
+        {/* ✅ Horizontal labels */}
+        <div className="mt-4 flex items-center justify-between gap-3">
+          {labels.map((l, i) => (
+            <div
+              key={l}
+              className="min-w-0 flex-1 text-center"
+              style={{
+                color:
+                  i === activeIndex
+                    ? 'rgba(255,255,255,0.95)'
+                    : i < activeIndex
+                      ? 'rgba(255,255,255,0.75)'
+                      : 'rgba(255,255,255,0.45)',
+                fontWeight: i === activeIndex ? 900 : 800,
+                fontSize: 12,
+              }}
+            >
+              <span className="truncate inline-block max-w-full">{l}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* tiny tick markers */}
+        <div className="mt-2 flex items-center justify-between">
+          {labels.map((l, i) => (
+            <div key={`${l}-tick`} className="flex-1 flex justify-center">
+              <div
+                className="h-2 w-2 rounded-full"
+                style={{
+                  backgroundColor:
+                    i <= activeIndex ? 'rgba(34,197,94,0.9)' : 'rgba(255,255,255,0.18)',
+                  boxShadow: i === activeIndex ? '0 0 0 5px rgba(34,197,94,0.12)' : 'none',
+                }}
+              />
+            </div>
+          ))}
+        </div>
+
+        {/* On very small screens, if labels wrap awkwardly, we keep it readable */}
+        <div className="mt-3 text-[11px] text-white/45 text-center sm:hidden">
+          Tip: scroll the page — the edit screens open fullscreen to avoid long scrolling.
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function MediaDistributionPage() {
   const [bgOffset, setBgOffset] = useState(0);
 
@@ -358,7 +389,7 @@ export function MediaDistributionPage() {
   // 3 Captions
   // 4 Twitter Posts (optional)
   // 5 Schedule
-  // 6 Review (not shown as a step pill; now progress bar handles it)
+  // 6 Review (excluded from label row)
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
   // Step 1: platforms (default all unselected)
@@ -454,8 +485,7 @@ export function MediaDistributionPage() {
 
   const sizeGuard = (file: File, kind: MediaKind) => {
     if (file.size > MAX_BYTES) {
-      const label =
-        kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : 'Thumbnail image';
+      const label = kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : 'Thumbnail image';
       return (
         `${label} is too large (${prettyBytes(file.size)}). ` +
         `Max allowed is ${prettyBytes(MAX_BYTES)}. Please compress and try again.`
@@ -965,7 +995,11 @@ export function MediaDistributionPage() {
             ? { enabled: true, copy: { text: linkedinText }, schedule: baseScheduleObj('linkedin') }
             : { enabled: false },
           twitterPosts: selected.twitterPosts
-            ? { enabled: true, copy: { posts: twitterPosts.map((t) => t.trim()).filter(Boolean) }, schedule: baseScheduleObj('twitterPosts') }
+            ? {
+                enabled: true,
+                copy: { posts: twitterPosts.map((t) => t.trim()).filter(Boolean) },
+                schedule: baseScheduleObj('twitterPosts'),
+              }
             : { enabled: false },
         },
       };
@@ -1152,24 +1186,30 @@ export function MediaDistributionPage() {
     return Boolean(selected[k]) && isCopyComplete(k) && Boolean(scheduleInfoByPlatform[k]?.ok);
   };
 
-  const reviewReadyToSubmit = hasAnyPlatform && videoReady && captionsReady && twitterPostsReady && scheduleReady;
+  const reviewReadyToSubmit =
+    hasAnyPlatform && videoReady && captionsReady && twitterPostsReady && scheduleReady;
 
-  const progressLabels = useMemo(() => {
+  /**
+   * ✅ Progress labels EXCLUDE Review (per request)
+   * Platforms → Video → Captions → (optional X Posts) → Schedule
+   */
+  const progressLabelsNoReview = useMemo(() => {
     const base = ['Platforms', 'Video', 'Captions'];
     const mid = showTwitterPostsStep ? ['X Posts'] : [];
-    const end = ['Schedule', 'Review'];
+    const end = ['Schedule'];
     return [...base, ...mid, ...end];
   }, [showTwitterPostsStep]);
 
-  const activeProgressIndex = useMemo(() => {
-    // Map step 1..6 to progress index
-    // labels: Platforms(0), Video(1), Captions(2), optional X Posts(3), Schedule(last-2), Review(last-1)
+  /**
+   * ✅ Active index maps to step (Review step uses "Schedule" as last)
+   */
+  const activeProgressIndexNoReview = useMemo(() => {
     if (!showTwitterPostsStep) {
       if (step === 1) return 0;
       if (step === 2) return 1;
       if (step === 3) return 2;
       if (step === 5) return 3;
-      if (step === 6) return 4;
+      if (step === 6) return 3; // keep highlight on Schedule during Review
       return 0;
     } else {
       if (step === 1) return 0;
@@ -1177,7 +1217,7 @@ export function MediaDistributionPage() {
       if (step === 3) return 2;
       if (step === 4) return 3;
       if (step === 5) return 4;
-      if (step === 6) return 5;
+      if (step === 6) return 4; // keep highlight on Schedule during Review
       return 0;
     }
   }, [step, showTwitterPostsStep]);
@@ -1262,8 +1302,8 @@ export function MediaDistributionPage() {
           <div className="mt-2" />
         )}
 
-        {/* ✅ Progress bar replaces step boxes */}
-        <ProgressBar labels={progressLabels} activeIndex={activeProgressIndex} />
+        {/* ✅ NEW progress bar w/ horizontal labels, excluding Review */}
+        <ProgressBarLine labels={progressLabelsNoReview} activeIndex={activeProgressIndexNoReview} />
 
         <div className="mt-6 space-y-5">
           {/* STEP 1: Platforms */}
@@ -1455,7 +1495,6 @@ export function MediaDistributionPage() {
                 )}
               </div>
 
-              {/* list of platforms (2-up) */}
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                 <div className="text-lg font-extrabold">Selected platforms</div>
 
@@ -1500,7 +1539,6 @@ export function MediaDistributionPage() {
                 <BottomNav nextLabel={showTwitterPostsStep ? 'Next (X Posts)' : 'Next (Schedule)'} />
               </div>
 
-              {/* caption modal */}
               <FullscreenModal
                 open={Boolean(activeCaptionPlatform)}
                 title={
@@ -1925,7 +1963,6 @@ export function MediaDistributionPage() {
 
               <BottomNav nextLabel="Next (Review)" />
 
-              {/* schedule modal */}
               <FullscreenModal
                 open={Boolean(activeSchedulePlatform)}
                 title={
@@ -1999,7 +2036,7 @@ export function MediaDistributionPage() {
             </div>
           )}
 
-          {/* STEP 6: REVIEW (FB-style list) */}
+          {/* STEP 6: REVIEW */}
           {step === 6 && (
             <div className="space-y-5">
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
@@ -2023,7 +2060,11 @@ export function MediaDistributionPage() {
                 <ListRow
                   icon={<Video className="h-5 w-5 text-white" />}
                   title="Video"
-                  subtitle={videoUpload.status === 'done' ? `${videoUpload.fileName} • ${prettyBytes(videoUpload.size)}` : 'Missing'}
+                  subtitle={
+                    videoUpload.status === 'done'
+                      ? `${videoUpload.fileName} • ${prettyBytes(videoUpload.size)}`
+                      : 'Missing'
+                  }
                   right={<PlatformBadge ok={videoReady} />}
                   onClick={() => setStep(2)}
                 />
@@ -2036,7 +2077,7 @@ export function MediaDistributionPage() {
                       ? `${thumbnailUpload.fileName} • ${prettyBytes(thumbnailUpload.size)}`
                       : 'Not uploaded'
                   }
-                  right={<PlatformBadge ok={thumbnailUpload.status === 'done' || true} />}
+                  right={<PlatformBadge ok={true} />}
                   onClick={() => setStep(2)}
                 />
 
@@ -2048,7 +2089,7 @@ export function MediaDistributionPage() {
                       ? `${audioUpload.fileName} • ${prettyBytes(audioUpload.size)}`
                       : 'Not uploaded'
                   }
-                  right={<PlatformBadge ok={audioUpload.status === 'done' || true} />}
+                  right={<PlatformBadge ok={true} />}
                   onClick={() => setStep(showTwitterPostsStep ? 4 : 3)}
                 />
 
@@ -2114,7 +2155,6 @@ export function MediaDistributionPage() {
                 </div>
               )}
 
-              {/* ✅ only ONE submit control at the bottom */}
               <SlideToSubmit
                 disabled={!reviewReadyToSubmit}
                 loading={submitting}
@@ -2123,7 +2163,7 @@ export function MediaDistributionPage() {
               />
 
               <BottomNav hideNext />
-              {/* review platform modal */}
+
               <FullscreenModal
                 open={Boolean(reviewPlatform)}
                 title={reviewPlatform ? PLATFORM_META[reviewPlatform].label : 'Platform'}
@@ -2146,7 +2186,10 @@ export function MediaDistributionPage() {
                             const v = t.trim();
                             if (!v) return null;
                             return (
-                              <div key={idx} className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/80">
+                              <div
+                                key={idx}
+                                className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/80"
+                              >
                                 {v}
                               </div>
                             );
