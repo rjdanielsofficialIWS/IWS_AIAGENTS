@@ -2,25 +2,31 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
+  Loader,
   UploadCloud,
   CheckCircle2,
   AlertCircle,
   X,
+  Sparkles,
   Calendar,
   Clock,
-  Sparkles,
-  Loader,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
 const GOLD_PRIMARY = '#D6B25E';
 const GOLD_HOVER = '#F0D27C';
 
+// ✅ Your n8n test webhook URL
 const WEBHOOK_URL =
   'https://iwsaiagents.app.n8n.cloud/webhook-test/f8390721-73cc-4594-921c-3afff87774c0';
 
+// ✅ Supabase Storage bucket name
 const BUCKET = 'media';
+
+// ✅ Supabase free plan safe limit (use 49MB to avoid edge cases)
 const MAX_BYTES = 49 * 1024 * 1024; // 49MB
+
+// Signed URL fallback duration (only used if bucket is private)
 const SIGNED_URL_SECONDS = 60 * 60 * 24 * 7;
 
 type MediaKind = 'video' | 'audio' | 'thumbnail';
@@ -42,11 +48,13 @@ type ScheduleInfo =
   | {
       ok: true;
       timezone: 'America/New_York';
-      etDisplay: string;
-      rfc3339WithOffset: string;
-      utcIso: string;
-      unixSeconds: number;
-      unixMillis: number;
+      // Human-readable
+      etDisplay: string; // e.g. Jan 25, 2026, 2:30 PM ET
+      // API-ready formats
+      rfc3339WithOffset: string; // e.g. 2026-01-25T14:30:00-05:00 (YouTube-friendly)
+      utcIso: string; // e.g. 2026-01-25T19:30:00.000Z
+      unixSeconds: number; // e.g. 1769369400 (Meta-friendly)
+      unixMillis: number; // useful for tooling
     }
   | { ok: false; message: string };
 
@@ -66,44 +74,49 @@ type AiGenResponse = {
   };
 };
 
-const ModalShell = ({
+function ModalShell({
   title,
-  children,
   onClose,
+  children,
 }: {
   title: string;
-  children: React.ReactNode;
   onClose: () => void;
-}) => {
+  children: React.ReactNode;
+}) {
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
-      role="dialog"
-      aria-modal="true"
-    >
-      <div className="w-full max-w-3xl rounded-2xl border border-white/10 bg-[#0B0B0F] shadow-2xl">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-4xl rounded-2xl border border-gray-700/50 bg-[#0b0b0b] shadow-[0_10px_80px_rgba(0,0,0,0.75)]">
         <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+          <h2 className="text-lg font-extrabold text-white">{title}</h2>
           <button
             onClick={onClose}
-            className="rounded-lg p-2 text-white/80 hover:bg-white/10 hover:text-white"
+            className="rounded-xl p-2 text-white/80 hover:bg-white/10 hover:text-white"
             aria-label="Close"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
+
         <div className="p-5">{children}</div>
       </div>
     </div>
   );
-};
+}
+
+function prettyBytes(bytes: number) {
+  if (!bytes || bytes < 1) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
+  const val = bytes / Math.pow(1024, i);
+  return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+}
 
 export function MediaDistributionPage() {
-  // Background motion
+  // ✅ Background “glow motion”
   const [bgOffset, setBgOffset] = useState(0);
 
-  // Modal visibility
-  const [openModal, setOpenModal] = useState<null | 'uploads' | 'captions' | 'schedule'>(null);
+  // ✅ step modal
+  const [openStep, setOpenStep] = useState<null | 'uploads' | 'captions' | 'schedule'>(null);
 
   // Files
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -115,29 +128,29 @@ export function MediaDistributionPage() {
   const [audioUpload, setAudioUpload] = useState<UploadState>({ status: 'idle' });
   const [thumbnailUpload, setThumbnailUpload] = useState<UploadState>({ status: 'idle' });
 
-  // Copy fields
+  // Metadata fields
   const [captionInstagram, setCaptionInstagram] = useState('');
   const [captionFacebook, setCaptionFacebook] = useState('');
   const [captionTikTok, setCaptionTikTok] = useState('');
   const [youtubeTitle, setYoutubeTitle] = useState('');
 
-  // Tone + AI results
+  // AI (tone + ideas)
   const [tone, setTone] = useState('confident, punchy, value-first');
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [tweetIdeas, setTweetIdeas] = useState<string[]>([]);
   const [ytTitleIdeas, setYtTitleIdeas] = useState<string[]>([]);
 
-  // Schedule
-  const [scheduleDate, setScheduleDate] = useState('');
-  const [scheduleTime, setScheduleTime] = useState('');
+  // Scheduling (ET / America/New_York)
+  const [scheduleDate, setScheduleDate] = useState(''); // YYYY-MM-DD
+  const [scheduleTime, setScheduleTime] = useState(''); // HH:mm
 
-  // Submit
+  // Submit states
   const [submitting, setSubmitting] = useState(false);
-  const [submitOk, setSubmitOk] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitOk, setSubmitOk] = useState(false);
 
-  // Scroll glow
+  // ✅ Same scroll offset behavior
   useEffect(() => {
     let raf = 0;
     const onScroll = () => {
@@ -147,6 +160,7 @@ export function MediaDistributionPage() {
         raf = 0;
       });
     };
+
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
@@ -155,30 +169,34 @@ export function MediaDistributionPage() {
     };
   }, []);
 
-  const prettyBytes = (bytes: number) => {
-    if (!bytes || bytes < 1) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
-    const val = bytes / Math.pow(1024, i);
-    return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+  const resetSubmitState = () => {
+    setSubmitOk(false);
+    setSubmitError(null);
   };
 
   const sizeGuard = (file: File, kind: MediaKind) => {
     if (file.size > MAX_BYTES) {
-      const label = kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : 'Thumbnail image';
-      return `${label} is too large (${prettyBytes(file.size)}). Max allowed is ${prettyBytes(
-        MAX_BYTES
-      )}. Please compress and try again.`;
+      const label =
+        kind === 'video' ? 'Video' : kind === 'audio' ? 'Audio' : 'Thumbnail image';
+      return (
+        `${label} is too large (${prettyBytes(file.size)}). ` +
+        `Max allowed is ${prettyBytes(MAX_BYTES)}. Please compress and try again.`
+      );
     }
     return null;
   };
 
   const getPublicOrSignedUrl = async (path: string) => {
+    // ✅ Public URL if bucket is public
     const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
     const publicUrl = pub?.data?.publicUrl;
+
     if (publicUrl) return publicUrl;
 
-    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_SECONDS);
+    // ✅ Signed URL fallback if bucket is private
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(path, SIGNED_URL_SECONDS);
     if (error || !data?.signedUrl) throw new Error(error?.message || 'Failed to create signed URL');
     return data.signedUrl;
   };
@@ -188,8 +206,7 @@ export function MediaDistributionPage() {
     kind: MediaKind,
     setState: (s: UploadState) => void
   ) => {
-    setSubmitOk(false);
-    setSubmitError(null);
+    resetSubmitState();
 
     const guardMsg = sizeGuard(file, kind);
     if (guardMsg) {
@@ -212,7 +229,23 @@ export function MediaDistributionPage() {
         contentType: file.type || undefined,
       });
 
-      if (upErr) throw new Error(upErr.message || 'Upload failed');
+      if (upErr) {
+        const raw = upErr.message || 'Upload failed';
+        if (
+          raw.toLowerCase().includes('maximum allowed size') ||
+          raw.toLowerCase().includes('exceeded')
+        ) {
+          throw new Error(
+            `${kind === 'video'
+              ? 'Video'
+              : kind === 'audio'
+                ? 'Audio'
+                : 'Thumbnail image'
+            } is too large. Max is about ${prettyBytes(MAX_BYTES)}.`
+          );
+        }
+        throw new Error(raw);
+      }
 
       const url = await getPublicOrSignedUrl(path);
 
@@ -244,8 +277,10 @@ export function MediaDistributionPage() {
       second: '2-digit',
       hour12: false,
     });
+
     const parts = dtf.formatToParts(d);
     const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
+
     return {
       year: Number(get('year')),
       month: Number(get('month')),
@@ -257,7 +292,9 @@ export function MediaDistributionPage() {
   };
 
   const toUtcFromEtLocal = (dateStr: string, timeStr: string): ScheduleInfo => {
-    if (!dateStr || !timeStr) return { ok: false, message: 'Please choose a schedule date and time (ET).' };
+    if (!dateStr || !timeStr) {
+      return { ok: false, message: 'Please choose a schedule date and time (ET).' };
+    }
 
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
     const t = /^(\d{2}):(\d{2})$/.exec(timeStr);
@@ -268,6 +305,20 @@ export function MediaDistributionPage() {
     const da = Number(m[3]);
     const hh = Number(t[1]);
     const mm = Number(t[2]);
+
+    if (
+      y < 2000 ||
+      mo < 1 ||
+      mo > 12 ||
+      da < 1 ||
+      da > 31 ||
+      hh < 0 ||
+      hh > 23 ||
+      mm < 0 ||
+      mm > 59
+    ) {
+      return { ok: false, message: 'Please enter a valid schedule date/time.' };
+    }
 
     let guess = Date.UTC(y, mo - 1, da, hh, mm, 0);
     for (let i = 0; i < 4; i++) {
@@ -326,123 +377,40 @@ export function MediaDistributionPage() {
     };
   };
 
-  const scheduleInfo = useMemo(() => toUtcFromEtLocal(scheduleDate, scheduleTime), [scheduleDate, scheduleTime]);
+  const scheduleInfo: ScheduleInfo = useMemo(() => {
+    return toUtcFromEtLocal(scheduleDate, scheduleTime);
+  }, [scheduleDate, scheduleTime]);
+
+  const captionsOk = useMemo(() => {
+    const anyCaption =
+      captionInstagram.trim().length > 0 ||
+      captionFacebook.trim().length > 0 ||
+      captionTikTok.trim().length > 0;
+    return anyCaption;
+  }, [captionInstagram, captionFacebook, captionTikTok]);
 
   const uploadsComplete =
-    videoUpload.status === 'done' && audioUpload.status === 'done' && thumbnailUpload.status === 'done';
+    videoUpload.status === 'done' &&
+    audioUpload.status === 'done' &&
+    thumbnailUpload.status === 'done';
 
-  const captionsComplete =
-    youtubeTitle.trim().length > 0 &&
-    (captionInstagram.trim().length > 0 || captionFacebook.trim().length > 0 || captionTikTok.trim().length > 0);
-
+  const captionsComplete = captionsOk && youtubeTitle.trim().length > 0;
   const scheduleComplete = scheduleInfo.ok;
 
-  const closeModal = () => setOpenModal(null);
-
-  const StepCard = ({
-    title,
-    desc,
-    done,
-    onClick,
-  }: {
-    title: string;
-    desc: string;
-    done: boolean;
-    onClick: () => void;
-  }) => (
-    <button
-      onClick={onClick}
-      className="w-full rounded-2xl border border-white/10 bg-white/5 px-5 py-5 text-left shadow-lg transition hover:bg-white/10"
-    >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="text-lg font-semibold text-white">{title}</div>
-          <div className="mt-1 text-sm text-white/70">{desc}</div>
-        </div>
-        {done ? (
-          <CheckCircle2 className="h-6 w-6 text-emerald-400" />
-        ) : (
-          <div className="h-6 w-6 rounded-full border border-white/15" />
-        )}
-      </div>
-    </button>
-  );
-
-  const FileRow = ({
-    label,
-    kind,
-    file,
-    setFile,
-    upload,
-    setUpload,
-    accept,
-  }: {
-    label: string;
-    kind: MediaKind;
-    file: File | null;
-    setFile: (f: File | null) => void;
-    upload: UploadState;
-    setUpload: (u: UploadState) => void;
-    accept: string;
-  }) => {
+  const canSubmit = useMemo(() => {
     return (
-      <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold text-white">{label}</div>
-            <div className="text-xs text-white/60">Max {prettyBytes(MAX_BYTES)}</div>
-          </div>
-
-          {upload.status === 'done' ? (
-            <span className="text-xs text-emerald-300">Uploaded</span>
-          ) : upload.status === 'uploading' ? (
-            <span className="text-xs text-white/70">Uploading…</span>
-          ) : null}
-        </div>
-
-        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-          <input
-            type="file"
-            accept={accept}
-            className="w-full text-sm text-white/80 file:mr-4 file:rounded-lg file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-white/15"
-            onChange={(e) => {
-              const f = e.target.files?.[0] || null;
-              setFile(f);
-              setUpload({ status: 'idle' });
-              setSubmitOk(false);
-              setSubmitError(null);
-            }}
-          />
-          <button
-            type="button"
-            disabled={!file || upload.status === 'uploading'}
-            onClick={() => file && uploadFile(file, kind, setUpload)}
-            className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-black disabled:opacity-40"
-            style={{ background: GOLD_PRIMARY }}
-          >
-            <UploadCloud className="h-4 w-4" />
-            Upload
-          </button>
-        </div>
-
-        {upload.status === 'error' ? (
-          <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
-            <AlertCircle className="mt-0.5 h-4 w-4 text-red-300" />
-            <div>{upload.message}</div>
-          </div>
-        ) : null}
-
-        {upload.status === 'done' ? (
-          <div className="mt-3 text-xs text-white/70">
-            {upload.fileName} • {prettyBytes(upload.size)}
-          </div>
-        ) : null}
-      </div>
+      !submitting &&
+      uploadsComplete &&
+      Boolean(WEBHOOK_URL) &&
+      captionsOk &&
+      youtubeTitle.trim().length > 0 &&
+      scheduleInfo.ok
     );
-  };
+  }, [submitting, uploadsComplete, captionsOk, youtubeTitle, scheduleInfo]);
 
   const runAi = async () => {
     setAiError(null);
+    resetSubmitState();
 
     if (audioUpload.status !== 'done') {
       setAiError('Upload your audio first (Uploads step).');
@@ -451,7 +419,6 @@ export function MediaDistributionPage() {
 
     setAiLoading(true);
     try {
-      // Calls your Supabase Edge Function
       const { data, error } = await supabase.functions.invoke('content-ai', {
         body: {
           audioUrl: audioUpload.url,
@@ -465,13 +432,13 @@ export function MediaDistributionPage() {
 
       const res = data as AiGenResponse;
 
-      // Auto-fill best picks
+      // Fill best picks
       if (res?.best?.instagram) setCaptionInstagram(res.best.instagram);
       if (res?.best?.facebook) setCaptionFacebook(res.best.facebook);
       if (res?.best?.tiktok) setCaptionTikTok(res.best.tiktok);
       if (res?.best?.youtubeTitle) setYoutubeTitle(res.best.youtubeTitle);
 
-      // Optional idea lists (NO transcript displayed)
+      // Optional ideas
       setTweetIdeas(Array.isArray(res?.tweets) ? res.tweets : []);
       setYtTitleIdeas(Array.isArray(res?.youtubeTitles) ? res.youtubeTitles : []);
     } catch (e: any) {
@@ -481,399 +448,773 @@ export function MediaDistributionPage() {
     }
   };
 
+  // ✅ Send as text/plain to avoid CORS preflight issues
   const submitWebhook = async () => {
+    if (
+      videoUpload.status !== 'done' ||
+      audioUpload.status !== 'done' ||
+      thumbnailUpload.status !== 'done'
+    )
+      return;
+
+    if (!captionsOk) {
+      setSubmitError('Please enter at least one caption (Instagram, Facebook, or TikTok).');
+      return;
+    }
+
+    if (!youtubeTitle.trim()) {
+      setSubmitError('Please enter a YouTube Shorts title.');
+      return;
+    }
+
+    if (!scheduleInfo.ok) {
+      setSubmitError(scheduleInfo.message);
+      return;
+    }
+
     setSubmitting(true);
-    setSubmitOk(false);
     setSubmitError(null);
+    setSubmitOk(false);
 
     try {
-      if (!uploadsComplete) throw new Error('Please complete Uploads first.');
-      if (!captionsComplete) throw new Error('Please complete Captions first.');
-      if (!scheduleInfo.ok) throw new Error(scheduleInfo.message);
-
       const payload = {
         source: 'media-distribution-landing',
         brand: 'Transferrable Everything',
         submittedAt: new Date().toISOString(),
+
         assets: {
-          video: videoUpload,
-          audio: audioUpload,
-          thumbnail: thumbnailUpload,
+          video: {
+            url: videoUpload.url,
+            storagePath: videoUpload.path,
+            fileName: videoUpload.fileName,
+            mime: videoUpload.mime,
+            size: videoUpload.size,
+          },
+          audio: {
+            url: audioUpload.url,
+            storagePath: audioUpload.path,
+            fileName: audioUpload.fileName,
+            mime: audioUpload.mime,
+            size: audioUpload.size,
+          },
+          thumbnail: {
+            url: thumbnailUpload.url,
+            storagePath: thumbnailUpload.path,
+            fileName: thumbnailUpload.fileName,
+            mime: thumbnailUpload.mime,
+            size: thumbnailUpload.size,
+          },
         },
+
         copy: {
           captions: {
             instagram: captionInstagram,
             facebook: captionFacebook,
             tiktok: captionTikTok,
           },
-          youtubeTitle,
+          youtubeShortsTitle: youtubeTitle,
           tone,
         },
-        schedule: {
-          timezone: scheduleInfo.timezone,
-          etDisplay: scheduleInfo.etDisplay,
-          rfc3339WithOffset: scheduleInfo.rfc3339WithOffset,
+
+        scheduling: {
+          inputTimezone: TZ_ET,
           utcIso: scheduleInfo.utcIso,
           unixSeconds: scheduleInfo.unixSeconds,
+          unixMillis: scheduleInfo.unixMillis,
+          rfc3339WithOffset: scheduleInfo.rfc3339WithOffset,
+          etDisplay: scheduleInfo.etDisplay,
+          requestedLocal: {
+            date: scheduleDate,
+            time: scheduleTime,
+          },
+        },
+
+        platformNotes: {
+          youtube: 'Use scheduling.rfc3339WithOffset (publishAt) or scheduling.utcIso (RFC3339).',
+          meta: 'Instagram/Facebook often expect scheduled_publish_time as UNIX seconds (UTC) → use scheduling.unixSeconds.',
+          tiktok: 'If API expects schedule_time in seconds, use scheduling.unixSeconds; if expects ISO/RFC3339, use scheduling.utcIso.',
         },
       };
 
       const res = await fetch(WEBHOOK_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
+        headers: {
+          'Content-Type': 'text/plain;charset=UTF-8',
+        },
         body: JSON.stringify(payload),
       });
 
+      const text = await res.text().catch(() => '');
       if (!res.ok) {
-        const t = await res.text().catch(() => '');
-        throw new Error(`Webhook failed (${res.status}). ${t.slice(0, 200)}`);
+        throw new Error(`Webhook failed (${res.status}). ${text ? `Response: ${text}` : ''}`.trim());
       }
 
       setSubmitOk(true);
-      setOpenModal(null);
+      setOpenStep(null);
     } catch (e: any) {
-      setSubmitError(e?.message || 'Failed to submit.');
+      setSubmitError(e?.message || 'Submit failed');
     } finally {
       setSubmitting(false);
     }
   };
 
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-[#07070A] text-white">
-      {/* Glow background */}
-      <div
-        className="pointer-events-none absolute inset-0 opacity-60"
-        style={{
-          background:
-            'radial-gradient(1200px 600px at 20% 10%, rgba(214,178,94,0.18), transparent 60%), radial-gradient(900px 500px at 80% 30%, rgba(99,102,241,0.12), transparent 60%), radial-gradient(800px 500px at 50% 90%, rgba(214,178,94,0.10), transparent 55%)',
-          transform: `translateY(${bgOffset}px)`,
-        }}
-      />
-
-      <div className="relative mx-auto w-full max-w-3xl px-4 pb-20 pt-10">
-        <div className="mb-8 flex items-center justify-between gap-4">
-          <Link
-            to="/"
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/90 hover:bg-white/10"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back
-          </Link>
-
-          <div className="text-right">
-            <div className="text-sm text-white/70">Media Distribution</div>
-            <div className="text-lg font-semibold">Transferrable Everything</div>
-          </div>
+  const StepBox = ({
+    title,
+    desc,
+    done,
+    onClick,
+  }: {
+    title: string;
+    desc: string;
+    done: boolean;
+    onClick: () => void;
+  }) => (
+    <button
+      onClick={onClick}
+      className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 text-left shadow-[0_10px_60px_rgba(0,0,0,0.6)] hover:bg-white/10 transition"
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-extrabold">{title}</h2>
+          <p className="mt-1 text-gray-300 text-sm">{desc}</p>
         </div>
 
-        {/* ONLY 3 BOXES */}
-        <div className="flex flex-col gap-4">
-          <StepCard
-            title="1) Uploads"
-            desc="Upload your video, audio, and thumbnail."
+        {done ? (
+          <div className="flex items-center gap-2 text-sm text-green-200">
+            <CheckCircle2 className="h-5 w-5" />
+            Done
+          </div>
+        ) : (
+          <div className="h-6 w-6 rounded-full border border-white/15" />
+        )}
+      </div>
+    </button>
+  );
+
+  const UploadBlock = ({
+    title,
+    subtitle,
+    kind,
+    accept,
+    file,
+    setFile,
+    upload,
+    setUpload,
+  }: {
+    title: string;
+    subtitle: string;
+    kind: MediaKind;
+    accept: string;
+    file: File | null;
+    setFile: (f: File | null) => void;
+    upload: UploadState;
+    setUpload: (s: UploadState) => void;
+  }) => (
+    <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-lg font-extrabold">{title}</h3>
+          <p className="text-gray-300 text-sm mt-1">{subtitle}</p>
+        </div>
+
+        {upload.status === 'done' && (
+          <div className="flex items-center gap-2 text-sm text-green-200">
+            <CheckCircle2 className="h-4 w-4" />
+            Uploaded
+          </div>
+        )}
+      </div>
+
+      <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center">
+        <input
+          type="file"
+          accept={accept}
+          className="block w-full text-sm text-gray-200 file:mr-4 file:rounded-xl file:border-0 file:px-4 file:py-2 file:font-bold file:bg-white file:text-black hover:file:bg-gray-100"
+          onChange={(e) => {
+            const f = e.target.files?.[0] || null;
+            setFile(f);
+            setUpload({ status: 'idle' });
+            resetSubmitState();
+
+            if (f) {
+              const msg = sizeGuard(f, kind);
+              if (msg) setUpload({ status: 'error', message: msg });
+            }
+          }}
+        />
+
+        <button
+          type="button"
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold transition border disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            borderColor: 'rgba(214, 178, 94, 0.45)',
+            backgroundColor: 'rgba(0,0,0,0.15)',
+            color: GOLD_HOVER,
+          }}
+          onMouseEnter={(e) => {
+            if (upload.status === 'uploading') return;
+            e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
+            e.currentTarget.style.borderColor = 'rgba(240, 210, 124, 0.70)';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.15)';
+            e.currentTarget.style.borderColor = 'rgba(214, 178, 94, 0.45)';
+          }}
+          disabled={!file || upload.status === 'uploading' || upload.status === 'error'}
+          onClick={() => {
+            if (!file) return;
+            uploadFile(file, kind, setUpload);
+          }}
+        >
+          {upload.status === 'uploading' ? (
+            <>
+              <Loader className="h-4 w-4 animate-spin" />
+              Uploading…
+            </>
+          ) : (
+            <>
+              <UploadCloud className="h-4 w-4" />
+              Upload
+            </>
+          )}
+        </button>
+      </div>
+
+      <div className="mt-4">
+        {upload.status === 'done' && (
+          <div className="text-sm text-gray-200">
+            <div className="text-gray-300">
+              <span className="font-semibold">File:</span> {upload.fileName} • {prettyBytes(upload.size)}
+            </div>
+            <div className="mt-1 break-all">
+              <span className="font-semibold">URL:</span>{' '}
+              <a className="underline" href={upload.url} target="_blank" rel="noreferrer">
+                {upload.url}
+              </a>
+            </div>
+          </div>
+        )}
+
+        {upload.status === 'error' && (
+          <div className="text-sm text-red-200 mt-2 inline-flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 mt-0.5" />
+            <span>{upload.message}</span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      className="min-h-screen text-white overflow-x-hidden"
+      style={{
+        backgroundImage: `radial-gradient(1200px 600px at 50% ${
+          -200 + bgOffset
+        }px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
+        backgroundAttachment: 'fixed',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: 'cover',
+      }}
+    >
+      {/* ✅ Gold shimmer + date/time icon styling */}
+      <style>
+        {`
+          .gold-shimmer {
+            background-image: linear-gradient(
+              110deg,
+              #b9892b 0%,
+              #f7dc8a 20%,
+              #ffffff 30%,
+              #f1d27b 40%,
+              #b9892b 60%,
+              #f7dc8a 80%,
+              #ffffff 90%,
+              #b9892b 100%
+            );
+            background-size: 240% 100%;
+            background-position: 0% 50%;
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            animation: goldShimmerSweep 4.8s ease-in-out infinite;
+            filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.12));
+          }
+
+          @keyframes goldShimmerSweep {
+            0% { background-position: 0% 50%; }
+            55% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+          }
+
+          @media (prefers-reduced-motion: reduce) {
+            .gold-shimmer { animation: none; }
+          }
+
+          /* Make native date/time picker icons white (Chrome/Safari/Edge) */
+          input[type="date"],
+          input[type="time"] {
+            color-scheme: dark;
+          }
+
+          input[type="date"]::-webkit-calendar-picker-indicator,
+          input[type="time"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            opacity: 0.9;
+            cursor: pointer;
+          }
+        `}
+      </style>
+
+      {/* ✅ Same overlay glow */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
+      </div>
+
+      <header className="relative z-10 px-6 py-6">
+        <Link to="/" className="flex items-center text-gray-400 hover:text-white">
+          <ArrowLeft className="h-5 w-5 mr-2" /> Back
+        </Link>
+      </header>
+
+      <main className="relative z-10 max-w-3xl mx-auto px-6 pb-16">
+        <div className="text-center mt-10">
+          <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
+            Welcome <span className="gold-shimmer font-extrabold">Transferrable Everything</span>
+          </h1>
+
+          <p className="mt-4 text-gray-200 text-lg">
+            Only 3 steps. Click a box to open a full-screen card, complete it, then move to the next.
+          </p>
+        </div>
+
+        {/* Only 3 boxes on the page */}
+        <div className="mt-10 grid gap-5">
+          <StepBox
+            title="Uploads"
+            desc="Upload video + audio + thumbnail. (Max 49MB each)"
             done={uploadsComplete}
-            onClick={() => setOpenModal('uploads')}
+            onClick={() => setOpenStep('uploads')}
           />
-          <StepCard
-            title="2) Captions"
+
+          <StepBox
+            title="Captions"
             desc="Write platform captions + YouTube title (or generate with AI)."
             done={captionsComplete}
-            onClick={() => setOpenModal('captions')}
+            onClick={() => setOpenStep('captions')}
           />
-          <StepCard
-            title="3) Schedule"
-            desc="Pick date & time (ET) and submit."
+
+          <StepBox
+            title="Schedule"
+            desc="Choose date/time (ET) and submit to your distribution workflow."
             done={scheduleComplete && submitOk}
-            onClick={() => setOpenModal('schedule')}
+            onClick={() => setOpenStep('schedule')}
           />
         </div>
 
-        {submitOk ? (
-          <div className="mt-6 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-4 text-emerald-100">
-            <div className="flex items-start gap-2">
-              <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-300" />
+        {/* Global submit statuses (still shown, but NOT extra fields) */}
+        {submitOk && (
+          <div className="mt-6 bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
+            <div className="flex items-start gap-2 text-green-100">
+              <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-300" />
               <div>
-                <div className="font-semibold">Scheduled successfully.</div>
-                <div className="text-sm text-emerald-100/80">
-                  Your media package was submitted to the distribution workflow.
+                <div className="font-extrabold">Scheduled successfully.</div>
+                <div className="text-sm text-green-100/80">
+                  Your content package was submitted to the automation webhook.
                 </div>
               </div>
             </div>
           </div>
-        ) : null}
+        )}
 
-        {submitError ? (
-          <div className="mt-6 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-100">
-            <div className="flex items-start gap-2">
-              <AlertCircle className="mt-0.5 h-5 w-5 text-red-300" />
+        {submitError && (
+          <div className="mt-6 bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
+            <div className="flex items-start gap-2 text-red-100">
+              <AlertCircle className="h-5 w-5 mt-0.5 text-red-300" />
               <div className="text-sm">{submitError}</div>
             </div>
           </div>
-        ) : null}
-      </div>
+        )}
+      </main>
 
-      {/* Uploads Modal */}
-      {openModal === 'uploads' ? (
-        <ModalShell title="Uploads" onClose={closeModal}>
-          <div className="space-y-4">
-            <FileRow
-              label="Video"
+      {/* ===========================
+          Uploads Modal
+      =========================== */}
+      {openStep === 'uploads' && (
+        <ModalShell title="Uploads" onClose={() => setOpenStep(null)}>
+          <div className="space-y-5">
+            <UploadBlock
+              title="Upload Video"
+              subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP4/MOV/WebM recommended.`}
               kind="video"
+              accept="video/*"
               file={videoFile}
               setFile={setVideoFile}
               upload={videoUpload}
               setUpload={setVideoUpload}
-              accept="video/*"
             />
-            <FileRow
-              label="Audio"
+
+            <UploadBlock
+              title="Upload Audio"
+              subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP3/WAV/M4A recommended.`}
               kind="audio"
+              accept="audio/*"
               file={audioFile}
               setFile={setAudioFile}
               upload={audioUpload}
               setUpload={setAudioUpload}
-              accept="audio/*"
             />
-            <FileRow
-              label="Thumbnail"
+
+            <UploadBlock
+              title="Upload Thumbnail"
+              subtitle="JPG/PNG/WebP recommended. Generates a shareable link."
               kind="thumbnail"
+              accept="image/*"
               file={thumbnailFile}
               setFile={setThumbnailFile}
               upload={thumbnailUpload}
               setUpload={setThumbnailUpload}
-              accept="image/*"
             />
 
             <div className="flex items-center justify-between gap-3 pt-2">
               <button
-                onClick={closeModal}
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/10"
+                onClick={() => setOpenStep(null)}
+                className="rounded-xl px-5 py-2.5 font-bold border border-white/10 bg-white/5 hover:bg-white/10"
               >
                 Done
               </button>
+
               <div className="text-xs text-white/60">
-                Uploads must be complete before AI generation.
+                Upload all 3 before generating captions.
               </div>
             </div>
           </div>
         </ModalShell>
-      ) : null}
+      )}
 
-      {/* Captions Modal */}
-      {openModal === 'captions' ? (
-        <ModalShell title="Captions & Titles" onClose={closeModal}>
-          <div className="space-y-4">
-            {/* Tone + AI */}
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+      {/* ===========================
+          Captions Modal
+      =========================== */}
+      {openStep === 'captions' && (
+        <ModalShell title="Captions & Titles" onClose={() => setOpenStep(null)}>
+          <div className="space-y-5">
+            {/* AI generator card */}
+            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                 <div className="flex-1">
-                  <label className="text-xs font-semibold text-white/70">Tone</label>
+                  <div className="text-sm font-extrabold">Tone</div>
+                  <div className="text-xs text-white/60 mt-1">
+                    Examples: Alex Hormozi • Gary Vee • Luxury • Professional • Casual
+                  </div>
                   <input
                     value={tone}
                     onChange={(e) => setTone(e.target.value)}
-                    placeholder="e.g. Alex Hormozi, luxury, casual, professional…"
-                    className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-white/20"
+                    className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
+                    placeholder="confident, punchy, value-first"
                   />
-                  <div className="mt-2 text-xs text-white/60">
-                    Try: <span className="text-white/80">Alex Hormozi</span>, <span className="text-white/80">Gary Vee</span>,{' '}
-                    <span className="text-white/80">Luxury</span>, <span className="text-white/80">Professional</span>.
-                  </div>
                 </div>
 
                 <button
                   type="button"
                   onClick={runAi}
                   disabled={aiLoading || audioUpload.status !== 'done'}
-                  className="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-black disabled:opacity-40"
-                  style={{ background: GOLD_PRIMARY }}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    borderColor: 'rgba(214, 178, 94, 0.45)',
+                    backgroundColor: 'rgba(0,0,0,0.15)',
+                    color: GOLD_HOVER,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (aiLoading) return;
+                    e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
+                    e.currentTarget.style.borderColor = 'rgba(240, 210, 124, 0.70)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.15)';
+                    e.currentTarget.style.borderColor = 'rgba(214, 178, 94, 0.45)';
+                  }}
                 >
-                  {aiLoading ? <Loader className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  Generate (AI)
+                  {aiLoading ? (
+                    <>
+                      <Loader className="h-4 w-4 animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      Generate (AI)
+                    </>
+                  )}
                 </button>
               </div>
 
-              {aiError ? (
-                <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-100">
-                  <AlertCircle className="mt-0.5 h-4 w-4 text-red-300" />
-                  <div>{aiError}</div>
+              {aiError && (
+                <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                  <AlertCircle className="h-4 w-4 mt-0.5" />
+                  <span>{aiError}</span>
                 </div>
-              ) : null}
+              )}
 
-              {/* NO transcript shown */}
+              <div className="mt-4 text-xs text-white/60">
+                Note: platform-specific writing rules are enforced in the AI generation (IG vs TikTok vs FB vs YouTube).
+              </div>
+
+              {/* Transcript is NOT displayed anywhere */}
             </div>
 
-            {/* Platform fields */}
-            <div className="grid gap-4">
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <label className="text-xs font-semibold text-white/70">Instagram Caption</label>
-                <textarea
-                  value={captionInstagram}
-                  onChange={(e) => setCaptionInstagram(e.target.value)}
-                  rows={5}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-white/20"
-                />
+            {/* Input fields */}
+            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+              <h3 className="text-lg font-extrabold">Captions</h3>
+              <p className="text-gray-300 text-sm mt-1">
+                Enter captions manually or generate them. At least one caption is required.
+              </p>
+
+              <div className="mt-5 grid gap-4">
+                <div>
+                  <div className="text-sm font-bold">Instagram Caption</div>
+                  <textarea
+                    value={captionInstagram}
+                    onChange={(e) => {
+                      setCaptionInstagram(e.target.value);
+                      resetSubmitState();
+                    }}
+                    rows={5}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                    placeholder="Paste Instagram caption here…"
+                  />
+                </div>
+
+                <div>
+                  <div className="text-sm font-bold">Facebook Caption</div>
+                  <textarea
+                    value={captionFacebook}
+                    onChange={(e) => {
+                      setCaptionFacebook(e.target.value);
+                      resetSubmitState();
+                    }}
+                    rows={5}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                    placeholder="Paste Facebook caption here…"
+                  />
+                </div>
+
+                <div>
+                  <div className="text-sm font-bold">TikTok Caption</div>
+                  <textarea
+                    value={captionTikTok}
+                    onChange={(e) => {
+                      setCaptionTikTok(e.target.value);
+                      resetSubmitState();
+                    }}
+                    rows={3}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                    placeholder="Paste TikTok caption here…"
+                  />
+                </div>
+
+                <div>
+                  <div className="text-sm font-bold">YouTube Shorts Title</div>
+                  <input
+                    value={youtubeTitle}
+                    onChange={(e) => {
+                      setYoutubeTitle(e.target.value);
+                      resetSubmitState();
+                    }}
+                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
+                    placeholder="Enter YouTube Shorts title…"
+                  />
+                </div>
               </div>
 
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <label className="text-xs font-semibold text-white/70">Facebook Caption</label>
-                <textarea
-                  value={captionFacebook}
-                  onChange={(e) => setCaptionFacebook(e.target.value)}
-                  rows={5}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-white/20"
-                />
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <label className="text-xs font-semibold text-white/70">TikTok Caption</label>
-                <textarea
-                  value={captionTikTok}
-                  onChange={(e) => setCaptionTikTok(e.target.value)}
-                  rows={3}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-white/20"
-                />
-              </div>
-
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <label className="text-xs font-semibold text-white/70">YouTube Shorts Title</label>
-                <input
-                  value={youtubeTitle}
-                  onChange={(e) => setYoutubeTitle(e.target.value)}
-                  className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-white/20"
-                />
-              </div>
+              {!captionsOk && (
+                <div className="text-xs text-white/60 mt-4">
+                  You need at least one caption (Instagram/Facebook/TikTok).
+                </div>
+              )}
+              {youtubeTitle.trim().length === 0 && (
+                <div className="text-xs text-white/60 mt-2">
+                  You also need a YouTube Shorts title.
+                </div>
+              )}
             </div>
 
-            {/* Optional ideas */}
-            {(tweetIdeas.length > 0 || ytTitleIdeas.length > 0) ? (
-              <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-                <div className="text-sm font-semibold text-white">Ideas (optional)</div>
+            {/* Optional ideas (tweets + YT titles) */}
+            {(tweetIdeas.length > 0 || ytTitleIdeas.length > 0) && (
+              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <h3 className="text-lg font-extrabold">Extra Ideas (Optional)</h3>
 
-                {tweetIdeas.length > 0 ? (
-                  <div className="mt-3">
-                    <div className="text-xs font-semibold text-white/70">Tweet ideas</div>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-white/80">
+                {tweetIdeas.length > 0 && (
+                  <div className="mt-4">
+                    <div className="text-sm font-bold">Tweet Ideas</div>
+                    <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-white/80">
                       {tweetIdeas.slice(0, 10).map((t, i) => (
                         <li key={i}>{t}</li>
                       ))}
                     </ul>
                   </div>
-                ) : null}
+                )}
 
-                {ytTitleIdeas.length > 0 ? (
-                  <div className="mt-4">
-                    <div className="text-xs font-semibold text-white/70">YouTube title ideas</div>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-white/80">
+                {ytTitleIdeas.length > 0 && (
+                  <div className="mt-5">
+                    <div className="text-sm font-bold">YouTube Title Ideas</div>
+                    <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-white/80">
                       {ytTitleIdeas.slice(0, 8).map((t, i) => (
                         <li key={i}>{t}</li>
                       ))}
                     </ul>
                   </div>
-                ) : null}
+                )}
               </div>
-            ) : null}
+            )}
 
             <div className="flex items-center justify-between gap-3 pt-2">
               <button
-                onClick={closeModal}
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/10"
+                onClick={() => setOpenStep(null)}
+                className="rounded-xl px-5 py-2.5 font-bold border border-white/10 bg-white/5 hover:bg-white/10"
               >
                 Done
               </button>
+
               <div className="text-xs text-white/60">
-                Tip: AI uses platform-specific rules behind the scenes.
+                Tip: Tone can be “Alex Hormozi” etc — presets are handled in the Edge Function.
               </div>
             </div>
           </div>
         </ModalShell>
-      ) : null}
+      )}
 
-      {/* Schedule Modal */}
-      {openModal === 'schedule' ? (
-        <ModalShell title="Schedule & Submit" onClose={closeModal}>
-          <div className="space-y-4">
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <div className="text-sm font-semibold text-white">Schedule (ET)</div>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+      {/* ===========================
+          Schedule Modal
+      =========================== */}
+      {openStep === 'schedule' && (
+        <ModalShell title="Schedule & Submit" onClose={() => setOpenStep(null)}>
+          <div className="space-y-5">
+            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+              <h3 className="text-lg font-extrabold">Schedule (ET)</h3>
+              <p className="text-gray-300 text-sm mt-1">Choose a date and time in Eastern Time.</p>
+
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="text-xs font-semibold text-white/70">Date</label>
-                  <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                  <div className="text-sm font-bold">Date</div>
+                  <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
                     <Calendar className="h-4 w-4 text-white" />
                     <input
                       type="date"
                       value={scheduleDate}
-                      onChange={(e) => setScheduleDate(e.target.value)}
+                      onChange={(e) => {
+                        setScheduleDate(e.target.value);
+                        resetSubmitState();
+                      }}
                       className="w-full bg-transparent text-sm text-white outline-none"
                     />
                   </div>
                 </div>
+
                 <div>
-                  <label className="text-xs font-semibold text-white/70">Time</label>
-                  <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 px-3 py-2">
+                  <div className="text-sm font-bold">Time</div>
+                  <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
                     <Clock className="h-4 w-4 text-white" />
                     <input
                       type="time"
                       value={scheduleTime}
-                      onChange={(e) => setScheduleTime(e.target.value)}
+                      onChange={(e) => {
+                        setScheduleTime(e.target.value);
+                        resetSubmitState();
+                      }}
                       className="w-full bg-transparent text-sm text-white outline-none"
                     />
                   </div>
                 </div>
               </div>
 
-              <div className="mt-3 text-xs text-white/60">
+              <div className="mt-4 text-sm text-white/80">
                 {scheduleInfo.ok ? (
-                  <span>
-                    Scheduled for <span className="text-white/80">{scheduleInfo.etDisplay}</span>
-                  </span>
+                  <>
+                    Scheduled for <span className="font-extrabold">{scheduleInfo.etDisplay}</span>
+                  </>
                 ) : (
-                  <span>{scheduleInfo.message}</span>
+                  <span className="text-white/60">{scheduleInfo.message}</span>
                 )}
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <div className="text-sm font-semibold text-white">Ready check</div>
-              <div className="mt-2 space-y-1 text-sm text-white/75">
+            {/* Ready check + submit */}
+            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+              <h3 className="text-lg font-extrabold">Ready Check</h3>
+
+              <div className="mt-4 space-y-2 text-sm text-white/80">
                 <div className="flex items-center justify-between">
                   <span>Uploads</span>
-                  {uploadsComplete ? <span className="text-emerald-300">Done</span> : <span className="text-white/50">Missing</span>}
+                  {uploadsComplete ? (
+                    <span className="text-green-200">Done</span>
+                  ) : (
+                    <span className="text-white/50">Missing</span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
-                  <span>Captions</span>
-                  {captionsComplete ? <span className="text-emerald-300">Done</span> : <span className="text-white/50">Missing</span>}
+                  <span>Captions + Title</span>
+                  {captionsComplete ? (
+                    <span className="text-green-200">Done</span>
+                  ) : (
+                    <span className="text-white/50">Missing</span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <span>Schedule</span>
-                  {scheduleInfo.ok ? <span className="text-emerald-300">Done</span> : <span className="text-white/50">Missing</span>}
+                  {scheduleInfo.ok ? (
+                    <span className="text-green-200">Done</span>
+                  ) : (
+                    <span className="text-white/50">Missing</span>
+                  )}
                 </div>
               </div>
 
               <button
                 type="button"
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 px-5 py-3 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  borderColor: 'rgba(214, 178, 94, 0.45)',
+                  backgroundColor: 'rgba(0,0,0,0.15)',
+                  color: GOLD_HOVER,
+                }}
+                onMouseEnter={(e) => {
+                  if (!canSubmit) return;
+                  e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.04)';
+                  e.currentTarget.style.borderColor = 'rgba(240, 210, 124, 0.70)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.15)';
+                  e.currentTarget.style.borderColor = 'rgba(214, 178, 94, 0.45)';
+                }}
+                disabled={!canSubmit}
                 onClick={submitWebhook}
-                disabled={submitting || !uploadsComplete || !captionsComplete || !scheduleInfo.ok}
-                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-extrabold text-black disabled:opacity-40"
-                style={{ background: submitting ? GOLD_HOVER : GOLD_PRIMARY }}
               >
-                {submitting ? <Loader className="h-4 w-4 animate-spin" /> : null}
-                Submit to Distribution
+                {submitting ? (
+                  <>
+                    <Loader className="h-4 w-4 animate-spin" />
+                    Submitting…
+                  </>
+                ) : (
+                  'Submit to Distribution'
+                )}
               </button>
 
-              <div className="mt-2 text-xs text-white/60">
-                This sends your assets + copy + schedule to your automation webhook.
+              <div className="mt-3 text-xs text-white/60">
+                This submits your assets + copy + schedule to your automation webhook.
               </div>
             </div>
 
-            <button
-              onClick={closeModal}
-              className="w-full rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 hover:bg-white/10"
-            >
-              Close
-            </button>
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <button
+                onClick={() => setOpenStep(null)}
+                className="rounded-xl px-5 py-2.5 font-bold border border-white/10 bg-white/5 hover:bg-white/10"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </ModalShell>
-      ) : null}
+      )}
 
       <div className="relative mt-10 pb-10 text-center text-xs text-white/40">
         Powered by Infinite Wealth Solutions AI.
