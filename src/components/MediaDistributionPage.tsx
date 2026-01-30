@@ -10,6 +10,8 @@ import {
   Calendar,
   Clock,
   X,
+  Plus,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
@@ -72,18 +74,26 @@ type AiGenResponse = {
   };
 };
 
-type PlatformKey = 'instagram' | 'tiktok' | 'facebook' | 'youtube' | 'twitter' | 'linkedin';
+type PlatformKey =
+  | 'instagram'
+  | 'tiktok'
+  | 'facebook'
+  | 'youtube'
+  | 'twitterVideo'
+  | 'linkedin'
+  | 'twitterPosts';
 
 const PLATFORM_META: Record<
   PlatformKey,
-  { label: string; sub: string; kind: 'caption' | 'title' | 'text' }
+  { label: string; sub: string; kind: 'caption' | 'title' | 'text' | 'posts' }
 > = {
   instagram: { label: 'Instagram', sub: 'Reels caption', kind: 'caption' },
   tiktok: { label: 'TikTok', sub: 'Caption', kind: 'caption' },
   facebook: { label: 'Facebook', sub: 'Reels caption', kind: 'caption' },
   youtube: { label: 'YouTube', sub: 'Shorts title', kind: 'title' },
-  twitter: { label: 'Twitter (X)', sub: 'Post text', kind: 'text' },
+  twitterVideo: { label: 'Twitter/X (Video)', sub: 'Post text for video', kind: 'text' },
   linkedin: { label: 'LinkedIn', sub: 'Post text', kind: 'text' },
+  twitterPosts: { label: 'Twitter/X Posts', sub: 'Standalone posts (AI step)', kind: 'posts' },
 };
 
 function prettyBytes(bytes: number) {
@@ -154,7 +164,12 @@ export function MediaDistributionPage() {
   const [bgOffset, setBgOffset] = useState(0);
 
   // ---- Wizard steps ----
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  // 1 Platforms
+  // 2 Video
+  // 3 Captions (for selected platforms except Twitter Posts)
+  // 4 Twitter Posts (only if selected)
+  // 5 Schedule
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
 
   // Step 1: platforms (✅ default all unselected)
   const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
@@ -162,8 +177,9 @@ export function MediaDistributionPage() {
     tiktok: false,
     facebook: false,
     youtube: false,
-    twitter: false,
+    twitterVideo: false,
     linkedin: false,
+    twitterPosts: false,
   });
 
   // Step 2: video upload
@@ -174,25 +190,27 @@ export function MediaDistributionPage() {
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailUpload, setThumbnailUpload] = useState<UploadState>({ status: 'idle' });
 
-  // Step 3: captions (per platform)
+  // Shared AI settings + audio upload
   const [tone, setTone] = useState('confident, punchy, value-first');
-
-  const [captionInstagram, setCaptionInstagram] = useState('');
-  const [captionTikTok, setCaptionTikTok] = useState('');
-  const [captionFacebook, setCaptionFacebook] = useState('');
-  const [youtubeTitle, setYoutubeTitle] = useState('');
-  const [twitterText, setTwitterText] = useState('');
-  const [linkedinText, setLinkedinText] = useState('');
-
   const [aiMode, setAiMode] = useState(false);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioUpload, setAudioUpload] = useState<UploadState>({ status: 'idle' });
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [tweetIdeas, setTweetIdeas] = useState<string[]>([]);
-  const [ytTitleIdeas, setYtTitleIdeas] = useState<string[]>([]);
 
-  // Step 4: schedule
+  // Step 3: per-platform copy (captions/titles/text)
+  const [captionInstagram, setCaptionInstagram] = useState('');
+  const [captionTikTok, setCaptionTikTok] = useState('');
+  const [captionFacebook, setCaptionFacebook] = useState('');
+  const [youtubeTitle, setYoutubeTitle] = useState('');
+  const [twitterVideoText, setTwitterVideoText] = useState('');
+  const [linkedinText, setLinkedinText] = useState('');
+
+  // Step 4: Twitter/X Posts
+  const [twitterPosts, setTwitterPosts] = useState<string[]>(['', '', '']);
+  const [activeTweetIndex, setActiveTweetIndex] = useState<number | null>(null);
+
+  // Step 5: schedule
   const [scheduleMode, setScheduleMode] = useState<'same' | 'different'>('same');
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
@@ -203,8 +221,9 @@ export function MediaDistributionPage() {
     tiktok: { date: '', time: '' },
     facebook: { date: '', time: '' },
     youtube: { date: '', time: '' },
-    twitter: { date: '', time: '' },
+    twitterVideo: { date: '', time: '' },
     linkedin: { date: '', time: '' },
+    twitterPosts: { date: '', time: '' },
   });
 
   const [submitting, setSubmitting] = useState(false);
@@ -212,7 +231,9 @@ export function MediaDistributionPage() {
   const [submitOk, setSubmitOk] = useState(false);
 
   // Modal selection (captions + schedule)
-  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<PlatformKey | null>(null);
+  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<
+    Exclude<PlatformKey, 'twitterPosts'> | null
+  >(null);
   const [activeSchedulePlatform, setActiveSchedulePlatform] = useState<PlatformKey | null>(null);
 
   useEffect(() => {
@@ -414,6 +435,7 @@ export function MediaDistributionPage() {
 
   const hasAnyPlatform = enabledPlatforms.length > 0;
   const videoReady = videoUpload.status === 'done';
+  const showTwitterPostsStep = selected.twitterPosts;
 
   const captionsReady = useMemo(() => {
     const needs = (k: PlatformKey) => selected[k];
@@ -422,19 +444,25 @@ export function MediaDistributionPage() {
     const okTikTok = !needs('tiktok') || captionTikTok.trim().length > 0;
     const okFacebook = !needs('facebook') || captionFacebook.trim().length > 0;
     const okYoutube = !needs('youtube') || youtubeTitle.trim().length > 0;
-    const okTwitter = !needs('twitter') || twitterText.trim().length > 0;
+    const okTwitterVideo = !needs('twitterVideo') || twitterVideoText.trim().length > 0;
     const okLinkedin = !needs('linkedin') || linkedinText.trim().length > 0;
 
-    return okInstagram && okTikTok && okFacebook && okYoutube && okTwitter && okLinkedin;
+    return okInstagram && okTikTok && okFacebook && okYoutube && okTwitterVideo && okLinkedin;
   }, [
     selected,
     captionInstagram,
     captionTikTok,
     captionFacebook,
     youtubeTitle,
-    twitterText,
+    twitterVideoText,
     linkedinText,
   ]);
+
+  const twitterPostsReady = useMemo(() => {
+    if (!selected.twitterPosts) return true;
+    const cleaned = twitterPosts.map((t) => t.trim()).filter(Boolean);
+    return cleaned.length >= 1;
+  }, [selected.twitterPosts, twitterPosts]);
 
   const scheduleCommonInfo: ScheduleInfo = useMemo(() => {
     if (scheduleMode !== 'same') return { ok: false, message: 'Using different times per platform.' };
@@ -447,8 +475,9 @@ export function MediaDistributionPage() {
       tiktok: { ok: false, message: 'Not scheduled.' },
       facebook: { ok: false, message: 'Not scheduled.' },
       youtube: { ok: false, message: 'Not scheduled.' },
-      twitter: { ok: false, message: 'Not scheduled.' },
+      twitterVideo: { ok: false, message: 'Not scheduled.' },
       linkedin: { ok: false, message: 'Not scheduled.' },
+      twitterPosts: { ok: false, message: 'Not scheduled.' },
     };
 
     (Object.keys(map) as PlatformKey[]).forEach((k) => {
@@ -482,40 +511,35 @@ export function MediaDistributionPage() {
     return enabledPlatforms.every((k) => scheduleInfoByPlatform[k].ok);
   }, [hasAnyPlatform, scheduleMode, scheduleCommonInfo, enabledPlatforms, scheduleInfoByPlatform]);
 
-  const canGoNext = useMemo(() => {
+  const canProceedFromStep = useMemo(() => {
     if (step === 1) return hasAnyPlatform;
     if (step === 2) return videoReady;
     if (step === 3) return captionsReady;
-    if (step === 4) return scheduleReady;
+    if (step === 4) return twitterPostsReady;
+    if (step === 5) return scheduleReady;
     return false;
-  }, [step, hasAnyPlatform, videoReady, captionsReady, scheduleReady]);
+  }, [step, hasAnyPlatform, videoReady, captionsReady, twitterPostsReady, scheduleReady]);
 
-  const stepTitle = useMemo(() => {
-    if (step === 1) return 'Platforms';
-    if (step === 2) return 'Video';
-    if (step === 3) return 'Captions';
-    return 'Schedule';
-  }, [step]);
+  const goToNext = () => {
+    resetSubmitState();
+    if (!canProceedFromStep) return;
 
-  const copyOkForPlatform = (k: PlatformKey) => {
-    if (!selected[k]) return true;
-    if (k === 'instagram') return captionInstagram.trim().length > 0;
-    if (k === 'tiktok') return captionTikTok.trim().length > 0;
-    if (k === 'facebook') return captionFacebook.trim().length > 0;
-    if (k === 'youtube') return youtubeTitle.trim().length > 0;
-    if (k === 'twitter') return twitterText.trim().length > 0;
-    if (k === 'linkedin') return linkedinText.trim().length > 0;
-    return false;
+    if (step === 1) return setStep(2);
+    if (step === 2) return setStep(3);
+    if (step === 3) return setStep(showTwitterPostsStep ? 4 : 5);
+    if (step === 4) return setStep(5);
   };
 
-  const getCopyLabel = (k: PlatformKey) => {
-    const meta = PLATFORM_META[k];
-    if (meta.kind === 'title') return 'Title';
-    if (meta.kind === 'text') return 'Text';
-    return 'Caption';
+  const goToPrev = () => {
+    resetSubmitState();
+    if (step === 1) return;
+    if (step === 2) return setStep(1);
+    if (step === 3) return setStep(2);
+    if (step === 4) return setStep(3);
+    if (step === 5) return setStep(showTwitterPostsStep ? 4 : 3);
   };
 
-  const runAi = async () => {
+  const runAiForCaptions = async () => {
     setAiError(null);
     resetSubmitState();
 
@@ -538,22 +562,51 @@ export function MediaDistributionPage() {
 
       const res = data as AiGenResponse;
 
-      // Only fill what they selected
       if (selected.instagram && res?.best?.instagram) setCaptionInstagram(res.best.instagram);
       if (selected.facebook && res?.best?.facebook) setCaptionFacebook(res.best.facebook);
       if (selected.tiktok && res?.best?.tiktok) setCaptionTikTok(res.best.tiktok);
       if (selected.youtube && res?.best?.youtubeTitle) setYoutubeTitle(res.best.youtubeTitle);
 
+      // Light helper: if they selected twitterVideo/linkedin and fields are empty, fill with a clean caption variant
+      const fallbackText =
+        res?.best?.instagram || res?.best?.tiktok || res?.best?.facebook || '';
+      if (selected.twitterVideo && !twitterVideoText.trim() && fallbackText)
+        setTwitterVideoText(fallbackText);
+      if (selected.linkedin && !linkedinText.trim() && fallbackText) setLinkedinText(fallbackText);
+    } catch (e: any) {
+      setAiError(e?.message || 'AI generation failed');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const runAiForTwitterPosts = async () => {
+    setAiError(null);
+    resetSubmitState();
+
+    if (audioUpload.status !== 'done') {
+      setAiError('Upload your audio first.');
+      return;
+    }
+
+    setAiLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('content-ai', {
+        body: { audioUrl: audioUpload.url, tone },
+      });
+
+      if (error) {
+        throw new Error(
+          (error as any)?.context?.body?.details || error.message || 'AI generation failed.'
+        );
+      }
+
+      const res = data as AiGenResponse;
       const tweets = Array.isArray(res?.tweets) ? res.tweets : [];
-      const ytIdeas = Array.isArray(res?.youtubeTitles) ? res.youtubeTitles : [];
 
-      setTweetIdeas(tweets);
-      setYtTitleIdeas(ytIdeas);
-
-      // Light helper autofill for Twitter/LinkedIn (optional)
-      if (selected.twitter && !twitterText.trim() && tweets[0]) setTwitterText(tweets[0]);
-      if (selected.linkedin && !linkedinText.trim() && (tweets[1] || tweets[0]))
-        setLinkedinText(tweets[1] || tweets[0]);
+      // Keep it tight: take up to 8, filter empties, ensure at least 1 slot
+      const cleaned = tweets.map((t) => String(t || '').trim()).filter(Boolean).slice(0, 8);
+      setTwitterPosts(cleaned.length ? cleaned : ['']);
     } catch (e: any) {
       setAiError(e?.message || 'AI generation failed');
     } finally {
@@ -579,6 +632,11 @@ export function MediaDistributionPage() {
       return;
     }
 
+    if (!twitterPostsReady) {
+      setSubmitError('Add at least 1 Twitter/X post.');
+      return;
+    }
+
     if (!scheduleReady) {
       setSubmitError('Complete scheduling for your selected platforms.');
       return;
@@ -589,48 +647,18 @@ export function MediaDistributionPage() {
     setSubmitOk(false);
 
     try {
-      const platformPayload: Record<
-        PlatformKey,
-        | {
-            enabled: false;
-          }
-        | {
-            enabled: true;
-            copy: Record<string, any>;
-            schedule: {
-              inputTimezone: 'America/New_York';
-              utcIso: string;
-              unixSeconds: number;
-              unixMillis: number;
-              rfc3339WithOffset: string;
-              etDisplay: string;
-              requestedLocal: { date: string; time: string };
-              mode: 'same' | 'different';
-            };
-          }
-      > = {
-        instagram: { enabled: false },
-        tiktok: { enabled: false },
-        facebook: { enabled: false },
-        youtube: { enabled: false },
-        twitter: { enabled: false },
-        linkedin: { enabled: false },
-      };
-
       const getLocal = (k: PlatformKey) => {
         if (scheduleMode === 'same') return { date: scheduleDate, time: scheduleTime };
         return scheduleByPlatform[k] || { date: '', time: '' };
       };
 
-      (Object.keys(platformPayload) as PlatformKey[]).forEach((k) => {
-        if (!selected[k]) return;
-
+      const baseScheduleObj = (k: PlatformKey) => {
         const info = scheduleInfoByPlatform[k];
-        if (!info.ok) return;
+        if (!info.ok) return null;
 
         const requestedLocal = getLocal(k);
 
-        const scheduleObj = {
+        return {
           inputTimezone: TZ_ET as 'America/New_York',
           utcIso: info.utcIso,
           unixSeconds: info.unixSeconds,
@@ -640,14 +668,7 @@ export function MediaDistributionPage() {
           requestedLocal,
           mode: scheduleMode as 'same' | 'different',
         };
-
-        if (k === 'instagram') platformPayload.instagram = { enabled: true, copy: { caption: captionInstagram }, schedule: scheduleObj };
-        if (k === 'tiktok') platformPayload.tiktok = { enabled: true, copy: { caption: captionTikTok }, schedule: scheduleObj };
-        if (k === 'facebook') platformPayload.facebook = { enabled: true, copy: { caption: captionFacebook }, schedule: scheduleObj };
-        if (k === 'youtube') platformPayload.youtube = { enabled: true, copy: { title: youtubeTitle }, schedule: scheduleObj };
-        if (k === 'twitter') platformPayload.twitter = { enabled: true, copy: { text: twitterText }, schedule: scheduleObj };
-        if (k === 'linkedin') platformPayload.linkedin = { enabled: true, copy: { text: linkedinText }, schedule: scheduleObj };
-      });
+      };
 
       const payload = {
         source: 'media-distribution-landing',
@@ -688,12 +709,17 @@ export function MediaDistributionPage() {
         copy: {
           tone,
           perPlatform: {
-            instagram: { caption: captionInstagram },
-            tiktok: { caption: captionTikTok },
-            facebook: { caption: captionFacebook },
-            youtube: { title: youtubeTitle },
-            twitter: { text: twitterText },
-            linkedin: { text: linkedinText },
+            instagram: selected.instagram ? { caption: captionInstagram } : null,
+            tiktok: selected.tiktok ? { caption: captionTikTok } : null,
+            facebook: selected.facebook ? { caption: captionFacebook } : null,
+            youtube: selected.youtube ? { title: youtubeTitle } : null,
+            twitterVideo: selected.twitterVideo ? { text: twitterVideoText } : null,
+            linkedin: selected.linkedin ? { text: linkedinText } : null,
+            twitterPosts: selected.twitterPosts
+              ? {
+                  posts: twitterPosts.map((t) => t.trim()).filter(Boolean),
+                }
+              : null,
           },
         },
         scheduling: {
@@ -711,7 +737,33 @@ export function MediaDistributionPage() {
                 }
               : null,
         },
-        platforms: platformPayload, // ✅ Fully separated platform objects
+        platforms: {
+          instagram: selected.instagram
+            ? { enabled: true, copy: { caption: captionInstagram }, schedule: baseScheduleObj('instagram') }
+            : { enabled: false },
+          tiktok: selected.tiktok
+            ? { enabled: true, copy: { caption: captionTikTok }, schedule: baseScheduleObj('tiktok') }
+            : { enabled: false },
+          facebook: selected.facebook
+            ? { enabled: true, copy: { caption: captionFacebook }, schedule: baseScheduleObj('facebook') }
+            : { enabled: false },
+          youtube: selected.youtube
+            ? { enabled: true, copy: { title: youtubeTitle }, schedule: baseScheduleObj('youtube') }
+            : { enabled: false },
+          twitterVideo: selected.twitterVideo
+            ? { enabled: true, copy: { text: twitterVideoText }, schedule: baseScheduleObj('twitterVideo') }
+            : { enabled: false },
+          linkedin: selected.linkedin
+            ? { enabled: true, copy: { text: linkedinText }, schedule: baseScheduleObj('linkedin') }
+            : { enabled: false },
+          twitterPosts: selected.twitterPosts
+            ? {
+                enabled: true,
+                copy: { posts: twitterPosts.map((t) => t.trim()).filter(Boolean) },
+                schedule: baseScheduleObj('twitterPosts'),
+              }
+            : { enabled: false },
+        },
       };
 
       const res = await fetch(WEBHOOK_URL, {
@@ -739,17 +791,16 @@ export function MediaDistributionPage() {
     label,
     active,
     done,
+    onClick,
   }: {
-    n: 1 | 2 | 3 | 4;
+    n: number;
     label: string;
     active: boolean;
     done: boolean;
+    onClick: () => void;
   }) => (
     <button
-      onClick={() => {
-        resetSubmitState();
-        if (n < step) setStep(n);
-      }}
+      onClick={onClick}
       className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
         active
           ? 'bg-white/10 border-white/15'
@@ -879,6 +930,86 @@ export function MediaDistributionPage() {
     </div>
   );
 
+  const BottomNav = ({
+    nextLabel = 'Next',
+    showSubmit = false,
+  }: {
+    nextLabel?: string;
+    showSubmit?: boolean;
+  }) => (
+    <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+      <button
+        type="button"
+        onClick={goToPrev}
+        className="rounded-xl px-5 py-3 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={step === 1 || submitting}
+      >
+        Back
+      </button>
+
+      {showSubmit ? (
+        <button
+          type="button"
+          onClick={submitWebhook}
+          className="rounded-xl px-5 py-3 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+          style={{
+            borderColor: 'rgba(214, 178, 94, 0.45)',
+            backgroundColor: 'rgba(0,0,0,0.15)',
+            color: GOLD_HOVER,
+          }}
+          disabled={
+            submitting ||
+            !videoReady ||
+            !captionsReady ||
+            !twitterPostsReady ||
+            !scheduleReady ||
+            !hasAnyPlatform
+          }
+        >
+          {submitting ? (
+            <>
+              <Loader className="h-4 w-4 animate-spin" />
+              Submitting…
+            </>
+          ) : (
+            'Submit to Distribution'
+          )}
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={goToNext}
+          className="rounded-xl px-5 py-3 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{
+            borderColor: 'rgba(214, 178, 94, 0.45)',
+            backgroundColor: 'rgba(0,0,0,0.15)',
+            color: GOLD_HOVER,
+          }}
+          disabled={!canProceedFromStep || submitting}
+        >
+          {nextLabel}
+        </button>
+      )}
+    </div>
+  );
+
+  const copyOkForPlatform = (k: Exclude<PlatformKey, 'twitterPosts'>) => {
+    if (!selected[k]) return true;
+    if (k === 'instagram') return captionInstagram.trim().length > 0;
+    if (k === 'tiktok') return captionTikTok.trim().length > 0;
+    if (k === 'facebook') return captionFacebook.trim().length > 0;
+    if (k === 'youtube') return youtubeTitle.trim().length > 0;
+    if (k === 'twitterVideo') return twitterVideoText.trim().length > 0;
+    if (k === 'linkedin') return linkedinText.trim().length > 0;
+    return false;
+  };
+
+  const getCopyLabel = (k: Exclude<PlatformKey, 'twitterPosts'>) => {
+    const meta = PLATFORM_META[k];
+    if (meta.kind === 'title') return 'Title';
+    return 'Text / Caption';
+  };
+
   return (
     <div
       className="min-h-screen text-white overflow-x-hidden"
@@ -951,114 +1082,73 @@ export function MediaDistributionPage() {
           <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
             Welcome <span className="gold-shimmer font-extrabold">Transferrable Everything</span>
           </h1>
-          <p className="mt-4 text-gray-200 text-lg">
-            Step-by-step media distribution.
-          </p>
+          <p className="mt-4 text-gray-200 text-lg">Step-by-step media distribution.</p>
         </div>
 
-        <div className="mt-8 grid gap-3 sm:grid-cols-4">
-          <WizardPill n={1} label="Platforms" active={step === 1} done={hasAnyPlatform} />
-          <WizardPill n={2} label="Video" active={step === 2} done={videoReady} />
-          <WizardPill n={3} label="Captions" active={step === 3} done={captionsReady} />
-          <WizardPill n={4} label="Schedule" active={step === 4} done={scheduleReady && submitOk} />
+        {/* ✅ Mobile: 2 columns (2 steps side-by-side). Desktop: 4 or 5 columns depending on Twitter Posts */}
+        <div className={`mt-8 grid gap-3 grid-cols-2 ${showTwitterPostsStep ? 'sm:grid-cols-5' : 'sm:grid-cols-4'}`}>
+          <WizardPill
+            n={1}
+            label="Platforms"
+            active={step === 1}
+            done={hasAnyPlatform}
+            onClick={() => {
+              resetSubmitState();
+              setStep(1);
+            }}
+          />
+          <WizardPill
+            n={2}
+            label="Video"
+            active={step === 2}
+            done={videoReady}
+            onClick={() => {
+              resetSubmitState();
+              if (step > 1) setStep(2);
+            }}
+          />
+          <WizardPill
+            n={3}
+            label="Captions"
+            active={step === 3}
+            done={captionsReady}
+            onClick={() => {
+              resetSubmitState();
+              if (step > 2) setStep(3);
+            }}
+          />
+          {showTwitterPostsStep ? (
+            <WizardPill
+              n={4}
+              label="X Posts"
+              active={step === 4}
+              done={twitterPostsReady}
+              onClick={() => {
+                resetSubmitState();
+                if (step > 3) setStep(4);
+              }}
+            />
+          ) : null}
+          <WizardPill
+            n={showTwitterPostsStep ? 5 : 4}
+            label="Schedule"
+            active={step === 5}
+            done={scheduleReady && submitOk}
+            onClick={() => {
+              resetSubmitState();
+              if (step > (showTwitterPostsStep ? 4 : 3)) setStep(5);
+            }}
+          />
         </div>
 
-        {/* ✅ Removed the “subtitle for each step” box */}
-        <div className="mt-6 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div className="text-2xl font-extrabold">{stepTitle}</div>
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => {
-                  resetSubmitState();
-                  setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4) : s));
-                }}
-                className="rounded-xl px-5 py-2.5 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={step === 1}
-              >
-                Back
-              </button>
-
-              {step < 4 ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetSubmitState();
-                    if (!canGoNext) return;
-                    setStep((s) => ((s + 1) as 1 | 2 | 3 | 4));
-                  }}
-                  className="rounded-xl px-5 py-2.5 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    borderColor: 'rgba(214, 178, 94, 0.45)',
-                    backgroundColor: 'rgba(0,0,0,0.15)',
-                    color: GOLD_HOVER,
-                  }}
-                  disabled={!canGoNext}
-                >
-                  Next
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={submitWebhook}
-                  className="rounded-xl px-5 py-2.5 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-                  style={{
-                    borderColor: 'rgba(214, 178, 94, 0.45)',
-                    backgroundColor: 'rgba(0,0,0,0.15)',
-                    color: GOLD_HOVER,
-                  }}
-                  disabled={submitting || !videoReady || !captionsReady || !scheduleReady || !hasAnyPlatform}
-                >
-                  {submitting ? (
-                    <>
-                      <Loader className="h-4 w-4 animate-spin" />
-                      Submitting…
-                    </>
-                  ) : (
-                    'Submit to Distribution'
-                  )}
-                </button>
-              )}
-            </div>
-          </div>
-
-          {submitOk && (
-            <div className="mt-4 bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
-              <div className="flex items-start gap-2 text-green-100">
-                <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-300" />
-                <div>
-                  <div className="font-extrabold">Scheduled successfully.</div>
-                  <div className="text-sm text-green-100/80">
-                    Your content package was submitted to the automation webhook.
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {submitError && (
-            <div className="mt-4 bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
-              <div className="flex items-start gap-2 text-red-100">
-                <AlertCircle className="h-5 w-5 mt-0.5 text-red-300" />
-                <div className="text-sm">{submitError}</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* Step content */}
         <div className="mt-6 space-y-5">
-          {/* STEP 1 */}
+          {/* STEP 1: Platforms */}
           {step === 1 && (
             <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-extrabold">Choose platforms</h3>
-                  <p className="text-gray-300 text-sm mt-1">
-                    Select the platforms you want to post to.
-                  </p>
+                  <p className="text-gray-300 text-sm mt-1">Select the platforms you want to post to.</p>
                 </div>
                 <div className="text-xs text-white/60">
                   Selected: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
@@ -1076,6 +1166,10 @@ export function MediaDistributionPage() {
                       onClick={() => {
                         resetSubmitState();
                         setSelected((prev) => ({ ...prev, [k]: !prev[k] }));
+                        if (k === 'twitterPosts' && !selected.twitterPosts) {
+                          // If they just enabled Twitter posts, give them empty slots
+                          setTwitterPosts((prev) => (prev.length ? prev : ['', '', '']));
+                        }
                       }}
                       className={`rounded-2xl border p-5 text-left transition ${
                         on
@@ -1107,10 +1201,12 @@ export function MediaDistributionPage() {
                   <span>Please choose at least one platform to continue.</span>
                 </div>
               )}
+
+              <BottomNav />
             </div>
           )}
 
-          {/* STEP 2 */}
+          {/* STEP 2: Video */}
           {step === 2 && (
             <div className="space-y-5">
               <FileUploadCard
@@ -1136,15 +1232,14 @@ export function MediaDistributionPage() {
                 setUpload={setThumbnailUpload}
               />
 
-              <div className="text-xs text-white/60">
-                You can continue once the video upload is completed.
-              </div>
+              <BottomNav />
             </div>
           )}
 
-          {/* STEP 3 */}
+          {/* STEP 3: Captions */}
           {step === 3 && (
             <div className="space-y-5">
+              {/* AI panel + audio upload */}
               <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                 <div className="flex items-start justify-between gap-4">
                   <div>
@@ -1186,7 +1281,7 @@ export function MediaDistributionPage() {
 
                         <button
                           type="button"
-                          onClick={runAi}
+                          onClick={runAiForCaptions}
                           disabled={aiLoading || audioUpload.status !== 'done'}
                           className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
                           style={{
@@ -1209,7 +1304,7 @@ export function MediaDistributionPage() {
                         </button>
                       </div>
 
-                      <div className="mt-4">
+                      <div className="mt-5">
                         <div className="text-sm font-extrabold">Audio Upload (required for AI)</div>
                         <div className="mt-3">
                           <FileUploadCard
@@ -1233,45 +1328,14 @@ export function MediaDistributionPage() {
                         )}
                       </div>
                     </div>
-
-                    {(tweetIdeas.length > 0 || ytTitleIdeas.length > 0) && (
-                      <div className="bg-black/20 border border-white/10 rounded-2xl p-5">
-                        <div className="text-sm font-extrabold">Extra Ideas (Optional)</div>
-
-                        {tweetIdeas.length > 0 && (
-                          <div className="mt-3">
-                            <div className="text-xs text-white/60">Tweet ideas</div>
-                            <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-white/80">
-                              {tweetIdeas.slice(0, 10).map((t, i) => (
-                                <li key={i}>{t}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {ytTitleIdeas.length > 0 && (
-                          <div className="mt-4">
-                            <div className="text-xs text-white/60">YouTube title ideas</div>
-                            <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-white/80">
-                              {ytTitleIdeas.slice(0, 8).map((t, i) => (
-                                <li key={i}>{t}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
 
-              {/* ✅ Platform list (no scrolling fields) */}
+              {/* Platform list (no scrolling fields) — exclude Twitter Posts here */}
               <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-lg font-extrabold">Selected platforms</div>
-                  <div className="text-xs text-white/60">
-                    Required: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
-                  </div>
                 </div>
 
                 {!hasAnyPlatform ? (
@@ -1281,7 +1345,10 @@ export function MediaDistributionPage() {
                   </div>
                 ) : (
                   <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                    {enabledPlatforms.map((k) => (
+                    {(enabledPlatforms.filter((k) => k !== 'twitterPosts') as Exclude<
+                      PlatformKey,
+                      'twitterPosts'
+                    >[]).map((k) => (
                       <button
                         key={k}
                         type="button"
@@ -1291,9 +1358,7 @@ export function MediaDistributionPage() {
                         <div className="flex items-start justify-between gap-3">
                           <div>
                             <div className="font-extrabold text-white">{PLATFORM_META[k].label}</div>
-                            <div className="text-sm text-white/60 mt-1">
-                              {getCopyLabel(k)} required
-                            </div>
+                            <div className="text-sm text-white/60 mt-1">{getCopyLabel(k)} required</div>
                           </div>
                           <PlatformBadge ok={copyOkForPlatform(k)} />
                         </div>
@@ -1308,6 +1373,8 @@ export function MediaDistributionPage() {
                     <span>Fill in required text for each selected platform to continue.</span>
                   </div>
                 )}
+
+                <BottomNav nextLabel={showTwitterPostsStep ? 'Next (X Posts)' : 'Next (Schedule)'} />
               </div>
 
               {/* Fullscreen Caption Modal */}
@@ -1315,9 +1382,7 @@ export function MediaDistributionPage() {
                 open={Boolean(activeCaptionPlatform)}
                 title={
                   activeCaptionPlatform
-                    ? `${PLATFORM_META[activeCaptionPlatform].label} — ${getCopyLabel(
-                        activeCaptionPlatform
-                      )}`
+                    ? `${PLATFORM_META[activeCaptionPlatform].label} — ${getCopyLabel(activeCaptionPlatform)}`
                     : 'Platform'
                 }
                 subtitle={activeCaptionPlatform ? PLATFORM_META[activeCaptionPlatform].sub : undefined}
@@ -1338,20 +1403,6 @@ export function MediaDistributionPage() {
                           placeholder="Enter a title…"
                         />
                       </>
-                    ) : activeCaptionPlatform === 'twitter' ? (
-                      <>
-                        <div className="text-sm font-extrabold">Twitter (X) Text</div>
-                        <textarea
-                          value={twitterText}
-                          onChange={(e) => {
-                            setTwitterText(e.target.value);
-                            resetSubmitState();
-                          }}
-                          rows={10}
-                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                          placeholder="Write your post…"
-                        />
-                      </>
                     ) : activeCaptionPlatform === 'linkedin' ? (
                       <>
                         <div className="text-sm font-extrabold">LinkedIn Text</div>
@@ -1362,6 +1413,20 @@ export function MediaDistributionPage() {
                             resetSubmitState();
                           }}
                           rows={12}
+                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                          placeholder="Write your post…"
+                        />
+                      </>
+                    ) : activeCaptionPlatform === 'twitterVideo' ? (
+                      <>
+                        <div className="text-sm font-extrabold">Twitter/X (Video) Text</div>
+                        <textarea
+                          value={twitterVideoText}
+                          onChange={(e) => {
+                            setTwitterVideoText(e.target.value);
+                            resetSubmitState();
+                          }}
+                          rows={10}
                           className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
                           placeholder="Write your post…"
                         />
@@ -1409,11 +1474,8 @@ export function MediaDistributionPage() {
                         />
                       </>
                     )}
-
-                    <div className="pt-2">
-                      <div className="text-xs text-white/50">
-                        Tip: Close this modal when you’re done, then tap the next platform.
-                      </div>
+                    <div className="pt-2 text-xs text-white/50">
+                      Close this when you’re done, then tap the next platform.
                     </div>
                   </div>
                 )}
@@ -1421,8 +1483,212 @@ export function MediaDistributionPage() {
             </div>
           )}
 
-          {/* STEP 4 */}
-          {step === 4 && (
+          {/* STEP 4: Twitter/X Posts (only when selected) */}
+          {step === 4 && showTwitterPostsStep && (
+            <div className="space-y-5">
+              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-extrabold">Twitter/X Posts</h3>
+                    <p className="text-gray-300 text-sm mt-1">
+                      Generate or write standalone posts. Tap a post to edit fullscreen.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetSubmitState();
+                        setAiMode((v) => !v);
+                        setAiError(null);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-extrabold border border-white/10 bg-white/5 hover:bg-white/10"
+                    >
+                      <Sparkles className="h-4 w-4" />
+                      {aiMode ? 'Hide AI Options' : 'Generate Using AI'}
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        resetSubmitState();
+                        setTwitterPosts((prev) => [...prev, '']);
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-extrabold border border-white/10 bg-white/5 hover:bg-white/10"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add
+                    </button>
+                  </div>
+                </div>
+
+                {aiMode && (
+                  <div className="mt-5 space-y-4">
+                    <div className="bg-black/20 border border-white/10 rounded-2xl p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div className="flex-1">
+                          <div className="text-sm font-extrabold">Tone</div>
+                          <input
+                            value={tone}
+                            onChange={(e) => {
+                              setTone(e.target.value);
+                              resetSubmitState();
+                            }}
+                            className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
+                            placeholder="confident, punchy, value-first"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={runAiForTwitterPosts}
+                          disabled={aiLoading || audioUpload.status !== 'done'}
+                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{
+                            borderColor: 'rgba(214, 178, 94, 0.45)',
+                            backgroundColor: 'rgba(0,0,0,0.15)',
+                            color: GOLD_HOVER,
+                          }}
+                        >
+                          {aiLoading ? (
+                            <>
+                              <Loader className="h-4 w-4 animate-spin" />
+                              Generating…
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-4 w-4" />
+                              Generate Now
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="mt-5">
+                        <div className="text-sm font-extrabold">Audio Upload (required for AI)</div>
+                        <div className="mt-3">
+                          <FileUploadCard
+                            title="Upload Audio"
+                            subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP3/WAV/M4A recommended.`}
+                            kind="audio"
+                            accept="audio/*"
+                            file={audioFile}
+                            setFile={setAudioFile}
+                            upload={audioUpload}
+                            setUpload={setAudioUpload}
+                            required
+                          />
+                        </div>
+
+                        {aiError && (
+                          <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                            <AlertCircle className="h-4 w-4 mt-0.5" />
+                            <span>{aiError}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Post list */}
+              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-lg font-extrabold">Your posts</div>
+                  <div className="text-xs text-white/60">
+                    Ready:{' '}
+                    <span className="font-extrabold text-white">
+                      {twitterPosts.map((t) => t.trim()).filter(Boolean).length}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3">
+                  {twitterPosts.map((t, i) => {
+                    const ok = t.trim().length > 0;
+                    const preview = t.trim() ? t.trim() : 'Tap to write this post…';
+                    return (
+                      <div
+                        key={i}
+                        className="rounded-2xl border border-gray-700/50 bg-white/5 hover:bg-white/10 hover:border-white/15 transition p-5"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setActiveTweetIndex(i)}
+                            className="text-left flex-1"
+                          >
+                            <div className="font-extrabold text-white">Post {i + 1}</div>
+                            <div className="text-sm text-white/70 mt-1 line-clamp-2">{preview}</div>
+                          </button>
+
+                          <div className="flex flex-col items-end gap-2">
+                            <PlatformBadge ok={ok} />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                resetSubmitState();
+                                setTwitterPosts((prev) => prev.filter((_, idx) => idx !== i));
+                              }}
+                              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 font-extrabold border border-white/10 bg-white/5 hover:bg-white/10"
+                              title="Remove"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {!twitterPostsReady && (
+                  <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5" />
+                    <span>Add at least 1 post to continue.</span>
+                  </div>
+                )}
+
+                <BottomNav nextLabel="Next (Schedule)" />
+              </div>
+
+              {/* Fullscreen Tweet Editor */}
+              <FullscreenModal
+                open={activeTweetIndex !== null}
+                title={activeTweetIndex !== null ? `Twitter/X Post ${activeTweetIndex + 1}` : 'Twitter/X Post'}
+                subtitle="Write the full post. Keep it punchy."
+                onClose={() => setActiveTweetIndex(null)}
+              >
+                {activeTweetIndex !== null && (
+                  <div className="space-y-4">
+                    <textarea
+                      value={twitterPosts[activeTweetIndex] ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        resetSubmitState();
+                        setTwitterPosts((prev) => {
+                          const next = [...prev];
+                          next[activeTweetIndex] = v;
+                          return next;
+                        });
+                      }}
+                      rows={14}
+                      className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                      placeholder="Write your post…"
+                    />
+                    <div className="text-xs text-white/50">
+                      Close when done, then tap the next post.
+                    </div>
+                  </div>
+                )}
+              </FullscreenModal>
+            </div>
+          )}
+
+          {/* STEP 5: Schedule */}
+          {step === 5 && (
             <div className="space-y-5">
               <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                 <h3 className="text-lg font-extrabold">Scheduling mode</h3>
@@ -1510,12 +1776,13 @@ export function MediaDistributionPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {/* ✅ Platform list for schedule (tap -> fullscreen modal) */}
+                  {/* Platform list for schedule (tap -> fullscreen modal) */}
                   <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                     <div className="flex items-center justify-between gap-3">
                       <div className="text-lg font-extrabold">Schedule per platform (ET)</div>
                       <div className="text-xs text-white/60">
-                        Selected: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
+                        Selected:{' '}
+                        <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
                       </div>
                     </div>
 
@@ -1578,7 +1845,10 @@ export function MediaDistributionPage() {
                                   resetSubmitState();
                                   setScheduleByPlatform((prev) => ({
                                     ...prev,
-                                    [activeSchedulePlatform]: { ...prev[activeSchedulePlatform], date: v },
+                                    [activeSchedulePlatform]: {
+                                      ...prev[activeSchedulePlatform],
+                                      date: v,
+                                    },
                                   }));
                                 }}
                                 className="w-full bg-transparent text-sm text-white outline-none"
@@ -1598,7 +1868,10 @@ export function MediaDistributionPage() {
                                   resetSubmitState();
                                   setScheduleByPlatform((prev) => ({
                                     ...prev,
-                                    [activeSchedulePlatform]: { ...prev[activeSchedulePlatform], time: v },
+                                    [activeSchedulePlatform]: {
+                                      ...prev[activeSchedulePlatform],
+                                      time: v,
+                                    },
                                   }));
                                 }}
                                 className="w-full bg-transparent text-sm text-white outline-none"
@@ -1611,10 +1884,14 @@ export function MediaDistributionPage() {
                           {scheduleInfoByPlatform[activeSchedulePlatform].ok ? (
                             <>
                               Scheduled for{' '}
-                              <span className="font-extrabold">{scheduleInfoByPlatform[activeSchedulePlatform].etDisplay}</span>
+                              <span className="font-extrabold">
+                                {scheduleInfoByPlatform[activeSchedulePlatform].etDisplay}
+                              </span>
                             </>
                           ) : (
-                            <span className="text-white/60">{scheduleInfoByPlatform[activeSchedulePlatform].message}</span>
+                            <span className="text-white/60">
+                              {scheduleInfoByPlatform[activeSchedulePlatform].message}
+                            </span>
                           )}
                         </div>
 
@@ -1627,29 +1904,31 @@ export function MediaDistributionPage() {
                 </div>
               )}
 
-              {/* Ready check */}
-              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <h3 className="text-lg font-extrabold">Ready check</h3>
-
-                <div className="mt-4 space-y-2 text-sm text-white/80">
-                  <div className="flex items-center justify-between">
-                    <span>Platforms selected</span>
-                    {hasAnyPlatform ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Video uploaded</span>
-                    {videoReady ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Copy (per platform)</span>
-                    {captionsReady ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>Schedule</span>
-                    {scheduleReady ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
+              {/* Submit status */}
+              {submitOk && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
+                  <div className="flex items-start gap-2 text-green-100">
+                    <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-300" />
+                    <div>
+                      <div className="font-extrabold">Scheduled successfully.</div>
+                      <div className="text-sm text-green-100/80">
+                        Your content package was submitted to the automation webhook.
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
+
+              {submitError && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
+                  <div className="flex items-start gap-2 text-red-100">
+                    <AlertCircle className="h-5 w-5 mt-0.5 text-red-300" />
+                    <div className="text-sm">{submitError}</div>
+                  </div>
+                </div>
+              )}
+
+              <BottomNav showSubmit />
             </div>
           )}
         </div>
