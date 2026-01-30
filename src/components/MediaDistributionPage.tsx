@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -302,7 +302,7 @@ function ListRow({
 
 /**
  * ✅ Progress bar with labels horizontally across (no box pills)
- * ✅ Excludes Review from the label row (per your request)
+ * ✅ Excludes Review from the label row (per request)
  */
 function ProgressBarLine({
   labels,
@@ -371,11 +371,6 @@ function ProgressBarLine({
             </div>
           ))}
         </div>
-
-        {/* On very small screens, if labels wrap awkwardly, we keep it readable */}
-        <div className="mt-3 text-[11px] text-white/45 text-center sm:hidden">
-          Post content on all platforms in 2 minutes.
-        </div>
       </div>
     </div>
   );
@@ -391,6 +386,12 @@ export function MediaDistributionPage() {
   // 5 Schedule
   // 6 Review (excluded from label row)
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
+
+  // ✅ Scroll to top whenever step changes (next/back/any navigation)
+  useEffect(() => {
+    // Use instant scroll on mobile to avoid janky "smooth" with fixed backgrounds
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [step]);
 
   // Step 1: platforms (default all unselected)
   const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
@@ -459,6 +460,25 @@ export function MediaDistributionPage() {
 
   // Review list modal
   const [reviewPlatform, setReviewPlatform] = useState<PlatformKey | null>(null);
+
+  // ✅ refs to make date/time pickers work reliably on mobile (tap wrapper => open picker)
+  const sameDateRef = useRef<HTMLInputElement | null>(null);
+  const sameTimeRef = useRef<HTMLInputElement | null>(null);
+  const modalDateRef = useRef<HTMLInputElement | null>(null);
+  const modalTimeRef = useRef<HTMLInputElement | null>(null);
+
+  const openPicker = (ref: React.RefObject<HTMLInputElement>) => {
+    const el = ref.current;
+    if (!el) return;
+    // @ts-ignore
+    if (typeof el.showPicker === 'function') {
+      // @ts-ignore
+      el.showPicker();
+      return;
+    }
+    el.focus();
+    el.click();
+  };
 
   useEffect(() => {
     let raf = 0;
@@ -744,25 +764,39 @@ export function MediaDistributionPage() {
     return false;
   }, [step, hasAnyPlatform, videoReady, captionsReady, twitterPostsReady, scheduleReady]);
 
+  // ✅ ensure scroll-to-top happens exactly when moving next/back (extra safety)
   const goToNext = () => {
     resetSubmitState();
     if (!canProceedFromStep) return;
 
-    if (step === 1) return setStep(2);
-    if (step === 2) return setStep(3);
-    if (step === 3) return setStep(showTwitterPostsStep ? 4 : 5);
-    if (step === 4) return setStep(5);
-    if (step === 5) return setStep(6);
+    const nextStep = (() => {
+      if (step === 1) return 2;
+      if (step === 2) return 3;
+      if (step === 3) return showTwitterPostsStep ? 4 : 5;
+      if (step === 4) return 5;
+      if (step === 5) return 6;
+      return step;
+    })();
+
+    setStep(nextStep as any);
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   };
 
   const goToPrev = () => {
     resetSubmitState();
     if (step === 1) return;
-    if (step === 2) return setStep(1);
-    if (step === 3) return setStep(2);
-    if (step === 4) return setStep(3);
-    if (step === 5) return setStep(showTwitterPostsStep ? 4 : 3);
-    if (step === 6) return setStep(5);
+
+    const prevStep = (() => {
+      if (step === 2) return 1;
+      if (step === 3) return 2;
+      if (step === 4) return 3;
+      if (step === 5) return showTwitterPostsStep ? 4 : 3;
+      if (step === 6) return 5;
+      return step;
+    })();
+
+    setStep(prevStep as any);
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   };
 
   const getCopyLabel = (k: Exclude<PlatformKey, 'twitterPosts'>) => {
@@ -1017,6 +1051,7 @@ export function MediaDistributionPage() {
 
       setSubmitOk(true);
       setStep(6);
+      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     } catch (e: any) {
       setSubmitError(e?.message || 'Submit failed');
     } finally {
@@ -1190,8 +1225,7 @@ export function MediaDistributionPage() {
     hasAnyPlatform && videoReady && captionsReady && twitterPostsReady && scheduleReady;
 
   /**
-   * ✅ Progress labels EXCLUDE Review (per request)
-   * Platforms → Video → Captions → (optional X Posts) → Schedule
+   * ✅ Progress labels EXCLUDE Review
    */
   const progressLabelsNoReview = useMemo(() => {
     const base = ['Platforms', 'Video', 'Captions'];
@@ -1209,7 +1243,7 @@ export function MediaDistributionPage() {
       if (step === 2) return 1;
       if (step === 3) return 2;
       if (step === 5) return 3;
-      if (step === 6) return 3; // keep highlight on Schedule during Review
+      if (step === 6) return 3;
       return 0;
     } else {
       if (step === 1) return 0;
@@ -1217,7 +1251,7 @@ export function MediaDistributionPage() {
       if (step === 3) return 2;
       if (step === 4) return 3;
       if (step === 5) return 4;
-      if (step === 6) return 4; // keep highlight on Schedule during Review
+      if (step === 6) return 4;
       return 0;
     }
   }, [step, showTwitterPostsStep]);
@@ -1270,11 +1304,18 @@ export function MediaDistributionPage() {
           input[type="date"],
           input[type="time"] { color-scheme: dark; }
 
+          /* Keep native picker indicator visible on dark */
           input[type="date"]::-webkit-calendar-picker-indicator,
           input[type="time"]::-webkit-calendar-picker-indicator {
             filter: invert(1);
             opacity: 0.9;
             cursor: pointer;
+          }
+
+          /* iOS Safari: make sure inputs remain tappable inside flex containers */
+          input[type="date"], input[type="time"]{
+            -webkit-appearance: none;
+            appearance: none;
           }
         `}
       </style>
@@ -1290,7 +1331,6 @@ export function MediaDistributionPage() {
       </header>
 
       <main className="relative z-10 max-w-5xl mx-auto px-6 pb-16">
-        {/* Title only on Step 1 */}
         {step === 1 ? (
           <div className="text-center mt-8">
             <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
@@ -1302,7 +1342,6 @@ export function MediaDistributionPage() {
           <div className="mt-2" />
         )}
 
-        {/* ✅ NEW progress bar w/ horizontal labels, excluding Review */}
         <ProgressBarLine labels={progressLabelsNoReview} activeIndex={activeProgressIndexNoReview} />
 
         <div className="mt-6 space-y-5">
@@ -1319,7 +1358,6 @@ export function MediaDistributionPage() {
                 </div>
               </div>
 
-              {/* 2-up on mobile */}
               <div className="mt-5 grid gap-3 grid-cols-2">
                 {(Object.keys(PLATFORM_META) as PlatformKey[]).map((k) => {
                   const on = selected[k];
@@ -1366,7 +1404,30 @@ export function MediaDistributionPage() {
                 </div>
               )}
 
-              <BottomNav />
+              <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+                <button
+                  type="button"
+                  onClick={goToPrev}
+                  className="rounded-xl px-5 py-3 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                >
+                  Back
+                </button>
+
+                <button
+                  type="button"
+                  onClick={goToNext}
+                  className="rounded-xl px-5 py-3 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    borderColor: 'rgba(214, 178, 94, 0.45)',
+                    backgroundColor: 'rgba(0,0,0,0.15)',
+                    color: GOLD_HOVER,
+                  }}
+                  disabled={!canProceedFromStep || submitting}
+                >
+                  Next
+                </button>
+              </div>
             </div>
           )}
 
@@ -1888,9 +1949,16 @@ export function MediaDistributionPage() {
                   <div className="mt-5 grid gap-4 grid-cols-2">
                     <div>
                       <div className="text-sm font-bold">Date</div>
-                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
-                        <Calendar className="h-4 w-4 text-white" />
+
+                      {/* ✅ Wrapper tap opens picker on mobile */}
+                      <button
+                        type="button"
+                        onClick={() => openPicker(sameDateRef)}
+                        className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
+                      >
+                        <Calendar className="h-4 w-4" style={{ color: GOLD_HOVER }} />
                         <input
+                          ref={sameDateRef}
                           type="date"
                           value={scheduleDate}
                           onChange={(e) => {
@@ -1899,14 +1967,21 @@ export function MediaDistributionPage() {
                           }}
                           className="w-full bg-transparent text-sm text-white outline-none"
                         />
-                      </div>
+                      </button>
                     </div>
 
                     <div>
                       <div className="text-sm font-bold">Time</div>
-                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
-                        <Clock className="h-4 w-4 text-white" />
+
+                      {/* ✅ Wrapper tap opens picker on mobile */}
+                      <button
+                        type="button"
+                        onClick={() => openPicker(sameTimeRef)}
+                        className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
+                      >
+                        <Clock className="h-4 w-4" style={{ color: GOLD_HOVER }} />
                         <input
+                          ref={sameTimeRef}
                           type="time"
                           value={scheduleTime}
                           onChange={(e) => {
@@ -1915,7 +1990,7 @@ export function MediaDistributionPage() {
                           }}
                           className="w-full bg-transparent text-sm text-white outline-none"
                         />
-                      </div>
+                      </button>
                     </div>
                   </div>
 
@@ -1975,9 +2050,14 @@ export function MediaDistributionPage() {
                     <div className="grid gap-4 grid-cols-2">
                       <div>
                         <div className="text-sm font-bold">Date</div>
-                        <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
-                          <Calendar className="h-4 w-4 text-white" />
+                        <button
+                          type="button"
+                          onClick={() => openPicker(modalDateRef)}
+                          className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
+                        >
+                          <Calendar className="h-4 w-4" style={{ color: GOLD_HOVER }} />
                           <input
+                            ref={modalDateRef}
                             type="date"
                             value={scheduleByPlatform[activeSchedulePlatform].date}
                             onChange={(e) => {
@@ -1990,14 +2070,19 @@ export function MediaDistributionPage() {
                             }}
                             className="w-full bg-transparent text-sm text-white outline-none"
                           />
-                        </div>
+                        </button>
                       </div>
 
                       <div>
                         <div className="text-sm font-bold">Time</div>
-                        <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
-                          <Clock className="h-4 w-4 text-white" />
+                        <button
+                          type="button"
+                          onClick={() => openPicker(modalTimeRef)}
+                          className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
+                        >
+                          <Clock className="h-4 w-4" style={{ color: GOLD_HOVER }} />
                           <input
+                            ref={modalTimeRef}
                             type="time"
                             value={scheduleByPlatform[activeSchedulePlatform].time}
                             onChange={(e) => {
@@ -2010,7 +2095,7 @@ export function MediaDistributionPage() {
                             }}
                             className="w-full bg-transparent text-sm text-white outline-none"
                           />
-                        </div>
+                        </button>
                       </div>
                     </div>
 
@@ -2094,7 +2179,7 @@ export function MediaDistributionPage() {
                 />
 
                 <ListRow
-                  icon={<Calendar className="h-5 w-5 text-white" />}
+                  icon={<Calendar className="h-5 w-5" style={{ color: GOLD_HOVER }} />}
                   title="Scheduling"
                   subtitle={
                     scheduleReady
