@@ -323,7 +323,6 @@ function ProgressBarLine({
           <div className="text-xs text-white/60">{pct}%</div>
         </div>
 
-        {/* progress bar */}
         <div className="mt-3 h-3 w-full rounded-full bg-black/30 border border-white/10 overflow-hidden">
           <div
             className="h-full rounded-full"
@@ -334,7 +333,6 @@ function ProgressBarLine({
           />
         </div>
 
-        {/* ✅ Horizontal labels */}
         <div className="mt-4 flex items-center justify-between gap-3">
           {labels.map((l, i) => (
             <div
@@ -356,7 +354,6 @@ function ProgressBarLine({
           ))}
         </div>
 
-        {/* tiny tick markers */}
         <div className="mt-2 flex items-center justify-between">
           {labels.map((l, i) => (
             <div key={`${l}-tick`} className="flex-1 flex justify-center">
@@ -376,6 +373,46 @@ function ProgressBarLine({
   );
 }
 
+/**
+ * ✅ Mobile-safe date/time picker field:
+ * - The visible row is styled
+ * - An actual <input type="date/time"> sits on top (opacity 0) so iOS/Android opens the native picker reliably
+ */
+function PickerField({
+  type,
+  value,
+  onChange,
+  icon,
+  placeholder,
+  ariaLabel,
+}: {
+  type: 'date' | 'time';
+  value: string;
+  onChange: (v: string) => void;
+  icon: React.ReactNode;
+  placeholder: string;
+  ariaLabel: string;
+}) {
+  return (
+    <div className="relative">
+      <div className="w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
+        {icon}
+        <div className={`text-sm ${value ? 'text-white' : 'text-white/50'}`}>
+          {value || placeholder}
+        </div>
+      </div>
+
+      <input
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        aria-label={ariaLabel}
+        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+      />
+    </div>
+  );
+}
+
 export function MediaDistributionPage() {
   const [bgOffset, setBgOffset] = useState(0);
 
@@ -387,9 +424,8 @@ export function MediaDistributionPage() {
   // 6 Review (excluded from label row)
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
-  // ✅ Scroll to top whenever step changes (next/back/any navigation)
+  // ✅ Scroll to top whenever step changes
   useEffect(() => {
-    // Use instant scroll on mobile to avoid janky "smooth" with fixed backgrounds
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [step]);
 
@@ -460,25 +496,6 @@ export function MediaDistributionPage() {
 
   // Review list modal
   const [reviewPlatform, setReviewPlatform] = useState<PlatformKey | null>(null);
-
-  // ✅ refs to make date/time pickers work reliably on mobile (tap wrapper => open picker)
-  const sameDateRef = useRef<HTMLInputElement | null>(null);
-  const sameTimeRef = useRef<HTMLInputElement | null>(null);
-  const modalDateRef = useRef<HTMLInputElement | null>(null);
-  const modalTimeRef = useRef<HTMLInputElement | null>(null);
-
-  const openPicker = (ref: React.RefObject<HTMLInputElement>) => {
-    const el = ref.current;
-    if (!el) return;
-    // @ts-ignore
-    if (typeof el.showPicker === 'function') {
-      // @ts-ignore
-      el.showPicker();
-      return;
-    }
-    el.focus();
-    el.click();
-  };
 
   useEffect(() => {
     let raf = 0;
@@ -764,7 +781,6 @@ export function MediaDistributionPage() {
     return false;
   }, [step, hasAnyPlatform, videoReady, captionsReady, twitterPostsReady, scheduleReady]);
 
-  // ✅ ensure scroll-to-top happens exactly when moving next/back (extra safety)
   const goToNext = () => {
     resetSubmitState();
     if (!canProceedFromStep) return;
@@ -1159,6 +1175,7 @@ export function MediaDistributionPage() {
     </div>
   );
 
+  // ✅ Next on TOP of Back (mobile + desktop)
   const BottomNav = ({
     nextLabel = 'Next',
     hideNext = false,
@@ -1166,16 +1183,7 @@ export function MediaDistributionPage() {
     nextLabel?: string;
     hideNext?: boolean;
   }) => (
-    <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-      <button
-        type="button"
-        onClick={goToPrev}
-        className="rounded-xl px-5 py-3 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={step === 1 || submitting}
-      >
-        Back
-      </button>
-
+    <div className="mt-6 flex flex-col gap-3">
       {!hideNext ? (
         <button
           type="button"
@@ -1191,6 +1199,15 @@ export function MediaDistributionPage() {
           {nextLabel}
         </button>
       ) : null}
+
+      <button
+        type="button"
+        onClick={goToPrev}
+        className="rounded-xl px-5 py-3 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+        disabled={step === 1 || submitting}
+      >
+        Back
+      </button>
     </div>
   );
 
@@ -1224,9 +1241,6 @@ export function MediaDistributionPage() {
   const reviewReadyToSubmit =
     hasAnyPlatform && videoReady && captionsReady && twitterPostsReady && scheduleReady;
 
-  /**
-   * ✅ Progress labels EXCLUDE Review
-   */
   const progressLabelsNoReview = useMemo(() => {
     const base = ['Platforms', 'Video', 'Captions'];
     const mid = showTwitterPostsStep ? ['X Posts'] : [];
@@ -1234,9 +1248,6 @@ export function MediaDistributionPage() {
     return [...base, ...mid, ...end];
   }, [showTwitterPostsStep]);
 
-  /**
-   * ✅ Active index maps to step (Review step uses "Schedule" as last)
-   */
   const activeProgressIndexNoReview = useMemo(() => {
     if (!showTwitterPostsStep) {
       if (step === 1) return 0;
@@ -1304,18 +1315,11 @@ export function MediaDistributionPage() {
           input[type="date"],
           input[type="time"] { color-scheme: dark; }
 
-          /* Keep native picker indicator visible on dark */
           input[type="date"]::-webkit-calendar-picker-indicator,
           input[type="time"]::-webkit-calendar-picker-indicator {
             filter: invert(1);
             opacity: 0.9;
             cursor: pointer;
-          }
-
-          /* iOS Safari: make sure inputs remain tappable inside flex containers */
-          input[type="date"], input[type="time"]{
-            -webkit-appearance: none;
-            appearance: none;
           }
         `}
       </style>
@@ -1404,16 +1408,8 @@ export function MediaDistributionPage() {
                 </div>
               )}
 
-              <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                <button
-                  type="button"
-                  onClick={goToPrev}
-                  className="rounded-xl px-5 py-3 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled
-                >
-                  Back
-                </button>
-
+              {/* ✅ Next above Back here too */}
+              <div className="mt-6 flex flex-col gap-3">
                 <button
                   type="button"
                   onClick={goToNext}
@@ -1426,6 +1422,14 @@ export function MediaDistributionPage() {
                   disabled={!canProceedFromStep || submitting}
                 >
                   Next
+                </button>
+
+                <button
+                  type="button"
+                  className="rounded-xl px-5 py-3 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled
+                >
+                  Back
                 </button>
               </div>
             </div>
@@ -1946,51 +1950,40 @@ export function MediaDistributionPage() {
                 <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                   <h3 className="text-lg font-extrabold">Schedule (ET)</h3>
 
+                  {/* ✅ Mobile-safe picker fields (tap anywhere opens picker) */}
                   <div className="mt-5 grid gap-4 grid-cols-2">
                     <div>
                       <div className="text-sm font-bold">Date</div>
-
-                      {/* ✅ Wrapper tap opens picker on mobile */}
-                      <button
-                        type="button"
-                        onClick={() => openPicker(sameDateRef)}
-                        className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
-                      >
-                        <Calendar className="h-4 w-4" style={{ color: GOLD_HOVER }} />
-                        <input
-                          ref={sameDateRef}
+                      <div className="mt-2">
+                        <PickerField
                           type="date"
                           value={scheduleDate}
-                          onChange={(e) => {
-                            setScheduleDate(e.target.value);
+                          onChange={(v) => {
+                            setScheduleDate(v);
                             resetSubmitState();
                           }}
-                          className="w-full bg-transparent text-sm text-white outline-none"
+                          icon={<Calendar className="h-4 w-4" style={{ color: GOLD_HOVER }} />}
+                          placeholder="Select date"
+                          ariaLabel="Schedule date"
                         />
-                      </button>
+                      </div>
                     </div>
 
                     <div>
                       <div className="text-sm font-bold">Time</div>
-
-                      {/* ✅ Wrapper tap opens picker on mobile */}
-                      <button
-                        type="button"
-                        onClick={() => openPicker(sameTimeRef)}
-                        className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
-                      >
-                        <Clock className="h-4 w-4" style={{ color: GOLD_HOVER }} />
-                        <input
-                          ref={sameTimeRef}
+                      <div className="mt-2">
+                        <PickerField
                           type="time"
                           value={scheduleTime}
-                          onChange={(e) => {
-                            setScheduleTime(e.target.value);
+                          onChange={(v) => {
+                            setScheduleTime(v);
                             resetSubmitState();
                           }}
-                          className="w-full bg-transparent text-sm text-white outline-none"
+                          icon={<Clock className="h-4 w-4" style={{ color: GOLD_HOVER }} />}
+                          placeholder="Select time"
+                          ariaLabel="Schedule time"
                         />
-                      </button>
+                      </div>
                     </div>
                   </div>
 
@@ -2050,52 +2043,42 @@ export function MediaDistributionPage() {
                     <div className="grid gap-4 grid-cols-2">
                       <div>
                         <div className="text-sm font-bold">Date</div>
-                        <button
-                          type="button"
-                          onClick={() => openPicker(modalDateRef)}
-                          className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
-                        >
-                          <Calendar className="h-4 w-4" style={{ color: GOLD_HOVER }} />
-                          <input
-                            ref={modalDateRef}
+                        <div className="mt-2">
+                          <PickerField
                             type="date"
                             value={scheduleByPlatform[activeSchedulePlatform].date}
-                            onChange={(e) => {
-                              const v = e.target.value;
+                            onChange={(v) => {
                               resetSubmitState();
                               setScheduleByPlatform((prev) => ({
                                 ...prev,
                                 [activeSchedulePlatform]: { ...prev[activeSchedulePlatform], date: v },
                               }));
                             }}
-                            className="w-full bg-transparent text-sm text-white outline-none"
+                            icon={<Calendar className="h-4 w-4" style={{ color: GOLD_HOVER }} />}
+                            placeholder="Select date"
+                            ariaLabel="Platform schedule date"
                           />
-                        </button>
+                        </div>
                       </div>
 
                       <div>
                         <div className="text-sm font-bold">Time</div>
-                        <button
-                          type="button"
-                          onClick={() => openPicker(modalTimeRef)}
-                          className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
-                        >
-                          <Clock className="h-4 w-4" style={{ color: GOLD_HOVER }} />
-                          <input
-                            ref={modalTimeRef}
+                        <div className="mt-2">
+                          <PickerField
                             type="time"
                             value={scheduleByPlatform[activeSchedulePlatform].time}
-                            onChange={(e) => {
-                              const v = e.target.value;
+                            onChange={(v) => {
                               resetSubmitState();
                               setScheduleByPlatform((prev) => ({
                                 ...prev,
                                 [activeSchedulePlatform]: { ...prev[activeSchedulePlatform], time: v },
                               }));
                             }}
-                            className="w-full bg-transparent text-sm text-white outline-none"
+                            icon={<Clock className="h-4 w-4" style={{ color: GOLD_HOVER }} />}
+                            placeholder="Select time"
+                            ariaLabel="Platform schedule time"
                           />
-                        </button>
+                        </div>
                       </div>
                     </div>
 
