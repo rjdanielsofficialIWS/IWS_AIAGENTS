@@ -6,7 +6,6 @@ import {
   UploadCloud,
   CheckCircle2,
   AlertCircle,
-  X,
   Sparkles,
   Calendar,
   Clock,
@@ -16,11 +15,17 @@ import { supabase } from '../services/vapiAI';
 const GOLD_PRIMARY = '#D6B25E';
 const GOLD_HOVER = '#F0D27C';
 
+// ✅ Your n8n test webhook URL
 const WEBHOOK_URL =
   'https://iwsaiagents.app.n8n.cloud/webhook-test/f8390721-73cc-4594-921c-3afff87774c0';
 
+// ✅ Supabase Storage bucket name
 const BUCKET = 'media';
+
+// ✅ Supabase free plan safe limit (use 49MB to avoid edge cases)
 const MAX_BYTES = 49 * 1024 * 1024; // 49MB
+
+// Signed URL fallback duration (only used if bucket is private)
 const SIGNED_URL_SECONDS = 60 * 60 * 24 * 7;
 
 type MediaKind = 'video' | 'audio' | 'thumbnail';
@@ -66,62 +71,19 @@ type AiGenResponse = {
   };
 };
 
-function ModalShell({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  // ✅ lock background scroll while modal is open
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, []);
+type PlatformKey = 'instagram' | 'tiktok' | 'facebook' | 'youtube' | 'twitter' | 'linkedin';
 
-  return (
-    <div
-      className="fixed inset-0 z-[100] bg-black/70"
-      role="dialog"
-      aria-modal="true"
-      onMouseDown={(e) => {
-        // click outside closes
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      {/* ✅ The key: top-anchored, safe padding, scrollable overlay */}
-      <div className="h-full w-full overflow-y-auto p-4 sm:p-6">
-        {/* ✅ items-start so top never gets cut off */}
-        <div className="mx-auto w-full max-w-4xl">
-          {/* ✅ max height ensures it fits on screen; internal scroll handles overflow */}
-          <div className="flex max-h-[calc(100vh-2rem)] flex-col overflow-hidden rounded-2xl border border-gray-700/50 bg-[#0b0b0b] shadow-[0_10px_80px_rgba(0,0,0,0.75)] sm:max-h-[calc(100vh-3rem)]">
-            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
-              <h2 className="text-lg font-extrabold text-white">{title}</h2>
-              <button
-                onClick={onClose}
-                className="rounded-xl p-2 text-white/80 hover:bg-white/10 hover:text-white"
-                aria-label="Close"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* ✅ Internal content scrolls */}
-            <div className="flex-1 overflow-y-auto p-5">{children}</div>
-
-            {/* ✅ Optional tiny bottom padding so last element isn't flush */}
-            <div className="h-3" />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
+const PLATFORM_META: Record<
+  PlatformKey,
+  { label: string; sub: string; kind: 'caption' | 'title' | 'text' }
+> = {
+  instagram: { label: 'Instagram', sub: 'Reels caption', kind: 'caption' },
+  tiktok: { label: 'TikTok', sub: 'Caption', kind: 'caption' },
+  facebook: { label: 'Facebook', sub: 'Reels caption', kind: 'caption' },
+  youtube: { label: 'YouTube', sub: 'Shorts title', kind: 'title' },
+  twitter: { label: 'Twitter (X)', sub: 'Post text', kind: 'text' },
+  linkedin: { label: 'LinkedIn', sub: 'Post text', kind: 'text' },
+};
 
 function prettyBytes(bytes: number) {
   if (!bytes || bytes < 1) return '0 B';
@@ -133,29 +95,60 @@ function prettyBytes(bytes: number) {
 
 export function MediaDistributionPage() {
   const [bgOffset, setBgOffset] = useState(0);
-  const [openStep, setOpenStep] = useState<null | 'uploads' | 'captions' | 'schedule'>(null);
 
+  // ---- Wizard steps ----
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
+  // Step 1: platforms
+  const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
+    instagram: true,
+    tiktok: true,
+    facebook: true,
+    youtube: true,
+    twitter: false,
+    linkedin: false,
+  });
+
+  // Step 2: video upload
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
-
   const [videoUpload, setVideoUpload] = useState<UploadState>({ status: 'idle' });
-  const [audioUpload, setAudioUpload] = useState<UploadState>({ status: 'idle' });
+
+  // Optional thumbnail (kept as optional, NOT required)
+  const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailUpload, setThumbnailUpload] = useState<UploadState>({ status: 'idle' });
 
-  const [captionInstagram, setCaptionInstagram] = useState('');
-  const [captionFacebook, setCaptionFacebook] = useState('');
-  const [captionTikTok, setCaptionTikTok] = useState('');
-  const [youtubeTitle, setYoutubeTitle] = useState('');
-
+  // Step 3: captions (per platform)
   const [tone, setTone] = useState('confident, punchy, value-first');
+
+  const [captionInstagram, setCaptionInstagram] = useState('');
+  const [captionTikTok, setCaptionTikTok] = useState('');
+  const [captionFacebook, setCaptionFacebook] = useState('');
+  const [youtubeTitle, setYoutubeTitle] = useState('');
+  const [twitterText, setTwitterText] = useState('');
+  const [linkedinText, setLinkedinText] = useState('');
+
+  const [aiMode, setAiMode] = useState(false);
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioUpload, setAudioUpload] = useState<UploadState>({ status: 'idle' });
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
   const [tweetIdeas, setTweetIdeas] = useState<string[]>([]);
   const [ytTitleIdeas, setYtTitleIdeas] = useState<string[]>([]);
 
+  // Step 4: schedule
+  const [scheduleMode, setScheduleMode] = useState<'same' | 'different'>('same');
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
+  const [scheduleByPlatform, setScheduleByPlatform] = useState<
+    Record<PlatformKey, { date: string; time: string }>
+  >({
+    instagram: { date: '', time: '' },
+    tiktok: { date: '', time: '' },
+    facebook: { date: '', time: '' },
+    youtube: { date: '', time: '' },
+    twitter: { date: '', time: '' },
+    linkedin: { date: '', time: '' },
+  });
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -253,6 +246,7 @@ export function MediaDistributionPage() {
     }
   };
 
+  // ---- Timezone conversion (ET -> UTC) ----
   const TZ_ET = 'America/New_York';
   const pad2 = (n: number) => String(n).padStart(2, '0');
 
@@ -353,43 +347,103 @@ export function MediaDistributionPage() {
     };
   };
 
-  const scheduleInfo: ScheduleInfo = useMemo(() => {
+  const enabledPlatforms = useMemo(() => {
+    return (Object.keys(selected) as PlatformKey[]).filter((k) => Boolean(selected[k]));
+  }, [selected]);
+
+  const hasAnyPlatform = enabledPlatforms.length > 0;
+
+  const videoReady = videoUpload.status === 'done';
+
+  const captionsReady = useMemo(() => {
+    // Require content ONLY for selected platforms
+    const needs = (k: PlatformKey) => selected[k];
+
+    const okInstagram = !needs('instagram') || captionInstagram.trim().length > 0;
+    const okTikTok = !needs('tiktok') || captionTikTok.trim().length > 0;
+    const okFacebook = !needs('facebook') || captionFacebook.trim().length > 0;
+    const okYoutube = !needs('youtube') || youtubeTitle.trim().length > 0;
+    const okTwitter = !needs('twitter') || twitterText.trim().length > 0;
+    const okLinkedin = !needs('linkedin') || linkedinText.trim().length > 0;
+
+    return okInstagram && okTikTok && okFacebook && okYoutube && okTwitter && okLinkedin;
+  }, [
+    selected,
+    captionInstagram,
+    captionTikTok,
+    captionFacebook,
+    youtubeTitle,
+    twitterText,
+    linkedinText,
+  ]);
+
+  const scheduleCommonInfo: ScheduleInfo = useMemo(() => {
+    if (scheduleMode !== 'same') return { ok: false, message: 'Using different times per platform.' };
     return toUtcFromEtLocal(scheduleDate, scheduleTime);
-  }, [scheduleDate, scheduleTime]);
+  }, [scheduleMode, scheduleDate, scheduleTime]);
 
-  const captionsOk = useMemo(() => {
-    return (
-      captionInstagram.trim().length > 0 ||
-      captionFacebook.trim().length > 0 ||
-      captionTikTok.trim().length > 0
-    );
-  }, [captionInstagram, captionFacebook, captionTikTok]);
+  const scheduleInfoByPlatform = useMemo(() => {
+    const map: Record<PlatformKey, ScheduleInfo> = {
+      instagram: { ok: false, message: 'Not scheduled.' },
+      tiktok: { ok: false, message: 'Not scheduled.' },
+      facebook: { ok: false, message: 'Not scheduled.' },
+      youtube: { ok: false, message: 'Not scheduled.' },
+      twitter: { ok: false, message: 'Not scheduled.' },
+      linkedin: { ok: false, message: 'Not scheduled.' },
+    };
 
-  const uploadsComplete =
-    videoUpload.status === 'done' &&
-    audioUpload.status === 'done' &&
-    thumbnailUpload.status === 'done';
+    (Object.keys(map) as PlatformKey[]).forEach((k) => {
+      if (!selected[k]) {
+        map[k] = { ok: false, message: 'Not selected.' };
+        return;
+      }
 
-  const captionsComplete = captionsOk && youtubeTitle.trim().length > 0;
-  const scheduleComplete = scheduleInfo.ok;
+      if (scheduleMode === 'same') {
+        map[k] = scheduleCommonInfo.ok
+          ? scheduleCommonInfo
+          : { ok: false, message: scheduleCommonInfo.message };
+        return;
+      }
 
-  const canSubmit = useMemo(() => {
-    return (
-      !submitting &&
-      uploadsComplete &&
-      Boolean(WEBHOOK_URL) &&
-      captionsOk &&
-      youtubeTitle.trim().length > 0 &&
-      scheduleInfo.ok
-    );
-  }, [submitting, uploadsComplete, captionsOk, youtubeTitle, scheduleInfo]);
+      const d = scheduleByPlatform[k]?.date || '';
+      const t = scheduleByPlatform[k]?.time || '';
+      map[k] = toUtcFromEtLocal(d, t);
+    });
+
+    return map;
+  }, [selected, scheduleMode, scheduleCommonInfo, scheduleByPlatform]);
+
+  const scheduleReady = useMemo(() => {
+    if (!hasAnyPlatform) return false;
+
+    if (scheduleMode === 'same') {
+      return scheduleCommonInfo.ok;
+    }
+
+    return enabledPlatforms.every((k) => scheduleInfoByPlatform[k].ok);
+  }, [hasAnyPlatform, scheduleMode, scheduleCommonInfo, enabledPlatforms, scheduleInfoByPlatform]);
+
+  const canGoNext = useMemo(() => {
+    if (step === 1) return hasAnyPlatform;
+    if (step === 2) return videoReady;
+    if (step === 3) return captionsReady;
+    if (step === 4) return scheduleReady;
+    return false;
+  }, [step, hasAnyPlatform, videoReady, captionsReady, scheduleReady]);
+
+  const stepTitle = useMemo(() => {
+    if (step === 1) return 'Step 1 — Choose Platforms';
+    if (step === 2) return 'Step 2 — Upload Video';
+    if (step === 3) return 'Step 3 — Captions (and optional AI)';
+    return 'Step 4 — Scheduling';
+  }, [step]);
 
   const runAi = async () => {
     setAiError(null);
     resetSubmitState();
 
     if (audioUpload.status !== 'done') {
-      setAiError('Upload your audio first (Uploads step).');
+      setAiError('Upload your audio first.');
       return;
     }
 
@@ -405,13 +459,22 @@ export function MediaDistributionPage() {
 
       const res = data as AiGenResponse;
 
-      if (res?.best?.instagram) setCaptionInstagram(res.best.instagram);
-      if (res?.best?.facebook) setCaptionFacebook(res.best.facebook);
-      if (res?.best?.tiktok) setCaptionTikTok(res.best.tiktok);
-      if (res?.best?.youtubeTitle) setYoutubeTitle(res.best.youtubeTitle);
+      // Only fill what they selected
+      if (selected.instagram && res?.best?.instagram) setCaptionInstagram(res.best.instagram);
+      if (selected.facebook && res?.best?.facebook) setCaptionFacebook(res.best.facebook);
+      if (selected.tiktok && res?.best?.tiktok) setCaptionTikTok(res.best.tiktok);
+      if (selected.youtube && res?.best?.youtubeTitle) setYoutubeTitle(res.best.youtubeTitle);
 
-      setTweetIdeas(Array.isArray(res?.tweets) ? res.tweets : []);
-      setYtTitleIdeas(Array.isArray(res?.youtubeTitles) ? res.youtubeTitles : []);
+      const tweets = Array.isArray(res?.tweets) ? res.tweets : [];
+      const ytIdeas = Array.isArray(res?.youtubeTitles) ? res.youtubeTitles : [];
+
+      setTweetIdeas(tweets);
+      setYtTitleIdeas(ytIdeas);
+
+      // Light helper autofill for Twitter/LinkedIn (optional)
+      if (selected.twitter && !twitterText.trim() && tweets[0]) setTwitterText(tweets[0]);
+      if (selected.linkedin && !linkedinText.trim() && (tweets[1] || tweets[0]))
+        setLinkedinText(tweets[1] || tweets[0]);
     } catch (e: any) {
       setAiError(e?.message || 'AI generation failed');
     } finally {
@@ -420,25 +483,25 @@ export function MediaDistributionPage() {
   };
 
   const submitWebhook = async () => {
-    if (
-      videoUpload.status !== 'done' ||
-      audioUpload.status !== 'done' ||
-      thumbnailUpload.status !== 'done'
-    )
-      return;
+    resetSubmitState();
 
-    if (!captionsOk) {
-      setSubmitError('Please enter at least one caption (Instagram, Facebook, or TikTok).');
+    if (!hasAnyPlatform) {
+      setSubmitError('Choose at least one platform.');
       return;
     }
 
-    if (!youtubeTitle.trim()) {
-      setSubmitError('Please enter a YouTube Shorts title.');
+    if (videoUpload.status !== 'done') {
+      setSubmitError('Upload your video.');
       return;
     }
 
-    if (!scheduleInfo.ok) {
-      setSubmitError(scheduleInfo.message);
+    if (!captionsReady) {
+      setSubmitError('Make sure every selected platform has its required text filled in.');
+      return;
+    }
+
+    if (!scheduleReady) {
+      setSubmitError('Complete scheduling for your selected platforms.');
       return;
     }
 
@@ -447,10 +510,157 @@ export function MediaDistributionPage() {
     setSubmitOk(false);
 
     try {
+      const platformPayload: Record<
+        PlatformKey,
+        | {
+            enabled: false;
+          }
+        | {
+            enabled: true;
+            copy: Record<string, any>;
+            schedule: {
+              inputTimezone: 'America/New_York';
+              utcIso: string;
+              unixSeconds: number;
+              unixMillis: number;
+              rfc3339WithOffset: string;
+              etDisplay: string;
+              requestedLocal: { date: string; time: string };
+              mode: 'same' | 'different';
+            };
+          }
+      > = {
+        instagram: { enabled: false },
+        tiktok: { enabled: false },
+        facebook: { enabled: false },
+        youtube: { enabled: false },
+        twitter: { enabled: false },
+        linkedin: { enabled: false },
+      };
+
+      const getLocal = (k: PlatformKey) => {
+        if (scheduleMode === 'same') return { date: scheduleDate, time: scheduleTime };
+        return scheduleByPlatform[k] || { date: '', time: '' };
+      };
+
+      (Object.keys(platformPayload) as PlatformKey[]).forEach((k) => {
+        if (!selected[k]) return;
+
+        const info = scheduleInfoByPlatform[k];
+        if (!info.ok) return;
+
+        const requestedLocal = getLocal(k);
+
+        if (k === 'instagram') {
+          platformPayload.instagram = {
+            enabled: true,
+            copy: { caption: captionInstagram },
+            schedule: {
+              inputTimezone: TZ_ET,
+              utcIso: info.utcIso,
+              unixSeconds: info.unixSeconds,
+              unixMillis: info.unixMillis,
+              rfc3339WithOffset: info.rfc3339WithOffset,
+              etDisplay: info.etDisplay,
+              requestedLocal,
+              mode: scheduleMode,
+            },
+          };
+        }
+
+        if (k === 'tiktok') {
+          platformPayload.tiktok = {
+            enabled: true,
+            copy: { caption: captionTikTok },
+            schedule: {
+              inputTimezone: TZ_ET,
+              utcIso: info.utcIso,
+              unixSeconds: info.unixSeconds,
+              unixMillis: info.unixMillis,
+              rfc3339WithOffset: info.rfc3339WithOffset,
+              etDisplay: info.etDisplay,
+              requestedLocal,
+              mode: scheduleMode,
+            },
+          };
+        }
+
+        if (k === 'facebook') {
+          platformPayload.facebook = {
+            enabled: true,
+            copy: { caption: captionFacebook },
+            schedule: {
+              inputTimezone: TZ_ET,
+              utcIso: info.utcIso,
+              unixSeconds: info.unixSeconds,
+              unixMillis: info.unixMillis,
+              rfc3339WithOffset: info.rfc3339WithOffset,
+              etDisplay: info.etDisplay,
+              requestedLocal,
+              mode: scheduleMode,
+            },
+          };
+        }
+
+        if (k === 'youtube') {
+          platformPayload.youtube = {
+            enabled: true,
+            copy: { title: youtubeTitle },
+            schedule: {
+              inputTimezone: TZ_ET,
+              utcIso: info.utcIso,
+              unixSeconds: info.unixSeconds,
+              unixMillis: info.unixMillis,
+              rfc3339WithOffset: info.rfc3339WithOffset,
+              etDisplay: info.etDisplay,
+              requestedLocal,
+              mode: scheduleMode,
+            },
+          };
+        }
+
+        if (k === 'twitter') {
+          platformPayload.twitter = {
+            enabled: true,
+            copy: { text: twitterText },
+            schedule: {
+              inputTimezone: TZ_ET,
+              utcIso: info.utcIso,
+              unixSeconds: info.unixSeconds,
+              unixMillis: info.unixMillis,
+              rfc3339WithOffset: info.rfc3339WithOffset,
+              etDisplay: info.etDisplay,
+              requestedLocal,
+              mode: scheduleMode,
+            },
+          };
+        }
+
+        if (k === 'linkedin') {
+          platformPayload.linkedin = {
+            enabled: true,
+            copy: { text: linkedinText },
+            schedule: {
+              inputTimezone: TZ_ET,
+              utcIso: info.utcIso,
+              unixSeconds: info.unixSeconds,
+              unixMillis: info.unixMillis,
+              rfc3339WithOffset: info.rfc3339WithOffset,
+              etDisplay: info.etDisplay,
+              requestedLocal,
+              mode: scheduleMode,
+            },
+          };
+        }
+      });
+
       const payload = {
         source: 'media-distribution-landing',
         brand: 'Transferrable Everything',
         submittedAt: new Date().toISOString(),
+        selection: {
+          platforms: enabledPlatforms,
+        },
         assets: {
           video: {
             url: videoUpload.url,
@@ -459,39 +669,54 @@ export function MediaDistributionPage() {
             mime: videoUpload.mime,
             size: videoUpload.size,
           },
-          audio: {
-            url: audioUpload.url,
-            storagePath: audioUpload.path,
-            fileName: audioUpload.fileName,
-            mime: audioUpload.mime,
-            size: audioUpload.size,
-          },
-          thumbnail: {
-            url: thumbnailUpload.url,
-            storagePath: thumbnailUpload.path,
-            fileName: thumbnailUpload.fileName,
-            mime: thumbnailUpload.mime,
-            size: thumbnailUpload.size,
-          },
+          thumbnail:
+            thumbnailUpload.status === 'done'
+              ? {
+                  url: thumbnailUpload.url,
+                  storagePath: thumbnailUpload.path,
+                  fileName: thumbnailUpload.fileName,
+                  mime: thumbnailUpload.mime,
+                  size: thumbnailUpload.size,
+                }
+              : null,
+          audio:
+            audioUpload.status === 'done'
+              ? {
+                  url: audioUpload.url,
+                  storagePath: audioUpload.path,
+                  fileName: audioUpload.fileName,
+                  mime: audioUpload.mime,
+                  size: audioUpload.size,
+                }
+              : null,
         },
         copy: {
-          captions: {
-            instagram: captionInstagram,
-            facebook: captionFacebook,
-            tiktok: captionTikTok,
-          },
-          youtubeShortsTitle: youtubeTitle,
           tone,
+          perPlatform: {
+            instagram: { caption: captionInstagram },
+            tiktok: { caption: captionTikTok },
+            facebook: { caption: captionFacebook },
+            youtube: { title: youtubeTitle },
+            twitter: { text: twitterText },
+            linkedin: { text: linkedinText },
+          },
         },
         scheduling: {
           inputTimezone: TZ_ET,
-          utcIso: scheduleInfo.utcIso,
-          unixSeconds: scheduleInfo.unixSeconds,
-          unixMillis: scheduleInfo.unixMillis,
-          rfc3339WithOffset: scheduleInfo.rfc3339WithOffset,
-          etDisplay: scheduleInfo.etDisplay,
-          requestedLocal: { date: scheduleDate, time: scheduleTime },
+          mode: scheduleMode,
+          common:
+            scheduleMode === 'same' && scheduleCommonInfo.ok
+              ? {
+                  utcIso: scheduleCommonInfo.utcIso,
+                  unixSeconds: scheduleCommonInfo.unixSeconds,
+                  unixMillis: scheduleCommonInfo.unixMillis,
+                  rfc3339WithOffset: scheduleCommonInfo.rfc3339WithOffset,
+                  etDisplay: scheduleCommonInfo.etDisplay,
+                  requestedLocal: { date: scheduleDate, time: scheduleTime },
+                }
+              : null,
         },
+        platforms: platformPayload, // ✅ Fully separated platform objects with their own copy + schedule
       };
 
       const res = await fetch(WEBHOOK_URL, {
@@ -501,10 +726,12 @@ export function MediaDistributionPage() {
       });
 
       const text = await res.text().catch(() => '');
-      if (!res.ok) throw new Error(`Webhook failed (${res.status}). ${text ? `Response: ${text}` : ''}`.trim());
+      if (!res.ok) {
+        throw new Error(`Webhook failed (${res.status}). ${text ? `Response: ${text}` : ''}`.trim());
+      }
 
       setSubmitOk(true);
-      setOpenStep(null);
+      setStep(1);
     } catch (e: any) {
       setSubmitError(e?.message || 'Submit failed');
     } finally {
@@ -512,40 +739,48 @@ export function MediaDistributionPage() {
     }
   };
 
-  const StepBox = ({
-    title,
-    desc,
+  const WizardPill = ({
+    n,
+    label,
+    active,
     done,
-    onClick,
   }: {
-    title: string;
-    desc: string;
+    n: 1 | 2 | 3 | 4;
+    label: string;
+    active: boolean;
     done: boolean;
-    onClick: () => void;
   }) => (
     <button
-      onClick={onClick}
-      className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 text-left shadow-[0_10px_60px_rgba(0,0,0,0.6)] hover:bg-white/10 transition"
+      onClick={() => {
+        resetSubmitState();
+        // only allow going backwards freely; going forward requires passing checks
+        if (n < step) setStep(n);
+      }}
+      className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+        active
+          ? 'bg-white/10 border-white/15'
+          : 'bg-white/5 border-gray-700/50 hover:bg-white/10 hover:border-white/15'
+      }`}
+      type="button"
     >
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-extrabold">{title}</h2>
-          <p className="mt-1 text-gray-300 text-sm">{desc}</p>
-        </div>
-
-        {done ? (
-          <div className="flex items-center gap-2 text-sm text-green-200">
-            <CheckCircle2 className="h-5 w-5" />
-            Done
-          </div>
-        ) : (
-          <div className="h-6 w-6 rounded-full border border-white/15" />
-        )}
+      <div
+        className="h-8 w-8 rounded-xl flex items-center justify-center font-extrabold"
+        style={{
+          backgroundColor: active ? 'rgba(214, 178, 94, 0.18)' : 'rgba(255,255,255,0.06)',
+          border: `1px solid ${active ? 'rgba(214,178,94,0.40)' : 'rgba(255,255,255,0.10)'}`,
+          color: active ? GOLD_HOVER : 'rgba(255,255,255,0.85)',
+        }}
+      >
+        {done ? <CheckCircle2 className="h-5 w-5" /> : n}
+      </div>
+      <div className="min-w-0">
+        <div className="font-extrabold text-white">{label}</div>
+        <div className="text-xs text-white/60">Step {n}</div>
       </div>
     </button>
   );
 
-  const UploadBlock = ({
+  const FileUploadCard = ({
     title,
     subtitle,
     kind,
@@ -554,6 +789,7 @@ export function MediaDistributionPage() {
     setFile,
     upload,
     setUpload,
+    required,
   }: {
     title: string;
     subtitle: string;
@@ -563,11 +799,14 @@ export function MediaDistributionPage() {
     setFile: (f: File | null) => void;
     upload: UploadState;
     setUpload: (s: UploadState) => void;
+    required?: boolean;
   }) => (
     <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-lg font-extrabold">{title}</h3>
+          <h3 className="text-lg font-extrabold">
+            {title} {required ? <span className="text-xs text-white/60">(Required)</span> : null}
+          </h3>
           <p className="text-gray-300 text-sm mt-1">{subtitle}</p>
         </div>
 
@@ -714,380 +953,684 @@ export function MediaDistributionPage() {
         </Link>
       </header>
 
-      <main className="relative z-10 max-w-3xl mx-auto px-6 pb-16">
-        <div className="text-center mt-10">
+      <main className="relative z-10 max-w-5xl mx-auto px-6 pb-16">
+        <div className="text-center mt-8">
           <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
             Welcome <span className="gold-shimmer font-extrabold">Transferrable Everything</span>
           </h1>
-
           <p className="mt-4 text-gray-200 text-lg">
-            Only 3 steps. Click a box to open a full-screen card, complete it, then move to the next.
+            Step-by-step media distribution: pick platforms → upload video → generate/write captions → schedule.
           </p>
         </div>
 
-        <div className="mt-10 grid gap-5">
-          <StepBox
-            title="Uploads"
-            desc="Upload video + audio + thumbnail. (Max 49MB each)"
-            done={uploadsComplete}
-            onClick={() => setOpenStep('uploads')}
+        <div className="mt-8 grid gap-3 sm:grid-cols-4">
+          <WizardPill
+            n={1}
+            label="Platforms"
+            active={step === 1}
+            done={hasAnyPlatform}
           />
-
-          <StepBox
-            title="Captions"
-            desc="Write platform captions + YouTube title (or generate with AI)."
-            done={captionsComplete}
-            onClick={() => setOpenStep('captions')}
+          <WizardPill
+            n={2}
+            label="Video"
+            active={step === 2}
+            done={videoReady}
           />
-
-          <StepBox
-            title="Schedule"
-            desc="Choose date/time (ET) and submit to your distribution workflow."
-            done={scheduleComplete && submitOk}
-            onClick={() => setOpenStep('schedule')}
+          <WizardPill
+            n={3}
+            label="Captions"
+            active={step === 3}
+            done={captionsReady}
+          />
+          <WizardPill
+            n={4}
+            label="Schedule"
+            active={step === 4}
+            done={scheduleReady && submitOk}
           />
         </div>
 
-        {submitOk && (
-          <div className="mt-6 bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
-            <div className="flex items-start gap-2 text-green-100">
-              <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-300" />
-              <div>
-                <div className="font-extrabold">Scheduled successfully.</div>
-                <div className="text-sm text-green-100/80">
-                  Your content package was submitted to the automation webhook.
-                </div>
+        <div className="mt-6 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+            <div>
+              <div className="text-sm font-extrabold text-white/80">{stepTitle}</div>
+              <div className="text-2xl font-extrabold mt-1">
+                {step === 1 && 'Choose where you want to post'}
+                {step === 2 && 'Upload your video'}
+                {step === 3 && 'Create captions per platform'}
+                {step === 4 && 'Choose scheduling options'}
+              </div>
+              <div className="text-sm text-white/70 mt-2">
+                {step === 1 &&
+                  'Select the platforms you want. Only selected platforms will be required + sent.'}
+                {step === 2 &&
+                  'Upload the video file. (Optional thumbnail is available for workflows that want it.)'}
+                {step === 3 &&
+                  'Fill in the text for each selected platform. You can optionally use AI (audio-based) to generate.'}
+                {step === 4 &&
+                  'Schedule all platforms at the same time or set different times per platform. Then submit.'}
               </div>
             </div>
-          </div>
-        )}
 
-        {submitError && (
-          <div className="mt-6 bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
-            <div className="flex items-start gap-2 text-red-100">
-              <AlertCircle className="h-5 w-5 mt-0.5 text-red-300" />
-              <div className="text-sm">{submitError}</div>
-            </div>
-          </div>
-        )}
-      </main>
-
-      {/* Uploads */}
-      {openStep === 'uploads' && (
-        <ModalShell title="Uploads" onClose={() => setOpenStep(null)}>
-          <div className="space-y-5">
-            <UploadBlock
-              title="Upload Video"
-              subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP4/MOV/WebM recommended.`}
-              kind="video"
-              accept="video/*"
-              file={videoFile}
-              setFile={setVideoFile}
-              upload={videoUpload}
-              setUpload={setVideoUpload}
-            />
-
-            <UploadBlock
-              title="Upload Audio"
-              subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP3/WAV/M4A recommended.`}
-              kind="audio"
-              accept="audio/*"
-              file={audioFile}
-              setFile={setAudioFile}
-              upload={audioUpload}
-              setUpload={setAudioUpload}
-            />
-
-            <UploadBlock
-              title="Upload Thumbnail"
-              subtitle="JPG/PNG/WebP recommended. Generates a shareable link."
-              kind="thumbnail"
-              accept="image/*"
-              file={thumbnailFile}
-              setFile={setThumbnailFile}
-              upload={thumbnailUpload}
-              setUpload={setThumbnailUpload}
-            />
-
-            <div className="flex items-center justify-between gap-3 pt-2">
+            <div className="flex items-center gap-3">
               <button
-                onClick={() => setOpenStep(null)}
-                className="rounded-xl px-5 py-2.5 font-bold border border-white/10 bg-white/5 hover:bg-white/10"
+                type="button"
+                onClick={() => {
+                  resetSubmitState();
+                  setStep((s) => (s > 1 ? ((s - 1) as 1 | 2 | 3 | 4) : s));
+                }}
+                className="rounded-xl px-5 py-2.5 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={step === 1}
               >
-                Done
+                Back
               </button>
 
-              <div className="text-xs text-white/60">Upload all 3 before generating captions.</div>
-            </div>
-          </div>
-        </ModalShell>
-      )}
-
-      {/* Captions */}
-      {openStep === 'captions' && (
-        <ModalShell title="Captions & Titles" onClose={() => setOpenStep(null)}>
-          <div className="space-y-5">
-            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                <div className="flex-1">
-                  <div className="text-sm font-extrabold">Tone</div>
-                  <div className="text-xs text-white/60 mt-1">
-                    Examples: Alex Hormozi • Gary Vee • Luxury • Professional • Casual
-                  </div>
-                  <input
-                    value={tone}
-                    onChange={(e) => setTone(e.target.value)}
-                    className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
-                    placeholder="confident, punchy, value-first"
-                  />
-                </div>
-
+              {step < 4 ? (
                 <button
                   type="button"
-                  onClick={runAi}
-                  disabled={aiLoading || audioUpload.status !== 'done'}
-                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => {
+                    resetSubmitState();
+                    if (!canGoNext) return;
+                    setStep((s) => ((s + 1) as 1 | 2 | 3 | 4));
+                  }}
+                  className="rounded-xl px-5 py-2.5 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed"
                   style={{
                     borderColor: 'rgba(214, 178, 94, 0.45)',
                     backgroundColor: 'rgba(0,0,0,0.15)',
                     color: GOLD_HOVER,
                   }}
+                  disabled={!canGoNext}
                 >
-                  {aiLoading ? (
+                  Next
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={submitWebhook}
+                  className="rounded-xl px-5 py-2.5 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                  style={{
+                    borderColor: 'rgba(214, 178, 94, 0.45)',
+                    backgroundColor: 'rgba(0,0,0,0.15)',
+                    color: GOLD_HOVER,
+                  }}
+                  disabled={submitting || !videoReady || !captionsReady || !scheduleReady || !hasAnyPlatform}
+                >
+                  {submitting ? (
                     <>
                       <Loader className="h-4 w-4 animate-spin" />
-                      Generating…
+                      Submitting…
                     </>
                   ) : (
-                    <>
-                      <Sparkles className="h-4 w-4" />
-                      Generate (AI)
-                    </>
+                    'Submit to Distribution'
                   )}
                 </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Step content */}
+        <div className="mt-6 space-y-5">
+          {/* STEP 1 */}
+          {step === 1 && (
+            <div className="grid gap-5">
+              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-extrabold">Platforms</h3>
+                    <p className="text-gray-300 text-sm mt-1">
+                      Choose the platforms you want to post to. We’ll only require + send details for what you select.
+                    </p>
+                  </div>
+                  <div className="text-xs text-white/60">
+                    Selected: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
+                  </div>
+                </div>
+
+                <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                  {(Object.keys(PLATFORM_META) as PlatformKey[]).map((k) => {
+                    const on = selected[k];
+                    const meta = PLATFORM_META[k];
+                    return (
+                      <button
+                        key={k}
+                        type="button"
+                        onClick={() => {
+                          resetSubmitState();
+                          setSelected((prev) => ({ ...prev, [k]: !prev[k] }));
+                        }}
+                        className={`rounded-2xl border p-5 text-left transition ${
+                          on
+                            ? 'bg-white/10 border-white/15'
+                            : 'bg-white/5 border-gray-700/50 hover:bg-white/10 hover:border-white/15'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          <div>
+                            <div className="text-base font-extrabold">{meta.label}</div>
+                            <div className="text-sm text-white/60 mt-1">{meta.sub}</div>
+                          </div>
+                          <div
+                            className={`h-6 w-6 rounded-full border flex items-center justify-center ${
+                              on ? 'border-green-300/60 bg-green-300/10' : 'border-white/15 bg-transparent'
+                            }`}
+                          >
+                            {on ? <CheckCircle2 className="h-4 w-4 text-green-200" /> : null}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {!hasAnyPlatform && (
+                  <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5" />
+                    <span>Please choose at least one platform to continue.</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* STEP 2 */}
+          {step === 2 && (
+            <div className="space-y-5">
+              <FileUploadCard
+                title="Upload Video"
+                subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP4/MOV/WebM recommended.`}
+                kind="video"
+                accept="video/*"
+                file={videoFile}
+                setFile={setVideoFile}
+                upload={videoUpload}
+                setUpload={setVideoUpload}
+                required
+              />
+
+              <FileUploadCard
+                title="Upload Thumbnail (Optional)"
+                subtitle="Optional. JPG/PNG/WebP recommended. If your workflow uses thumbnails, this will be included."
+                kind="thumbnail"
+                accept="image/*"
+                file={thumbnailFile}
+                setFile={setThumbnailFile}
+                upload={thumbnailUpload}
+                setUpload={setThumbnailUpload}
+              />
+
+              <div className="text-xs text-white/60">
+                You can continue once the video upload is completed.
+              </div>
+            </div>
+          )}
+
+          {/* STEP 3 */}
+          {step === 3 && (
+            <div className="space-y-5">
+              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h3 className="text-lg font-extrabold">Captions per selected platform</h3>
+                    <p className="text-gray-300 text-sm mt-1">
+                      Only the platforms you selected will show up here and be required for submission.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetSubmitState();
+                      setAiMode((v) => !v);
+                      setAiError(null);
+                    }}
+                    className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-extrabold border border-white/10 bg-white/5 hover:bg-white/10"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {aiMode ? 'Hide AI Options' : 'Generate Using AI'}
+                  </button>
+                </div>
+
+                {aiMode && (
+                  <div className="mt-5 space-y-4">
+                    <div className="bg-black/20 border border-white/10 rounded-2xl p-5">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+                        <div className="flex-1">
+                          <div className="text-sm font-extrabold">Tone</div>
+                          <div className="text-xs text-white/60 mt-1">
+                            Examples: Alex Hormozi • Gary Vee • Luxury • Professional • Casual
+                          </div>
+                          <input
+                            value={tone}
+                            onChange={(e) => {
+                              setTone(e.target.value);
+                              resetSubmitState();
+                            }}
+                            className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
+                            placeholder="confident, punchy, value-first"
+                          />
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={runAi}
+                          disabled={aiLoading || audioUpload.status !== 'done'}
+                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
+                          style={{
+                            borderColor: 'rgba(214, 178, 94, 0.45)',
+                            backgroundColor: 'rgba(0,0,0,0.15)',
+                            color: GOLD_HOVER,
+                          }}
+                        >
+                          {aiLoading ? (
+                            <>
+                              <Loader className="h-4 w-4 animate-spin" />
+                              Generating…
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles className="h-4 w-4" />
+                              Generate Now
+                            </>
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="text-sm font-extrabold">Audio Upload (required for AI)</div>
+                        <div className="text-xs text-white/60 mt-1">
+                          Upload audio, then click “Generate Now”. (Max {prettyBytes(MAX_BYTES)})
+                        </div>
+
+                        <div className="mt-3">
+                          <FileUploadCard
+                            title="Upload Audio"
+                            subtitle={`MP3/WAV/M4A recommended.`}
+                            kind="audio"
+                            accept="audio/*"
+                            file={audioFile}
+                            setFile={setAudioFile}
+                            upload={audioUpload}
+                            setUpload={setAudioUpload}
+                            required
+                          />
+                        </div>
+
+                        {aiError && (
+                          <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+                            <AlertCircle className="h-4 w-4 mt-0.5" />
+                            <span>{aiError}</span>
+                          </div>
+                        )}
+
+                        <div className="mt-4 text-xs text-white/60">
+                          AI fills: Instagram / TikTok / Facebook captions + YouTube title. It may also suggest text you can use for Twitter/LinkedIn.
+                        </div>
+                      </div>
+                    </div>
+
+                    {(tweetIdeas.length > 0 || ytTitleIdeas.length > 0) && (
+                      <div className="bg-black/20 border border-white/10 rounded-2xl p-5">
+                        <div className="text-sm font-extrabold">Extra Ideas (Optional)</div>
+
+                        {tweetIdeas.length > 0 && (
+                          <div className="mt-3">
+                            <div className="text-xs text-white/60">Tweet ideas</div>
+                            <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-white/80">
+                              {tweetIdeas.slice(0, 10).map((t, i) => (
+                                <li key={i}>{t}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+
+                        {ytTitleIdeas.length > 0 && (
+                          <div className="mt-4">
+                            <div className="text-xs text-white/60">YouTube title ideas</div>
+                            <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-white/80">
+                              {ytTitleIdeas.slice(0, 8).map((t, i) => (
+                                <li key={i}>{t}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
-              {aiError && (
-                <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
+              {/* Platform fields */}
+              <div className="grid gap-5">
+                {selected.instagram && (
+                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                    <div className="text-sm font-extrabold">Instagram Caption</div>
+                    <textarea
+                      value={captionInstagram}
+                      onChange={(e) => {
+                        setCaptionInstagram(e.target.value);
+                        resetSubmitState();
+                      }}
+                      rows={5}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                      placeholder="Write / paste your Instagram caption…"
+                    />
+                  </div>
+                )}
+
+                {selected.tiktok && (
+                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                    <div className="text-sm font-extrabold">TikTok Caption</div>
+                    <textarea
+                      value={captionTikTok}
+                      onChange={(e) => {
+                        setCaptionTikTok(e.target.value);
+                        resetSubmitState();
+                      }}
+                      rows={4}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                      placeholder="Write / paste your TikTok caption…"
+                    />
+                  </div>
+                )}
+
+                {selected.facebook && (
+                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                    <div className="text-sm font-extrabold">Facebook Caption</div>
+                    <textarea
+                      value={captionFacebook}
+                      onChange={(e) => {
+                        setCaptionFacebook(e.target.value);
+                        resetSubmitState();
+                      }}
+                      rows={5}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                      placeholder="Write / paste your Facebook caption…"
+                    />
+                  </div>
+                )}
+
+                {selected.youtube && (
+                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                    <div className="text-sm font-extrabold">YouTube Shorts Title</div>
+                    <input
+                      value={youtubeTitle}
+                      onChange={(e) => {
+                        setYoutubeTitle(e.target.value);
+                        resetSubmitState();
+                      }}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
+                      placeholder="Enter a title for YouTube Shorts…"
+                    />
+                  </div>
+                )}
+
+                {selected.twitter && (
+                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                    <div className="text-sm font-extrabold">Twitter (X) Text</div>
+                    <textarea
+                      value={twitterText}
+                      onChange={(e) => {
+                        setTwitterText(e.target.value);
+                        resetSubmitState();
+                      }}
+                      rows={4}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                      placeholder="Write / paste your Twitter (X) post…"
+                    />
+                  </div>
+                )}
+
+                {selected.linkedin && (
+                  <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                    <div className="text-sm font-extrabold">LinkedIn Text</div>
+                    <textarea
+                      value={linkedinText}
+                      onChange={(e) => {
+                        setLinkedinText(e.target.value);
+                        resetSubmitState();
+                      }}
+                      rows={5}
+                      className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
+                      placeholder="Write / paste your LinkedIn post…"
+                    />
+                  </div>
+                )}
+              </div>
+
+              {!captionsReady && (
+                <div className="text-sm text-red-200 inline-flex items-start gap-2">
                   <AlertCircle className="h-4 w-4 mt-0.5" />
-                  <span>{aiError}</span>
+                  <span>Fill in the required text for every selected platform to continue.</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP 4 */}
+          {step === 4 && (
+            <div className="space-y-5">
+              <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <h3 className="text-lg font-extrabold">Scheduling Mode</h3>
+                <p className="text-gray-300 text-sm mt-1">
+                  Schedule everything at the same time, or schedule platforms at different times.
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetSubmitState();
+                      setScheduleMode('same');
+                    }}
+                    className={`rounded-2xl border p-5 text-left transition ${
+                      scheduleMode === 'same'
+                        ? 'bg-white/10 border-white/15'
+                        : 'bg-white/5 border-gray-700/50 hover:bg-white/10 hover:border-white/15'
+                    }`}
+                  >
+                    <div className="font-extrabold">Schedule all at the same time</div>
+                    <div className="text-sm text-white/60 mt-1">One date/time (ET) applies to all selected platforms.</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetSubmitState();
+                      setScheduleMode('different');
+                    }}
+                    className={`rounded-2xl border p-5 text-left transition ${
+                      scheduleMode === 'different'
+                        ? 'bg-white/10 border-white/15'
+                        : 'bg-white/5 border-gray-700/50 hover:bg-white/10 hover:border-white/15'
+                    }`}
+                  >
+                    <div className="font-extrabold">Schedule at different times</div>
+                    <div className="text-sm text-white/60 mt-1">Set a date/time (ET) for each selected platform.</div>
+                  </button>
+                </div>
+              </div>
+
+              {scheduleMode === 'same' ? (
+                <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                  <h3 className="text-lg font-extrabold">Schedule (ET)</h3>
+                  <p className="text-gray-300 text-sm mt-1">Choose a date and time in Eastern Time.</p>
+
+                  <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <div className="text-sm font-bold">Date</div>
+                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
+                        <Calendar className="h-4 w-4 text-white" />
+                        <input
+                          type="date"
+                          value={scheduleDate}
+                          onChange={(e) => {
+                            setScheduleDate(e.target.value);
+                            resetSubmitState();
+                          }}
+                          className="w-full bg-transparent text-sm text-white outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-sm font-bold">Time</div>
+                      <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
+                        <Clock className="h-4 w-4 text-white" />
+                        <input
+                          type="time"
+                          value={scheduleTime}
+                          onChange={(e) => {
+                            setScheduleTime(e.target.value);
+                            resetSubmitState();
+                          }}
+                          className="w-full bg-transparent text-sm text-white outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 text-sm text-white/80">
+                    {scheduleCommonInfo.ok ? (
+                      <>
+                        Scheduled for <span className="font-extrabold">{scheduleCommonInfo.etDisplay}</span>
+                      </>
+                    ) : (
+                      <span className="text-white/60">{scheduleCommonInfo.message}</span>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {enabledPlatforms.map((k) => (
+                    <div
+                      key={k}
+                      className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <div className="text-lg font-extrabold">{PLATFORM_META[k].label}</div>
+                          <div className="text-xs text-white/60 mt-1">Schedule this platform in ET</div>
+                        </div>
+                        <div className="text-xs text-white/60">
+                          {scheduleInfoByPlatform[k].ok ? (
+                            <span className="text-green-200 font-extrabold">Ready</span>
+                          ) : (
+                            <span className="text-white/50">Missing</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <div className="text-sm font-bold">Date</div>
+                          <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
+                            <Calendar className="h-4 w-4 text-white" />
+                            <input
+                              type="date"
+                              value={scheduleByPlatform[k].date}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                resetSubmitState();
+                                setScheduleByPlatform((prev) => ({
+                                  ...prev,
+                                  [k]: { ...prev[k], date: v },
+                                }));
+                              }}
+                              className="w-full bg-transparent text-sm text-white outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-sm font-bold">Time</div>
+                          <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
+                            <Clock className="h-4 w-4 text-white" />
+                            <input
+                              type="time"
+                              value={scheduleByPlatform[k].time}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                resetSubmitState();
+                                setScheduleByPlatform((prev) => ({
+                                  ...prev,
+                                  [k]: { ...prev[k], time: v },
+                                }));
+                              }}
+                              className="w-full bg-transparent text-sm text-white outline-none"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 text-sm text-white/80">
+                        {scheduleInfoByPlatform[k].ok ? (
+                          <>
+                            Scheduled for{' '}
+                            <span className="font-extrabold">{scheduleInfoByPlatform[k].etDisplay}</span>
+                          </>
+                        ) : (
+                          <span className="text-white/60">{scheduleInfoByPlatform[k].message}</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
 
-              <div className="mt-4 text-xs text-white/60">
-                Platform-specific writing rules are enforced (IG vs TikTok vs FB vs YouTube).
-              </div>
-            </div>
-
-            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-              <h3 className="text-lg font-extrabold">Captions</h3>
-              <p className="text-gray-300 text-sm mt-1">
-                Enter captions manually or generate them. At least one caption is required.
-              </p>
-
-              <div className="mt-5 grid gap-4">
-                <div>
-                  <div className="text-sm font-bold">Instagram Caption</div>
-                  <textarea
-                    value={captionInstagram}
-                    onChange={(e) => {
-                      setCaptionInstagram(e.target.value);
-                      resetSubmitState();
-                    }}
-                    rows={5}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                    placeholder="Paste Instagram caption here…"
-                  />
-                </div>
-
-                <div>
-                  <div className="text-sm font-bold">Facebook Caption</div>
-                  <textarea
-                    value={captionFacebook}
-                    onChange={(e) => {
-                      setCaptionFacebook(e.target.value);
-                      resetSubmitState();
-                    }}
-                    rows={5}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                    placeholder="Paste Facebook caption here…"
-                  />
-                </div>
-
-                <div>
-                  <div className="text-sm font-bold">TikTok Caption</div>
-                  <textarea
-                    value={captionTikTok}
-                    onChange={(e) => {
-                      setCaptionTikTok(e.target.value);
-                      resetSubmitState();
-                    }}
-                    rows={3}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                    placeholder="Paste TikTok caption here…"
-                  />
-                </div>
-
-                <div>
-                  <div className="text-sm font-bold">YouTube Shorts Title</div>
-                  <input
-                    value={youtubeTitle}
-                    onChange={(e) => {
-                      setYoutubeTitle(e.target.value);
-                      resetSubmitState();
-                    }}
-                    className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
-                    placeholder="Enter YouTube Shorts title…"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {(tweetIdeas.length > 0 || ytTitleIdeas.length > 0) && (
+              {/* Ready check + results */}
               <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <h3 className="text-lg font-extrabold">Extra Ideas (Optional)</h3>
+                <h3 className="text-lg font-extrabold">Ready Check</h3>
 
-                {tweetIdeas.length > 0 && (
-                  <div className="mt-4">
-                    <div className="text-sm font-bold">Tweet Ideas</div>
-                    <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-white/80">
-                      {tweetIdeas.slice(0, 10).map((t, i) => (
-                        <li key={i}>{t}</li>
-                      ))}
-                    </ul>
+                <div className="mt-4 space-y-2 text-sm text-white/80">
+                  <div className="flex items-center justify-between">
+                    <span>Platforms selected</span>
+                    {hasAnyPlatform ? (
+                      <span className="text-green-200">Done</span>
+                    ) : (
+                      <span className="text-white/50">Missing</span>
+                    )}
                   </div>
-                )}
-
-                {ytTitleIdeas.length > 0 && (
-                  <div className="mt-5">
-                    <div className="text-sm font-bold">YouTube Title Ideas</div>
-                    <ul className="mt-2 list-disc pl-5 space-y-1 text-sm text-white/80">
-                      {ytTitleIdeas.slice(0, 8).map((t, i) => (
-                        <li key={i}>{t}</li>
-                      ))}
-                    </ul>
+                  <div className="flex items-center justify-between">
+                    <span>Video uploaded</span>
+                    {videoReady ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
                   </div>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                onClick={() => setOpenStep(null)}
-                className="rounded-xl px-5 py-2.5 font-bold border border-white/10 bg-white/5 hover:bg-white/10"
-              >
-                Done
-              </button>
-              <div className="text-xs text-white/60">Tip: Use a persona name like “Alex Hormozi”.</div>
-            </div>
-          </div>
-        </ModalShell>
-      )}
-
-      {/* Schedule */}
-      {openStep === 'schedule' && (
-        <ModalShell title="Schedule & Submit" onClose={() => setOpenStep(null)}>
-          <div className="space-y-5">
-            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-              <h3 className="text-lg font-extrabold">Schedule (ET)</h3>
-              <p className="text-gray-300 text-sm mt-1">Choose a date and time in Eastern Time.</p>
-
-              <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                <div>
-                  <div className="text-sm font-bold">Date</div>
-                  <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
-                    <Calendar className="h-4 w-4 text-white" />
-                    <input
-                      type="date"
-                      value={scheduleDate}
-                      onChange={(e) => {
-                        setScheduleDate(e.target.value);
-                        resetSubmitState();
-                      }}
-                      className="w-full bg-transparent text-sm text-white outline-none"
-                    />
+                  <div className="flex items-center justify-between">
+                    <span>Copy (per platform)</span>
+                    {captionsReady ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
                   </div>
-                </div>
-
-                <div>
-                  <div className="text-sm font-bold">Time</div>
-                  <div className="mt-2 flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5">
-                    <Clock className="h-4 w-4 text-white" />
-                    <input
-                      type="time"
-                      value={scheduleTime}
-                      onChange={(e) => {
-                        setScheduleTime(e.target.value);
-                        resetSubmitState();
-                      }}
-                      className="w-full bg-transparent text-sm text-white outline-none"
-                    />
+                  <div className="flex items-center justify-between">
+                    <span>Schedule</span>
+                    {scheduleReady ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
                   </div>
                 </div>
               </div>
 
-              <div className="mt-4 text-sm text-white/80">
-                {scheduleInfo.ok ? (
-                  <>
-                    Scheduled for <span className="font-extrabold">{scheduleInfo.etDisplay}</span>
-                  </>
-                ) : (
-                  <span className="text-white/60">{scheduleInfo.message}</span>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-              <h3 className="text-lg font-extrabold">Ready Check</h3>
-
-              <div className="mt-4 space-y-2 text-sm text-white/80">
-                <div className="flex items-center justify-between">
-                  <span>Uploads</span>
-                  {uploadsComplete ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
+              {submitOk && (
+                <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-4">
+                  <div className="flex items-start gap-2 text-green-100">
+                    <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-300" />
+                    <div>
+                      <div className="font-extrabold">Scheduled successfully.</div>
+                      <div className="text-sm text-green-100/80">
+                        Your content package was submitted to the automation webhook.
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <span>Captions + Title</span>
-                  {captionsComplete ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
-                </div>
-                <div className="flex items-center justify-between">
-                  <span>Schedule</span>
-                  {scheduleInfo.ok ? <span className="text-green-200">Done</span> : <span className="text-white/50">Missing</span>}
-                </div>
-              </div>
+              )}
 
-              <button
-                type="button"
-                className="mt-5 inline-flex w-full items-center justify-center gap-2 px-5 py-3 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
-                style={{
-                  borderColor: 'rgba(214, 178, 94, 0.45)',
-                  backgroundColor: 'rgba(0,0,0,0.15)',
-                  color: GOLD_HOVER,
-                }}
-                disabled={!canSubmit}
-                onClick={submitWebhook}
-              >
-                {submitting ? (
-                  <>
-                    <Loader className="h-4 w-4 animate-spin" />
-                    Submitting…
-                  </>
-                ) : (
-                  'Submit to Distribution'
-                )}
-              </button>
+              {submitError && (
+                <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
+                  <div className="flex items-start gap-2 text-red-100">
+                    <AlertCircle className="h-5 w-5 mt-0.5 text-red-300" />
+                    <div className="text-sm">{submitError}</div>
+                  </div>
+                </div>
+              )}
             </div>
-
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <button
-                onClick={() => setOpenStep(null)}
-                className="rounded-xl px-5 py-2.5 font-bold border border-white/10 bg-white/5 hover:bg-white/10"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </ModalShell>
-      )}
+          )}
+        </div>
+      </main>
 
       <div className="relative mt-10 pb-10 text-center text-xs text-white/40">
         Powered by Infinite Wealth Solutions AI.
