@@ -219,6 +219,12 @@ function AppContent() {
             </ProtectedRoute>
           }
         />
+
+        {/* ✅ FIX: allow slugs to work after /demo/... */}
+        <Route path="/demo" element={<DynamicDemoPage />} />
+        <Route path="/demo/:slug" element={<DynamicDemoPage />} />
+
+        {/* ✅ Keep old one-segment slug route for backwards compatibility */}
         <Route path="/:slug" element={<DynamicDemoPage />} />
       </Routes>
     </>
