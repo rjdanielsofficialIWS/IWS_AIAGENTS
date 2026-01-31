@@ -1,3 +1,4 @@
+console.log('slug param:', slug, 'targetSlug:', targetSlug);
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
