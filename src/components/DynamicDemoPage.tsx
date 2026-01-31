@@ -19,6 +19,9 @@ interface DemoPage {
   system_prompt: string;
   first_message: string;
   is_active: boolean;
+
+  // ✅ NEW: pull company name from the same demo_pages row
+  company_name?: string | null;
 }
 
 type ChatMsg = { role: 'assistant' | 'user'; content: string };
@@ -66,6 +69,12 @@ export function DynamicDemoPage() {
       .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
       .join(' ');
   }, [targetSlug]);
+
+  // ✅ NEW: company name pulled from Supabase row (fallback to displayName if missing)
+  const companyName = useMemo(() => {
+    const fromDb = (demoPage?.company_name || '').trim();
+    return fromDb || displayName;
+  }, [demoPage?.company_name, displayName]);
 
   // ✅ Same scroll offset behavior as HomePage
   useEffect(() => {
@@ -446,7 +455,12 @@ export function DynamicDemoPage() {
           they need — automatically.
         </div>
 
-        <p className="mt-10 text-lg font-semibold">Choose how you&apos;d like to try it:</p>
+        {/* ✅ UPDATED COPY + ✅ dynamic company name with shimmer */}
+        <p className="mt-10 text-lg font-semibold">
+          Choose how you&apos;d like to contact{' '}
+          <span className="gold-shimmer font-bold">{companyName}</span>
+          :
+        </p>
 
         <div className="mt-6 flex gap-4 justify-center flex-wrap">
           <button
