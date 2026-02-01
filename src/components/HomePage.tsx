@@ -33,7 +33,7 @@ interface FormData {
 
   // Step 1
   business: string; // Company Name
-  websiteUrl: string; // optional but recommended
+  websiteUrl: string; // optional
 
   // Step 2
   industryServices: string; // Industry + Services
@@ -65,7 +65,6 @@ interface Question {
   }[];
 }
 
-// 🎨 Luxury Gold
 const GOLD_PRIMARY = '#C8A24A';
 const GOLD_HOVER = '#E3C36A';
 
@@ -79,6 +78,7 @@ type PhoneModalMode = 'voice' | null;
 export function HomePage() {
   const [bgOffset, setBgOffset] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
+
   const [formData, setFormData] = useState<FormData>({
     name: '',
     email: '',
@@ -88,10 +88,14 @@ export function HomePage() {
     websiteUrl: '',
     industryServices: '',
   });
+
   const [currentError, setCurrentError] = useState<string>('');
   const [isStepValid, setIsStepValid] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
+  const [createdAssistantId, setCreatedAssistantId] = useState<string | null>(null);
+  const [createdSlug, setCreatedSlug] = useState<string | null>(null);
+
   const [enhanceState, setEnhanceState] = useState<EnhanceState>({
     isEnhancing: false,
     hasEnhanced: false,
@@ -139,6 +143,7 @@ export function HomePage() {
       icon: MessageSquare,
       required: true,
     },
+    // ✅ Kept the same as it is currently (but skipped for testing)
     {
       id: 'contactInfo',
       title: '',
@@ -205,14 +210,12 @@ export function HomePage() {
       for (const field of currentQuestion.fields || []) {
         const value = (formData[field.id] || '').toString();
 
-        // Respect optional fields
         if (field.required !== false && !value.trim()) {
           isValid = false;
           error = `${field.label} is required`;
           break;
         }
 
-        // Validate formats (only if provided)
         if (field.id === 'email' && value.trim() && !validateEmail(value)) {
           isValid = false;
           error = 'Please enter a valid email address';
@@ -258,35 +261,6 @@ export function HomePage() {
     return isValid;
   };
 
-  const validateAllSteps = (): boolean => {
-    for (let i = 0; i < questions.length; i++) {
-      const question = questions[i];
-
-      if (question.type === 'multi-input') {
-        for (const field of question.fields || []) {
-          const value = (formData[field.id] || '').toString();
-
-          if (field.required !== false && !value.trim()) return false;
-          if (field.id === 'email' && value.trim() && !validateEmail(value)) return false;
-          if (field.id === 'phone' && value.trim() && !validatePhone(value)) return false;
-          if (field.id === 'websiteUrl' && value.trim() && !validateWebsiteUrl(value)) return false;
-        }
-      } else if (question.type === 'select' || question.type === 'radio') {
-        const value = formData[question.id as keyof FormData];
-        if (!value || value.trim() === '') return false;
-      } else if (question.type === 'checkbox') {
-        const value = formData[question.id as keyof FormData] as string[];
-        if (!value || value.length === 0) return false;
-      } else {
-        const value = formData[question.id as keyof FormData];
-        if (!value.trim()) return false;
-        if (question.id === 'email' && !validateEmail(value)) return false;
-        if (question.id === 'phone' && !validatePhone(value)) return false;
-      }
-    }
-    return true;
-  };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
 
@@ -309,119 +283,85 @@ export function HomePage() {
     setFormData((prev) => ({ ...prev, countryCode: e.target.value }));
   };
 
-  const handleNext = () => {
-    if (validateCurrentStep()) {
-      if (currentStep < questions.length - 1) {
-        setCurrentStep(currentStep + 1);
-        setCurrentError('');
-      }
-    }
-  };
-
-  const handlePrevious = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-      setCurrentError('');
-    }
-  };
-
-  // ✅ Build the "n8n-like" workflow inside the site: create the Vapi assistant using the form answers
-  const createVapiAssistantFromLead = async (data: FormData): Promise<boolean> => {
+  const submitLeadFlow = async (
+    data: FormData,
+  ): Promise<{ ok: boolean; assistantId?: string; slug?: string; error?: string }> => {
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
       const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
       if (!supabaseUrl || !anonKey) {
-        console.error('Missing Supabase env vars (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).');
-        return false;
+        return { ok: false, error: 'Missing Supabase env vars.' };
       }
 
-      const website = (data.websiteUrl || '').trim();
-      const websiteWithScheme =
-        website && !/^https?:\/\//i.test(website) ? `https://${website}` : website;
-
-      const websiteLine = websiteWithScheme ? `Website: ${websiteWithScheme}` : 'Website: Not provided';
-
-      const systemPrompt = `
-You are an inbound AI assistant for Infinite Wealth Solutions AI.
-
-This business owner just submitted a lead form.
-
-Company: ${data.business}
-${websiteLine}
-
-Industry and services:
-${data.industryServices}
-
-Goals:
-- Be friendly, confident, and concise (voice-call style).
-- Ask 2–4 quick discovery questions to understand what they want and why now.
-- Qualify them, then book a short onboarding call with our team.
-
-Booking rules:
-- Offer either tomorrow or the day after, and ask what time works.
-- Confirm best callback number and email.
-- If they hesitate, offer to text/email a quick recap and a calendar link.
-
-Keep responses under ~2 sentences whenever possible.
-      `.trim();
-
-      const payload = {
-        name: `${data.business} - Lead Assistant`,
-        firstMessage: `Hey ${data.name || 'there'} — thanks for reaching out. What made you want to set this up right now?`,
-        model: {
-          provider: 'openai',
-          model: 'gpt-4o',
-          temperature: 0.5,
-          messages: [{ role: 'system', content: systemPrompt }],
-        },
-      };
-
-      const response = await fetch(`${supabaseUrl}/functions/v1/vapi-ai/assistants`, {
+      const response = await fetch(`${supabaseUrl}/functions/v1/lead-capture-flow`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           apikey: anonKey,
           Authorization: `Bearer ${anonKey}`,
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          companyName: data.business,
+          websiteUrl: data.websiteUrl,
+          industryServices: data.industryServices,
+        }),
       });
 
-      return response.ok;
-    } catch (error) {
-      console.error('Error creating Vapi assistant:', error);
-      return false;
+      const txt = await response.text();
+      if (!response.ok) return { ok: false, error: txt || 'Lead flow failed.' };
+
+      const json = txt ? JSON.parse(txt) : {};
+      return { ok: true, assistantId: json.assistantId, slug: json.slug };
+    } catch (error: any) {
+      console.error('Error running lead flow:', error);
+      return { ok: false, error: error?.message || 'Unknown error' };
     }
   };
 
   const handleSubmit = async () => {
-    if (!validateAllSteps()) {
+    // ✅ For testing: submit after step 2, so only validate steps 1–2 fields.
+    if (!formData.business.trim()) {
+      setCurrentError('Company Name is required');
+      setSubmitStatus('error');
+      return;
+    }
+    if (formData.websiteUrl.trim() && !validateWebsiteUrl(formData.websiteUrl)) {
+      setCurrentError('Please enter a valid website URL');
+      setSubmitStatus('error');
+      return;
+    }
+    if (!formData.industryServices.trim()) {
+      setCurrentError('Industry and Services is required');
       setSubmitStatus('error');
       return;
     }
 
     setIsSubmitting(true);
     setSubmitStatus(null);
-    // High-intent signal: user attempted to submit the lead form
+    setCreatedAssistantId(null);
+    setCreatedSlug(null);
+
     trackHighIntent({ name: 'form_submit', label: 'package_quote_form' });
 
     try {
-      const success = await createVapiAssistantFromLead(formData);
+      const result = await submitLeadFlow(formData);
 
-      if (success) {
+      if (result.ok) {
         setSubmitStatus('success');
-        // High-intent conversion: lead successfully captured
+        setCreatedAssistantId(result.assistantId || null);
+        setCreatedSlug(result.slug || null);
         trackHighIntent({ name: 'form_success', label: 'package_quote_form' });
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          countryCode: '+1',
+
+        // Reset ONLY step 1–2 fields for testing.
+        setFormData((prev) => ({
+          ...prev,
           business: '',
           websiteUrl: '',
           industryServices: '',
-        });
+        }));
       } else {
+        console.error(result.error || 'Lead flow failed');
         setSubmitStatus('error');
       }
     } catch (error) {
@@ -432,12 +372,33 @@ Keep responses under ~2 sentences whenever possible.
     }
   };
 
+  const handleNext = () => {
+    if (!validateCurrentStep()) return;
+
+    // ✅ For testing: submit right after Industry & Services (step index 1)
+    if (currentStep === 1) {
+      handleSubmit();
+      return;
+    }
+
+    if (currentStep < questions.length - 1) {
+      setCurrentStep(currentStep + 1);
+      setCurrentError('');
+    }
+  };
+
+  const handlePrevious = () => {
+    if (currentStep > 0) {
+      setCurrentStep(currentStep - 1);
+      setCurrentError('');
+    }
+  };
+
   React.useEffect(() => {
     validateCurrentStep();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentStep, formData]);
 
-  // Subtle background motion on scroll (luxury gold glow)
   React.useEffect(() => {
     let raf = 0;
     const onScroll = () => {
@@ -456,7 +417,6 @@ Keep responses under ~2 sentences whenever possible.
     };
   }, []);
 
-  // ✅ Start/Stop Vapi Call when phone modal opens/closes
   React.useEffect(() => {
     if (phoneModal !== 'voice') return;
 
@@ -493,7 +453,6 @@ Keep responses under ~2 sentences whenever possible.
 
         await vapi.start(HOME_VAPI_ASSISTANT_ID);
 
-        // Say first message immediately (your exact line)
         try {
           await (vapi as any).say(HOME_VAPI_FIRST_MESSAGE, false);
         } catch {}
@@ -537,7 +496,6 @@ Keep responses under ~2 sentences whenever possible.
         backgroundSize: 'cover',
       }}
     >
-      {/* Gold shimmer animation (homepage hero) */}
       <style>
         {`
           .gold-shimmer {
@@ -580,8 +538,7 @@ Keep responses under ~2 sentences whenever possible.
       <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="flex flex-col items-center text-center">
-            <div className="flex items-center space-x-3 mb-6">
-            </div>
+            <div className="flex items-center space-x-3 mb-6"></div>
           </div>
         </div>
       </header>
@@ -632,15 +589,23 @@ Keep responses under ~2 sentences whenever possible.
             id="lead-capture"
             className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto"
           >
-            <div className="text-center mb-12">
-              <h3 className="text-2xl sm:text-3xl font-bold mb-4">Get Your Custom Solution Quote</h3>
-              <p className="text-gray-300 text-base">Tell us about your project and we'll create the perfect solution for your business</p>
-            </div>
-
             {submitStatus === 'success' && (
               <div className="mb-8 p-4 bg-green-500/10 border border-green-500/50 rounded-lg flex items-center space-x-3">
                 <CheckCircle className="h-6 w-6 text-green-400" />
-                <p className="text-green-300">Thank you! Your submission has been received. We'll be in touch soon.</p>
+                <div>
+                  <p className="text-green-300">Thank you! Your submission has been received. We'll be in touch soon.</p>
+                  {createdAssistantId && (
+                    <p className="text-green-300/80 mt-1 text-sm">
+                      Assistant created: <span className="font-mono">{createdAssistantId}</span>
+                      {createdSlug ? (
+                        <>
+                          {' '}
+                          • Demo slug: <span className="font-mono">{createdSlug}</span>
+                        </>
+                      ) : null}
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
@@ -780,27 +745,6 @@ Keep responses under ~2 sentences whenever possible.
                               </div>
                             ))}
                           </div>
-                        ) : question.type === 'checkbox' ? (
-                          <div className="space-y-4">
-                            {question.options?.map((option) => (
-                              <label
-                                key={option.value}
-                                className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-[#C8A24A]/35 transition-all group"
-                              >
-                                <input
-                                  type="checkbox"
-                                  name={question.id as string}
-                                  value={option.value}
-                                  checked={((formData[question.id as keyof FormData] as any[])?.includes(option.value)) || false}
-                                  onChange={handleInputChange}
-                                  className="mt-1 w-5 h-5 text-[#C8A24A] bg-gray-900 border-gray-600 rounded focus:ring-[#C8A24A] focus:ring-2"
-                                />
-                                <div className="flex-1">
-                                  <span className="text-white font-medium group-hover:text-[#E3C36A] transition-colors">{option.label}</span>
-                                </div>
-                              </label>
-                            ))}
-                          </div>
                         ) : (
                           <textarea
                             id={question.id as string}
@@ -835,41 +779,34 @@ Keep responses under ~2 sentences whenever possible.
                   <span>Previous</span>
                 </button>
 
-                {currentStep === questions.length - 1 ? (
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting || !isStepValid}
-                    className={`px-8 py-3 rounded-xl font-semibold transition-all flex items-center space-x-2 flex-shrink-0 ${
-                      isSubmitting || !isStepValid
-                        ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                        : 'bg-[#C8A24A] text-black hover:bg-[#E3C36A] shadow-lg shadow-black/40'
-                    }`}
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader className="h-5 w-5 animate-spin" />
-                        <span>Submitting...</span>
-                      </>
-                    ) : (
-                      <>
-                        <span>Submit</span>
-                        <ArrowRight className="h-5 w-5" />
-                      </>
-                    )}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleNext}
-                    disabled={!isStepValid}
-                    className={`px-8 py-3 rounded-xl font-semibold transition-all flex items-center space-x-2 flex-shrink-0 ${
-                      !isStepValid ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' : 'bg-[#C8A24A] text-black hover:bg-[#E3C36A] shadow-lg shadow-black/40'
-                    }`}
-                  >
-                    <span>Next</span>
-                    <ArrowRight className="h-5 w-5" />
-                  </button>
-                )}
+                {/* ✅ For testing: step 2 triggers submit via handleNext() */}
+                <button
+                  type="button"
+                  onClick={handleNext}
+                  disabled={!isStepValid || isSubmitting}
+                  className={`px-8 py-3 rounded-xl font-semibold transition-all flex items-center space-x-2 flex-shrink-0 ${
+                    !isStepValid || isSubmitting
+                      ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+                      : 'bg-[#C8A24A] text-black hover:bg-[#E3C36A] shadow-lg shadow-black/40'
+                  }`}
+                >
+                  {isSubmitting ? (
+                    <>
+                      <Loader className="h-5 w-5 animate-spin" />
+                      <span>Submitting...</span>
+                    </>
+                  ) : currentStep === 1 ? (
+                    <>
+                      <span>Submit</span>
+                      <ArrowRight className="h-5 w-5" />
+                    </>
+                  ) : (
+                    <>
+                      <span>Next</span>
+                      <ArrowRight className="h-5 w-5" />
+                    </>
+                  )}
+                </button>
               </div>
             )}
           </div>
@@ -877,8 +814,6 @@ Keep responses under ~2 sentences whenever possible.
       </section>
 
       {/* Everything below stays EXACTLY the same */}
-      {/* (SubscriptionSection, services cards, footer, floating agent, modal, etc.) */}
-
       <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
@@ -991,7 +926,6 @@ Keep responses under ~2 sentences whenever possible.
               Privacy Policy
             </Link>
 
-            {/* ✅ Added */}
             <Link to="/terms-and-conditions" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
               Terms &amp; Conditions
             </Link>
@@ -999,7 +933,6 @@ Keep responses under ~2 sentences whenever possible.
         </div>
       </footer>
 
-      {/* ✅ Floating "Try Our AI Phone Agent" (Bottom Right) */}
       <div className="fixed bottom-5 right-5 z-[60]">
         <button
           onClick={() => setPhoneModal('voice')}
@@ -1017,10 +950,7 @@ Keep responses under ~2 sentences whenever possible.
             e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.35)';
           }}
         >
-          <div
-            className="h-10 w-10 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(200, 162, 74, 0.18)' }}
-          >
+          <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(200, 162, 74, 0.18)' }}>
             <Phone className="h-5 w-5" style={{ color: GOLD_HOVER }} />
           </div>
 
@@ -1033,7 +963,6 @@ Keep responses under ~2 sentences whenever possible.
         </button>
       </div>
 
-      {/* ✅ Phone Agent Modal */}
       {phoneModal === 'voice' && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" data-homephone-modal="true">
           <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
@@ -1060,7 +989,6 @@ Keep responses under ~2 sentences whenever possible.
 
                 {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
 
-                {/* Red hang-up button */}
                 <button
                   className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
                   style={{
