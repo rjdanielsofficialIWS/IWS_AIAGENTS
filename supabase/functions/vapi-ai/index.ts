@@ -33,19 +33,16 @@ Deno.serve(async (req: Request) => {
     const path = url.pathname.replace('/functions/v1/vapi-ai', '');
 
     if (!path) {
-      return new Response(
-        JSON.stringify({ error: 'Missing Vapi endpoint path' }),
-        {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        }
-      );
+      return new Response(JSON.stringify({ error: 'Missing Vapi endpoint path' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const vapiUrl = `https://api.vapi.ai${path}`;
 
     const headers: HeadersInit = {
-      'Authorization': `Bearer ${VAPI_API_KEY}`,
+      Authorization: `Bearer ${VAPI_API_KEY}`,
       'Content-Type': 'application/json',
     };
 
@@ -62,7 +59,8 @@ Deno.serve(async (req: Request) => {
       status: vapiResponse.status,
       headers: {
         ...corsHeaders,
-        'Content-Type': vapiResponse.headers.get('content-type') || 'application/json',
+        'Content-Type':
+          vapiResponse.headers.get('content-type') || 'application/json',
       },
     });
   } catch (err) {
