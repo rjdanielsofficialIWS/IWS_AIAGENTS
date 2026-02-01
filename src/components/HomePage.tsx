@@ -9,6 +9,7 @@ import {
   Mail,
   User,
   Building,
+  Globe,
   MessageSquare,
   CheckCircle,
   AlertCircle,
@@ -29,10 +30,13 @@ interface FormData {
   email: string;
   phone: string;
   countryCode: string;
-  business: string;
-  services: string;
-  serviceInterest: string[];
-  projectRequirements: string;
+
+  // Step 1
+  business: string; // Company Name
+  websiteUrl: string; // optional but recommended
+
+  // Step 2
+  industryServices: string; // Industry + Services
 }
 
 interface EnhanceState {
@@ -41,7 +45,7 @@ interface EnhanceState {
 }
 
 interface Question {
-  id: keyof FormData | 'contactInfo';
+  id: keyof FormData | 'contactInfo' | 'companyAndWebsite';
   title: string;
   subtitle?: string;
   label?: string;
@@ -68,7 +72,8 @@ const GOLD_HOVER = '#E3C36A';
 // 📞 Vapi Phone Agent (Homepage floating)
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const HOME_VAPI_ASSISTANT_ID = '76efe9e0-957c-410a-9163-75acbceec45e';
-const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Avery speaking, how may I help you?';
+const HOME_VAPI_FIRST_MESSAGE =
+  'Infinite Wealth Solutions AI - Avery speaking, how may I help you?';
 
 type PhoneModalMode = 'voice' | null;
 
@@ -81,14 +86,18 @@ export function HomePage() {
     phone: '',
     countryCode: '+1',
     business: '',
-    services: '',
-    serviceInterest: [],
-    projectRequirements: '',
+    websiteUrl: '',
+    industryServices: '',
   });
   const [currentError, setCurrentError] = useState<string>('');
   const [isStepValid, setIsStepValid] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
+  const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(
+    null
+  );
+  const [createdAssistantId, setCreatedAssistantId] = useState<string | null>(
+    null
+  );
   const [enhanceState, setEnhanceState] = useState<EnhanceState>({
     isEnhancing: false,
     hasEnhanced: false,
@@ -97,30 +106,46 @@ export function HomePage() {
   // ✅ Floating Phone Agent Modal State
   const [phoneModal, setPhoneModal] = useState<PhoneModalMode>(null);
   const vapiRef = React.useRef<Vapi | null>(null);
-  const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'live' | 'ended' | 'error'>('idle');
+  const [voiceStatus, setVoiceStatus] = useState<
+    'idle' | 'connecting' | 'live' | 'ended' | 'error'
+  >('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
   const questions: Question[] = [
     {
-      id: 'serviceInterest',
-      title: 'Which services are you interested in?',
-      subtitle: '(Select all that apply)',
-      type: 'checkbox',
-      icon: Target,
+      id: 'companyAndWebsite',
+      title: 'Company name',
+      subtitle: 'Add your website (optional, but recommended)',
+      type: 'multi-input',
+      icon: Building,
       required: true,
-      options: [
-        { value: 'ai-agents', label: 'AI Voice Agents - Automate calls and bookings' },
-        { value: 'lead-generation', label: 'Lead Generation - Social media marketing, content creation, and customer acquisition' },
-        { value: 'custom-websites', label: 'Custom Website Development - Professional, unique designs' },
+      fields: [
+        {
+          id: 'business',
+          label: 'Company Name',
+          type: 'input',
+          placeholder: 'e.g., Riverside Plumbing',
+          icon: Building,
+          required: true,
+        },
+        {
+          id: 'websiteUrl',
+          label: 'Website URL (optional, recommended)',
+          type: 'input',
+          placeholder: 'e.g., https://yourwebsite.com',
+          icon: Globe,
+          required: false,
+        },
       ],
     },
     {
-      id: 'projectRequirements',
-      title: 'Tell us about your project requirements',
+      id: 'industryServices',
+      title: 'Industry & services',
       type: 'textarea',
-      placeholder: 'Describe your specific needs, goals, timeline, and any special requirements...',
-      rows: 4,
-      icon: MessageSquare,
+      placeholder:
+        "Example:\nIndustry: Plumbing\nServices: Drain cleaning, water heaters, emergency calls, etc.",
+      rows: 5,
+      icon: Globe,
       required: true,
     },
     {
@@ -166,6 +191,20 @@ export function HomePage() {
     return phoneRegex.test(phone.replace(/\s/g, ''));
   };
 
+  const validateWebsiteUrl = (url: string): boolean => {
+    const v = (url || '').trim();
+    if (!v) return true;
+
+    const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+    try {
+      // eslint-disable-next-line no-new
+      new URL(withScheme);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
   const validateCurrentStep = (): boolean => {
     const currentQuestion = questions[currentStep];
     let isValid = true;
@@ -173,18 +212,35 @@ export function HomePage() {
 
     if (currentQuestion.type === 'multi-input') {
       for (const field of currentQuestion.fields || []) {
-        const value = formData[field.id];
-        if (!value.trim()) {
+        const value = (formData[field.id] || '').toString();
+
+        // Respect optional fields
+        if (field.required !== false && !value.trim()) {
           isValid = false;
           error = `${field.label} is required`;
           break;
-        } else if (field.id === 'email' && !validateEmail(value)) {
+        }
+
+        // Validate formats (only if provided)
+        if (field.id === 'email' && value.trim() && !validateEmail(value)) {
           isValid = false;
           error = 'Please enter a valid email address';
           break;
-        } else if (field.id === 'phone' && !validatePhone(value)) {
+        }
+
+        if (field.id === 'phone' && value.trim() && !validatePhone(value)) {
           isValid = false;
           error = 'Please enter a valid phone number (digits only)';
+          break;
+        }
+
+        if (
+          field.id === 'websiteUrl' &&
+          value.trim() &&
+          !validateWebsiteUrl(value)
+        ) {
+          isValid = false;
+          error = 'Please enter a valid website URL (e.g., https://example.com)';
           break;
         }
       }
@@ -195,22 +251,26 @@ export function HomePage() {
         error = 'Please select an option';
       }
     } else if (currentQuestion.type === 'checkbox') {
-      const value = formData[currentQuestion.id as keyof FormData] as string[];
+      const value = formData[currentQuestion.id as keyof FormData] as unknown as string[];
       if (!value || value.length === 0) {
         isValid = false;
         error = 'Please select at least one option';
       }
     } else {
-      const value = formData[currentQuestion.id as keyof FormData];
+      const value = (formData[currentQuestion.id as keyof FormData] || '').toString();
+
       if (!value.trim()) {
         isValid = false;
-        error = `${currentQuestion.label} is required`;
+        error = `${currentQuestion.title || 'This field'} is required`;
       } else if (currentQuestion.id === 'email' && !validateEmail(value)) {
         isValid = false;
         error = 'Please enter a valid email address';
       } else if (currentQuestion.id === 'phone' && !validatePhone(value)) {
         isValid = false;
         error = 'Please enter a valid phone number';
+      } else if (currentQuestion.id === 'websiteUrl' && !validateWebsiteUrl(value)) {
+        isValid = false;
+        error = 'Please enter a valid website URL';
       }
     }
 
@@ -225,28 +285,37 @@ export function HomePage() {
 
       if (question.type === 'multi-input') {
         for (const field of question.fields || []) {
-          const value = formData[field.id];
-          if (!value.trim()) return false;
-          if (field.id === 'email' && !validateEmail(value)) return false;
-          if (field.id === 'phone' && !validatePhone(value)) return false;
+          const value = (formData[field.id] || '').toString();
+
+          if (field.required !== false && !value.trim()) return false;
+
+          if (field.id === 'email' && value.trim() && !validateEmail(value)) return false;
+
+          if (field.id === 'phone' && value.trim() && !validatePhone(value)) return false;
+
+          if (field.id === 'websiteUrl' && value.trim() && !validateWebsiteUrl(value)) return false;
         }
       } else if (question.type === 'select' || question.type === 'radio') {
         const value = formData[question.id as keyof FormData];
         if (!value || value.trim() === '') return false;
       } else if (question.type === 'checkbox') {
-        const value = formData[question.id as keyof FormData] as string[];
+        const value = formData[question.id as keyof FormData] as unknown as string[];
         if (!value || value.length === 0) return false;
       } else {
-        const value = formData[question.id as keyof FormData];
+        const value = (formData[question.id as keyof FormData] || '').toString();
         if (!value.trim()) return false;
+
         if (question.id === 'email' && !validateEmail(value)) return false;
         if (question.id === 'phone' && !validatePhone(value)) return false;
+        if (question.id === 'websiteUrl' && !validateWebsiteUrl(value)) return false;
       }
     }
     return true;
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleInputChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
     const { name, value } = e.target;
 
     if (e.target.type === 'checkbox') {
@@ -256,8 +325,10 @@ export function HomePage() {
       setFormData((prev) => ({
         ...prev,
         [name]: isChecked
-          ? [...(prev[name as keyof FormData] as string[]), checkboxValue]
-          : (prev[name as keyof FormData] as string[]).filter((item) => item !== checkboxValue),
+          ? [...(prev[name as keyof FormData] as unknown as string[]), checkboxValue]
+          : (prev[name as keyof FormData] as unknown as string[]).filter(
+              (item) => item !== checkboxValue
+            ),
       }));
     } else {
       setFormData((prev) => ({ ...prev, [name]: value }));
@@ -284,30 +355,83 @@ export function HomePage() {
     }
   };
 
-  const submitToWebhook = async (data: FormData): Promise<boolean> => {
-    try {
-      const WEBHOOK_URL = 'https://hook.us2.make.com/278k1u1vit3mimed0gqe0uqlkw2d99yw';
+  const normalizeWebsiteUrl = (url: string): string => {
+    const v = (url || '').trim();
+    if (!v) return '';
+    return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  };
 
-      const response = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: data.name,
-          email: data.email,
-          phone: data.countryCode.replace('+', '') + data.phone,
-          business: data.business,
-          services: data.services,
-          serviceInterest: Array.isArray(data.serviceInterest) ? data.serviceInterest.join(', ') : data.serviceInterest,
-          projectRequirements: data.projectRequirements,
-          timestamp: new Date().toISOString(),
-        }),
-      });
+  const createVapiAssistantFromLead = async (data: FormData): Promise<string> => {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-      return response.ok;
-    } catch (error) {
-      console.error('Error submitting to webhook:', error);
-      return false;
+    if (!supabaseUrl || !anonKey) {
+      throw new Error(
+        'Missing Supabase env vars (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).'
+      );
     }
+
+    const website = normalizeWebsiteUrl(data.websiteUrl);
+    const websiteLine = website ? `Website: ${website}` : 'Website: Not provided';
+
+    const systemPrompt = `
+You are an inbound AI assistant for Infinite Wealth Solutions AI.
+
+This business owner just submitted a lead form.
+
+Company: ${data.business}
+${websiteLine}
+
+Industry & services:
+${data.industryServices}
+
+Your goals:
+- Be friendly, confident, and concise (voice-call style).
+- Ask 2–4 quick discovery questions to understand what they want and why now.
+- Qualify them, then book a short onboarding call with our team.
+
+Booking rules:
+- Offer either tomorrow or the day after, and ask what time works.
+- Confirm best callback number and email.
+- If they hesitate, offer to text/email a quick recap and a calendar link.
+
+Keep responses under ~2 sentences whenever possible.
+    `.trim();
+
+    const payload = {
+      name: `${data.business} - Lead Assistant`,
+      firstMessage: `Hey ${data.name || 'there'} — thanks for reaching out. What made you want to set this up right now?`,
+      model: {
+        provider: 'openai',
+        model: 'gpt-4o',
+        temperature: 0.5,
+        messages: [{ role: 'system', content: systemPrompt }],
+      },
+    };
+
+    const response = await fetch(`${supabaseUrl}/functions/v1/vapi-ai/assistants`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: anonKey,
+        Authorization: `Bearer ${anonKey}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await response.text();
+    if (!response.ok) {
+      throw new Error(text || 'Failed to create Vapi assistant.');
+    }
+
+    const json = text ? JSON.parse(text) : {};
+    const assistantId = json?.id;
+
+    if (!assistantId) {
+      throw new Error('Assistant created but no assistant id returned.');
+    }
+
+    return assistantId;
   };
 
   const handleSubmit = async () => {
@@ -318,29 +442,27 @@ export function HomePage() {
 
     setIsSubmitting(true);
     setSubmitStatus(null);
+    setCreatedAssistantId(null);
     // High-intent signal: user attempted to submit the lead form
     trackHighIntent({ name: 'form_submit', label: 'package_quote_form' });
 
     try {
-      const success = await submitToWebhook(formData);
+      const assistantId = await createVapiAssistantFromLead(formData);
 
-      if (success) {
-        setSubmitStatus('success');
-        // High-intent conversion: lead successfully captured
-        trackHighIntent({ name: 'form_success', label: 'package_quote_form' });
-        setFormData({
-          name: '',
-          email: '',
-          phone: '',
-          countryCode: '+1',
-          business: '',
-          services: '',
-          serviceInterest: [],
-          projectRequirements: '',
-        });
-      } else {
-        setSubmitStatus('error');
-      }
+      setCreatedAssistantId(assistantId);
+      setSubmitStatus('success');
+      // High-intent conversion: lead successfully captured
+      trackHighIntent({ name: 'form_success', label: 'package_quote_form' });
+
+      setFormData({
+        name: '',
+        email: '',
+        phone: '',
+        countryCode: '+1',
+        business: '',
+        websiteUrl: '',
+        industryServices: '',
+      });
     } catch (error) {
       console.error('Submission error:', error);
       setSubmitStatus('error');
@@ -402,22 +524,19 @@ export function HomePage() {
           setVoiceStatus('ended');
         });
 
-        (vapi as any).on?.('error', (e: any) => {
+        vapi.on('error', (e: any) => {
           if (cancelled) return;
           setVoiceStatus('error');
-          setVoiceError(e?.message || 'Voice error');
+          setVoiceError(e?.message || 'Call error. Please try again.');
         });
 
-        await vapi.start(HOME_VAPI_ASSISTANT_ID);
-
-        // Say first message immediately (your exact line)
-        try {
-          await (vapi as any).say(HOME_VAPI_FIRST_MESSAGE, false);
-        } catch {}
+        await vapi.start(HOME_VAPI_ASSISTANT_ID, {
+          firstMessage: HOME_VAPI_FIRST_MESSAGE,
+        });
       } catch (e: any) {
         if (cancelled) return;
         setVoiceStatus('error');
-        setVoiceError(e?.message || 'Failed to start voice');
+        setVoiceError(e?.message || 'Could not start call.');
       }
     };
 
@@ -429,576 +548,512 @@ export function HomePage() {
         vapiRef.current?.stop();
       } catch {}
       vapiRef.current = null;
-      setVoiceStatus('idle');
-      setVoiceError(null);
     };
   }, [phoneModal]);
 
-  const closePhoneModal = () => {
-    try {
-      vapiRef.current?.stop();
-    } catch {}
-    vapiRef.current = null;
-    setVoiceStatus('idle');
-    setVoiceError(null);
-    setPhoneModal(null);
-  };
-
   return (
-    <div
-      className="min-h-screen text-white overflow-x-hidden"
-      style={{
-        backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
-        backgroundAttachment: 'fixed',
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: 'cover',
-      }}
-    >
-      {/* Gold shimmer animation (homepage hero) */}
-      <style>
-        {`
-          .gold-shimmer {
-            background-image: linear-gradient(
-              110deg,
-              #b9892b 0%,
-              #f7dc8a 20%,
-              #ffffff 30%,
-              #f1d27b 40%,
-              #b9892b 60%,
-              #f7dc8a 80%,
-              #ffffff 90%,
-              #b9892b 100%
-            );
-            background-size: 240% 100%;
-            background-position: 0% 50%;
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            animation: goldShimmerSweep 4.8s ease-in-out infinite;
-            filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.12));
-          }
+    <div className="min-h-screen bg-black text-white relative overflow-hidden">
+      {/* Background */}
+      <div
+        className="absolute inset-0 opacity-20"
+        style={{
+          transform: `translateY(${bgOffset}px)`,
+          background:
+            'radial-gradient(circle at 20% 20%, rgba(200,162,74,0.25), transparent 40%), radial-gradient(circle at 80% 30%, rgba(200,162,74,0.18), transparent 45%), radial-gradient(circle at 50% 80%, rgba(200,162,74,0.12), transparent 50%)',
+        }}
+      />
+      <div className="relative z-10">
+        {/* Header */}
+        <header className="py-6 px-6 border-b border-gray-800/60">
+          <div className="max-w-6xl mx-auto flex items-center justify-between">
+            <Link to="/" className="flex items-center space-x-2">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{
+                  background:
+                    'linear-gradient(135deg, rgba(200,162,74,0.25), rgba(0,0,0,0.4))',
+                  border: '1px solid rgba(200,162,74,0.25)',
+                }}
+              >
+                <Brain className="h-6 w-6" style={{ color: GOLD_PRIMARY }} />
+              </div>
+              <span className="text-xl font-bold tracking-tight">
+                Infinite Wealth Solutions AI
+              </span>
+            </Link>
 
-          @keyframes goldShimmerSweep {
-            0% { background-position: 0% 50%; }
-            55% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            .gold-shimmer { animation: none; }
-          }
-        `}
-      </style>
-
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
-      </div>
-
-      <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex items-center space-x-3 mb-6">
+            <div className="flex items-center space-x-4">
+              <button
+                className="hidden sm:inline-flex px-4 py-2 rounded-xl font-medium border border-gray-700/60 hover:border-[#C8A24A]/40 transition-all"
+                onClick={() => setPhoneModal('voice')}
+              >
+                <Phone className="h-4 w-4 mr-2" />
+                Talk to Avery
+              </button>
+              <a
+                href="#pricing"
+                className="px-4 py-2 rounded-xl font-semibold transition-all"
+                style={{
+                  background:
+                    'linear-gradient(135deg, rgba(200,162,74,0.95), rgba(227,195,106,0.9))',
+                  color: '#000',
+                }}
+              >
+                View Packages
+              </a>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
-      <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-8 leading-tight">
-            <span className="gold-shimmer block font-extrabold">Infinite Wealth Solutions</span>
-            <span className="block mt-3 text-white font-bold">Transform your business with AI</span>
-          </h2>
+        {/* Hero */}
+        <section className="pt-14 pb-10 px-6">
+          <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-10 items-center">
+            <div>
+              <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
+                AI systems that help service businesses{' '}
+                <span style={{ color: GOLD_PRIMARY }}>capture more leads</span>{' '}
+                and <span style={{ color: GOLD_PRIMARY }}>close more sales</span>
+                .
+              </h1>
+              <p className="mt-5 text-lg text-gray-300 max-w-xl">
+                Stop losing money to missed calls and slow follow-ups. We build
+                AI voice agents, lead capture, and automation that works 24/7.
+              </p>
 
-          <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            From AI-powered voice agents to high volume lead generation, and custom websites - we deliver premium digital solutions that drive results.
-          </p>
+              <div className="mt-7 flex flex-wrap gap-3">
+                <button
+                  className="px-5 py-3 rounded-xl font-semibold transition-all inline-flex items-center"
+                  style={{
+                    background:
+                      'linear-gradient(135deg, rgba(200,162,74,0.95), rgba(227,195,106,0.9))',
+                    color: '#000',
+                  }}
+                  onClick={() => {
+                    const el = document.getElementById('lead-form');
+                    el?.scrollIntoView({ behavior: 'smooth' });
+                  }}
+                >
+                  Get a Custom Quote
+                  <ArrowRight className="h-5 w-5 ml-2" />
+                </button>
+                <button
+                  className="px-5 py-3 rounded-xl font-semibold border border-gray-700/60 hover:border-[#C8A24A]/40 transition-all inline-flex items-center"
+                  onClick={() => setPhoneModal('voice')}
+                >
+                  <Phone className="h-5 w-5 mr-2" />
+                  Talk to Avery
+                </button>
+              </div>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-            <button
-              data-track="cta"
-              data-track-label="Get a Package Quote"
-              onClick={() => {
-                const leadCaptureSection = document.getElementById('lead-capture');
-                if (leadCaptureSection) {
-                  leadCaptureSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else {
-                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                }
-              }}
-              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
-            >
-              <MessageSquare className="h-6 w-6" />
-              <span>Get a Package Quote</span>
-            </button>
-
-            <a
-              data-track="book"
-              data-track-label="Get Started"
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full sm:w-auto bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 flex items-center justify-center space-x-3"
-            >
-              <Calendar className="h-6 w-6" />
-              <span>Get Started</span>
-            </a>
-          </div>
-
-          <div
-            id="lead-capture"
-            className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto"
-          >
-            <div className="text-center mb-12">
-              <h3 className="text-2xl sm:text-3xl font-bold mb-4">Get Your Custom Solution Quote</h3>
-              <p className="text-gray-300 text-base">Tell us about your project and we'll create the perfect solution for your business</p>
+              <div className="mt-7 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="p-4 rounded-2xl bg-gray-900/40 border border-gray-800/60">
+                  <div className="flex items-center space-x-2">
+                    <Zap className="h-5 w-5" style={{ color: GOLD_PRIMARY }} />
+                    <span className="font-semibold">Instant Response</span>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-400">
+                    AI answers and qualifies leads immediately.
+                  </p>
+                </div>
+                <div className="p-4 rounded-2xl bg-gray-900/40 border border-gray-800/60">
+                  <div className="flex items-center space-x-2">
+                    <TrendingUp
+                      className="h-5 w-5"
+                      style={{ color: GOLD_PRIMARY }}
+                    />
+                    <span className="font-semibold">More Bookings</span>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-400">
+                    Capture after-hours + missed calls 24/7.
+                  </p>
+                </div>
+                <div className="p-4 rounded-2xl bg-gray-900/40 border border-gray-800/60">
+                  <div className="flex items-center space-x-2">
+                    <Users className="h-5 w-5" style={{ color: GOLD_PRIMARY }} />
+                    <span className="font-semibold">Less Admin</span>
+                  </div>
+                  <p className="mt-2 text-sm text-gray-400">
+                    Follow-up automation replaces manual busywork.
+                  </p>
+                </div>
+              </div>
             </div>
 
-            {submitStatus === 'success' && (
-              <div className="mb-8 p-4 bg-green-500/10 border border-green-500/50 rounded-lg flex items-center space-x-3">
-                <CheckCircle className="h-6 w-6 text-green-400" />
-                <p className="text-green-300">Thank you! Your submission has been received. We'll be in touch soon.</p>
-              </div>
-            )}
+            {/* Lead Form */}
+            <div
+              id="lead-form"
+              className="rounded-3xl border border-gray-800/60 bg-gray-950/60 p-6 sm:p-8 shadow-2xl shadow-black/40"
+            >
+              <h3 className="text-2xl sm:text-3xl font-bold mb-2">
+                Get a custom quote
+              </h3>
+              <p className="text-gray-400 mb-8">
+                Answer a few questions and we’ll build your best-fit system.
+              </p>
 
-            {submitStatus === 'error' && (
-              <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center space-x-3">
-                <AlertCircle className="h-6 w-6 text-red-400" />
-                <p className="text-red-300">Sorry, there was an error submitting your form. Please try again.</p>
-              </div>
-            )}
+              {submitStatus === 'success' && (
+                <div className="mb-8 p-4 bg-green-500/10 border border-green-500/50 rounded-lg flex items-start space-x-3">
+                  <CheckCircle className="h-6 w-6 text-green-400 mt-0.5" />
+                  <div>
+                    <p className="text-green-300">
+                      Thank you! Your submission has been received. We'll be in
+                      touch soon.
+                    </p>
+                    {createdAssistantId && (
+                      <p className="text-green-300/80 mt-1 text-sm">
+                        Assistant created:{' '}
+                        <span className="font-mono">
+                          {createdAssistantId}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
-            {submitStatus !== 'success' && (
-              <div className="mb-12">
-                <div className="flex items-center justify-center space-x-4 mb-6">
-                  {questions.map((_, index) => (
-                    <React.Fragment key={index}>
-                      <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
-                          index < currentStep
-                            ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
-                            : index === currentStep
+              {submitStatus === 'error' && (
+                <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center space-x-3">
+                  <AlertCircle className="h-6 w-6 text-red-400" />
+                  <p className="text-red-300">
+                    Sorry, there was an error submitting your form. Please try
+                    again.
+                  </p>
+                </div>
+              )}
+
+              {submitStatus !== 'success' && (
+                <div className="mb-12">
+                  <div className="flex items-center justify-center space-x-4 mb-6">
+                    {questions.map((_, index) => (
+                      <React.Fragment key={index}>
+                        <div
+                          className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
+                            index < currentStep
+                              ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
+                              : index === currentStep
                               ? 'bg-[#C8A24A] text-black shadow-lg shadow-black/40'
                               : 'bg-gray-600 text-gray-400'
-                        }`}
-                      >
-                        {index < currentStep ? <CheckCircle className="h-6 w-6" /> : index + 1}
-                      </div>
-                      {index < questions.length - 1 && (
-                        <div className={`w-8 h-1 transition-all duration-300 ${index < currentStep ? 'bg-green-500' : 'bg-gray-600'}`}></div>
-                      )}
-                    </React.Fragment>
-                  ))}
-                </div>
-                <p className="text-center text-gray-400 text-sm">
-                  Step {currentStep + 1} of {questions.length}
-                </p>
-              </div>
-            )}
-
-            {submitStatus === 'success' ? (
-              <div className="text-center py-12">
-                <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle className="h-12 w-12 text-green-400" />
-                </div>
-                <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
-                <p className="text-xl text-gray-300 mb-6">Your submission has been received successfully.</p>
-                <p className="text-gray-400">We'll be in touch soon to discuss your custom solution.</p>
-              </div>
-            ) : (
-              <div className="relative overflow-hidden">
-                <div className="flex transition-transform duration-500 ease-in-out" style={{ transform: `translateX(-${currentStep * 100}%)` }}>
-                  {questions.map((question, index) => (
-                    <div key={question.id} className="w-full flex-shrink-0 px-4">
-                      {question.title && (
-                        <div className="text-center mb-8">
-                          <h4 className="text-2xl sm:text-3xl font-bold mb-4">
-                            {question.title}
-                            {question.subtitle && (
-                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">{question.subtitle}</span>
-                            )}
-                          </h4>
+                          }`}
+                        >
+                          {index < currentStep ? (
+                            <CheckCircle className="h-6 w-6" />
+                          ) : (
+                            index + 1
+                          )}
                         </div>
-                      )}
+                        {index < questions.length - 1 && (
+                          <div
+                            className={`w-8 h-1 transition-all duration-300 ${
+                              index < currentStep ? 'bg-green-500' : 'bg-gray-600'
+                            }`}
+                          ></div>
+                        )}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <p className="text-center text-gray-400 text-sm">
+                    Step {currentStep + 1} of {questions.length}
+                  </p>
+                </div>
+              )}
 
-                      <div className="space-y-2 sm:space-y-4">
-                        {question.type !== 'multi-input' && question.label && (
-                          <label className="block text-sm font-medium text-gray-300 mb-3">
-                            {question.icon && <question.icon className="inline h-4 w-4 mr-2" />}
-                            {question.label} *
-                          </label>
+              {submitStatus === 'success' ? (
+                <div className="text-center py-12">
+                  <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <CheckCircle className="h-12 w-12 text-green-400" />
+                  </div>
+                  <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
+                  <p className="text-xl text-gray-300 mb-6">
+                    Your submission has been received successfully.
+                  </p>
+                  <p className="text-gray-400">
+                    We'll be in touch soon to discuss your custom solution.
+                  </p>
+                  {createdAssistantId && (
+                    <p className="text-gray-500 mt-4 text-sm">
+                      Assistant created:{' '}
+                      <span className="font-mono">{createdAssistantId}</span>
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="relative overflow-hidden">
+                  <div
+                    className="flex transition-transform duration-500 ease-in-out"
+                    style={{ transform: `translateX(-${currentStep * 100}%)` }}
+                  >
+                    {questions.map((question, index) => (
+                      <div key={question.id} className="w-full flex-shrink-0 px-4">
+                        {question.title && (
+                          <div className="text-center mb-8">
+                            <h4 className="text-2xl sm:text-3xl font-bold mb-4">
+                              {question.title}
+                              {question.subtitle && (
+                                <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">
+                                  {question.subtitle}
+                                </span>
+                              )}
+                            </h4>
+                          </div>
                         )}
 
-                        {question.type === 'multi-input' ? (
-                          <div className="space-y-4 sm:space-y-6">
-                            {question.fields?.map((field) => (
-                              <div key={field.id}>
-                                <label className="block text-sm font-medium text-gray-300 mb-3">
-                                  <field.icon className="inline h-4 w-4 mr-2" />
-                                  {field.label} *
-                                </label>
+                        <div className="space-y-2 sm:space-y-4">
+                          {question.type !== 'multi-input' && question.label && (
+                            <label className="block text-sm font-medium text-gray-300 mb-3">
+                              {question.icon && (
+                                <question.icon className="inline h-4 w-4 mr-2" />
+                              )}
+                              {question.label} *
+                            </label>
+                          )}
 
-                                {field.id === 'phone' ? (
-                                  <div className="flex">
-                                    <select
-                                      value={formData.countryCode}
-                                      onChange={handleCountryCodeChange}
-                                      className={`px-3 py-3 bg-gray-900/50 border ${
-                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
-                                    >
-                                      <option value="+1">🇨🇦 +1</option>
-                                      <option value="+1">🇺🇸 +1</option>
-                                      <option value="+44">🇬🇧 +44</option>
-                                      <option value="+33">🇫🇷 +33</option>
-                                      <option value="+49">🇩🇪 +49</option>
-                                      <option value="+61">🇦🇺 +61</option>
-                                      <option value="+81">🇯🇵 +81</option>
-                                      <option value="+86">🇨🇳 +86</option>
-                                      <option value="+91">🇮🇳 +91</option>
-                                      <option value="+55">🇧🇷 +55</option>
-                                      <option value="+52">🇲🇽 +52</option>
-                                      <option value="+34">🇪🇸 +34</option>
-                                      <option value="+39">🇮🇹 +39</option>
-                                      <option value="+31">🇳🇱 +31</option>
-                                      <option value="+46">🇸🇪 +46</option>
-                                      <option value="+47">🇳🇴 +47</option>
-                                      <option value="+45">🇩🇰 +45</option>
-                                      <option value="+41">🇨🇭 +41</option>
-                                      <option value="+43">🇦🇹 +43</option>
-                                      <option value="+32">🇧🇪 +32</option>
-                                    </select>
+                          {question.type === 'multi-input' ? (
+                            <div className="space-y-4 sm:space-y-6">
+                              {question.fields?.map((field) => (
+                                <div key={field.id}>
+                                  <label className="block text-sm font-medium text-gray-300 mb-3">
+                                    <field.icon className="inline h-4 w-4 mr-2" />
+                                    {field.label}
+                                    {field.required === false ? '' : ' *'}
+                                  </label>
 
+                                  {field.id === 'phone' ? (
+                                    <div className="flex">
+                                      <select
+                                        value={formData.countryCode}
+                                        onChange={handleCountryCodeChange}
+                                        className={`px-3 py-3 bg-gray-900/50 border ${
+                                          currentError && index === currentStep
+                                            ? 'border-red-500'
+                                            : 'border-gray-600'
+                                        } border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
+                                      >
+                                        <option value="+1">🇨🇦 +1</option>
+                                        <option value="+1">🇺🇸 +1</option>
+                                        <option value="+44">🇬🇧 +44</option>
+                                        <option value="+33">🇫🇷 +33</option>
+                                        <option value="+49">🇩🇪 +49</option>
+                                        <option value="+61">🇦🇺 +61</option>
+                                        <option value="+81">🇯🇵 +81</option>
+                                        <option value="+86">🇨🇳 +86</option>
+                                        <option value="+91">🇮🇳 +91</option>
+                                        <option value="+55">🇧🇷 +55</option>
+                                        <option value="+52">🇲🇽 +52</option>
+                                        <option value="+34">🇪🇸 +34</option>
+                                        <option value="+39">🇮🇹 +39</option>
+                                        <option value="+31">🇳🇱 +31</option>
+                                        <option value="+46">🇸🇪 +46</option>
+                                        <option value="+47">🇳🇴 +47</option>
+                                        <option value="+45">🇩🇰 +45</option>
+                                        <option value="+41">🇨🇭 +41</option>
+                                        <option value="+43">🇦🇹 +43</option>
+                                        <option value="+32">🇧🇪 +32</option>
+                                      </select>
+
+                                      <input
+                                        type={field.type}
+                                        id={field.id}
+                                        name={field.id}
+                                        value={(formData[field.id] || '').toString()}
+                                        onChange={handleInputChange}
+                                        className={`flex-1 px-4 py-3 bg-gray-900/50 border ${
+                                          currentError && index === currentStep
+                                            ? 'border-red-500'
+                                            : 'border-gray-600'
+                                        } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
+                                        placeholder="555-123-4567"
+                                      />
+                                    </div>
+                                  ) : (
                                     <input
                                       type={field.type}
                                       id={field.id}
                                       name={field.id}
-                                      value={formData[field.id]}
+                                      value={(formData[field.id] || '').toString()}
                                       onChange={handleInputChange}
-                                      className={`flex-1 px-4 py-3 bg-gray-900/50 border ${
-                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
-                                      placeholder="555-123-4567"
+                                      className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                                        currentError && index === currentStep
+                                          ? 'border-red-500'
+                                          : 'border-gray-600'
+                                      } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
+                                      placeholder={field.placeholder}
                                     />
-                                  </div>
-                                ) : (
-                                  <input
-                                    type={field.type}
-                                    id={field.id}
-                                    name={field.id}
-                                    value={formData[field.id]}
-                                    onChange={handleInputChange}
-                                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                                      currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
-                                    placeholder={field.placeholder}
-                                  />
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                        ) : question.type === 'checkbox' ? (
-                          <div className="space-y-4">
-                            {question.options?.map((option) => (
-                              <label
-                                key={option.value}
-                                className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-[#C8A24A]/35 transition-all group"
-                              >
-                                <input
-                                  type="checkbox"
-                                  name={question.id as string}
-                                  value={option.value}
-                                  checked={(formData[question.id as keyof FormData] as string[])?.includes(option.value) || false}
-                                  onChange={handleInputChange}
-                                  className="mt-1 w-5 h-5 text-[#C8A24A] bg-gray-900 border-gray-600 rounded focus:ring-[#C8A24A] focus:ring-2"
-                                />
-                                <div className="flex-1">
-                                  <span className="text-white font-medium group-hover:text-[#E3C36A] transition-colors">{option.label}</span>
+                                  )}
                                 </div>
-                              </label>
-                            ))}
-                          </div>
-                        ) : (
-                          <textarea
-                            id={question.id as string}
-                            name={question.id as string}
-                            value={formData[question.id as keyof FormData]}
-                            onChange={handleInputChange}
-                            rows={question.rows || 4}
-                            className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                              currentError ? 'border-red-500' : 'border-gray-600'
-                            } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all resize-vertical`}
-                            placeholder={question.placeholder}
-                          />
-                        )}
+                              ))}
+                            </div>
+                          ) : question.type === 'checkbox' ? (
+                            <div className="space-y-4">
+                              {question.options?.map((option) => (
+                                <label
+                                  key={option.value}
+                                  className="flex items-start space-x-3 cursor-pointer p-4 bg-gray-900/30 border border-gray-700/50 rounded-lg hover:border-[#C8A24A]/35 transition-all group"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    name={question.id as string}
+                                    value={option.value}
+                                    checked={
+                                      ((formData[question.id as keyof FormData] as unknown as string[])?.includes(
+                                        option.value
+                                      )) || false
+                                    }
+                                    onChange={handleInputChange}
+                                    className="mt-1 w-5 h-5 text-[#C8A24A] bg-gray-900 border-gray-600 rounded focus:ring-[#C8A24A] focus:ring-2"
+                                  />
+                                  <div className="flex-1">
+                                    <span className="text-white font-medium group-hover:text-[#E3C36A] transition-colors">
+                                      {option.label}
+                                    </span>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                          ) : (
+                            <textarea
+                              id={question.id as string}
+                              name={question.id as string}
+                              value={(formData[question.id as keyof FormData] || '').toString()}
+                              onChange={handleInputChange}
+                              rows={question.rows || 4}
+                              className={`w-full px-4 py-3 bg-gray-900/50 border ${
+                                currentError ? 'border-red-500' : 'border-gray-600'
+                              } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all resize-vertical`}
+                              placeholder={question.placeholder}
+                            />
+                          )}
 
-                        {currentError && index === currentStep && <p className="mt-2 text-sm text-red-400">{currentError}</p>}
+                          {currentError && index === currentStep && (
+                            <p className="mt-2 text-sm text-red-400">{currentError}</p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {submitStatus !== 'success' && (
-              <div className="flex justify-between items-center mt-4 pt-4 sm:mt-8 sm:pt-6 border-t border-gray-700/50">
-                <button
-                  type="button"
-                  onClick={handlePrevious}
-                  disabled={currentStep === 0}
-                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
-                    currentStep === 0 ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' : 'bg-gray-600 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                  <span>Previous</span>
-                </button>
-
-                {currentStep === questions.length - 1 ? (
-                  <button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting || !isStepValid}
-                    className="bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center text-center flex-shrink-0 min-w-0"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <Loader className="h-5 w-5 animate-spin" />
-                        <span className="hidden sm:inline">Submitting...</span>
-                        <span className="sm:hidden">Submitting</span>
-                      </>
-                    ) : (
-                      <>
-                        <span className="hidden sm:inline">Get Your Custom Solution</span>
-                        <span className="sm:hidden">Get Quote</span>
-                      </>
-                    )}
-                  </button>
-                ) : (
+              {submitStatus !== 'success' && (
+                <div className="flex justify-between items-center mt-4 pt-4 sm:mt-8 sm:pt-6 border-t border-gray-700/50">
                   <button
                     type="button"
-                    onClick={handleNext}
-                    disabled={!isStepValid}
-                    className="bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-3 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center space-x-2 flex-shrink-0"
+                    onClick={handlePrevious}
+                    disabled={currentStep === 0}
+                    className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
+                      currentStep === 0
+                        ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+                        : 'bg-gray-600 text-white hover:bg-gray-700'
+                    }`}
                   >
-                    <span>Next</span>
-                    <ArrowRight className="h-5 w-5" />
+                    <ArrowLeft className="h-5 w-5" />
+                    <span>Previous</span>
                   </button>
-                )}
-              </div>
-            )}
+
+                  {currentStep === questions.length - 1 ? (
+                    <button
+                      onClick={handleSubmit}
+                      disabled={isSubmitting || !isStepValid}
+                      className={`px-8 py-3 rounded-xl font-semibold transition-all flex items-center space-x-2 flex-shrink-0 ${
+                        isSubmitting || !isStepValid
+                          ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+                          : 'bg-[#C8A24A] text-black hover:bg-[#E3C36A] shadow-lg shadow-black/40'
+                      }`}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader className="h-5 w-5 animate-spin" />
+                          <span>Submitting...</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>Submit</span>
+                          <ArrowRight className="h-5 w-5" />
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleNext}
+                      disabled={!isStepValid}
+                      className={`px-8 py-3 rounded-xl font-semibold transition-all flex items-center space-x-2 flex-shrink-0 ${
+                        !isStepValid
+                          ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
+                          : 'bg-[#C8A24A] text-black hover:bg-[#E3C36A] shadow-lg shadow-black/40'
+                      }`}
+                    >
+                      <span>Next</span>
+                      <ArrowRight className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
+        </section>
+
+        {/* Pricing */}
+        <div id="pricing">
+          <SubscriptionSection />
         </div>
-      </section>
 
-      <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-              Our{' '}
-              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Premium Services</span>
-            </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto">
-              Professional digital solutions designed to elevate your business and drive real results
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
-              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
-                <Brain className="h-10 w-10 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">AI Voice Agents</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Intelligent AI agents that handle calls, bookings, customer service, and sales conversations with human-like natural speech and understanding.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Phone className="h-4 w-4" />
-                  <span>24/7 Availability</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>Auto Booking</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
-              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Lead Generation</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Drive qualified leads and grow your customer base through strategic social media marketing, targeted advertising, content creation, and comprehensive digital marketing campaigns.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Users className="h-4 w-4" />
-                  <span>Targeted Audience</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <TrendingUp className="h-4 w-4" />
-                  <span>Growth Focused</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
-              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Custom Website Development</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Unique, professionally designed websites built from scratch with no templates. Get a website that truly represents your brand and converts visitors.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Building className="h-4 w-4" />
-                  <span>Custom Design</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Zap className="h-4 w-4" />
-                  <span>High Performance</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center mt-16">
-            <p className="text-lg text-gray-300 mb-8">Ready to transform your business with our premium digital solutions?</p>
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/30 flex items-center justify-center space-x-3 mx-auto"
-            >
-              <Calendar className="h-6 w-6" />
-              <span>Schedule Your Consultation</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <SubscriptionSection />
-
-      <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <Zap className="h-8 w-8 text-[#C8A24A]" />
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
-              Infinite Wealth Solutions
-            </h3>
-          </div>
-          <p className="text-gray-400 mb-3">
-            © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
-          </p>
-
-          <div className="flex items-center justify-center gap-6">
-            <Link to="/demo" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
-              Try AI Agent Demos
-            </Link>
-
-            <Link to="/privacy-policy" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
-              Privacy Policy
-            </Link>
-
-            {/* ✅ Added */}
-            <Link to="/terms-and-conditions" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
-              Terms &amp; Conditions
-            </Link>
-          </div>
-        </div>
-      </footer>
-
-      {/* ✅ Floating "Try Our AI Phone Agent" (Bottom Right) */}
-      <div className="fixed bottom-5 right-5 z-[60]">
-        <button
-          onClick={() => setPhoneModal('voice')}
-          className="group flex items-center gap-3 rounded-2xl px-4 py-3 border backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition"
-          style={{
-            borderColor: 'rgba(200, 162, 74, 0.40)',
-            backgroundColor: 'rgba(0,0,0,0.35)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(227, 195, 106, 0.65)';
-            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.45)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(200, 162, 74, 0.40)';
-            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.35)';
-          }}
-        >
-          <div
-            className="h-10 w-10 rounded-xl flex items-center justify-center"
-            style={{ backgroundColor: 'rgba(200, 162, 74, 0.18)' }}
-          >
-            <Phone className="h-5 w-5" style={{ color: GOLD_HOVER }} />
-          </div>
-
-          <div className="text-left">
-            <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>
-              Try Our AI Phone Agent
-            </div>
-            <div className="text-[11px] text-gray-300 leading-tight">Avery answers instantly</div>
-          </div>
-        </button>
-      </div>
-
-      {/* ✅ Phone Agent Modal */}
-      {phoneModal === 'voice' && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" data-homephone-modal="true">
-          <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60">
-              <div className="font-bold">Try Our AI Phone Agent</div>
-              <button className="text-gray-300 hover:text-white" onClick={closePhoneModal} aria-label="Close">
+        {/* Phone Modal */}
+        {phoneModal === 'voice' && (
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-3xl bg-gray-950 border border-gray-800/70 p-6 sm:p-8 relative">
+              <button
+                className="absolute top-4 right-4 p-2 rounded-xl border border-gray-800/70 hover:border-[#C8A24A]/40 transition-all"
+                onClick={() => setPhoneModal(null)}
+              >
                 <X className="h-5 w-5" />
               </button>
-            </div>
 
-            <div className="p-5">
-              <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
-                <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>
-                  Avery — AI Voice Agent
-                </h3>
+              <h3 className="text-2xl font-bold mb-2">Talk to Avery</h3>
+              <p className="text-gray-400 mb-6">
+                Live voice demo (AI). Ask anything about the services.
+              </p>
 
-                <p className="text-gray-300">
-                  {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                  {voiceStatus === 'live' && 'Live — speak normally.'}
-                  {voiceStatus === 'ended' && 'Call ended.'}
-                  {voiceStatus === 'error' && 'Could not start the call.'}
-                  {voiceStatus === 'idle' && 'Ready.'}
-                </p>
-
-                {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
-
-                {/* Red hang-up button */}
-                <button
-                  className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
-                  style={{
-                    backgroundColor: '#DC2626',
-                    boxShadow: '0 18px 60px rgba(0,0,0,0.6)',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
-                  onClick={() => {
-                    try {
-                      vapiRef.current?.stop();
-                    } catch {}
-                    setVoiceStatus('ended');
-                  }}
-                  aria-label="End call"
-                >
-                  <PhoneOff className="h-10 w-10 text-white" />
-                </button>
-
-                <p className="mt-6 text-xs text-gray-400 max-w-sm">
-                  Your mic may prompt for permission. If it doesn’t connect, close and try again.
-                </p>
+              <div className="p-4 rounded-2xl bg-gray-900/40 border border-gray-800/60">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold">Call status</span>
+                  <span className="text-sm text-gray-400">{voiceStatus}</span>
+                </div>
+                {voiceError && (
+                  <p className="mt-3 text-sm text-red-400">{voiceError}</p>
+                )}
+                <div className="mt-4 flex gap-3">
+                  <button
+                    className="flex-1 px-4 py-3 rounded-xl font-semibold transition-all"
+                    style={{
+                      background:
+                        'linear-gradient(135deg, rgba(200,162,74,0.95), rgba(227,195,106,0.9))',
+                      color: '#000',
+                    }}
+                    onClick={() => {
+                      setVoiceError(null);
+                      setVoiceStatus('idle');
+                      setPhoneModal(null);
+                      setTimeout(() => setPhoneModal('voice'), 50);
+                    }}
+                  >
+                    Restart
+                  </button>
+                  <button
+                    className="flex-1 px-4 py-3 rounded-xl font-semibold border border-gray-700/60 hover:border-[#C8A24A]/40 transition-all"
+                    onClick={() => setPhoneModal(null)}
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
+
+              <p className="text-xs text-gray-500 mt-4">
+                If you don’t hear audio, check your browser mic permissions.
+              </p>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
