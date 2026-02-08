@@ -25,7 +25,7 @@ const GREEN_PROGRESS = '#22c55e';
 
 // ✅ Your n8n test webhook URL
 const WEBHOOK_URL =
-  'https://iwsaiagents.app.n8n.cloud/webhook-test/f8390721-73cc-4594-921c-3afff87774c0';
+  'https://iwsaiagents.app.n8n.cloud/webhook/527c0783-5dd2-47d2-a96d-aacd44a7f924';
 
 // ✅ Supabase Storage bucket name
 const BUCKET = 'media';
