@@ -27,7 +27,7 @@ interface DemoPage {
 type ChatMsg = { role: 'assistant' | 'user'; content: string };
 type ModalMode = 'voice' | 'chat' | null;
 
-const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
+const VAPI_PUBLIC_KEY = 'bbb09258-06b0-44a8-99fd-5a4dee906809';
 const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
 
 // ✅ Slightly richer/less dull gold
