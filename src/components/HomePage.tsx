@@ -71,7 +71,7 @@ const GOLD_HOVER = '#E3C36A';
 // 📞 Vapi Phone Agent (Homepage floating)
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const HOME_VAPI_ASSISTANT_ID = '76efe9e0-957c-410a-9163-75acbceec45e';
-const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Avery speaking, how may I help you?';
+const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Alex speaking, how may I help you?';
 
 type PhoneModalMode = 'voice' | null;
 
@@ -958,7 +958,7 @@ export function HomePage() {
             <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>
               Try Our AI Phone Agent
             </div>
-            <div className="text-[11px] text-gray-300 leading-tight">Avery answers instantly</div>
+            <div className="text-[11px] text-gray-300 leading-tight">Alex answers instantly</div>
           </div>
         </button>
       </div>
@@ -976,7 +976,7 @@ export function HomePage() {
             <div className="p-5">
               <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
                 <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>
-                  Avery — AI Voice Agent
+                  Alex — AI Voice Agent
                 </h3>
 
                 <p className="text-gray-300">
