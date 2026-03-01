@@ -239,6 +239,36 @@ ${knowledgeBase}
       });
     }
 
+    // --- Send Telegram notification (non-blocking) ---
+    (async () => {
+      try {
+        const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
+        const chatbotUrl = `${SUPABASE_URL}/demo/${slug}`;
+
+        const telegramPayload = {
+          companyName: companyNameRaw,
+          websiteUrl: websiteUrlRaw || undefined,
+          industryServices: industryServicesRaw,
+          assistantId,
+          slug,
+          chatbotUrl,
+        };
+
+        await fetch(`${SUPABASE_URL}/functions/v1/telegram-notify`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+          },
+          body: JSON.stringify(telegramPayload),
+        }).catch((err) => {
+          console.error('Telegram notification failed:', err);
+        });
+      } catch (err) {
+        console.error('Telegram notification error:', err);
+      }
+    })();
+
     return new Response(JSON.stringify({ assistantId, slug }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
