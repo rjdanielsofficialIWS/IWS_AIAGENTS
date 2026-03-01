@@ -174,7 +174,7 @@ ${knowledgeBase}
       name: safeName,
       voice: {
         model: 'eleven_turbo_v2',
-        voiceId: '1rviaVF7GGGkTU36HNpz',
+        voiceId: '7EzWGsX10sAS4c9m9cPf',
         provider: '11labs',
         stability: 0.5,
         similarityBoost: 0.75,
@@ -184,7 +184,7 @@ ${knowledgeBase}
         model: 'gpt-4o-mini',
         messages: [{ role: 'system', content: systemMessageContent }],
       },
-      firstMessage: `Thanks for calling ${companyNameRaw} — this is Avery. How can I help you today?`,
+      firstMessage: `Thanks for calling ${companyNameRaw} — this is Alex. How can I help you today?`,
       maxDurationSeconds: 60,
       endCallMessage: `Perfect — thanks again for calling ${companyNameRaw}. Take care!`,
       transcriber: {
