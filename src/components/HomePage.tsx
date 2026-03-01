@@ -592,7 +592,7 @@ export function HomePage() {
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
             >
               <MessageSquare className="h-6 w-6" />
-              <span>Get a Package Quote</span>
+              <span>FREE AI Phone Agent</span>
             </button>
 
             <a
