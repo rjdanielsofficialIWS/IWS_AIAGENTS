@@ -143,10 +143,11 @@ export function HomePage() {
       icon: MessageSquare,
       required: true,
     },
-    // ✅ Kept the same as it is currently (but skipped for testing)
+    // ✅ Contact info collected BEFORE submission
     {
       id: 'contactInfo',
-      title: '',
+      title: 'Your Contact Info',
+      subtitle: 'We\'ll send your demo link here',
       type: 'multi-input',
       fields: [
         {
@@ -305,6 +306,10 @@ export function HomePage() {
           companyName: data.business,
           websiteUrl: data.websiteUrl,
           industryServices: data.industryServices,
+          // ✅ Contact info now included in submission
+          contactName: data.name,
+          contactEmail: data.email,
+          contactPhone: `${data.countryCode} ${data.phone}`,
         }),
       });
 
@@ -320,7 +325,7 @@ export function HomePage() {
   };
 
   const handleSubmit = async () => {
-    // ✅ For testing: submit after step 2, so only validate steps 1–2 fields.
+    // Validate all required fields before submitting
     if (!formData.business.trim()) {
       setCurrentError('Company Name is required');
       setSubmitStatus('error');
@@ -333,6 +338,21 @@ export function HomePage() {
     }
     if (!formData.industryServices.trim()) {
       setCurrentError('Industry and Services is required');
+      setSubmitStatus('error');
+      return;
+    }
+    if (!formData.name.trim()) {
+      setCurrentError('Name is required');
+      setSubmitStatus('error');
+      return;
+    }
+    if (!formData.email.trim() || !validateEmail(formData.email)) {
+      setCurrentError('A valid email address is required');
+      setSubmitStatus('error');
+      return;
+    }
+    if (!formData.phone.trim() || !validatePhone(formData.phone)) {
+      setCurrentError('A valid phone number is required');
       setSubmitStatus('error');
       return;
     }
@@ -353,9 +373,12 @@ export function HomePage() {
         setCreatedSlug(result.slug || null);
         trackHighIntent({ name: 'form_success', label: 'package_quote_form' });
 
-        // Reset ONLY step 1–2 fields for testing.
+        // Reset form fields after successful submission
         setFormData((prev) => ({
           ...prev,
+          name: '',
+          email: '',
+          phone: '',
           business: '',
           websiteUrl: '',
           industryServices: '',
@@ -375,8 +398,8 @@ export function HomePage() {
   const handleNext = () => {
     if (!validateCurrentStep()) return;
 
-    // ✅ For testing: submit right after Industry & Services (step index 1)
-    if (currentStep === 1) {
+    // ✅ Step 3 (index 2) is the contact info step — it triggers submission
+    if (currentStep === 2) {
       handleSubmit();
       return;
     }
@@ -569,7 +592,7 @@ export function HomePage() {
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
             >
               <MessageSquare className="h-6 w-6" />
-              <span>FREE AI Voice Agent</span>
+              <span>Get a Package Quote</span>
             </button>
 
             <a
@@ -589,26 +612,6 @@ export function HomePage() {
             id="lead-capture"
             className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto"
           >
-            {submitStatus === 'success' && (
-              <div className="mb-8 p-4 bg-green-500/10 border border-green-500/50 rounded-lg flex items-center space-x-3">
-                <CheckCircle className="h-6 w-6 text-green-400" />
-                <div>
-                  <p className="text-green-300">Thank you! Your submission has been received. We'll be in touch soon.</p>
-                  {createdAssistantId && (
-                    <p className="text-green-300/80 mt-1 text-sm">
-                      Assistant created: <span className="font-mono">{createdAssistantId}</span>
-                      {createdSlug ? (
-                        <>
-                          {' '}
-                          • Demo slug: <span className="font-mono">{createdSlug}</span>
-                        </>
-                      ) : null}
-                    </p>
-                  )}
-                </div>
-              </div>
-            )}
-
             {submitStatus === 'error' && (
               <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center space-x-3">
                 <AlertCircle className="h-6 w-6 text-red-400" />
@@ -645,13 +648,36 @@ export function HomePage() {
             )}
 
             {submitStatus === 'success' ? (
+              // ✅ Confirmation message: only show the demo link
               <div className="text-center py-12">
                 <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
                   <CheckCircle className="h-12 w-12 text-green-400" />
                 </div>
-                <h4 className="text-3xl font-bold mb-4">Thank You!</h4>
-                <p className="text-xl text-gray-300 mb-6">Your submission has been received successfully.</p>
-                <p className="text-gray-400">We'll be in touch soon to discuss your custom solution.</p>
+                <h4 className="text-3xl font-bold mb-6">You're All Set!</h4>
+                <p className="text-lg text-gray-300 mb-8">
+                  You can test out your demo agent here:
+                </p>
+                {createdSlug ? (
+                  <a
+                    href={`https://infinitewealthsolutionsai.com/demo/${createdSlug}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center space-x-2 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 text-lg"
+                  >
+                    <span>infinitewealthsolutionsai.com/demo/{createdSlug}</span>
+                    <ArrowRight className="h-5 w-5" />
+                  </a>
+                ) : (
+                  <a
+                    href="https://infinitewealthsolutionsai.com/demo"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center space-x-2 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 text-lg"
+                  >
+                    <span>infinitewealthsolutionsai.com/demo</span>
+                    <ArrowRight className="h-5 w-5" />
+                  </a>
+                )}
               </div>
             ) : (
               <div className="relative overflow-hidden">
@@ -779,7 +805,7 @@ export function HomePage() {
                   <span>Previous</span>
                 </button>
 
-                {/* ✅ For testing: step 2 triggers submit via handleNext() */}
+                {/* ✅ Step 3 (index 2) triggers submit */}
                 <button
                   type="button"
                   onClick={handleNext}
@@ -795,7 +821,7 @@ export function HomePage() {
                       <Loader className="h-5 w-5 animate-spin" />
                       <span>Submitting...</span>
                     </>
-                  ) : currentStep === 1 ? (
+                  ) : currentStep === 2 ? (
                     <>
                       <span>Submit</span>
                       <ArrowRight className="h-5 w-5" />
@@ -1009,7 +1035,7 @@ export function HomePage() {
                 </button>
 
                 <p className="mt-6 text-xs text-gray-400 max-w-sm">
-                  Your mic may prompt for permission. If it doesn’t connect, close and try again.
+                  Your mic may prompt for permission. If it doesn't connect, close and try again.
                 </p>
               </div>
             </div>
