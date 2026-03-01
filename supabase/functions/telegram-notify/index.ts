@@ -11,6 +11,10 @@ interface LeadData {
   assistantId: string;
   slug: string;
   chatbotUrl?: string;
+  // ✅ Contact info fields
+  contactName?: string;
+  contactEmail?: string;
+  contactPhone?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -50,13 +54,24 @@ Deno.serve(async (req: Request) => {
       ? `\n🔗 Demo Page: ${body.chatbotUrl}`
       : "";
 
+    // ✅ Contact info lines — only shown if provided
+    const contactLines = [
+      body.contactName  ? `👤 Name: ${body.contactName}`   : null,
+      body.contactEmail ? `📧 Email: ${body.contactEmail}` : null,
+      body.contactPhone ? `📞 Phone: ${body.contactPhone}` : null,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    const contactSection = contactLines ? `\n\n--- Contact Info ---\n${contactLines}` : "";
+
     const message = `🎉 NEW LEAD RECEIVED
 
 🏢 Company: ${body.companyName}
 🌐 Website: ${websiteDisplay}
 💼 Industry: ${body.industryServices}
 🤖 Assistant ID: ${body.assistantId}
-📄 Demo Slug: ${body.slug}${chatbotUrl}
+📄 Demo Slug: ${body.slug}${chatbotUrl}${contactSection}
 ⏰ Submitted: ${new Date().toLocaleString()}`;
 
     const telegramApiUrl = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
