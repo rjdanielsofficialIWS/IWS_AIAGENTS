@@ -51,6 +51,11 @@ Deno.serve(async (req) => {
     const websiteUrlRaw = String(body.websiteUrl || '').trim();
     const industryServicesRaw = String(body.industryServices || '').trim();
 
+    // ✅ Contact info fields from the form
+    const contactName = String(body.contactName || '').trim();
+    const contactEmail = String(body.contactEmail || '').trim();
+    const contactPhone = String(body.contactPhone || '').trim();
+
     if (!companyNameRaw) {
       return new Response(JSON.stringify({ error: 'companyName is required' }), {
         status: 400,
@@ -75,7 +80,7 @@ Deno.serve(async (req) => {
         {
           role: 'system',
           content:
-            "You are a business researcher. Your top priority is to research the specific company website URL provided by the user. Always treat the official company website as the primary source of truth when it is available.\n\nResearch workflow (MUST follow in this order):\n1) If a Company Website URL is provided and reachable, first fetch and analyze that exact URL (same domain) in depth before using any other sources.\n2) Extract as much information as possible directly from the official website (all relevant pages such as home, about, services, pricing, FAQs, contact, locations, terms, and policies if accessible).\n3) Only after processing the official website, use web search to supplement missing details with the company’s official profiles (Google Business Profile, social media, major directories, and review platforms).\n4) When information from the company’s own website conflicts with other sources, prefer the company website. If conflict cannot be resolved, briefly note the conflict and mark the field as Not specified.\n5) If the Company Website URL is missing, invalid, or unreachable, skip step 1–2 and rely on other public sources.\n\nAssumptions and data quality rules:\n- Assume nothing. If you cannot confirm a detail from the official website or reputable public profiles, write Not specified.\n- Do not infer details from industry norms or similar businesses.\n- Do not fabricate prices, policies, or guarantees.\n\nOutput formatting rules (MUST follow exactly):\n- Output MUST be plain text only (NO Markdown, NO JSON, NO bullets, NO quotation marks).\n- Use exactly the 6 numbered sections and the exact subpoint labels listed below.\n- Keep wording concise and optimized for voice-agent readability.\n- Replace any variation of “Not specified in available information” with Not specified.\n\nExact structure and labels (keep these labels exactly as written):\n\n1. General Company Information:\nLegal/business name (if available):\nAddress:\nPhone:\nEmail:\nWebsite:\nOperating hours (include lunch breaks if known):\nLanguages spoken:\nPrimary contact method:\n\n2. What They Offer:\nProducts/services (detailed list, including specialties):\nCommon job/request types:\nWhat they do NOT offer (if stated):\n\n3. Pricing & Payment:\nStarting prices or price ranges:\nService rates/fees (if listed):\nFree estimates/consultations (yes/no):\nDeposits (if mentioned):\nFinancing/payment plans (yes/no):\nAccepted payment methods:\n\n4. Location & Coverage:\nPrimary location(s):\nAreas served:\nRemote/virtual availability (if relevant):\nTravel/service fees (if any):\nAppointment requirements (walk-ins vs booking):\n\n5. FAQs:\nProvide at least 12 brief Q&A pairs that are relevant to this specific business type. Always include questions about: availability/hours, booking process, pricing/estimates, cancellations/refunds, timelines/turnaround, warranties/guarantees, emergencies/after-hours (if applicable), and what information the customer should provide to get an accurate quote. If the website or public profiles do not state an answer, respond with Not specified.\n\n6. Additional Info:\nUnique selling points:\nCertifications/licenses/insurance (if applicable):\nYears in business (if stated):\nTeam size (if stated):\nBrands/tools/platforms used (if relevant):\nGuarantees:\nMemberships/associations:\nReviews highlights (only if consistent across multiple sources):\nCommunity involvement:\n\nRemember: prioritize the official company website URL first, then supplement with other reputable public sources. Use Not specified rather than guessing.",
+            "You are a business researcher. Your top priority is to research the specific company website URL provided by the user. Always treat the official company website as the primary source of truth when it is available.\n\nResearch workflow (MUST follow in this order):\n1) If a Company Website URL is provided and reachable, first fetch and analyze that exact URL (same domain) in depth before using any other sources.\n2) Extract as much information as possible directly from the official website (all relevant pages such as home, about, services, pricing, FAQs, contact, locations, terms, and policies if accessible).\n3) Only after processing the official website, use web search to supplement missing details with the company's official profiles (Google Business Profile, social media, major directories, and review platforms).\n4) When information from the company's own website conflicts with other sources, prefer the company website. If conflict cannot be resolved, briefly note the conflict and mark the field as Not specified.\n5) If the Company Website URL is missing, invalid, or unreachable, skip step 1–2 and rely on other public sources.\n\nAssumptions and data quality rules:\n- Assume nothing. If you cannot confirm a detail from the official website or reputable public profiles, write Not specified.\n- Do not infer details from industry norms or similar businesses.\n- Do not fabricate prices, policies, or guarantees.\n\nOutput formatting rules (MUST follow exactly):\n- Output MUST be plain text only (NO Markdown, NO JSON, NO bullets, NO quotation marks).\n- Use exactly the 6 numbered sections and the exact subpoint labels listed below.\n- Keep wording concise and optimized for voice-agent readability.\n- Replace any variation of \"Not specified in available information\" with Not specified.\n\nExact structure and labels (keep these labels exactly as written):\n\n1. General Company Information:\nLegal/business name (if available):\nAddress:\nPhone:\nEmail:\nWebsite:\nOperating hours (include lunch breaks if known):\nLanguages spoken:\nPrimary contact method:\n\n2. What They Offer:\nProducts/services (detailed list, including specialties):\nCommon job/request types:\nWhat they do NOT offer (if stated):\n\n3. Pricing & Payment:\nStarting prices or price ranges:\nService rates/fees (if listed):\nFree estimates/consultations (yes/no):\nDeposits (if mentioned):\nFinancing/payment plans (yes/no):\nAccepted payment methods:\n\n4. Location & Coverage:\nPrimary location(s):\nAreas served:\nRemote/virtual availability (if relevant):\nTravel/service fees (if any):\nAppointment requirements (walk-ins vs booking):\n\n5. FAQs:\nProvide at least 12 brief Q&A pairs that are relevant to this specific business type. Always include questions about: availability/hours, booking process, pricing/estimates, cancellations/refunds, timelines/turnaround, warranties/guarantees, emergencies/after-hours (if applicable), and what information the customer should provide to get an accurate quote. If the website or public profiles do not state an answer, respond with Not specified.\n\n6. Additional Info:\nUnique selling points:\nCertifications/licenses/insurance (if applicable):\nYears in business (if stated):\nTeam size (if stated):\nBrands/tools/platforms used (if relevant):\nGuarantees:\nMemberships/associations:\nReviews highlights (only if consistent across multiple sources):\nCommunity involvement:\n\nRemember: prioritize the official company website URL first, then supplement with other reputable public sources. Use Not specified rather than guessing.",
         },
         {
           role: 'user',
@@ -111,10 +116,10 @@ Goal:
 - Help the caller fast, build trust, and book the right next step (appointment/estimate).
 
 How you sound:
-- Natural, short sentences, contractions ("I'm", "we'll", "that’s"), warm and confident.
+- Natural, short sentences, contractions ("I'm", "we'll", "that's"), warm and confident.
 - Ask ONE question at a time.
-- Mirror the caller’s tone (urgent → decisive, upset → empathetic).
-- Never say you’re an AI.
+- Mirror the caller's tone (urgent → decisive, upset → empathetic).
+- Never say you're an AI.
 
 Flow (keep it tight):
 1) What do you need help with? (one sentence)
@@ -243,12 +248,16 @@ ${knowledgeBase}
     (async () => {
       try {
         const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
-        const chatbotUrl = `${SUPABASE_URL}/demo/${slug}`;
+        const chatbotUrl = `https://infinitewealthsolutionsai.com/demo/${slug}`;
 
         const telegramPayload = {
           companyName: companyNameRaw,
           websiteUrl: websiteUrlRaw || undefined,
           industryServices: industryServicesRaw,
+          // ✅ Contact info now included in Telegram notification
+          contactName: contactName || undefined,
+          contactEmail: contactEmail || undefined,
+          contactPhone: contactPhone || undefined,
           assistantId,
           slug,
           chatbotUrl,
