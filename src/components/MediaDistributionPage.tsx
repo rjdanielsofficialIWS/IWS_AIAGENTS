@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -16,6 +16,9 @@ import {
   Video,
   Mic,
   ChevronRight,
+  Link2,
+  Link2Off,
+  RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
@@ -23,18 +26,44 @@ const GOLD_PRIMARY = '#D6B25E';
 const GOLD_HOVER = '#F0D27C';
 const GREEN_PROGRESS = '#22c55e';
 
-// ✅ Your n8n test webhook URL
-const WEBHOOK_URL =
-  'https://iwsaiagents.app.n8n.cloud/webhook-test/527c0783-5dd2-47d2-a96d-aacd44a7f924';
+// ─────────────────────────────────────────────
+// POSTIZ CONFIG — fill these in after registering
+// your OAuth app in Postiz Settings → Developers → Apps
+// ─────────────────────────────────────────────
+const POSTIZ_FRONTEND_URL = 'https://platform.postiz.com';
+const POSTIZ_BACKEND_URL = 'https://api.postiz.com';
 
-// ✅ Supabase Storage bucket name
+// Client ID from your Postiz OAuth app (starts with pca_)
+const POSTIZ_CLIENT_ID = 'pca_YOUR_CLIENT_ID_HERE';
+
+// Your app's redirect URL — must match exactly what you set in Postiz
+// e.g. https://yourdomain.com/media-distribution?postiz_callback=1
+const POSTIZ_REDIRECT_URL = `${window.location.origin}${window.location.pathname}?postiz_callback=1`;
+
+// LocalStorage keys for token persistence
+const LS_TOKEN_KEY = 'postiz_access_token';
+const LS_STATE_KEY = 'postiz_oauth_state';
+
+// ─────────────────────────────────────────────
+// Supabase Storage
+// ─────────────────────────────────────────────
 const BUCKET = 'media';
-
-// ✅ Supabase free plan safe limit (use 49MB to avoid edge cases)
-const MAX_BYTES = 49 * 1024 * 1024; // 49MB
-
-// Signed URL fallback duration (only used if bucket is private)
+const MAX_BYTES = 49 * 1024 * 1024;
 const SIGNED_URL_SECONDS = 60 * 60 * 24 * 7;
+
+// ─────────────────────────────────────────────
+// POSTIZ PLATFORM MAP
+// Maps our internal PlatformKey → Postiz integration type identifiers
+// ─────────────────────────────────────────────
+const POSTIZ_PLATFORM_TYPE: Record<string, string> = {
+  instagram: 'instagram',
+  tiktok: 'tiktok',
+  facebook: 'facebook',
+  youtube: 'youtube',
+  twitterVideo: 'twitter',
+  linkedin: 'linkedin',
+  twitterPosts: 'twitter',
+};
 
 type MediaKind = 'video' | 'audio' | 'thumbnail';
 
@@ -101,6 +130,19 @@ const PLATFORM_META: Record<
   twitterPosts: { label: 'Twitter/X Posts', sub: 'Standalone posts (AI step)', kind: 'posts' },
 };
 
+// ─────────────────────────────────────────────
+// POSTIZ INTEGRATION TYPE
+// ─────────────────────────────────────────────
+type PostizIntegration = {
+  id: string;
+  name: string;
+  type: string; // 'instagram', 'twitter', etc.
+  picture?: string;
+};
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 function prettyBytes(bytes: number) {
   if (!bytes || bytes < 1) return '0 B';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -109,6 +151,54 @@ function prettyBytes(bytes: number) {
   return `${val.toFixed(val >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+function generateState(): string {
+  const arr = new Uint8Array(16);
+  window.crypto.getRandomValues(arr);
+  return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// ─────────────────────────────────────────────
+// POSTIZ API HELPERS
+// ─────────────────────────────────────────────
+async function postizFetch(
+  path: string,
+  token: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  return fetch(`${POSTIZ_BACKEND_URL}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: token,
+      ...(options.headers || {}),
+    },
+  });
+}
+
+async function fetchPostizIntegrations(token: string): Promise<PostizIntegration[]> {
+  const res = await postizFetch('/public/v1/integrations', token);
+  if (!res.ok) throw new Error(`Failed to load integrations (${res.status})`);
+  const data = await res.json();
+  // Postiz returns { integrations: [...] }
+  return Array.isArray(data?.integrations) ? data.integrations : [];
+}
+
+// ─────────────────────────────────────────────
+// POSTIZ OAUTH FLOW
+// ─────────────────────────────────────────────
+function buildPostizAuthUrl(state: string): string {
+  const params = new URLSearchParams({
+    client_id: POSTIZ_CLIENT_ID,
+    response_type: 'code',
+    redirect_uri: POSTIZ_REDIRECT_URL,
+    state,
+  });
+  return `${POSTIZ_FRONTEND_URL}/oauth/authorize?${params.toString()}`;
+}
+
+// ─────────────────────────────────────────────
+// SUBCOMPONENTS
+// ─────────────────────────────────────────────
 function PlatformBadge({ ok }: { ok: boolean }) {
   return ok ? (
     <span className="inline-flex items-center gap-1 text-xs font-extrabold text-green-200">
@@ -300,16 +390,12 @@ function ListRow({
   );
 }
 
-/**
- * ✅ Progress bar with labels horizontally across (no box pills)
- * ✅ Excludes Review from the label row (per request)
- */
 function ProgressBarLine({
   labels,
   activeIndex,
 }: {
   labels: string[];
-  activeIndex: number; // 0-based
+  activeIndex: number;
 }) {
   const pct = labels.length <= 1 ? 100 : Math.round((activeIndex / (labels.length - 1)) * 100);
 
@@ -323,7 +409,6 @@ function ProgressBarLine({
           <div className="text-xs text-white/60">{pct}%</div>
         </div>
 
-        {/* progress bar */}
         <div className="mt-3 h-3 w-full rounded-full bg-black/30 border border-white/10 overflow-hidden">
           <div
             className="h-full rounded-full"
@@ -334,7 +419,6 @@ function ProgressBarLine({
           />
         </div>
 
-        {/* ✅ Horizontal labels */}
         <div className="mt-4 flex items-center justify-between gap-3">
           {labels.map((l, i) => (
             <div
@@ -356,7 +440,6 @@ function ProgressBarLine({
           ))}
         </div>
 
-        {/* tiny tick markers */}
         <div className="mt-2 flex items-center justify-between">
           {labels.map((l, i) => (
             <div key={`${l}-tick`} className="flex-1 flex justify-center">
@@ -376,24 +459,227 @@ function ProgressBarLine({
   );
 }
 
+// ─────────────────────────────────────────────
+// POSTIZ CONNECT BANNER
+// Shown at top of page — persists across all steps
+// ─────────────────────────────────────────────
+function PostizConnectBanner({
+  token,
+  integrations,
+  integrationsLoading,
+  integrationsError,
+  onConnect,
+  onDisconnect,
+  onRefreshIntegrations,
+}: {
+  token: string | null;
+  integrations: PostizIntegration[];
+  integrationsLoading: boolean;
+  integrationsError: string | null;
+  onConnect: () => void;
+  onDisconnect: () => void;
+  onRefreshIntegrations: () => void;
+}) {
+  const connected = Boolean(token);
+
+  return (
+    <div
+      className="rounded-2xl border p-4 mb-6"
+      style={{
+        borderColor: connected ? 'rgba(34,197,94,0.3)' : 'rgba(214,178,94,0.3)',
+        background: connected ? 'rgba(34,197,94,0.05)' : 'rgba(214,178,94,0.05)',
+      }}
+    >
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div
+            className="h-10 w-10 rounded-2xl border flex items-center justify-center shrink-0"
+            style={{
+              borderColor: connected ? 'rgba(34,197,94,0.3)' : 'rgba(214,178,94,0.3)',
+              background: connected ? 'rgba(34,197,94,0.1)' : 'rgba(214,178,94,0.1)',
+            }}
+          >
+            {connected ? (
+              <Link2 className="h-5 w-5 text-green-300" />
+            ) : (
+              <Link2Off className="h-5 w-5" style={{ color: GOLD_PRIMARY }} />
+            )}
+          </div>
+          <div>
+            <div className="font-extrabold text-white text-sm">
+              {connected ? 'Social accounts connected' : 'Connect your social accounts'}
+            </div>
+            <div className="text-xs mt-0.5" style={{ color: connected ? 'rgba(134,239,172,0.8)' : 'rgba(214,178,94,0.7)' }}>
+              {connected
+                ? integrationsLoading
+                  ? 'Loading accounts…'
+                  : integrationsError
+                    ? integrationsError
+                    : integrations.length
+                      ? integrations.map((i) => i.name).join(' · ')
+                      : 'No social accounts found — add them in your dashboard'
+                : 'Authorize to schedule posts directly to your social accounts'}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {connected && (
+            <button
+              type="button"
+              onClick={onRefreshIntegrations}
+              disabled={integrationsLoading}
+              className="rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${integrationsLoading ? 'animate-spin' : ''}`} />
+              Refresh
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={connected ? onDisconnect : onConnect}
+            className="rounded-xl px-4 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 border"
+            style={
+              connected
+                ? { borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)', color: '#fca5a5' }
+                : { borderColor: 'rgba(214,178,94,0.4)', background: 'rgba(214,178,94,0.12)', color: GOLD_HOVER }
+            }
+          >
+            {connected ? (
+              <>
+                <Link2Off className="h-3.5 w-3.5" /> Disconnect
+              </>
+            ) : (
+              <>
+                <Link2 className="h-3.5 w-3.5" /> Connect Accounts
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// MAIN PAGE
+// ─────────────────────────────────────────────
 export function MediaDistributionPage() {
   const [bgOffset, setBgOffset] = useState(0);
-
-  // 1 Platforms
-  // 2 Video
-  // 3 Captions
-  // 4 Twitter Posts (optional)
-  // 5 Schedule
-  // 6 Review (excluded from label row)
   const [step, setStep] = useState<1 | 2 | 3 | 4 | 5 | 6>(1);
 
-  // ✅ Scroll to top whenever step changes (next/back/any navigation)
   useEffect(() => {
-    // Use instant scroll on mobile to avoid janky "smooth" with fixed backgrounds
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   }, [step]);
 
-  // Step 1: platforms (default all unselected)
+  // ── POSTIZ AUTH STATE ──
+  const [postizToken, setPostizToken] = useState<string | null>(() =>
+    localStorage.getItem(LS_TOKEN_KEY)
+  );
+  const [integrations, setIntegrations] = useState<PostizIntegration[]>([]);
+  const [integrationsLoading, setIntegrationsLoading] = useState(false);
+  const [integrationsError, setIntegrationsError] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading] = useState(false);
+  const [oauthError, setOauthError] = useState<string | null>(null);
+
+  // ── HANDLE OAUTH CALLBACK (runs on mount if ?postiz_callback=1 is in URL) ──
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('postiz_callback') !== '1') return;
+
+    const code = params.get('code');
+    const state = params.get('state');
+    const error = params.get('error');
+
+    // Clean URL immediately
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, '', cleanUrl);
+
+    if (error === 'access_denied') {
+      setOauthError('Authorization was denied. Please try connecting again.');
+      return;
+    }
+
+    if (!code) {
+      setOauthError('No authorization code received. Please try again.');
+      return;
+    }
+
+    // Verify CSRF state
+    const savedState = localStorage.getItem(LS_STATE_KEY);
+    if (!savedState || savedState !== state) {
+      setOauthError('Security check failed (state mismatch). Please try again.');
+      return;
+    }
+    localStorage.removeItem(LS_STATE_KEY);
+
+    // Exchange code for token via your backend proxy
+    // NOTE: You must create a small server-side endpoint that holds your client_secret
+    // and exchanges the code. Never expose client_secret in frontend code.
+    // Example endpoint: POST /api/postiz/token { code }
+    setOauthLoading(true);
+    fetch('/api/postiz/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code }),
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const text = await res.text().catch(() => '');
+          throw new Error(`Token exchange failed (${res.status}). ${text}`);
+        }
+        return res.json();
+      })
+      .then(({ access_token }) => {
+        if (!access_token) throw new Error('No access_token in response');
+        localStorage.setItem(LS_TOKEN_KEY, access_token);
+        setPostizToken(access_token);
+        setOauthError(null);
+      })
+      .catch((e: any) => {
+        setOauthError(e?.message || 'Failed to complete authorization');
+      })
+      .finally(() => setOauthLoading(false));
+  }, []);
+
+  // ── LOAD INTEGRATIONS WHEN TOKEN CHANGES ──
+  const loadIntegrations = useCallback(async (token: string) => {
+    setIntegrationsLoading(true);
+    setIntegrationsError(null);
+    try {
+      const list = await fetchPostizIntegrations(token);
+      setIntegrations(list);
+    } catch (e: any) {
+      setIntegrationsError(e?.message || 'Failed to load integrations');
+      setIntegrations([]);
+    } finally {
+      setIntegrationsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (postizToken) {
+      loadIntegrations(postizToken);
+    } else {
+      setIntegrations([]);
+    }
+  }, [postizToken, loadIntegrations]);
+
+  const handleConnectPostiz = () => {
+    const state = generateState();
+    localStorage.setItem(LS_STATE_KEY, state);
+    window.location.href = buildPostizAuthUrl(state);
+  };
+
+  const handleDisconnectPostiz = () => {
+    localStorage.removeItem(LS_TOKEN_KEY);
+    localStorage.removeItem(LS_STATE_KEY);
+    setPostizToken(null);
+    setIntegrations([]);
+    setOauthError(null);
+  };
+
+  // ── STEP STATE ──
   const [selected, setSelected] = useState<Record<PlatformKey, boolean>>({
     instagram: false,
     tiktok: false,
@@ -404,15 +690,11 @@ export function MediaDistributionPage() {
     twitterPosts: false,
   });
 
-  // Step 2: video upload
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUpload, setVideoUpload] = useState<UploadState>({ status: 'idle' });
-
-  // Optional thumbnail
   const [thumbnailFile, setThumbnailFile] = useState<File | null>(null);
   const [thumbnailUpload, setThumbnailUpload] = useState<UploadState>({ status: 'idle' });
 
-  // Shared AI settings + audio upload
   const [tone, setTone] = useState('confident, punchy, value-first');
   const [aiMode, setAiMode] = useState(false);
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -420,7 +702,6 @@ export function MediaDistributionPage() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // Step 3: per-platform copy (captions/titles/text)
   const [captionInstagram, setCaptionInstagram] = useState('');
   const [captionTikTok, setCaptionTikTok] = useState('');
   const [captionFacebook, setCaptionFacebook] = useState('');
@@ -428,11 +709,9 @@ export function MediaDistributionPage() {
   const [twitterVideoText, setTwitterVideoText] = useState('');
   const [linkedinText, setLinkedinText] = useState('');
 
-  // Step 4: Twitter/X Posts
   const [twitterPosts, setTwitterPosts] = useState<string[]>(['', '', '']);
   const [activeTweetIndex, setActiveTweetIndex] = useState<number | null>(null);
 
-  // Step 5: schedule
   const [scheduleMode, setScheduleMode] = useState<'same' | 'different'>('same');
   const [scheduleDate, setScheduleDate] = useState('');
   const [scheduleTime, setScheduleTime] = useState('');
@@ -451,17 +730,16 @@ export function MediaDistributionPage() {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitOk, setSubmitOk] = useState(false);
+  const [submitResults, setSubmitResults] = useState<
+    { platform: string; ok: boolean; message: string }[]
+  >([]);
 
-  // Modals
   const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<
     Exclude<PlatformKey, 'twitterPosts'> | null
   >(null);
   const [activeSchedulePlatform, setActiveSchedulePlatform] = useState<PlatformKey | null>(null);
-
-  // Review list modal
   const [reviewPlatform, setReviewPlatform] = useState<PlatformKey | null>(null);
 
-  // ✅ refs to make date/time pickers work reliably on mobile (tap wrapper => open picker)
   const sameDateRef = useRef<HTMLInputElement | null>(null);
   const sameTimeRef = useRef<HTMLInputElement | null>(null);
   const modalDateRef = useRef<HTMLInputElement | null>(null);
@@ -489,7 +767,6 @@ export function MediaDistributionPage() {
         raf = 0;
       });
     };
-
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
     return () => {
@@ -501,6 +778,7 @@ export function MediaDistributionPage() {
   const resetSubmitState = () => {
     setSubmitOk(false);
     setSubmitError(null);
+    setSubmitResults([]);
   };
 
   const sizeGuard = (file: File, kind: MediaKind) => {
@@ -518,7 +796,6 @@ export function MediaDistributionPage() {
     const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
     const publicUrl = pub?.data?.publicUrl;
     if (publicUrl) return publicUrl;
-
     const { data, error } = await supabase.storage
       .from(BUCKET)
       .createSignedUrl(path, SIGNED_URL_SECONDS);
@@ -526,21 +803,14 @@ export function MediaDistributionPage() {
     return data.signedUrl;
   };
 
-  const uploadFile = async (
-    file: File,
-    kind: MediaKind,
-    setState: (s: UploadState) => void
-  ) => {
+  const uploadFile = async (file: File, kind: MediaKind, setState: (s: UploadState) => void) => {
     resetSubmitState();
-
     const guardMsg = sizeGuard(file, kind);
     if (guardMsg) {
       setState({ status: 'error', message: guardMsg });
       return;
     }
-
     setState({ status: 'uploading' });
-
     try {
       const safeName = file.name.replace(/\s+/g, '-');
       const ext = safeName.includes('.') ? safeName.split('.').pop() : '';
@@ -557,88 +827,53 @@ export function MediaDistributionPage() {
       if (upErr) throw new Error(upErr.message || 'Upload failed');
 
       const url = await getPublicOrSignedUrl(path);
-
-      setState({
-        status: 'done',
-        path,
-        url,
-        fileName: file.name,
-        mime: file.type || 'unknown',
-        size: file.size,
-      });
+      setState({ status: 'done', path, url, fileName: file.name, mime: file.type || 'unknown', size: file.size });
     } catch (e: any) {
       setState({ status: 'error', message: e?.message || 'Upload failed' });
     }
   };
 
-  // ---- Timezone conversion (ET -> UTC) ----
+  // ── TIMEZONE ──
   const TZ_ET = 'America/New_York';
   const pad2 = (n: number) => String(n).padStart(2, '0');
 
   const formatPartsInTz = (d: Date, timeZone: string) => {
     const dtf = new Intl.DateTimeFormat('en-US', {
       timeZone,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
-
     const parts = dtf.formatToParts(d);
     const get = (type: string) => parts.find((p) => p.type === type)?.value || '';
-
     return {
-      year: Number(get('year')),
-      month: Number(get('month')),
-      day: Number(get('day')),
-      hour: Number(get('hour')),
-      minute: Number(get('minute')),
-      second: Number(get('second')),
+      year: Number(get('year')), month: Number(get('month')), day: Number(get('day')),
+      hour: Number(get('hour')), minute: Number(get('minute')), second: Number(get('second')),
     };
   };
 
   const toUtcFromEtLocal = (dateStr: string, timeStr: string): ScheduleInfo => {
-    if (!dateStr || !timeStr) {
-      return { ok: false, message: 'Choose a schedule date and time (ET).' };
-    }
-
+    if (!dateStr || !timeStr) return { ok: false, message: 'Choose a schedule date and time (ET).' };
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
     const t = /^(\d{2}):(\d{2})$/.exec(timeStr);
     if (!m || !t) return { ok: false, message: 'Invalid date/time format.' };
 
-    const y = Number(m[1]);
-    const mo = Number(m[2]);
-    const da = Number(m[3]);
-    const hh = Number(t[1]);
-    const mm = Number(t[2]);
+    const y = Number(m[1]), mo = Number(m[2]), da = Number(m[3]);
+    const hh = Number(t[1]), mm = Number(t[2]);
 
     let guess = Date.UTC(y, mo - 1, da, hh, mm, 0);
     for (let i = 0; i < 4; i++) {
       const d = new Date(guess);
       const et = formatPartsInTz(d, TZ_ET);
-
       const desiredUtcAsIf = Date.UTC(y, mo - 1, da, hh, mm, 0);
       const gotUtcAsIf = Date.UTC(et.year, et.month - 1, et.day, et.hour, et.minute, 0);
-
       const diffMs = desiredUtcAsIf - gotUtcAsIf;
       if (Math.abs(diffMs) < 1000) break;
       guess += diffMs;
     }
 
     const utcDate = new Date(guess);
-
     const etParts = formatPartsInTz(utcDate, TZ_ET);
-    const etAsIfUtc = Date.UTC(
-      etParts.year,
-      etParts.month - 1,
-      etParts.day,
-      etParts.hour,
-      etParts.minute,
-      etParts.second
-    );
+    const etAsIfUtc = Date.UTC(etParts.year, etParts.month - 1, etParts.day, etParts.hour, etParts.minute, etParts.second);
     const offsetMinutes = Math.round((etAsIfUtc - utcDate.getTime()) / 60000);
     const sign = offsetMinutes <= 0 ? '-' : '+';
     const absMin = Math.abs(offsetMinutes);
@@ -646,26 +881,15 @@ export function MediaDistributionPage() {
     const offM = absMin % 60;
     const offsetStr = `${sign}${pad2(offH)}:${pad2(offM)}`;
 
-    const rfc3339WithOffset = `${etParts.year}-${pad2(etParts.month)}-${pad2(etParts.day)}T${pad2(
-      etParts.hour
-    )}:${pad2(etParts.minute)}:${pad2(etParts.second)}${offsetStr}`;
+    const rfc3339WithOffset = `${etParts.year}-${pad2(etParts.month)}-${pad2(etParts.day)}T${pad2(etParts.hour)}:${pad2(etParts.minute)}:${pad2(etParts.second)}${offsetStr}`;
 
     const etDisplay = new Intl.DateTimeFormat('en-US', {
-      timeZone: TZ_ET,
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true,
-      timeZoneName: 'short',
+      timeZone: TZ_ET, year: 'numeric', month: 'short', day: '2-digit',
+      hour: 'numeric', minute: '2-digit', hour12: true, timeZoneName: 'short',
     }).format(utcDate);
 
     return {
-      ok: true,
-      timezone: TZ_ET,
-      etDisplay,
-      rfc3339WithOffset,
+      ok: true, timezone: TZ_ET, etDisplay, rfc3339WithOffset,
       utcIso: utcDate.toISOString(),
       unixSeconds: Math.floor(utcDate.getTime() / 1000),
       unixMillis: utcDate.getTime(),
@@ -682,29 +906,19 @@ export function MediaDistributionPage() {
 
   const captionsReady = useMemo(() => {
     const needs = (k: PlatformKey) => selected[k];
-
-    const okInstagram = !needs('instagram') || captionInstagram.trim().length > 0;
-    const okTikTok = !needs('tiktok') || captionTikTok.trim().length > 0;
-    const okFacebook = !needs('facebook') || captionFacebook.trim().length > 0;
-    const okYoutube = !needs('youtube') || youtubeTitle.trim().length > 0;
-    const okTwitterVideo = !needs('twitterVideo') || twitterVideoText.trim().length > 0;
-    const okLinkedin = !needs('linkedin') || linkedinText.trim().length > 0;
-
-    return okInstagram && okTikTok && okFacebook && okYoutube && okTwitterVideo && okLinkedin;
-  }, [
-    selected,
-    captionInstagram,
-    captionTikTok,
-    captionFacebook,
-    youtubeTitle,
-    twitterVideoText,
-    linkedinText,
-  ]);
+    return (
+      (!needs('instagram') || captionInstagram.trim().length > 0) &&
+      (!needs('tiktok') || captionTikTok.trim().length > 0) &&
+      (!needs('facebook') || captionFacebook.trim().length > 0) &&
+      (!needs('youtube') || youtubeTitle.trim().length > 0) &&
+      (!needs('twitterVideo') || twitterVideoText.trim().length > 0) &&
+      (!needs('linkedin') || linkedinText.trim().length > 0)
+    );
+  }, [selected, captionInstagram, captionTikTok, captionFacebook, youtubeTitle, twitterVideoText, linkedinText]);
 
   const twitterPostsReady = useMemo(() => {
     if (!selected.twitterPosts) return true;
-    const cleaned = twitterPosts.map((t) => t.trim()).filter(Boolean);
-    return cleaned.length >= 1;
+    return twitterPosts.map((t) => t.trim()).filter(Boolean).length >= 1;
   }, [selected.twitterPosts, twitterPosts]);
 
   const scheduleCommonInfo: ScheduleInfo = useMemo(() => {
@@ -724,18 +938,11 @@ export function MediaDistributionPage() {
     };
 
     (Object.keys(map) as PlatformKey[]).forEach((k) => {
-      if (!selected[k]) {
-        map[k] = { ok: false, message: 'Not selected.' };
-        return;
-      }
-
+      if (!selected[k]) { map[k] = { ok: false, message: 'Not selected.' }; return; }
       if (scheduleMode === 'same') {
-        map[k] = scheduleCommonInfo.ok
-          ? scheduleCommonInfo
-          : { ok: false, message: scheduleCommonInfo.message };
+        map[k] = scheduleCommonInfo.ok ? scheduleCommonInfo : { ok: false, message: scheduleCommonInfo.message };
         return;
       }
-
       const d = scheduleByPlatform[k]?.date || '';
       const t = scheduleByPlatform[k]?.time || '';
       map[k] = toUtcFromEtLocal(d, t);
@@ -746,11 +953,7 @@ export function MediaDistributionPage() {
 
   const scheduleReady = useMemo(() => {
     if (!hasAnyPlatform) return false;
-
-    if (scheduleMode === 'same') {
-      return scheduleCommonInfo.ok;
-    }
-
+    if (scheduleMode === 'same') return scheduleCommonInfo.ok;
     return enabledPlatforms.every((k) => scheduleInfoByPlatform[k].ok);
   }, [hasAnyPlatform, scheduleMode, scheduleCommonInfo, enabledPlatforms, scheduleInfoByPlatform]);
 
@@ -764,11 +967,9 @@ export function MediaDistributionPage() {
     return false;
   }, [step, hasAnyPlatform, videoReady, captionsReady, twitterPostsReady, scheduleReady]);
 
-  // ✅ ensure scroll-to-top happens exactly when moving next/back (extra safety)
   const goToNext = () => {
     resetSubmitState();
     if (!canProceedFromStep) return;
-
     const nextStep = (() => {
       if (step === 1) return 2;
       if (step === 2) return 3;
@@ -777,7 +978,6 @@ export function MediaDistributionPage() {
       if (step === 5) return 6;
       return step;
     })();
-
     setStep(nextStep as any);
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   };
@@ -785,7 +985,6 @@ export function MediaDistributionPage() {
   const goToPrev = () => {
     resetSubmitState();
     if (step === 1) return;
-
     const prevStep = (() => {
       if (step === 2) return 1;
       if (step === 3) return 2;
@@ -794,60 +993,67 @@ export function MediaDistributionPage() {
       if (step === 6) return 5;
       return step;
     })();
-
     setStep(prevStep as any);
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   };
 
+  const getCopyForPlatform = (k: Exclude<PlatformKey, 'twitterPosts'>) => {
+    if (k === 'instagram') return captionInstagram;
+    if (k === 'tiktok') return captionTikTok;
+    if (k === 'facebook') return captionFacebook;
+    if (k === 'youtube') return youtubeTitle;
+    if (k === 'twitterVideo') return twitterVideoText;
+    if (k === 'linkedin') return linkedinText;
+    return '';
+  };
+
   const getCopyLabel = (k: Exclude<PlatformKey, 'twitterPosts'>) => {
-    const meta = PLATFORM_META[k];
-    if (meta.kind === 'title') return 'Title';
-    return 'Text / Caption';
+    return PLATFORM_META[k].kind === 'title' ? 'Title' : 'Text / Caption';
   };
 
   const copyOkForPlatform = (k: Exclude<PlatformKey, 'twitterPosts'>) => {
     if (!selected[k]) return true;
-    if (k === 'instagram') return captionInstagram.trim().length > 0;
-    if (k === 'tiktok') return captionTikTok.trim().length > 0;
-    if (k === 'facebook') return captionFacebook.trim().length > 0;
-    if (k === 'youtube') return youtubeTitle.trim().length > 0;
-    if (k === 'twitterVideo') return twitterVideoText.trim().length > 0;
-    if (k === 'linkedin') return linkedinText.trim().length > 0;
-    return false;
+    return String(getCopyForPlatform(k) || '').trim().length > 0;
   };
+
+  const scheduleSummaryForPlatform = (k: PlatformKey) => {
+    const info = scheduleInfoByPlatform[k];
+    return info.ok ? info.etDisplay : info.message;
+  };
+
+  const isPlatformReviewReady = (k: PlatformKey) => {
+    if (k === 'twitterPosts') {
+      return twitterPostsReady && scheduleInfoByPlatform[k].ok;
+    }
+    return copyOkForPlatform(k as Exclude<PlatformKey, 'twitterPosts'>) && scheduleInfoByPlatform[k].ok;
+  };
+
+  const reviewReadyToSubmit =
+    hasAnyPlatform &&
+    videoReady &&
+    captionsReady &&
+    twitterPostsReady &&
+    scheduleReady &&
+    Boolean(postizToken) &&
+    integrations.length > 0;
 
   const runAiForCaptions = async () => {
     setAiError(null);
     resetSubmitState();
-
-    if (audioUpload.status !== 'done') {
-      setAiError('Upload your audio first.');
-      return;
-    }
-
+    if (audioUpload.status !== 'done') { setAiError('Upload your audio first.'); return; }
     setAiLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('content-ai', {
         body: { audioUrl: audioUpload.url, tone },
       });
-
-      if (error) {
-        throw new Error(
-          (error as any)?.context?.body?.details || error.message || 'AI generation failed.'
-        );
-      }
-
+      if (error) throw new Error((error as any)?.context?.body?.details || error.message || 'AI generation failed.');
       const res = data as AiGenResponse;
-
       if (selected.instagram && res?.best?.instagram) setCaptionInstagram(res.best.instagram);
       if (selected.facebook && res?.best?.facebook) setCaptionFacebook(res.best.facebook);
       if (selected.tiktok && res?.best?.tiktok) setCaptionTikTok(res.best.tiktok);
       if (selected.youtube && res?.best?.youtubeTitle) setYoutubeTitle(res.best.youtubeTitle);
-
-      const fallbackText =
-        res?.best?.instagram || res?.best?.tiktok || res?.best?.facebook || '';
-      if (selected.twitterVideo && !twitterVideoText.trim() && fallbackText)
-        setTwitterVideoText(fallbackText);
+      const fallbackText = res?.best?.instagram || res?.best?.tiktok || res?.best?.facebook || '';
+      if (selected.twitterVideo && !twitterVideoText.trim() && fallbackText) setTwitterVideoText(fallbackText);
       if (selected.linkedin && !linkedinText.trim() && fallbackText) setLinkedinText(fallbackText);
     } catch (e: any) {
       setAiError(e?.message || 'AI generation failed');
@@ -859,24 +1065,13 @@ export function MediaDistributionPage() {
   const runAiForTwitterPosts = async () => {
     setAiError(null);
     resetSubmitState();
-
-    if (audioUpload.status !== 'done') {
-      setAiError('Upload your audio first.');
-      return;
-    }
-
+    if (audioUpload.status !== 'done') { setAiError('Upload your audio first.'); return; }
     setAiLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('content-ai', {
         body: { audioUrl: audioUpload.url, tone },
       });
-
-      if (error) {
-        throw new Error(
-          (error as any)?.context?.body?.details || error.message || 'AI generation failed.'
-        );
-      }
-
+      if (error) throw new Error((error as any)?.context?.body?.details || error.message || 'AI generation failed.');
       const res = data as AiGenResponse;
       const tweets = Array.isArray(res?.tweets) ? res.tweets : [];
       const cleaned = tweets.map((t) => String(t || '').trim()).filter(Boolean).slice(0, 8);
@@ -888,170 +1083,148 @@ export function MediaDistributionPage() {
     }
   };
 
-  const submitWebhook = async () => {
+  // ── POSTIZ SUBMIT ──
+  // Replaces submitWebhook — creates posts directly via Postiz Public API
+  const submitToPostiz = async () => {
     resetSubmitState();
 
-    if (!hasAnyPlatform) {
-      setSubmitError('Choose at least one platform.');
-      return;
-    }
-
-    if (videoUpload.status !== 'done') {
-      setSubmitError('Upload your video.');
-      return;
-    }
-
-    if (!captionsReady) {
-      setSubmitError('Make sure every selected platform has its required text filled in.');
-      return;
-    }
-
-    if (!twitterPostsReady) {
-      setSubmitError('Add at least 1 Twitter/X post.');
-      return;
-    }
-
-    if (!scheduleReady) {
-      setSubmitError('Complete scheduling for your selected platforms.');
-      return;
-    }
+    if (!postizToken) { setSubmitError('Connect your social accounts first.'); return; }
+    if (!hasAnyPlatform) { setSubmitError('Choose at least one platform.'); return; }
+    if (videoUpload.status !== 'done') { setSubmitError('Upload your video.'); return; }
+    if (!captionsReady) { setSubmitError('Make sure every selected platform has its required text filled in.'); return; }
+    if (!twitterPostsReady) { setSubmitError('Add at least 1 Twitter/X post.'); return; }
+    if (!scheduleReady) { setSubmitError('Complete scheduling for your selected platforms.'); return; }
+    if (integrations.length === 0) { setSubmitError('No connected social accounts found. Reconnect and refresh.'); return; }
 
     setSubmitting(true);
     setSubmitError(null);
     setSubmitOk(false);
 
+    const results: { platform: string; ok: boolean; message: string }[] = [];
+
     try {
-      const getLocal = (k: PlatformKey) => {
-        if (scheduleMode === 'same') return { date: scheduleDate, time: scheduleTime };
-        return scheduleByPlatform[k] || { date: '', time: '' };
-      };
+      // Build one Postiz post per enabled platform
+      // twitterPosts creates multiple separate posts; others create one each
+      const postPromises: Promise<void>[] = [];
 
-      const baseScheduleObj = (k: PlatformKey) => {
-        const info = scheduleInfoByPlatform[k];
-        if (!info.ok) return null;
+      for (const platformKey of enabledPlatforms) {
+        const schedInfo = scheduleInfoByPlatform[platformKey];
+        if (!schedInfo.ok) continue;
 
-        const requestedLocal = getLocal(k);
+        const postizType = POSTIZ_PLATFORM_TYPE[platformKey];
 
-        return {
-          inputTimezone: TZ_ET as 'America/New_York',
-          utcIso: info.utcIso,
-          unixSeconds: info.unixSeconds,
-          unixMillis: info.unixMillis,
-          rfc3339WithOffset: info.rfc3339WithOffset,
-          etDisplay: info.etDisplay,
-          requestedLocal,
-          mode: scheduleMode as 'same' | 'different',
-        };
-      };
+        // Find matching integration(s) for this platform type
+        const matchingIntegrations = integrations.filter(
+          (int) => int.type.toLowerCase() === postizType.toLowerCase()
+        );
 
-      const payload = {
-        source: 'media-distribution-landing',
-        brand: 'Transferrable Everything',
-        submittedAt: new Date().toISOString(),
-        selection: {
-          platforms: enabledPlatforms,
-        },
-        assets: {
-          video: {
-            url: videoUpload.url,
-            storagePath: videoUpload.path,
-            fileName: videoUpload.fileName,
-            mime: videoUpload.mime,
-            size: videoUpload.size,
-          },
-          thumbnail:
-            thumbnailUpload.status === 'done'
-              ? {
-                  url: thumbnailUpload.url,
-                  storagePath: thumbnailUpload.path,
-                  fileName: thumbnailUpload.fileName,
-                  mime: thumbnailUpload.mime,
-                  size: thumbnailUpload.size,
-                }
-              : null,
-          audio:
-            audioUpload.status === 'done'
-              ? {
-                  url: audioUpload.url,
-                  storagePath: audioUpload.path,
-                  fileName: audioUpload.fileName,
-                  mime: audioUpload.mime,
-                  size: audioUpload.size,
-                }
-              : null,
-        },
-        copy: {
-          tone,
-          perPlatform: {
-            instagram: selected.instagram ? { caption: captionInstagram } : null,
-            tiktok: selected.tiktok ? { caption: captionTikTok } : null,
-            facebook: selected.facebook ? { caption: captionFacebook } : null,
-            youtube: selected.youtube ? { title: youtubeTitle } : null,
-            twitterVideo: selected.twitterVideo ? { text: twitterVideoText } : null,
-            linkedin: selected.linkedin ? { text: linkedinText } : null,
-            twitterPosts: selected.twitterPosts
-              ? { posts: twitterPosts.map((t) => t.trim()).filter(Boolean) }
-              : null,
-          },
-        },
-        scheduling: {
-          inputTimezone: TZ_ET,
-          mode: scheduleMode,
-          common:
-            scheduleMode === 'same' && scheduleCommonInfo.ok
-              ? {
-                  utcIso: scheduleCommonInfo.utcIso,
-                  unixSeconds: scheduleCommonInfo.unixSeconds,
-                  unixMillis: scheduleCommonInfo.unixMillis,
-                  rfc3339WithOffset: scheduleCommonInfo.rfc3339WithOffset,
-                  etDisplay: scheduleCommonInfo.etDisplay,
-                  requestedLocal: { date: scheduleDate, time: scheduleTime },
-                }
-              : null,
-        },
-        platforms: {
-          instagram: selected.instagram
-            ? { enabled: true, copy: { caption: captionInstagram }, schedule: baseScheduleObj('instagram') }
-            : { enabled: false },
-          tiktok: selected.tiktok
-            ? { enabled: true, copy: { caption: captionTikTok }, schedule: baseScheduleObj('tiktok') }
-            : { enabled: false },
-          facebook: selected.facebook
-            ? { enabled: true, copy: { caption: captionFacebook }, schedule: baseScheduleObj('facebook') }
-            : { enabled: false },
-          youtube: selected.youtube
-            ? { enabled: true, copy: { title: youtubeTitle }, schedule: baseScheduleObj('youtube') }
-            : { enabled: false },
-          twitterVideo: selected.twitterVideo
-            ? { enabled: true, copy: { text: twitterVideoText }, schedule: baseScheduleObj('twitterVideo') }
-            : { enabled: false },
-          linkedin: selected.linkedin
-            ? { enabled: true, copy: { text: linkedinText }, schedule: baseScheduleObj('linkedin') }
-            : { enabled: false },
-          twitterPosts: selected.twitterPosts
-            ? {
-                enabled: true,
-                copy: { posts: twitterPosts.map((t) => t.trim()).filter(Boolean) },
-                schedule: baseScheduleObj('twitterPosts'),
-              }
-            : { enabled: false },
-        },
-      };
+        if (matchingIntegrations.length === 0) {
+          results.push({
+            platform: PLATFORM_META[platformKey].label,
+            ok: false,
+            message: `No connected ${PLATFORM_META[platformKey].label} account found`,
+          });
+          continue;
+        }
 
-      const res = await fetch(WEBHOOK_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=UTF-8' },
-        body: JSON.stringify(payload),
-      });
+        const integrationIds = matchingIntegrations.map((i) => i.id);
 
-      const text = await res.text().catch(() => '');
-      if (!res.ok) {
-        throw new Error(`Webhook failed (${res.status}). ${text ? `Response: ${text}` : ''}`.trim());
+        if (platformKey === 'twitterPosts') {
+          // Create one post per tweet
+          const tweets = twitterPosts.map((t) => t.trim()).filter(Boolean);
+          for (const tweet of tweets) {
+            postPromises.push(
+              postizFetch('/public/v1/posts', postizToken, {
+                method: 'POST',
+                body: JSON.stringify({
+                  type: 'now', // or 'schedule'
+                  date: schedInfo.utcIso,
+                  shortLink: false,
+                  settings: {},
+                  posts: integrationIds.map((integrationId) => ({
+                    integrationId,
+                    value: [{ content: tweet }],
+                    settings: {},
+                    ...(videoUpload.status === 'done'
+                      ? { media: [{ url: videoUpload.url, path: videoUpload.url }] }
+                      : {}),
+                  })),
+                }),
+              })
+                .then(async (res) => {
+                  const text = await res.text().catch(() => '');
+                  results.push({
+                    platform: `${PLATFORM_META[platformKey].label} tweet`,
+                    ok: res.ok,
+                    message: res.ok ? 'Scheduled' : `Failed (${res.status}): ${text}`,
+                  });
+                })
+                .catch((e: any) => {
+                  results.push({ platform: `${PLATFORM_META[platformKey].label} tweet`, ok: false, message: e?.message || 'Request failed' });
+                })
+            );
+          }
+        } else {
+          // Single post for this platform
+          const content =
+            platformKey === 'instagram' ? captionInstagram
+            : platformKey === 'tiktok' ? captionTikTok
+            : platformKey === 'facebook' ? captionFacebook
+            : platformKey === 'youtube' ? youtubeTitle
+            : platformKey === 'twitterVideo' ? twitterVideoText
+            : platformKey === 'linkedin' ? linkedinText
+            : '';
+
+          postPromises.push(
+            postizFetch('/public/v1/posts', postizToken, {
+              method: 'POST',
+              body: JSON.stringify({
+                type: 'schedule',
+                date: schedInfo.utcIso,
+                shortLink: false,
+                settings: {},
+                posts: integrationIds.map((integrationId) => ({
+                  integrationId,
+                  value: [{ content }],
+                  settings: {},
+                  media: [
+                    ...(videoUpload.status === 'done'
+                      ? [{ url: videoUpload.url, path: videoUpload.url }]
+                      : []),
+                    ...(thumbnailUpload.status === 'done' && platformKey === 'youtube'
+                      ? [{ url: thumbnailUpload.url, path: thumbnailUpload.url }]
+                      : []),
+                  ],
+                })),
+              }),
+            })
+              .then(async (res) => {
+                const text = await res.text().catch(() => '');
+                results.push({
+                  platform: PLATFORM_META[platformKey].label,
+                  ok: res.ok,
+                  message: res.ok ? 'Scheduled' : `Failed (${res.status}): ${text}`,
+                });
+              })
+              .catch((e: any) => {
+                results.push({ platform: PLATFORM_META[platformKey].label, ok: false, message: e?.message || 'Request failed' });
+              })
+          );
+        }
       }
 
-      setSubmitOk(true);
-      setStep(6);
-      window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      await Promise.all(postPromises);
+
+      setSubmitResults(results);
+      const anyOk = results.some((r) => r.ok);
+      const allFailed = results.every((r) => !r.ok);
+
+      if (allFailed) {
+        setSubmitError('All posts failed to schedule. Check your connected accounts and try again.');
+      } else {
+        setSubmitOk(true);
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+      }
     } catch (e: any) {
       setSubmitError(e?.message || 'Submit failed');
     } finally {
@@ -1059,6 +1232,7 @@ export function MediaDistributionPage() {
     }
   };
 
+  // ── FILE UPLOAD CARD ──
   const FileUploadCard = ({
     title,
     subtitle,
@@ -1088,308 +1262,215 @@ export function MediaDistributionPage() {
           </h3>
           <p className="text-white/60 text-sm mt-1">{subtitle}</p>
         </div>
-
         {upload.status === 'done' && (
           <div className="flex items-center gap-2 text-sm text-green-200">
-            <CheckCircle2 className="h-4 w-4" />
-            Uploaded
+            <CheckCircle2 className="h-4 w-4" /> Uploaded
           </div>
         )}
       </div>
 
       <div className="mt-4 flex flex-col sm:flex-row gap-3 sm:items-center">
-        <input
-          type="file"
-          accept={accept}
-          className="block w-full text-sm text-gray-200 file:mr-4 file:rounded-xl file:border-0 file:px-4 file:py-2 file:font-bold file:bg-white file:text-black hover:file:bg-gray-100"
-          onChange={(e) => {
-            const f = e.target.files?.[0] || null;
-            setFile(f);
-            setUpload({ status: 'idle' });
-            resetSubmitState();
+        <label className="inline-flex items-center gap-2 cursor-pointer rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-4 py-2.5 text-sm font-extrabold">
+          <UploadCloud className="h-4 w-4" />
+          {file ? 'Change file' : 'Choose file'}
+          <input
+            type="file"
+            accept={accept}
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0] ?? null;
+              setFile(f);
+              if (f) uploadFile(f, kind, setUpload);
+            }}
+          />
+        </label>
 
-            if (f) {
-              const msg = sizeGuard(f, kind);
-              if (msg) setUpload({ status: 'error', message: msg });
-            }
-          }}
-        />
-
-        <button
-          type="button"
-          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-bold transition border disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            borderColor: 'rgba(214, 178, 94, 0.45)',
-            backgroundColor: 'rgba(0,0,0,0.15)',
-            color: GOLD_HOVER,
-          }}
-          disabled={!file || upload.status === 'uploading' || upload.status === 'error'}
-          onClick={() => file && uploadFile(file, kind, setUpload)}
-        >
-          {upload.status === 'uploading' ? (
-            <>
-              <Loader className="h-4 w-4 animate-spin" />
-              Uploading…
-            </>
-          ) : (
-            <>
-              <UploadCloud className="h-4 w-4" />
-              Upload
-            </>
-          )}
-        </button>
-      </div>
-
-      <div className="mt-4">
-        {upload.status === 'done' && (
-          <div className="text-sm text-gray-200">
-            <div className="text-white/70">
-              <span className="font-semibold">File:</span> {upload.fileName} • {prettyBytes(upload.size)}
-            </div>
-          </div>
+        {upload.status === 'uploading' && (
+          <span className="inline-flex items-center gap-2 text-sm text-white/60">
+            <Loader className="h-4 w-4 animate-spin" /> Uploading…
+          </span>
         )}
-
+        {upload.status === 'done' && (
+          <span className="text-sm text-white/60 truncate">{upload.fileName} ({prettyBytes(upload.size)})</span>
+        )}
         {upload.status === 'error' && (
-          <div className="text-sm text-red-200 mt-2 inline-flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 mt-0.5" />
-            <span>{upload.message}</span>
-          </div>
+          <span className="inline-flex items-start gap-1.5 text-sm text-red-300">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" /> {upload.message}
+          </span>
         )}
       </div>
     </div>
   );
 
-  const BottomNav = ({
-    nextLabel = 'Next',
-    hideNext = false,
-  }: {
-    nextLabel?: string;
-    hideNext?: boolean;
-  }) => (
-    <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-      <button
-        type="button"
-        onClick={goToPrev}
-        className="rounded-xl px-5 py-3 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-        disabled={step === 1 || submitting}
-      >
-        Back
-      </button>
+  // ── BOTTOM NAV ──
+  const stepLabels = useMemo(() => {
+    const base = ['Platforms', 'Media', 'Captions', 'Schedule'];
+    if (showTwitterPostsStep) {
+      base.splice(3, 0, 'Posts');
+    }
+    return base;
+  }, [showTwitterPostsStep]);
 
-      {!hideNext ? (
+  const activeStepIndex = useMemo(() => {
+    if (step === 1) return 0;
+    if (step === 2) return 1;
+    if (step === 3) return 2;
+    if (step === 4) return showTwitterPostsStep ? 3 : 2;
+    if (step === 5) return showTwitterPostsStep ? 4 : 3;
+    return stepLabels.length - 1;
+  }, [step, showTwitterPostsStep, stepLabels.length]);
+
+  const BottomNav = ({ hideNext }: { hideNext?: boolean }) => (
+    <div className="flex items-center gap-3 pt-2">
+      {step > 1 && (
+        <button
+          type="button"
+          onClick={goToPrev}
+          className="rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-5 py-3 font-extrabold"
+        >
+          ← Back
+        </button>
+      )}
+      {!hideNext && step < 6 && (
         <button
           type="button"
           onClick={goToNext}
-          className="rounded-xl px-5 py-3 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed"
-          style={{
-            borderColor: 'rgba(214, 178, 94, 0.45)',
-            backgroundColor: 'rgba(0,0,0,0.15)',
-            color: GOLD_HOVER,
-          }}
-          disabled={!canProceedFromStep || submitting}
+          disabled={!canProceedFromStep}
+          className="ml-auto rounded-xl px-6 py-3 font-extrabold disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{ background: canProceedFromStep ? GOLD_PRIMARY : undefined, color: canProceedFromStep ? '#000' : undefined }}
         >
-          {nextLabel}
+          Next →
         </button>
-      ) : null}
+      )}
     </div>
   );
 
-  const scheduleSummaryForPlatform = (k: PlatformKey) => {
-    const info = scheduleInfoByPlatform[k];
-    if (!selected[k]) return 'Not selected';
-    if (info.ok) return info.etDisplay;
-    return info.message || 'Not scheduled';
-  };
-
-  const getCopyForPlatform = (k: PlatformKey) => {
-    if (k === 'instagram') return captionInstagram;
-    if (k === 'tiktok') return captionTikTok;
-    if (k === 'facebook') return captionFacebook;
-    if (k === 'youtube') return youtubeTitle;
-    if (k === 'twitterVideo') return twitterVideoText;
-    if (k === 'linkedin') return linkedinText;
-    return '';
-  };
-
-  const isCopyComplete = (k: PlatformKey) => {
-    if (!selected[k]) return true;
-    if (k === 'twitterPosts') return twitterPosts.map((t) => t.trim()).filter(Boolean).length >= 1;
-    return String(getCopyForPlatform(k) || '').trim().length > 0;
-  };
-
-  const isPlatformReviewReady = (k: PlatformKey) => {
-    return Boolean(selected[k]) && isCopyComplete(k) && Boolean(scheduleInfoByPlatform[k]?.ok);
-  };
-
-  const reviewReadyToSubmit =
-    hasAnyPlatform && videoReady && captionsReady && twitterPostsReady && scheduleReady;
-
-  /**
-   * ✅ Progress labels EXCLUDE Review
-   */
-  const progressLabelsNoReview = useMemo(() => {
-    const base = ['Platforms', 'Video', 'Captions'];
-    const mid = showTwitterPostsStep ? ['X Posts'] : [];
-    const end = ['Schedule'];
-    return [...base, ...mid, ...end];
-  }, [showTwitterPostsStep]);
-
-  /**
-   * ✅ Active index maps to step (Review step uses "Schedule" as last)
-   */
-  const activeProgressIndexNoReview = useMemo(() => {
-    if (!showTwitterPostsStep) {
-      if (step === 1) return 0;
-      if (step === 2) return 1;
-      if (step === 3) return 2;
-      if (step === 5) return 3;
-      if (step === 6) return 3;
-      return 0;
-    } else {
-      if (step === 1) return 0;
-      if (step === 2) return 1;
-      if (step === 3) return 2;
-      if (step === 4) return 3;
-      if (step === 5) return 4;
-      if (step === 6) return 4;
-      return 0;
-    }
-  }, [step, showTwitterPostsStep]);
-
+  // ─────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────
   return (
     <div
-      className="min-h-screen text-white overflow-x-hidden"
-      style={{
-        backgroundImage: `radial-gradient(1200px 600px at 50% ${
-          -200 + bgOffset
-        }px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
-        backgroundAttachment: 'fixed',
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: 'cover',
-      }}
+      className="relative min-h-screen text-white overflow-x-hidden"
+      style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #111111 50%, #0d0d0d 100%)' }}
     >
-      <style>
-        {`
-          .gold-shimmer {
-            background-image: linear-gradient(
-              110deg,
-              #b9892b 0%,
-              #f7dc8a 20%,
-              #ffffff 30%,
-              #f1d27b 40%,
-              #b9892b 60%,
-              #f7dc8a 80%,
-              #ffffff 90%,
-              #b9892b 100%
-            );
-            background-size: 240% 100%;
-            background-position: 0% 50%;
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            animation: goldShimmerSweep 4.8s ease-in-out infinite;
-            filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.12));
-          }
-
-          @keyframes goldShimmerSweep {
-            0% { background-position: 0% 50%; }
-            55% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            .gold-shimmer { animation: none; }
-          }
-
-          input[type="date"],
-          input[type="time"] { color-scheme: dark; }
-
-          /* Keep native picker indicator visible on dark */
-          input[type="date"]::-webkit-calendar-picker-indicator,
-          input[type="time"]::-webkit-calendar-picker-indicator {
-            filter: invert(1);
-            opacity: 0.9;
-            cursor: pointer;
-          }
-
-          /* iOS Safari: make sure inputs remain tappable inside flex containers */
-          input[type="date"], input[type="time"]{
-            -webkit-appearance: none;
-            appearance: none;
-          }
-        `}
-      </style>
-
-      <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
+      {/* Background orbs */}
+      <div
+        className="pointer-events-none fixed inset-0 overflow-hidden"
+        style={{ transform: `translateY(${bgOffset}px)` }}
+        aria-hidden
+      >
+        <div
+          className="absolute rounded-full blur-[120px] opacity-20"
+          style={{
+            width: 600, height: 600,
+            background: `radial-gradient(circle, ${GOLD_PRIMARY}, transparent 70%)`,
+            top: -200, right: -200,
+          }}
+        />
+        <div
+          className="absolute rounded-full blur-[100px] opacity-10"
+          style={{
+            width: 400, height: 400,
+            background: 'radial-gradient(circle, #4f46e5, transparent 70%)',
+            bottom: 100, left: -100,
+          }}
+        />
       </div>
 
-      <header className="relative z-10 px-6 py-6">
-        <Link to="/" className="flex items-center text-gray-400 hover:text-white">
-          <ArrowLeft className="h-5 w-5 mr-2" /> Back
-        </Link>
-      </header>
+      <main className="relative z-10 mx-auto max-w-2xl px-4 pb-16 pt-10">
+        {/* Header */}
+        <div className="flex items-center gap-4 mb-8">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-sm font-extrabold text-white/60 hover:text-white transition"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back
+          </Link>
+        </div>
 
-      <main className="relative z-10 max-w-5xl mx-auto px-6 pb-16">
-        {step === 1 ? (
-          <div className="text-center mt-8">
-            <h1 className="text-4xl sm:text-5xl font-extrabold leading-tight">
-              Welcome <span className="gold-shimmer font-extrabold">Transferrable Everything</span>
-            </h1>
-            <p className="mt-4 text-gray-200 text-lg">Step-by-step media distribution.</p>
+        <div className="mb-6">
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">Media Distribution</h1>
+          <p className="mt-2 text-white/60 text-sm">
+            Schedule your content across all platforms in one workflow.
+          </p>
+        </div>
+
+        {/* OAuth status & error */}
+        {oauthLoading && (
+          <div className="mb-4 rounded-2xl border border-white/10 bg-white/5 p-4 flex items-center gap-3 text-sm text-white/70">
+            <Loader className="h-4 w-4 animate-spin shrink-0" />
+            Completing authorization…
           </div>
-        ) : (
-          <div className="mt-2" />
+        )}
+        {oauthError && (
+          <div className="mb-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 flex items-start gap-3 text-sm text-red-200">
+            <AlertCircle className="h-4 w-4 mt-0.5 shrink-0 text-red-300" />
+            {oauthError}
+          </div>
         )}
 
-        <ProgressBarLine labels={progressLabelsNoReview} activeIndex={activeProgressIndexNoReview} />
+        {/* POSTIZ CONNECT BANNER — always visible */}
+        <PostizConnectBanner
+          token={postizToken}
+          integrations={integrations}
+          integrationsLoading={integrationsLoading}
+          integrationsError={integrationsError}
+          onConnect={handleConnectPostiz}
+          onDisconnect={handleDisconnectPostiz}
+          onRefreshIntegrations={() => postizToken && loadIntegrations(postizToken)}
+        />
+
+        {/* Progress */}
+        {step < 6 && (
+          <ProgressBarLine labels={stepLabels} activeIndex={activeStepIndex} />
+        )}
 
         <div className="mt-6 space-y-5">
-          {/* STEP 1: Platforms */}
+
+          {/* ── STEP 1: PLATFORMS ── */}
           {step === 1 && (
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-lg font-extrabold">Choose platforms</h3>
-                  <p className="text-white/60 text-sm mt-1">Select the platforms you want to post to.</p>
-                </div>
-                <div className="text-xs text-white/60">
-                  Selected: <span className="font-extrabold text-white">{enabledPlatforms.length}</span>
-                </div>
+            <div className="space-y-5">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <h3 className="text-lg font-extrabold">Select Platforms</h3>
+                <p className="text-white/60 text-sm mt-1">Choose where you want to publish.</p>
               </div>
 
-              <div className="mt-5 grid gap-3 grid-cols-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {(Object.keys(PLATFORM_META) as PlatformKey[]).map((k) => {
-                  const on = selected[k];
                   const meta = PLATFORM_META[k];
+                  const isSelected = selected[k];
+                  const postizType = POSTIZ_PLATFORM_TYPE[k];
+                  const hasAccount = integrations.some(
+                    (i) => i.type.toLowerCase() === postizType.toLowerCase()
+                  );
+
                   return (
                     <button
                       key={k}
                       type="button"
-                      onClick={() => {
-                        resetSubmitState();
-                        setSelected((prev) => ({ ...prev, [k]: !prev[k] }));
-                        if (k === 'twitterPosts' && !selected.twitterPosts) {
-                          setTwitterPosts((prev) => (prev.length ? prev : ['', '', '']));
-                        }
+                      onClick={() => setSelected((s) => ({ ...s, [k]: !s[k] }))}
+                      className="w-full text-left rounded-2xl border transition p-4"
+                      style={{
+                        borderColor: isSelected ? 'rgba(214,178,94,0.5)' : 'rgba(255,255,255,0.1)',
+                        background: isSelected ? 'rgba(214,178,94,0.08)' : 'rgba(255,255,255,0.03)',
                       }}
-                      className={`rounded-2xl border p-4 sm:p-5 text-left transition ${
-                        on
-                          ? 'bg-white/10 border-white/15'
-                          : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/15'
-                      }`}
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm sm:text-base font-extrabold truncate">{meta.label}</div>
-                          <div className="text-xs sm:text-sm text-white/60 mt-1 truncate">{meta.sub}</div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="font-extrabold text-white">{meta.label}</div>
+                          <div className="text-xs text-white/50 mt-0.5">{meta.sub}</div>
                         </div>
-                        <div
-                          className={`h-6 w-6 rounded-full border flex items-center justify-center ${
-                            on ? 'border-green-300/60 bg-green-300/10' : 'border-white/15 bg-transparent'
-                          }`}
-                        >
-                          {on ? <CheckCircle2 className="h-4 w-4 text-green-200" /> : null}
+                        <div className="flex flex-col items-end gap-1">
+                          {isSelected ? (
+                            <span className="text-xs font-extrabold" style={{ color: GOLD_HOVER }}>✓ Selected</span>
+                          ) : (
+                            <span className="text-xs text-white/30">Select</span>
+                          )}
+                          {postizToken && (
+                            <span className={`text-xs font-bold ${hasAccount ? 'text-green-300' : 'text-white/30'}`}>
+                              {hasAccount ? '● Connected' : '○ No account'}
+                            </span>
+                          )}
                         </div>
                       </div>
                     </button>
@@ -1397,731 +1478,374 @@ export function MediaDistributionPage() {
                 })}
               </div>
 
-              {!hasAnyPlatform && (
-                <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
-                  <AlertCircle className="h-4 w-4 mt-0.5" />
-                  <span>Please choose at least one platform to continue.</span>
+              {!postizToken && hasAnyPlatform && (
+                <div className="rounded-2xl border border-yellow-500/20 bg-yellow-500/5 p-4 text-sm text-yellow-200">
+                  Connect your social accounts above so posts can be scheduled directly.
                 </div>
               )}
-
-              <div className="mt-6 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-                <button
-                  type="button"
-                  onClick={goToPrev}
-                  className="rounded-xl px-5 py-3 font-bold border border-white/10 bg-white/5 hover:bg-white/10 disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled
-                >
-                  Back
-                </button>
-
-                <button
-                  type="button"
-                  onClick={goToNext}
-                  className="rounded-xl px-5 py-3 font-extrabold border transition disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{
-                    borderColor: 'rgba(214, 178, 94, 0.45)',
-                    backgroundColor: 'rgba(0,0,0,0.15)',
-                    color: GOLD_HOVER,
-                  }}
-                  disabled={!canProceedFromStep || submitting}
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2: Video */}
-          {step === 2 && (
-            <div className="space-y-5">
-              <div className="grid gap-4 grid-cols-1 sm:grid-cols-2">
-                <FileUploadCard
-                  title="Upload Video"
-                  subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP4/MOV/WebM recommended.`}
-                  kind="video"
-                  accept="video/*"
-                  file={videoFile}
-                  setFile={setVideoFile}
-                  upload={videoUpload}
-                  setUpload={setVideoUpload}
-                  required
-                />
-
-                <FileUploadCard
-                  title="Upload Thumbnail (Optional)"
-                  subtitle="Optional. JPG/PNG/WebP recommended."
-                  kind="thumbnail"
-                  accept="image/*"
-                  file={thumbnailFile}
-                  setFile={setThumbnailFile}
-                  upload={thumbnailUpload}
-                  setUpload={setThumbnailUpload}
-                />
-              </div>
 
               <BottomNav />
             </div>
           )}
 
-          {/* STEP 3: Captions */}
+          {/* ── STEP 2: MEDIA ── */}
+          {step === 2 && (
+            <div className="space-y-5">
+              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
+                <h3 className="text-lg font-extrabold">Upload Media</h3>
+                <p className="text-white/60 text-sm mt-1">Video is required. Thumbnail and audio are optional.</p>
+              </div>
+
+              <FileUploadCard
+                title="Video"
+                subtitle="MP4, MOV, or WebM. Max 49 MB."
+                kind="video"
+                accept="video/*"
+                file={videoFile}
+                setFile={setVideoFile}
+                upload={videoUpload}
+                setUpload={setVideoUpload}
+                required
+              />
+
+              <FileUploadCard
+                title="Thumbnail"
+                subtitle="PNG or JPG. Used for YouTube. Optional."
+                kind="thumbnail"
+                accept="image/*"
+                file={thumbnailFile}
+                setFile={setThumbnailFile}
+                upload={thumbnailUpload}
+                setUpload={setThumbnailUpload}
+              />
+
+              <FileUploadCard
+                title="Audio (for AI captions)"
+                subtitle="MP3 or WAV. Used by AI to generate captions. Optional."
+                kind="audio"
+                accept="audio/*"
+                file={audioFile}
+                setFile={setAudioFile}
+                upload={audioUpload}
+                setUpload={setAudioUpload}
+              />
+
+              <BottomNav />
+            </div>
+          )}
+
+          {/* ── STEP 3: CAPTIONS ── */}
           {step === 3 && (
             <div className="space-y-5">
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
-                    <h3 className="text-lg font-extrabold">Captions</h3>
-                    <p className="text-white/60 text-sm mt-1">Tap a platform to edit it (fullscreen).</p>
+                    <h3 className="text-lg font-extrabold">Captions & Copy</h3>
+                    <p className="text-white/60 text-sm mt-1">Write or generate copy for each platform.</p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetSubmitState();
-                      setAiMode((v) => !v);
-                      setAiError(null);
-                    }}
-                    className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-extrabold border border-white/10 bg-white/5 hover:bg-white/10"
-                  >
-                    <Sparkles className="h-4 w-4" />
-                    {aiMode ? 'Hide AI Options' : 'Generate Using AI'}
-                  </button>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setAiMode((v) => !v)}
+                      className="rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 px-3 py-2 text-xs font-extrabold inline-flex items-center gap-1.5"
+                    >
+                      <Sparkles className="h-3.5 w-3.5" style={{ color: GOLD_PRIMARY }} />
+                      {aiMode ? 'Hide AI' : 'AI Generate'}
+                    </button>
+                  </div>
                 </div>
 
                 {aiMode && (
-                  <div className="mt-5 space-y-4">
-                    <div className="bg-black/20 border border-white/10 rounded-2xl p-5">
-                      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 sm:items-end">
-                        <div className="flex-1">
-                          <div className="text-sm font-extrabold">Tone</div>
-                          <input
-                            value={tone}
-                            onChange={(e) => {
-                              setTone(e.target.value);
-                              resetSubmitState();
-                            }}
-                            className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
-                            placeholder="confident, punchy, value-first"
-                          />
-                        </div>
+                  <div className="mt-4 space-y-3 border-t border-white/10 pt-4">
+                    <div>
+                      <label className="text-xs font-extrabold text-white/60">Tone</label>
+                      <input
+                        type="text"
+                        value={tone}
+                        onChange={(e) => setTone(e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-2.5 text-sm text-white placeholder-white/30 outline-none focus:border-white/30"
+                        placeholder="confident, punchy, value-first"
+                      />
+                    </div>
 
-                        <button
-                          type="button"
-                          onClick={runAiForCaptions}
-                          disabled={aiLoading || audioUpload.status !== 'done'}
-                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
-                          style={{
-                            borderColor: 'rgba(214, 178, 94, 0.45)',
-                            backgroundColor: 'rgba(0,0,0,0.15)',
-                            color: GOLD_HOVER,
-                          }}
-                        >
-                          {aiLoading ? (
-                            <>
-                              <Loader className="h-4 w-4 animate-spin" />
-                              Generating…
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="h-4 w-4" />
-                              Generate Now
-                            </>
-                          )}
-                        </button>
+                    {aiError && (
+                      <div className="text-sm text-red-300 flex items-start gap-2">
+                        <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" /> {aiError}
                       </div>
+                    )}
 
-                      <div className="mt-5">
-                        <div className="text-sm font-extrabold">Audio Upload (required for AI)</div>
-                        <div className="mt-3">
-                          <FileUploadCard
-                            title="Upload Audio"
-                            subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP3/WAV/M4A recommended.`}
-                            kind="audio"
-                            accept="audio/*"
-                            file={audioFile}
-                            setFile={setAudioFile}
-                            upload={audioUpload}
-                            setUpload={setAudioUpload}
-                            required
-                          />
-                        </div>
+                    <button
+                      type="button"
+                      onClick={runAiForCaptions}
+                      disabled={aiLoading || audioUpload.status !== 'done'}
+                      className="rounded-xl px-5 py-2.5 text-sm font-extrabold inline-flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{ background: GOLD_PRIMARY, color: '#000' }}
+                    >
+                      {aiLoading ? <Loader className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                      Generate Captions
+                    </button>
 
-                        {aiError && (
-                          <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
-                            <AlertCircle className="h-4 w-4 mt-0.5" />
-                            <span>{aiError}</span>
-                          </div>
-                        )}
+                    {audioUpload.status !== 'done' && (
+                      <p className="text-xs text-white/50">Upload audio in the previous step to use AI generation.</p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Per-platform caption fields */}
+              {(enabledPlatforms.filter((k) => k !== 'twitterPosts') as Exclude<PlatformKey, 'twitterPosts'>[]).map((k) => {
+                const meta = PLATFORM_META[k];
+                const value =
+                  k === 'instagram' ? captionInstagram
+                  : k === 'tiktok' ? captionTikTok
+                  : k === 'facebook' ? captionFacebook
+                  : k === 'youtube' ? youtubeTitle
+                  : k === 'twitterVideo' ? twitterVideoText
+                  : linkedinText;
+
+                const setter =
+                  k === 'instagram' ? setCaptionInstagram
+                  : k === 'tiktok' ? setCaptionTikTok
+                  : k === 'facebook' ? setCaptionFacebook
+                  : k === 'youtube' ? setYoutubeTitle
+                  : k === 'twitterVideo' ? setTwitterVideoText
+                  : setLinkedinText;
+
+                const isActive = activeCaptionPlatform === k;
+
+                return (
+                  <div key={k} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div>
+                        <div className="font-extrabold text-white">{meta.label}</div>
+                        <div className="text-xs text-white/50">{meta.sub}</div>
                       </div>
+                      <PlatformBadge ok={copyOkForPlatform(k)} />
+                    </div>
+
+                    <textarea
+                      rows={meta.kind === 'title' ? 2 : 4}
+                      value={value}
+                      onChange={(e) => setter(e.target.value)}
+                      placeholder={`${getCopyLabel(k)} for ${meta.label}…`}
+                      className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 resize-none"
+                    />
+
+                    <div className="mt-2 flex items-center justify-between">
+                      <span className="text-xs text-white/40">{value.length} chars</span>
                     </div>
                   </div>
-                )}
-              </div>
+                );
+              })}
 
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <div className="text-lg font-extrabold">Selected platforms</div>
-
-                {!hasAnyPlatform ? (
-                  <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 mt-0.5" />
-                    <span>No platforms selected. Go back to Step 1.</span>
-                  </div>
-                ) : (
-                  <div className="mt-4 grid gap-3 grid-cols-2">
-                    {(enabledPlatforms.filter((k) => k !== 'twitterPosts') as Exclude<
-                      PlatformKey,
-                      'twitterPosts'
-                    >[]).map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => setActiveCaptionPlatform(k)}
-                        className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/15 transition p-4 sm:p-5 text-left"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-extrabold text-white truncate">{PLATFORM_META[k].label}</div>
-                            <div className="text-xs sm:text-sm text-white/60 mt-1 truncate">
-                              {getCopyLabel(k)} required
-                            </div>
-                          </div>
-                          <PlatformBadge ok={copyOkForPlatform(k)} />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {!captionsReady && hasAnyPlatform && (
-                  <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 mt-0.5" />
-                    <span>Fill in required text for each selected platform to continue.</span>
-                  </div>
-                )}
-
-                <BottomNav nextLabel={showTwitterPostsStep ? 'Next (X Posts)' : 'Next (Schedule)'} />
-              </div>
-
-              <FullscreenModal
-                open={Boolean(activeCaptionPlatform)}
-                title={
-                  activeCaptionPlatform
-                    ? `${PLATFORM_META[activeCaptionPlatform].label} — ${getCopyLabel(activeCaptionPlatform)}`
-                    : 'Platform'
-                }
-                subtitle={activeCaptionPlatform ? PLATFORM_META[activeCaptionPlatform].sub : undefined}
-                onClose={() => setActiveCaptionPlatform(null)}
-              >
-                {activeCaptionPlatform && (
-                  <div className="space-y-4">
-                    {activeCaptionPlatform === 'youtube' ? (
-                      <>
-                        <div className="text-sm font-extrabold">YouTube Shorts Title</div>
-                        <input
-                          value={youtubeTitle}
-                          onChange={(e) => {
-                            setYoutubeTitle(e.target.value);
-                            resetSubmitState();
-                          }}
-                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                          placeholder="Enter a title…"
-                        />
-                      </>
-                    ) : activeCaptionPlatform === 'linkedin' ? (
-                      <>
-                        <div className="text-sm font-extrabold">LinkedIn Text</div>
-                        <textarea
-                          value={linkedinText}
-                          onChange={(e) => {
-                            setLinkedinText(e.target.value);
-                            resetSubmitState();
-                          }}
-                          rows={12}
-                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                          placeholder="Write your post…"
-                        />
-                      </>
-                    ) : activeCaptionPlatform === 'twitterVideo' ? (
-                      <>
-                        <div className="text-sm font-extrabold">Twitter/X (Video) Text</div>
-                        <textarea
-                          value={twitterVideoText}
-                          onChange={(e) => {
-                            setTwitterVideoText(e.target.value);
-                            resetSubmitState();
-                          }}
-                          rows={10}
-                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                          placeholder="Write your post…"
-                        />
-                      </>
-                    ) : activeCaptionPlatform === 'instagram' ? (
-                      <>
-                        <div className="text-sm font-extrabold">Instagram Caption</div>
-                        <textarea
-                          value={captionInstagram}
-                          onChange={(e) => {
-                            setCaptionInstagram(e.target.value);
-                            resetSubmitState();
-                          }}
-                          rows={12}
-                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                          placeholder="Write your caption…"
-                        />
-                      </>
-                    ) : activeCaptionPlatform === 'tiktok' ? (
-                      <>
-                        <div className="text-sm font-extrabold">TikTok Caption</div>
-                        <textarea
-                          value={captionTikTok}
-                          onChange={(e) => {
-                            setCaptionTikTok(e.target.value);
-                            resetSubmitState();
-                          }}
-                          rows={10}
-                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                          placeholder="Write your caption…"
-                        />
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-sm font-extrabold">Facebook Caption</div>
-                        <textarea
-                          value={captionFacebook}
-                          onChange={(e) => {
-                            setCaptionFacebook(e.target.value);
-                            resetSubmitState();
-                          }}
-                          rows={12}
-                          className="mt-2 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                          placeholder="Write your caption…"
-                        />
-                      </>
-                    )}
-                    <div className="pt-2 text-xs text-white/50">Close this when you’re done.</div>
-                  </div>
-                )}
-              </FullscreenModal>
+              <BottomNav />
             </div>
           )}
 
-          {/* STEP 4: Twitter/X Posts */}
+          {/* ── STEP 4: TWITTER POSTS ── */}
           {step === 4 && showTwitterPostsStep && (
             <div className="space-y-5">
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div>
                     <h3 className="text-lg font-extrabold">Twitter/X Posts</h3>
-                    <p className="text-white/60 text-sm mt-1">Tap a post to edit fullscreen.</p>
+                    <p className="text-white/60 text-sm mt-1">Add standalone tweets. Min 1 required.</p>
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  {audioUpload.status === 'done' && (
                     <button
                       type="button"
-                      onClick={() => {
-                        resetSubmitState();
-                        setAiMode((v) => !v);
-                        setAiError(null);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-extrabold border border-white/10 bg-white/5 hover:bg-white/10"
+                      onClick={runAiForTwitterPosts}
+                      disabled={aiLoading}
+                      className="rounded-xl px-4 py-2 text-xs font-extrabold inline-flex items-center gap-1.5 disabled:opacity-40"
+                      style={{ background: GOLD_PRIMARY, color: '#000' }}
                     >
-                      <Sparkles className="h-4 w-4" />
-                      {aiMode ? 'Hide AI Options' : 'Generate Using AI'}
+                      {aiLoading ? <Loader className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                      AI Generate
                     </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetSubmitState();
-                        setTwitterPosts((prev) => [...prev, '']);
-                      }}
-                      className="inline-flex items-center gap-2 rounded-xl px-4 py-2 font-extrabold border border-white/10 bg-white/5 hover:bg-white/10"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add
-                    </button>
-                  </div>
+                  )}
                 </div>
 
-                {aiMode && (
-                  <div className="mt-5 space-y-4">
-                    <div className="bg-black/20 border border-white/10 rounded-2xl p-5">
-                      <div className="grid gap-3 grid-cols-1 sm:grid-cols-2 sm:items-end">
-                        <div className="flex-1">
-                          <div className="text-sm font-extrabold">Tone</div>
-                          <input
-                            value={tone}
-                            onChange={(e) => {
-                              setTone(e.target.value);
-                              resetSubmitState();
-                            }}
-                            className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white outline-none focus:border-white/20"
-                            placeholder="confident, punchy, value-first"
-                          />
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={runAiForTwitterPosts}
-                          disabled={aiLoading || audioUpload.status !== 'done'}
-                          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-extrabold transition border disabled:opacity-50 disabled:cursor-not-allowed"
-                          style={{
-                            borderColor: 'rgba(214, 178, 94, 0.45)',
-                            backgroundColor: 'rgba(0,0,0,0.15)',
-                            color: GOLD_HOVER,
-                          }}
-                        >
-                          {aiLoading ? (
-                            <>
-                              <Loader className="h-4 w-4 animate-spin" />
-                              Generating…
-                            </>
-                          ) : (
-                            <>
-                              <Sparkles className="h-4 w-4" />
-                              Generate Now
-                            </>
-                          )}
-                        </button>
-                      </div>
-
-                      <div className="mt-5">
-                        <div className="text-sm font-extrabold">Audio Upload (required for AI)</div>
-                        <div className="mt-3">
-                          <FileUploadCard
-                            title="Upload Audio"
-                            subtitle={`Max ${prettyBytes(MAX_BYTES)} • MP3/WAV/M4A recommended.`}
-                            kind="audio"
-                            accept="audio/*"
-                            file={audioFile}
-                            setFile={setAudioFile}
-                            upload={audioUpload}
-                            setUpload={setAudioUpload}
-                            required
-                          />
-                        </div>
-
-                        {aiError && (
-                          <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
-                            <AlertCircle className="h-4 w-4 mt-0.5" />
-                            <span>{aiError}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                {aiError && (
+                  <div className="mt-3 text-sm text-red-300 flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" /> {aiError}
                   </div>
                 )}
               </div>
 
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-lg font-extrabold">Your posts</div>
-                  <div className="text-xs text-white/60">
-                    Ready:{' '}
-                    <span className="font-extrabold text-white">
-                      {twitterPosts.map((t) => t.trim()).filter(Boolean).length}
+              {twitterPosts.map((post, idx) => (
+                <div key={idx} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                  <div className="flex items-center justify-between gap-2 mb-3">
+                    <div className="font-extrabold text-white text-sm">Tweet {idx + 1}</div>
+                    {twitterPosts.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setTwitterPosts((p) => p.filter((_, i) => i !== idx))}
+                        className="rounded-xl border border-white/10 bg-white/5 hover:bg-red-500/10 hover:border-red-500/30 p-1.5 text-white/50 hover:text-red-300 transition"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={post}
+                    onChange={(e) => setTwitterPosts((p) => p.map((v, i) => (i === idx ? e.target.value : v)))}
+                    placeholder="Write your tweet…"
+                    className="w-full rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white placeholder-white/30 outline-none focus:border-white/30 resize-none"
+                  />
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className={`text-xs ${post.length > 280 ? 'text-red-400' : 'text-white/40'}`}>
+                      {post.length}/280
                     </span>
                   </div>
                 </div>
+              ))}
 
-                <div className="mt-4 grid gap-3 grid-cols-2">
-                  {twitterPosts.map((t, i) => {
-                    const ok = t.trim().length > 0;
-                    const preview = t.trim() ? t.trim() : 'Tap to write this post…';
-                    return (
-                      <div
-                        key={i}
-                        className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/15 transition p-4 sm:p-5"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setActiveTweetIndex(i)}
-                            className="text-left flex-1 min-w-0"
-                          >
-                            <div className="font-extrabold text-white">Post {i + 1}</div>
-                            <div className="text-sm text-white/70 mt-1 line-clamp-3">{preview}</div>
-                          </button>
-
-                          <div className="flex flex-col items-end gap-2">
-                            <PlatformBadge ok={ok} />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                resetSubmitState();
-                                setTwitterPosts((prev) => prev.filter((_, idx) => idx !== i));
-                              }}
-                              className="inline-flex items-center gap-2 rounded-xl px-3 py-2 font-extrabold border border-white/10 bg-white/5 hover:bg-white/10"
-                              title="Remove"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {!twitterPostsReady && (
-                  <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 mt-0.5" />
-                    <span>Add at least 1 post to continue.</span>
-                  </div>
-                )}
-
-                <BottomNav nextLabel="Next (Schedule)" />
-              </div>
-
-              <FullscreenModal
-                open={activeTweetIndex !== null}
-                title={activeTweetIndex !== null ? `Twitter/X Post ${activeTweetIndex + 1}` : 'Twitter/X Post'}
-                subtitle="Write the full post. Keep it punchy."
-                onClose={() => setActiveTweetIndex(null)}
+              <button
+                type="button"
+                onClick={() => setTwitterPosts((p) => [...p, ''])}
+                className="w-full rounded-2xl border border-dashed border-white/20 bg-white/3 hover:bg-white/8 p-4 text-sm font-extrabold text-white/60 hover:text-white transition inline-flex items-center justify-center gap-2"
               >
-                {activeTweetIndex !== null && (
-                  <div className="space-y-4">
-                    <textarea
-                      value={twitterPosts[activeTweetIndex] ?? ''}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        resetSubmitState();
-                        setTwitterPosts((prev) => {
-                          const next = [...prev];
-                          next[activeTweetIndex] = v;
-                          return next;
-                        });
-                      }}
-                      rows={14}
-                      className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white outline-none focus:border-white/20"
-                      placeholder="Write your post…"
-                    />
-                    <div className="text-xs text-white/50">Close when done.</div>
-                  </div>
-                )}
-              </FullscreenModal>
+                <Plus className="h-4 w-4" /> Add Tweet
+              </button>
+
+              <BottomNav />
             </div>
           )}
 
-          {/* STEP 5: Schedule */}
+          {/* ── STEP 5: SCHEDULE ── */}
           {step === 5 && (
             <div className="space-y-5">
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                <h3 className="text-lg font-extrabold">Scheduling mode</h3>
-
-                <div className="mt-4 grid gap-3 grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetSubmitState();
-                      setScheduleMode('same');
-                    }}
-                    className={`rounded-2xl border p-4 sm:p-5 text-left transition ${
-                      scheduleMode === 'same'
-                        ? 'bg-white/10 border-white/15'
-                        : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/15'
-                    }`}
-                  >
-                    <div className="font-extrabold">Same time</div>
-                    <div className="text-xs text-white/60 mt-1">Schedule all platforms together</div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      resetSubmitState();
-                      setScheduleMode('different');
-                    }}
-                    className={`rounded-2xl border p-4 sm:p-5 text-left transition ${
-                      scheduleMode === 'different'
-                        ? 'bg-white/10 border-white/15'
-                        : 'bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/15'
-                    }`}
-                  >
-                    <div className="font-extrabold">Different times</div>
-                    <div className="text-xs text-white/60 mt-1">Set date/time per platform</div>
-                  </button>
-                </div>
+                <h3 className="text-lg font-extrabold">Scheduling</h3>
+                <p className="text-white/60 text-sm mt-1">All times are Eastern (ET). Postiz will schedule posts at the UTC equivalent.</p>
               </div>
 
-              {scheduleMode === 'same' ? (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                  <h3 className="text-lg font-extrabold">Schedule (ET)</h3>
+              {/* Mode selector */}
+              <div className="flex gap-3">
+                {(['same', 'different'] as const).map((m) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setScheduleMode(m)}
+                    className="flex-1 rounded-2xl border p-4 text-sm font-extrabold transition"
+                    style={{
+                      borderColor: scheduleMode === m ? 'rgba(214,178,94,0.5)' : 'rgba(255,255,255,0.1)',
+                      background: scheduleMode === m ? 'rgba(214,178,94,0.08)' : 'rgba(255,255,255,0.03)',
+                      color: scheduleMode === m ? GOLD_HOVER : 'rgba(255,255,255,0.6)',
+                    }}
+                  >
+                    {m === 'same' ? 'Same time for all' : 'Different per platform'}
+                  </button>
+                ))}
+              </div>
 
-                  <div className="mt-5 grid gap-4 grid-cols-2">
+              {scheduleMode === 'same' && (
+                <div className="bg-white/5 border border-white/10 rounded-2xl p-5 space-y-4">
+                  <div className="font-extrabold text-white">Publish Date & Time (ET)</div>
+
+                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <div className="text-sm font-bold">Date</div>
-
-                      {/* ✅ Wrapper tap opens picker on mobile */}
+                      <label className="text-xs text-white/60 font-extrabold">Date</label>
                       <button
                         type="button"
                         onClick={() => openPicker(sameDateRef)}
-                        className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-2.5 text-sm text-left text-white relative"
                       >
-                        <Calendar className="h-4 w-4" style={{ color: GOLD_HOVER }} />
+                        {scheduleDate || <span className="text-white/30">YYYY-MM-DD</span>}
                         <input
                           ref={sameDateRef}
                           type="date"
                           value={scheduleDate}
-                          onChange={(e) => {
-                            setScheduleDate(e.target.value);
-                            resetSubmitState();
-                          }}
-                          className="w-full bg-transparent text-sm text-white outline-none"
+                          onChange={(e) => setScheduleDate(e.target.value)}
+                          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                         />
                       </button>
                     </div>
 
                     <div>
-                      <div className="text-sm font-bold">Time</div>
-
-                      {/* ✅ Wrapper tap opens picker on mobile */}
+                      <label className="text-xs text-white/60 font-extrabold">Time (ET)</label>
                       <button
                         type="button"
                         onClick={() => openPicker(sameTimeRef)}
-                        className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
+                        className="mt-1 w-full rounded-xl border border-white/10 bg-black/25 px-4 py-2.5 text-sm text-left text-white relative"
                       >
-                        <Clock className="h-4 w-4" style={{ color: GOLD_HOVER }} />
+                        {scheduleTime || <span className="text-white/30">HH:MM</span>}
                         <input
                           ref={sameTimeRef}
                           type="time"
                           value={scheduleTime}
-                          onChange={(e) => {
-                            setScheduleTime(e.target.value);
-                            resetSubmitState();
-                          }}
-                          className="w-full bg-transparent text-sm text-white outline-none"
+                          onChange={(e) => setScheduleTime(e.target.value)}
+                          className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                         />
                       </button>
                     </div>
                   </div>
 
-                  <div className="mt-4 text-sm text-white/80">
-                    {scheduleCommonInfo.ok ? (
-                      <>
-                        Scheduled for <span className="font-extrabold">{scheduleCommonInfo.etDisplay}</span>
-                      </>
-                    ) : (
-                      <span className="text-white/60">{scheduleCommonInfo.message}</span>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
-                  <div className="text-lg font-extrabold">Schedule per platform (ET)</div>
-
-                  <div className="mt-4 grid gap-3 grid-cols-2">
-                    {enabledPlatforms.map((k) => (
-                      <button
-                        key={k}
-                        type="button"
-                        onClick={() => setActiveSchedulePlatform(k)}
-                        className="rounded-2xl border border-white/10 bg-white/5 hover:bg-white/10 hover:border-white/15 transition p-4 sm:p-5 text-left"
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-extrabold text-white truncate">{PLATFORM_META[k].label}</div>
-                            <div className="text-xs text-white/60 mt-1 truncate">Tap to set date/time</div>
-                          </div>
-                          <PlatformBadge ok={scheduleInfoByPlatform[k].ok} />
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-
-                  {!scheduleReady && hasAnyPlatform && (
-                    <div className="text-sm text-red-200 mt-4 inline-flex items-start gap-2">
-                      <AlertCircle className="h-4 w-4 mt-0.5" />
-                      <span>Set a date/time for each selected platform to continue.</span>
+                  {scheduleCommonInfo.ok && (
+                    <div className="text-xs text-green-300 font-extrabold">
+                      ✓ {scheduleCommonInfo.etDisplay} → {scheduleCommonInfo.utcIso}
                     </div>
                   )}
                 </div>
               )}
 
-              <BottomNav nextLabel="Next (Review)" />
+              {scheduleMode === 'different' && (
+                <div className="space-y-3">
+                  {enabledPlatforms.map((k) => {
+                    const info = scheduleInfoByPlatform[k];
+                    const pdate = scheduleByPlatform[k]?.date || '';
+                    const ptime = scheduleByPlatform[k]?.time || '';
 
-              <FullscreenModal
-                open={Boolean(activeSchedulePlatform)}
-                title={
-                  activeSchedulePlatform ? `${PLATFORM_META[activeSchedulePlatform].label} — Schedule (ET)` : 'Schedule'
-                }
-                onClose={() => setActiveSchedulePlatform(null)}
-              >
-                {activeSchedulePlatform && (
-                  <div className="space-y-5">
-                    <div className="grid gap-4 grid-cols-2">
-                      <div>
-                        <div className="text-sm font-bold">Date</div>
-                        <button
-                          type="button"
-                          onClick={() => openPicker(modalDateRef)}
-                          className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
+                    return (
+                      <div key={k} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                        <div
+                          className="font-extrabold text-white mb-3 cursor-pointer"
+                          onClick={() => setActiveSchedulePlatform(k)}
                         >
-                          <Calendar className="h-4 w-4" style={{ color: GOLD_HOVER }} />
-                          <input
-                            ref={modalDateRef}
-                            type="date"
-                            value={scheduleByPlatform[activeSchedulePlatform].date}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              resetSubmitState();
-                              setScheduleByPlatform((prev) => ({
-                                ...prev,
-                                [activeSchedulePlatform]: { ...prev[activeSchedulePlatform], date: v },
-                              }));
-                            }}
-                            className="w-full bg-transparent text-sm text-white outline-none"
-                          />
-                        </button>
-                      </div>
-
-                      <div>
-                        <div className="text-sm font-bold">Time</div>
-                        <button
-                          type="button"
-                          onClick={() => openPicker(modalTimeRef)}
-                          className="mt-2 w-full flex items-center gap-2 rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-left"
-                        >
-                          <Clock className="h-4 w-4" style={{ color: GOLD_HOVER }} />
-                          <input
-                            ref={modalTimeRef}
-                            type="time"
-                            value={scheduleByPlatform[activeSchedulePlatform].time}
-                            onChange={(e) => {
-                              const v = e.target.value;
-                              resetSubmitState();
-                              setScheduleByPlatform((prev) => ({
-                                ...prev,
-                                [activeSchedulePlatform]: { ...prev[activeSchedulePlatform], time: v },
-                              }));
-                            }}
-                            className="w-full bg-transparent text-sm text-white outline-none"
-                          />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="text-sm text-white/80">
-                      {scheduleInfoByPlatform[activeSchedulePlatform].ok ? (
-                        <>
-                          Scheduled for{' '}
-                          <span className="font-extrabold">
-                            {scheduleInfoByPlatform[activeSchedulePlatform].etDisplay}
+                          {PLATFORM_META[k].label}
+                          <span className="ml-2 text-xs font-bold text-white/50">
+                            {info.ok ? `✓ ${info.etDisplay}` : info.message}
                           </span>
-                        </>
-                      ) : (
-                        <span className="text-white/60">
-                          {scheduleInfoByPlatform[activeSchedulePlatform].message}
-                        </span>
-                      )}
-                    </div>
+                        </div>
 
-                    <div className="text-xs text-white/50">Close when done.</div>
-                  </div>
-                )}
-              </FullscreenModal>
+                        <div className="grid grid-cols-2 gap-3">
+                          <input
+                            type="date"
+                            value={pdate}
+                            onChange={(e) =>
+                              setScheduleByPlatform((prev) => ({
+                                ...prev,
+                                [k]: { ...prev[k], date: e.target.value },
+                              }))
+                            }
+                            className="rounded-xl border border-white/10 bg-black/25 px-4 py-2.5 text-sm text-white outline-none focus:border-white/30"
+                          />
+                          <input
+                            type="time"
+                            value={ptime}
+                            onChange={(e) =>
+                              setScheduleByPlatform((prev) => ({
+                                ...prev,
+                                [k]: { ...prev[k], time: e.target.value },
+                              }))
+                            }
+                            className="rounded-xl border border-white/10 bg-black/25 px-4 py-2.5 text-sm text-white outline-none focus:border-white/30"
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <BottomNav />
             </div>
           )}
 
-          {/* STEP 6: REVIEW */}
+          {/* ── STEP 6: REVIEW & SUBMIT ── */}
           {step === 6 && (
             <div className="space-y-5">
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
@@ -2129,70 +1853,71 @@ export function MediaDistributionPage() {
                 <p className="text-white/60 text-sm mt-1">Everything in one clean list. Tap any item to edit.</p>
               </div>
 
+              {/* Connection status check */}
+              {!postizToken && (
+                <div className="rounded-2xl border border-yellow-500/30 bg-yellow-500/8 p-4 text-sm text-yellow-200">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                    <div>
+                      <div className="font-extrabold">Social accounts not connected</div>
+                      <div className="mt-1 text-yellow-200/70">Connect your accounts above to schedule posts.</div>
+                      <button
+                        type="button"
+                        onClick={handleConnectPostiz}
+                        className="mt-2 rounded-xl border border-yellow-500/30 bg-yellow-500/10 px-3 py-1.5 text-xs font-extrabold inline-flex items-center gap-1.5"
+                      >
+                        <Link2 className="h-3.5 w-3.5" /> Connect Now
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="space-y-3">
                 <ListRow
                   icon={<FileText className="h-5 w-5 text-white" />}
                   title="Platforms"
-                  subtitle={
-                    enabledPlatforms.length
-                      ? enabledPlatforms.map((k) => PLATFORM_META[k].label).join(', ')
-                      : 'None selected'
-                  }
+                  subtitle={enabledPlatforms.length ? enabledPlatforms.map((k) => PLATFORM_META[k].label).join(', ') : 'None selected'}
                   right={<PlatformBadge ok={hasAnyPlatform} />}
                   onClick={() => setStep(1)}
                 />
-
                 <ListRow
                   icon={<Video className="h-5 w-5 text-white" />}
                   title="Video"
-                  subtitle={
-                    videoUpload.status === 'done'
-                      ? `${videoUpload.fileName} • ${prettyBytes(videoUpload.size)}`
-                      : 'Missing'
-                  }
+                  subtitle={videoUpload.status === 'done' ? `${videoUpload.fileName} • ${prettyBytes(videoUpload.size)}` : 'Missing'}
                   right={<PlatformBadge ok={videoReady} />}
                   onClick={() => setStep(2)}
                 />
-
                 <ListRow
                   icon={<FileText className="h-5 w-5 text-white" />}
                   title="Thumbnail (Optional)"
-                  subtitle={
-                    thumbnailUpload.status === 'done'
-                      ? `${thumbnailUpload.fileName} • ${prettyBytes(thumbnailUpload.size)}`
-                      : 'Not uploaded'
-                  }
+                  subtitle={thumbnailUpload.status === 'done' ? `${thumbnailUpload.fileName} • ${prettyBytes(thumbnailUpload.size)}` : 'Not uploaded'}
                   right={<PlatformBadge ok={true} />}
                   onClick={() => setStep(2)}
                 />
-
                 <ListRow
                   icon={<Mic className="h-5 w-5 text-white" />}
                   title="Audio (for AI)"
-                  subtitle={
-                    audioUpload.status === 'done'
-                      ? `${audioUpload.fileName} • ${prettyBytes(audioUpload.size)}`
-                      : 'Not uploaded'
-                  }
+                  subtitle={audioUpload.status === 'done' ? `${audioUpload.fileName} • ${prettyBytes(audioUpload.size)}` : 'Not uploaded'}
                   right={<PlatformBadge ok={true} />}
                   onClick={() => setStep(showTwitterPostsStep ? 4 : 3)}
                 />
-
                 <ListRow
                   icon={<Calendar className="h-5 w-5" style={{ color: GOLD_HOVER }} />}
                   title="Scheduling"
-                  subtitle={
-                    scheduleReady
-                      ? scheduleMode === 'same'
-                        ? 'Same time for all platforms'
-                        : 'Different times per platform'
-                      : 'Missing schedule'
-                  }
+                  subtitle={scheduleReady ? (scheduleMode === 'same' ? 'Same time for all platforms' : 'Different times per platform') : 'Missing schedule'}
                   right={<PlatformBadge ok={scheduleReady} />}
                   onClick={() => setStep(5)}
                 />
+                <ListRow
+                  icon={<Link2 className="h-5 w-5 text-green-300" />}
+                  title="Social Accounts"
+                  subtitle={postizToken ? (integrations.length ? integrations.map((i) => i.name).join(', ') : 'No accounts found') : 'Not connected'}
+                  right={<PlatformBadge ok={Boolean(postizToken) && integrations.length > 0} />}
+                />
               </div>
 
+              {/* Per-platform review */}
               <div className="bg-white/5 border border-white/10 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-lg font-extrabold">Per-platform</div>
@@ -2219,6 +1944,19 @@ export function MediaDistributionPage() {
                 </div>
               </div>
 
+              {/* Submit results */}
+              {submitResults.length > 0 && (
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-5 space-y-2">
+                  <div className="font-extrabold text-white text-sm mb-3">Submission Results</div>
+                  {submitResults.map((r, i) => (
+                    <div key={i} className={`flex items-start gap-2 text-sm ${r.ok ? 'text-green-200' : 'text-red-200'}`}>
+                      {r.ok ? <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" /> : <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />}
+                      <span><span className="font-extrabold">{r.platform}:</span> {r.message}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {submitError && (
                 <div className="bg-red-500/10 border border-red-500/30 rounded-2xl p-4">
                   <div className="flex items-start gap-2 text-red-100">
@@ -2233,8 +1971,10 @@ export function MediaDistributionPage() {
                   <div className="flex items-start gap-2 text-green-100">
                     <CheckCircle2 className="h-5 w-5 mt-0.5 text-green-300" />
                     <div>
-                      <div className="font-extrabold">Submitted successfully.</div>
-                      <div className="text-sm text-green-100/80">Your package was sent to the webhook.</div>
+                      <div className="font-extrabold">Scheduled successfully.</div>
+                      <div className="text-sm text-green-100/80">
+                        Your posts have been queued in your social media scheduler.
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -2244,15 +1984,16 @@ export function MediaDistributionPage() {
                 disabled={!reviewReadyToSubmit}
                 loading={submitting}
                 success={submitOk}
-                onSubmit={submitWebhook}
+                onSubmit={submitToPostiz}
               />
 
               <BottomNav hideNext />
 
+              {/* Platform review modal */}
               <FullscreenModal
                 open={Boolean(reviewPlatform)}
                 title={reviewPlatform ? PLATFORM_META[reviewPlatform].label : 'Platform'}
-                subtitle={reviewPlatform ? `Copy + schedule summary` : undefined}
+                subtitle={reviewPlatform ? 'Copy + schedule summary' : undefined}
                 onClose={() => setReviewPlatform(null)}
               >
                 {reviewPlatform && (
@@ -2271,10 +2012,7 @@ export function MediaDistributionPage() {
                             const v = t.trim();
                             if (!v) return null;
                             return (
-                              <div
-                                key={idx}
-                                className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/80"
-                              >
+                              <div key={idx} className="rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/80">
                                 {v}
                               </div>
                             );
@@ -2285,9 +2023,26 @@ export function MediaDistributionPage() {
                         </div>
                       ) : (
                         <div className="mt-3 rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/80 whitespace-pre-wrap">
-                          {String(getCopyForPlatform(reviewPlatform) || '').trim() || 'Missing'}
+                          {String(getCopyForPlatform(reviewPlatform as Exclude<PlatformKey, 'twitterPosts'>) || '').trim() || 'Missing'}
                         </div>
                       )}
+                    </div>
+
+                    {/* Connected account for this platform */}
+                    <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
+                      <div className="text-sm font-extrabold text-white">Connected Account</div>
+                      <div className="mt-2 space-y-1">
+                        {integrations
+                          .filter((i) => i.type.toLowerCase() === POSTIZ_PLATFORM_TYPE[reviewPlatform]?.toLowerCase())
+                          .map((i) => (
+                            <div key={i.id} className="text-sm text-green-300 font-extrabold">✓ {i.name}</div>
+                          ))}
+                        {!integrations.some(
+                          (i) => i.type.toLowerCase() === POSTIZ_PLATFORM_TYPE[reviewPlatform]?.toLowerCase()
+                        ) && (
+                          <div className="text-sm text-red-300">No connected account for this platform</div>
+                        )}
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2305,7 +2060,6 @@ export function MediaDistributionPage() {
                       >
                         Edit Copy
                       </button>
-
                       <button
                         type="button"
                         onClick={() => {
