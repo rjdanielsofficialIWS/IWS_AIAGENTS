@@ -20,6 +20,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
+import { scheduleMedia, getUserPostizAccount } from '../services/postiz';
 
 const GOLD_PRIMARY = '#D6B25E';
 const GOLD_HOVER = '#F0D27C';
@@ -749,13 +750,11 @@ export function MediaDistributionPage() {
   // ── POSTIZ SUBMIT ──
   const submitToPostiz = async () => {
     resetSubmitState();
-    if (!postizToken) { setSubmitError('Connect your social accounts first.'); return; }
     if (!hasAnyPlatform) { setSubmitError('Choose at least one platform.'); return; }
     if (videoUpload.status !== 'done') { setSubmitError('Upload your video.'); return; }
     if (!captionsReady) { setSubmitError('Fill in copy for every selected platform.'); return; }
     if (!twitterPostsReady) { setSubmitError('Add at least 1 Twitter/X post.'); return; }
     if (!scheduleReady) { setSubmitError('Complete scheduling for all platforms.'); return; }
-    if (integrations.length === 0) { setSubmitError('No connected accounts found. Reconnect and refresh.'); return; }
 
     setSubmitting(true);
     const results: { platform: string; ok: boolean; message: string }[] = [];
@@ -768,67 +767,65 @@ export function MediaDistributionPage() {
         if (!schedInfo.ok) continue;
 
         const postizType = POSTIZ_PLATFORM_TYPE[platformKey];
-        const matchingIntegrations = integrations.filter((int) => int.type.toLowerCase() === postizType.toLowerCase());
-
-        if (matchingIntegrations.length === 0) {
-          results.push({ platform: PLATFORM_META[platformKey].label, ok: false, message: `No connected ${PLATFORM_META[platformKey].label} account found` });
-          continue;
-        }
-
-        const integrationIds = matchingIntegrations.map((i) => i.id);
 
         if (platformKey === 'twitterPosts') {
           const tweets = twitterPosts.map((t) => t.trim()).filter(Boolean);
           for (const tweet of tweets) {
             postPromises.push(
-              postizFetch('/public/v1/posts', postizToken, {
-                method: 'POST',
-                body: JSON.stringify({
-                  type: 'schedule',
-                  date: schedInfo.utcIso,
-                  shortLink: false,
-                  settings: {},
-                  posts: integrationIds.map((integrationId) => ({
-                    integrationId,
-                    value: [{ content: tweet }],
-                    settings: {},
-                    media: videoUpload.status === 'done' ? [{ url: videoUpload.url, path: videoUpload.url }] : [],
-                  })),
-                }),
-              }).then(async (res) => {
-                const text = await res.text().catch(() => '');
-                results.push({ platform: `${PLATFORM_META[platformKey].label} tweet`, ok: res.ok, message: res.ok ? 'Scheduled' : `Failed (${res.status}): ${text}` });
-              }).catch((e: any) => {
-                results.push({ platform: `${PLATFORM_META[platformKey].label} tweet`, ok: false, message: e?.message || 'Request failed' });
-              })
+              (async () => {
+                try {
+                  const result = await scheduleMedia({
+                    platforms: [postizType],
+                    mediaUrls: {
+                      video: videoUpload.status === 'done' ? videoUpload.url : undefined,
+                    },
+                    captions: { content: tweet },
+                    scheduledTime: schedInfo.rfc3339WithOffset,
+                    timezone: schedInfo.timezone,
+                  });
+                  results.push({
+                    platform: `${PLATFORM_META[platformKey].label} tweet`,
+                    ok: result.success,
+                    message: result.success ? 'Scheduled' : result.error || 'Failed to schedule',
+                  });
+                } catch (e: any) {
+                  results.push({
+                    platform: `${PLATFORM_META[platformKey].label} tweet`,
+                    ok: false,
+                    message: e?.message || 'Request failed',
+                  });
+                }
+              })()
             );
           }
         } else {
           const content = getCopyForPlatform(platformKey as Exclude<PlatformKey, 'twitterPosts'>);
           postPromises.push(
-            postizFetch('/public/v1/posts', postizToken, {
-              method: 'POST',
-              body: JSON.stringify({
-                type: 'schedule',
-                date: schedInfo.utcIso,
-                shortLink: false,
-                settings: {},
-                posts: integrationIds.map((integrationId) => ({
-                  integrationId,
-                  value: [{ content }],
-                  settings: {},
-                  media: [
-                    ...(videoUpload.status === 'done' ? [{ url: videoUpload.url, path: videoUpload.url }] : []),
-                    ...(thumbnailUpload.status === 'done' && platformKey === 'youtube' ? [{ url: thumbnailUpload.url, path: thumbnailUpload.url }] : []),
-                  ],
-                })),
-              }),
-            }).then(async (res) => {
-              const text = await res.text().catch(() => '');
-              results.push({ platform: PLATFORM_META[platformKey].label, ok: res.ok, message: res.ok ? 'Scheduled' : `Failed (${res.status}): ${text}` });
-            }).catch((e: any) => {
-              results.push({ platform: PLATFORM_META[platformKey].label, ok: false, message: e?.message || 'Request failed' });
-            })
+            (async () => {
+              try {
+                const result = await scheduleMedia({
+                  platforms: [postizType],
+                  mediaUrls: {
+                    video: videoUpload.status === 'done' ? videoUpload.url : undefined,
+                    thumbnail: thumbnailUpload.status === 'done' && platformKey === 'youtube' ? thumbnailUpload.url : undefined,
+                  },
+                  captions: { content },
+                  scheduledTime: schedInfo.rfc3339WithOffset,
+                  timezone: schedInfo.timezone,
+                });
+                results.push({
+                  platform: PLATFORM_META[platformKey].label,
+                  ok: result.success,
+                  message: result.success ? 'Scheduled' : result.error || 'Failed to schedule',
+                });
+              } catch (e: any) {
+                results.push({
+                  platform: PLATFORM_META[platformKey].label,
+                  ok: false,
+                  message: e?.message || 'Request failed',
+                });
+              }
+            })()
           );
         }
       }
