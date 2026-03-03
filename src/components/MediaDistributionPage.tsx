@@ -102,10 +102,7 @@ type PostizIntegration = {
   picture?: string;
 };
 
-const PLATFORM_META: Record
-  PlatformKey,
-  { label: string; sub: string; kind: 'caption' | 'title' | 'text' | 'posts' }
-> = {
+const PLATFORM_META: Record<PlatformKey, { label: string; sub: string; kind: 'caption' | 'title' | 'text' | 'posts' }> = {
   instagram:    { label: 'Instagram',        sub: 'Reels caption',          kind: 'caption' },
   tiktok:       { label: 'TikTok',           sub: 'Caption',                kind: 'caption' },
   facebook:     { label: 'Facebook',         sub: 'Reels caption',          kind: 'caption' },
