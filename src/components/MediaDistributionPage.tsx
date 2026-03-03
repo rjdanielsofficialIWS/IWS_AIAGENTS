@@ -816,7 +816,7 @@ export function MediaDistributionPage() {
       const ext = safeName.includes('.') ? safeName.split('.').pop() : '';
       const ts = Date.now();
       const random = Math.random().toString(16).slice(2);
-      const path = `transferrable-everything/${kind}/${ts}-${random}${ext ? `.${ext}` : ''}`;
+      const path = `Media Machine/${kind}/${ts}-${random}${ext ? `.${ext}` : ''}`;
 
       const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, {
         cacheControl: '3600',
