@@ -1189,58 +1189,6 @@ export function MediaDistributionPage() {
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthError, setOauthError] = useState<string|null>(null);
 
-  // ── Handle Postiz OAuth2 Authorization Code callback ──
-  // Per Postiz docs: redirect arrives with ?code=...&state=...
-  // We exchange the code server-side via /.netlify/functions/postiz-token
-  // which calls POST https://api.postiz.com/oauth/token with grant_type=authorization_code
-  useEffect(()=>{
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('postiz_callback')!=='1') return;
-
-    const code  = params.get('code');
-    const state = params.get('state');
-    const error = params.get('error');
-
-    // Clean URL immediately
-    window.history.replaceState({}, '', window.location.pathname);
-
-    if (error==='access_denied') { setOauthError('Authorization was denied. Please try again.'); return; }
-    if (!code) { setOauthError('No authorization code received from Postiz.'); return; }
-
-    // CSRF state check
-    const savedState = localStorage.getItem(LS_STATE_KEY);
-    if (!savedState || savedState!==state) { setOauthError('Security verification failed (state mismatch). Please try again.'); return; }
-    localStorage.removeItem(LS_STATE_KEY);
-
-    setOauthLoading(true);
-
-    // Exchange authorization code for access token via Netlify function
-    // The function should call: POST https://api.postiz.com/oauth/token
-    // with: { grant_type: "authorization_code", code, client_id, client_secret }
-    fetch('/.netlify/functions/postiz-token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ code }),
-    })
-      .then(async res => {
-        if (!res.ok) {
-          const text = await res.text().catch(()=>'');
-          throw new Error(`Token exchange failed (${res.status}). ${text}`);
-        }
-        return res.json();
-      })
-      .then(({ access_token }) => {
-        if (!access_token) throw new Error('No access_token returned from Postiz.');
-        localStorage.setItem(LS_TOKEN_KEY, access_token);
-        setPostizToken(access_token);
-        setOauthError(null);
-        // Auto-open connect modal so user can see their accounts
-        setConnectModalOpen(true);
-      })
-      .catch((e:any) => setOauthError(e?.message || 'Authorization failed. Please try again.'))
-      .finally(() => setOauthLoading(false));
-  }, []);
-
   // ── Load integrations when token is available ──
   const loadIntegrations = useCallback(async (token:string) => {
     setIntegrationsLoading(true);
