@@ -250,7 +250,12 @@ async function postizFetch(path: string, token: string, opts: RequestInit = {}) 
   });
 }
 async function fetchIntegrations(token: string): Promise<PostizIntegration[]> {
-  const r = await postizFetch('/public/v1/integrations', token);
+  const r = await fetch('/.netlify/functions/postiz-integrations', {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': token,
+    },
+  });
   if (!r.ok) throw new Error(`Failed (${r.status})`);
   const d = await r.json();
   return Array.isArray(d?.integrations) ? d.integrations : [];
