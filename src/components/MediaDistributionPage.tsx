@@ -1203,10 +1203,10 @@ export function MediaDistributionPage() {
   // ── OAuth2 Authorization Code flow ──
   // Per Postiz docs: redirect to /oauth/authorize with client_id + response_type=code + state
   const handleConnect = () => {
-    const state = generateState();
-    localStorage.setItem(LS_STATE_KEY, state);
-    window.location.href = buildAuthUrl(state);
-  };
+  const state = generateState();
+  localStorage.setItem(LS_STATE_KEY, state);
+  window.location.href = buildPostizAuthUrl(state);
+};
 
   const handleDisconnect = () => {
     localStorage.removeItem(LS_TOKEN_KEY);
