@@ -1,6 +1,10 @@
-exports.handler = async (event) => {
+exports.handler = async function (event) {
+  // Only allow POST
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
+    return {
+      statusCode: 405,
+      body: JSON.stringify({ error: 'Method not allowed' }),
+    };
   }
 
   let code;
@@ -8,20 +12,27 @@ exports.handler = async (event) => {
     const body = JSON.parse(event.body || '{}');
     code = body.code;
   } catch {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid request body' }) };
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Invalid request body' }),
+    };
   }
 
   if (!code) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Missing authorization code' }) };
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Missing authorization code' }),
+    };
   }
 
-  const CLIENT_ID = process.env.POSTIZ_CLIENT_ID;
-  const CLIENT_SECRET = process.env.POSTIZ_CLIENT_SECRET;
-  const REDIRECT_URL = process.env.POSTIZ_REDIRECT_URL;
+  const clientId     = process.env.POSTIZ_CLIENT_ID;
+  const clientSecret = process.env.POSTIZ_CLIENT_SECRET;
 
-  if (!CLIENT_ID || !CLIENT_SECRET || !REDIRECT_URL) {
-    console.error('Missing Postiz environment variables');
-    return { statusCode: 500, body: JSON.stringify({ error: 'Server misconfigured' }) };
+  if (!clientId || !clientSecret) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Postiz credentials not configured on server' }),
+    };
   }
 
   try {
@@ -29,11 +40,10 @@ exports.handler = async (event) => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        grant_type: 'authorization_code',
+        grant_type:    'authorization_code',
         code,
-        client_id: CLIENT_ID,
-        client_secret: CLIENT_SECRET,
-        redirect_uri: REDIRECT_URL,
+        client_id:     clientId,
+        client_secret: clientSecret,
       }),
     });
 
@@ -43,12 +53,17 @@ exports.handler = async (event) => {
       console.error('Postiz token exchange failed:', data);
       return {
         statusCode: response.status,
-        body: JSON.stringify({ error: data?.error || 'Token exchange failed' }),
+        body: JSON.stringify({
+          error: data.error || data.message || 'Token exchange failed',
+        }),
       };
     }
 
     if (!data.access_token) {
-      return { statusCode: 500, body: JSON.stringify({ error: 'No access_token returned' }) };
+      return {
+        statusCode: 500,
+        body: JSON.stringify({ error: 'No access_token returned from Postiz' }),
+      };
     }
 
     return {
@@ -57,10 +72,10 @@ exports.handler = async (event) => {
       body: JSON.stringify({ access_token: data.access_token }),
     };
   } catch (err) {
-    console.error('Postiz function error:', err);
+    console.error('postiz-token function error:', err);
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: err.message || 'Internal server error' }),
+      body: JSON.stringify({ error: 'Internal server error during token exchange' }),
     };
   }
 };
