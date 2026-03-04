@@ -197,7 +197,7 @@ function ConnectAccountsModal({
   // Open Postiz integrations page in a new tab so user can connect the platform.
   // When they're done they close that tab and click "Refresh" here.
   const handleConnectPlatform = (platformId: PlatformId) => {
-    window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank');
+    window.open(`${POSTIZ_FRONTEND_URL}/launches`, '_blank');
   };
 
   return (
