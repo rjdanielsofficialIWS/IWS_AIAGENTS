@@ -24,10 +24,9 @@ const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
 const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
 // localStorage keys
-const LS_TOKEN_KEY            = 'postiz_access_token';   // Postiz OAuth access token
-const LS_STATE_KEY            = 'postiz_oauth_state';    // CSRF state for Postiz login
-const LS_SOCIAL_PROVIDER_KEY  = 'postiz_social_provider'; // platform being connected (e.g. "instagram")
-const LS_SOCIAL_CALLBACK_KEY  = 'postiz_social_callback'; // flag: we're returning from a social OAuth
+const LS_TOKEN_KEY           = 'postiz_access_token';    // Postiz OAuth access token
+const LS_STATE_KEY           = 'postiz_oauth_state';     // CSRF state for Postiz login
+const LS_SOCIAL_RETURN_KEY   = 'postiz_social_return';   // flag: user is returning from Postiz after connecting a channel
 
 // ─────────────────────────────────────────────
 // SUPABASE STORAGE
@@ -119,13 +118,11 @@ function prettyBytes(b: number) {
   const i = Math.min(u.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
   return `${(b / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
 }
-
 function generateState() {
   const a = new Uint8Array(16);
   window.crypto.getRandomValues(a);
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
 }
-
 function buildPostizAuthUrl(state: string) {
   return `${POSTIZ_FRONTEND_URL}/oauth/authorize?${new URLSearchParams({
     client_id: POSTIZ_CLIENT_ID,
@@ -135,7 +132,7 @@ function buildPostizAuthUrl(state: string) {
   })}`;
 }
 
-// All Postiz Public API calls go through our Netlify proxy to avoid CORS
+// All Postiz Public API calls go through Netlify proxy to avoid CORS
 async function postizProxy(path: string, token: string, method = 'GET', body?: object) {
   const res = await fetch('/.netlify/functions/postiz-api', {
     method: 'POST',
@@ -175,57 +172,41 @@ function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'l
 
 // ─────────────────────────────────────────────
 // CONNECT ACCOUNTS MODAL
-// Users can connect any social platform directly from here.
-// Flow:
-//   1. Click a platform → postiz-connect-url.js gets the OAuth URL from Postiz
-//   2. User is redirected to that platform (Instagram, TikTok, etc.)
-//   3. Platform redirects back to this page with ?code=&state=
-//   4. useEffect detects LS_SOCIAL_CALLBACK_KEY and calls postiz-connect-callback.js
-//   5. Channel appears in the connected list
+//
+// HOW IT WORKS:
+// The Postiz OAuth token only grants access to /public/v1/ endpoints.
+// Connecting individual social platforms (Instagram, TikTok, etc.) requires
+// a full Postiz browser session — it cannot be done with an API call.
+//
+// So the flow is:
+//   1. User clicks a platform (e.g. Instagram)
+//   2. We redirect them to Postiz's integrations page with ?redirectUrl=<your site>
+//   3. They connect Instagram inside Postiz (Postiz handles all the OAuth)
+//   4. Postiz sends them back to your site
+//   5. We detect the return via LS_SOCIAL_RETURN_KEY and refresh the channel list
+//
+// This is exactly how Buffer, Hootsuite, etc. handle third-party platform connections.
 // ─────────────────────────────────────────────
 function ConnectAccountsModal({
-  open, onClose, integrations, onConnectPostiz,
-  postizToken, integrationsLoading,
+  open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading,
 }: {
-  open: boolean;
-  onClose: () => void;
-  integrations: PostizIntegration[];
-  onConnectPostiz: () => void;
-  postizToken: string | null;
-  integrationsLoading: boolean;
+  open: boolean; onClose: () => void; integrations: PostizIntegration[];
+  onConnectPostiz: () => void; postizToken: string | null; integrationsLoading: boolean;
 }) {
-  const [connectingPlatform, setConnectingPlatform] = useState<string | null>(null);
-  const [connectError, setConnectError] = useState<string | null>(null);
-
   if (!open) return null;
 
   const connectedIds = integrations.map(i => i.identifier);
 
-  const handleConnectPlatform = async (platformId: PlatformId) => {
-    if (!postizToken) return;
-    setConnectingPlatform(platformId);
-    setConnectError(null);
-    try {
-      const resp = await fetch('/.netlify/functions/postiz-connect-url', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          provider: PLATFORMS[platformId].postizType,
-          token: postizToken,
-          redirectUrl: POSTIZ_REDIRECT_URL,
-        }),
-      });
-      const data = await resp.json();
-      if (!resp.ok || !data?.url) throw new Error(data?.error || 'Could not get authorization URL');
-      // Save which provider we're connecting so the callback handler knows
-      localStorage.setItem(LS_SOCIAL_PROVIDER_KEY, PLATFORMS[platformId].postizType);
-      localStorage.setItem(LS_SOCIAL_CALLBACK_KEY, 'true');
-      // Redirect user to the platform's OAuth page
-      window.location.href = data.url;
-    } catch (e: any) {
-      setConnectError(e.message || 'Failed to initiate connection');
-      setConnectingPlatform(null);
-    }
+  // Redirect to Postiz integrations page for this platform.
+  // Postiz will send the user back to POSTIZ_REDIRECT_URL after they connect.
+  const handleConnectPlatform = (platformId: PlatformId) => {
+    // Set flag so we know the user is returning from connecting a channel
+    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+    const params = new URLSearchParams({
+      redirectUrl: POSTIZ_REDIRECT_URL,
+      provider: PLATFORMS[platformId].postizType,
+    });
+    window.location.href = `${POSTIZ_FRONTEND_URL}/integrations?${params.toString()}`;
   };
 
   return (
@@ -248,7 +229,7 @@ function ConnectAccountsModal({
 
         {/* Body */}
         {!postizToken ? (
-          // ── Step 0: Postiz account not yet connected ──
+          // Step 0 — Postiz account not yet connected
           <div className="p-8 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center"
               style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
@@ -256,7 +237,7 @@ function ConnectAccountsModal({
             </div>
             <h3 className="text-base font-bold text-white mb-2">Connect your Postiz account first</h3>
             <p className="text-sm text-white/40 mb-6 max-w-xs">
-              Authorize once with Postiz, then connect any social platform directly from this page — no separate Postiz visits needed.
+              Authorize once with Postiz, then connect any social platform directly from this page.
             </p>
             <button onClick={onConnectPostiz}
               className="px-6 py-3 rounded-xl text-sm font-bold transition hover:brightness-110"
@@ -267,25 +248,14 @@ function ConnectAccountsModal({
         ) : (
           <div className="overflow-y-auto flex-1 p-6">
 
-            {/* Error banner */}
-            {connectError && (
-              <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200 mb-4"
-                style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
-                <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-                <span className="flex-1">{connectError}</span>
-                <button onClick={() => setConnectError(null)} className="text-red-300/60 hover:text-red-200 transition">
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
-
-            {/* Connected channels */}
+            {/* Loading */}
             {integrationsLoading ? (
               <div className="flex items-center justify-center py-8 gap-3 text-white/30">
                 <Loader className="w-5 h-5 animate-spin" /> Loading channels…
               </div>
             ) : (
               <>
+                {/* Already connected */}
                 {integrations.length > 0 && (
                   <div className="mb-6">
                     <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
@@ -307,42 +277,39 @@ function ConnectAccountsModal({
                   </div>
                 )}
 
-                {/* Platform grid — click to connect directly */}
+                {/* Platform grid */}
                 <div>
                   <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
                     Add a Channel
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     {(Object.entries(PLATFORMS) as [PlatformId, typeof PLATFORMS[PlatformId]][]).map(([id, p]) => {
-                      const isConnected  = connectedIds.some(c => c === id || c === p.postizType);
-                      const isConnecting = connectingPlatform === id;
+                      const isConnected = connectedIds.some(c => c === id || c === p.postizType);
                       return (
                         <button key={id}
                           onClick={() => !isConnected && handleConnectPlatform(id)}
-                          disabled={!!connectingPlatform || isConnected}
+                          disabled={isConnected}
                           className="flex items-center gap-3 p-3 rounded-xl border transition text-left disabled:cursor-default"
                           style={{
-                            borderColor: isConnected ? 'rgba(34,197,94,0.25)' : isConnecting ? `${GOLD}60` : BORDER,
-                            background: isConnected ? 'rgba(34,197,94,0.05)' : isConnecting ? `${GOLD}10` : 'transparent',
-                            opacity: (connectingPlatform && !isConnecting) ? 0.4 : 1,
+                            borderColor: isConnected ? 'rgba(34,197,94,0.25)' : BORDER,
+                            background: isConnected ? 'rgba(34,197,94,0.05)' : 'transparent',
                           }}>
                           <PlatformIcon id={id} size="sm" />
                           <div className="flex-1 min-w-0">
                             <div className="text-xs font-bold text-white truncate">{p.label}</div>
                             <div className="text-xs" style={{
-                              color: isConnected ? '#86efac' : isConnecting ? GOLD_L : 'rgba(255,255,255,0.25)',
+                              color: isConnected ? '#86efac' : 'rgba(255,255,255,0.25)',
                             }}>
-                              {isConnected ? '● Connected' : isConnecting ? 'Redirecting…' : '+ Connect'}
+                              {isConnected ? '● Connected' : '+ Connect'}
                             </div>
                           </div>
-                          {isConnecting && <Loader className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: GOLD }} />}
                           {isConnected && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
                         </button>
                       );
                     })}
                   </div>
                   <p className="text-xs text-white/20 mt-4 text-center">
-                    You'll be redirected to each platform to authorize securely. Your credentials are never stored on our servers.
+                    You'll be taken to Postiz to authorize each platform securely, then returned here automatically.
                   </p>
                 </div>
               </>
@@ -370,25 +337,26 @@ function PostComposerModal({
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
     return d.toISOString().slice(0, 16);
   });
-  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoFile, setVideoFile]   = useState<File | null>(null);
   const [videoUpload, setVideoUpload] = useState<UploadState>({ status: 'idle' });
-  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imageFiles, setImageFiles]   = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
   const [perPlatform, setPerPlatform] = useState<Record<string, string>>({});
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [submitOk, setSubmitOk] = useState(false);
+  const [submitOk, setSubmitOk]     = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-  const [tone, setTone] = useState('engaging, value-first');
-  const [showAi, setShowAi] = useState(false);
+  const [aiLoading, setAiLoading]   = useState(false);
+  const [tone, setTone]             = useState('engaging, value-first');
+  const [showAi, setShowAi]         = useState(false);
 
   useEffect(() => {
     if (!open) {
       setSelectedIntegrations([]); setContent(''); setPerPlatform({});
       setVideoFile(null); setVideoUpload({ status: 'idle' });
-      setImageFiles([]); setImageUploads([]); setSubmitOk(false);
-      setSubmitError(null); setShowAi(false); setExpandedPlatform(null);
+      setImageFiles([]); setImageUploads([]);
+      setSubmitOk(false); setSubmitError(null);
+      setShowAi(false); setExpandedPlatform(null);
     }
   }, [open]);
 
@@ -411,7 +379,7 @@ function PostComposerModal({
     if (file.size > MAX_BYTES) { setU({ status: 'error', message: `File too large. Max ${prettyBytes(MAX_BYTES)}` }); return; }
     setU({ status: 'uploading' } as UploadState);
     try {
-      const ext = file.name.split('.').pop();
+      const ext  = file.name.split('.').pop();
       const path = `media-machine/${kind}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
       const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type });
       if (error) throw new Error(error.message);
@@ -422,37 +390,38 @@ function PostComposerModal({
 
   const buildSettings = (identifier: string, postContent: string) => {
     switch (identifier) {
-      case 'x': return { __type: 'x', who_can_reply_post: 'everyone' };
-      case 'instagram': case 'instagram-standalone': return { __type: identifier, post_type: 'post' };
-      case 'youtube': return { __type: 'youtube', title: postContent.slice(0, 100) || 'Video', type: 'public', selfDeclaredMadeForKids: 'no' };
-      case 'tiktok': return { __type: 'tiktok', privacy_level: 'PUBLIC_TO_EVERYONE', duet: true, stitch: true, comment: true, autoAddMusic: 'no', brand_content_toggle: false, brand_organic_toggle: false, content_posting_method: 'DIRECT_POST' };
-      case 'linkedin': return { __type: 'linkedin' };
-      case 'linkedin-page': return { __type: 'linkedin-page' };
-      case 'facebook': return { __type: 'facebook' };
-      case 'threads': return { __type: 'threads' };
-      case 'bluesky': return { __type: 'bluesky' };
-      default: return { __type: identifier };
+      case 'x':                   return { __type: 'x', who_can_reply_post: 'everyone' };
+      case 'instagram':
+      case 'instagram-standalone': return { __type: identifier, post_type: 'post' };
+      case 'youtube':             return { __type: 'youtube', title: postContent.slice(0, 100) || 'Video', type: 'public', selfDeclaredMadeForKids: 'no' };
+      case 'tiktok':              return { __type: 'tiktok', privacy_level: 'PUBLIC_TO_EVERYONE', duet: true, stitch: true, comment: true, autoAddMusic: 'no', brand_content_toggle: false, brand_organic_toggle: false, content_posting_method: 'DIRECT_POST' };
+      case 'linkedin':            return { __type: 'linkedin' };
+      case 'linkedin-page':       return { __type: 'linkedin-page' };
+      case 'facebook':            return { __type: 'facebook' };
+      case 'threads':             return { __type: 'threads' };
+      case 'bluesky':             return { __type: 'bluesky' };
+      default:                    return { __type: identifier };
     }
   };
 
   const handleSubmit = async () => {
-    if (!token) { setSubmitError('Not connected. Connect your accounts first.'); return; }
-    if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
-    if (!content.trim()) { setSubmitError('Write some content first.'); return; }
+    if (!token)                        { setSubmitError('Not connected. Connect your accounts first.'); return; }
+    if (!selectedIntegrations.length)  { setSubmitError('Select at least one channel.'); return; }
+    if (!content.trim())               { setSubmitError('Write some content first.'); return; }
     setSubmitting(true); setSubmitError(null);
     try {
       const mediaImages: { id: string; path: string }[] = [];
       imageUploads.forEach((u, i) => { if (u.status === 'done') mediaImages.push({ id: `img-${i}`, path: (u as any).url }); });
-      const videoArr = videoUpload.status === 'done' ? [{ id: 'video-0', path: (videoUpload as any).url }] : [];
-      const dateUTC = scheduleType === 'now' ? new Date().toISOString() : new Date(scheduleDate).toISOString();
-      const posts = selectedIntegrations.map(integId => {
-        const int = integrations.find(i => i.id === integId);
-        const identifier = int?.identifier || '';
+      const videoArr  = videoUpload.status === 'done' ? [{ id: 'video-0', path: (videoUpload as any).url }] : [];
+      const dateUTC   = scheduleType === 'now' ? new Date().toISOString() : new Date(scheduleDate).toISOString();
+      const posts     = selectedIntegrations.map(integId => {
+        const int         = integrations.find(i => i.id === integId);
+        const identifier  = int?.identifier || '';
         const postContent = perPlatform[integId]?.trim() || content;
         return {
           integration: { id: integId },
-          value: [{ content: postContent, image: [...mediaImages, ...videoArr] }],
-          settings: buildSettings(identifier, postContent),
+          value:       [{ content: postContent, image: [...mediaImages, ...videoArr] }],
+          settings:    buildSettings(identifier, postContent),
         };
       });
       await postizProxy('/public/v1/posts', token, 'POST', { type: scheduleType, date: dateUTC, shortLink: false, tags: [], posts });
@@ -508,8 +477,8 @@ function PostComposerModal({
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
                       style={{
                         borderColor: selected ? (p?.color || GOLD) : BORDER,
-                        background: selected ? (p?.bg || `${GOLD}15`) : 'transparent',
-                        color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)',
+                        background:  selected ? (p?.bg || `${GOLD}15`) : 'transparent',
+                        color:       selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)',
                       }}>
                       <PlatformIcon id={int.identifier} size="sm" />
                       <span className="max-w-[90px] truncate text-xs">{int.name}</span>
@@ -545,7 +514,7 @@ function PostComposerModal({
             </div>
           )}
 
-          {/* Content textarea */}
+          {/* Content */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
             <textarea value={content} onChange={e => setContent(e.target.value)}
               placeholder="What's on your mind? Write your post content here…"
@@ -583,7 +552,7 @@ function PostComposerModal({
                   <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border" style={{ borderColor: BORDER }}>
                     <img src={URL.createObjectURL(f)} className="w-full h-full object-cover" alt="" />
                     {u?.status === 'uploading' && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><Loader className="w-4 h-4 animate-spin text-white" /></div>}
-                    {u?.status === 'done' && <div className="absolute bottom-1 right-1"><CheckCircle2 className="w-4 h-4 text-green-400" /></div>}
+                    {u?.status === 'done'      && <div className="absolute bottom-1 right-1"><CheckCircle2 className="w-4 h-4 text-green-400" /></div>}
                   </div>
                 );
               })}
@@ -592,7 +561,7 @@ function PostComposerModal({
                   <Video className="w-4 h-4" />
                   <span className="truncate max-w-[130px] text-xs">{videoFile.name}</span>
                   {videoUpload.status === 'uploading' && <Loader className="w-3.5 h-3.5 animate-spin" />}
-                  {videoUpload.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />}
+                  {videoUpload.status === 'done'      && <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />}
                 </div>
               )}
             </div>
@@ -606,7 +575,7 @@ function PostComposerModal({
               </div>
               <div className="space-y-1.5">
                 {selectedIntegrations.map(integId => {
-                  const int = integrations.find(i => i.id === integId);
+                  const int      = integrations.find(i => i.id === integId);
                   if (!int) return null;
                   const expanded = expandedPlatform === integId;
                   return (
@@ -622,7 +591,7 @@ function PostComposerModal({
                         <div className="px-4 pb-4 border-t" style={{ borderColor: BORDER }}>
                           <textarea value={perPlatform[integId] || ''}
                             onChange={e => setPerPlatform(prev => ({ ...prev, [integId]: e.target.value }))}
-                            placeholder={`Custom caption for ${int.name}… (leave blank to use main content)`}
+                            placeholder={`Custom caption for ${int.name}…`}
                             rows={3}
                             className="w-full mt-3 bg-black/25 rounded-lg border px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none resize-none"
                             style={{ borderColor: BORDER }} />
@@ -644,8 +613,8 @@ function PostComposerModal({
                   className="px-4 py-2 rounded-xl text-sm font-bold border transition"
                   style={{
                     borderColor: scheduleType === t ? GOLD : BORDER,
-                    background: scheduleType === t ? `${GOLD}18` : 'transparent',
-                    color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)',
+                    background:  scheduleType === t ? `${GOLD}18` : 'transparent',
+                    color:       scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)',
                   }}>
                   {t === 'schedule' ? '🗓 Schedule' : '⚡ Post Now'}
                 </button>
@@ -676,7 +645,9 @@ function PostComposerModal({
           <button onClick={handleSubmit} disabled={submitting || submitOk}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
             style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-            {submitting ? <Loader className="w-4 h-4 animate-spin" /> : submitOk ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
+            {submitting  ? <Loader className="w-4 h-4 animate-spin" />  :
+             submitOk    ? <CheckCircle2 className="w-4 h-4" />         :
+                           <Send className="w-4 h-4" />}
             {submitting ? 'Scheduling…' : submitOk ? 'Scheduled!' : scheduleType === 'now' ? 'Post Now' : 'Schedule Post'}
           </button>
         </div>
@@ -690,17 +661,17 @@ function PostComposerModal({
 // ─────────────────────────────────────────────
 function CalendarPanel({ token, integrations }: { token: string | null; integrations: PostizIntegration[] }) {
   const [currentDate, setCurrentDate] = useState(new Date());
-  const [posts, setPosts] = useState<ScheduledPost[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerDate, setComposerDate] = useState<Date | undefined>();
+  const [posts, setPosts]             = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]         = useState(false);
+  const [composerOpen, setComposerOpen]   = useState(false);
+  const [composerDate, setComposerDate]   = useState<Date | undefined>();
 
-  const year  = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const daysInMonth  = new Date(year, month + 1, 0).getDate();
-  const firstDay     = new Date(year, month, 1).getDay();
-  const monthName    = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-  const today        = new Date();
+  const year       = currentDate.getFullYear();
+  const month      = currentDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay   = new Date(year, month, 1).getDay();
+  const monthName  = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const today      = new Date();
 
   const loadPosts = useCallback(async () => {
     if (!token) return;
@@ -719,7 +690,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
         scheduledAt: new Date(p.publishDate || p.scheduledAt || p.date),
         status: p.state === 'PUBLISHED' ? 'published' : p.state === 'ERROR' ? 'failed' : 'scheduled',
       })));
-    } catch (e) { /* fail silently — calendar still renders */ }
+    } catch (e) { /* fail silently */ }
     finally { setLoading(false); }
   }, [token, year, month]);
 
@@ -768,7 +739,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
         ))}
         {Array.from({ length: daysInMonth }).map((_, i) => {
-          const day = i + 1;
+          const day       = i + 1;
           const dayPosts  = postsOnDay(day);
           const isToday   = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
           const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
@@ -777,7 +748,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
               className="border-r border-b p-2 cursor-pointer hover:bg-white/3 transition group min-h-[100px]"
               style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
               onClick={() => { setComposerDate(new Date(year, month, day, 10, 0)); setComposerOpen(true); }}>
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-1.5 transition"
+              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-1.5"
                 style={isToday
                   ? { background: GOLD, color: '#000' }
                   : { color: isWeekend ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.55)' }}>
@@ -788,7 +759,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
                   <div key={post.id} className="flex items-center gap-1.5 px-1.5 py-0.5 rounded-md text-xs truncate"
                     style={{
                       background: post.status === 'published' ? 'rgba(34,197,94,0.15)' : post.status === 'failed' ? 'rgba(239,68,68,0.15)' : `${GOLD}18`,
-                      color: post.status === 'published' ? '#86efac' : post.status === 'failed' ? '#fca5a5' : GOLD_L,
+                      color:      post.status === 'published' ? '#86efac'              : post.status === 'failed' ? '#fca5a5'              : GOLD_L,
                     }}>
                     {post.platforms[0] && <div className="shrink-0" style={{ width: 12, height: 12 }}><PlatformIcon id={post.platforms[0]} size="sm" /></div>}
                     <span className="truncate">{post.content || '(Post)'}</span>
@@ -820,7 +791,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
 // ─────────────────────────────────────────────
 function ComposerPanel({ integrations, token }: { integrations: PostizIntegration[]; token: string | null }) {
   const [composerOpen, setComposerOpen] = useState(false);
-  const [posts, setPosts] = useState<ScheduledPost[]>([]);
+  const [posts, setPosts]   = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
 
@@ -849,10 +820,10 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
 
   const filtered = posts.filter(p => filter === 'all' || p.status === filter);
   const counts = {
-    all: posts.length,
+    all:       posts.length,
     scheduled: posts.filter(p => p.status === 'scheduled').length,
-    published:  posts.filter(p => p.status === 'published').length,
-    failed:     posts.filter(p => p.status === 'failed').length,
+    published: posts.filter(p => p.status === 'published').length,
+    failed:    posts.filter(p => p.status === 'failed').length,
   };
 
   return (
@@ -876,10 +847,8 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
           { key: 'published', label: 'Published',  color: '#22c55e' },
           { key: 'failed',    label: 'Failed',     color: '#ef4444' },
         ].map(s => (
-          <div key={s.key}
-            className="rounded-xl border p-4 cursor-pointer transition hover:bg-white/4"
-            style={{ borderColor: BORDER }}
-            onClick={() => setFilter(s.key as any)}>
+          <div key={s.key} className="rounded-xl border p-4 cursor-pointer transition hover:bg-white/4"
+            style={{ borderColor: BORDER }} onClick={() => setFilter(s.key as any)}>
             <div className="text-2xl font-black" style={{ color: s.color }}>{counts[s.key as keyof typeof counts]}</div>
             <div className="text-xs font-semibold text-white/30 mt-1">{s.label}</div>
           </div>
@@ -893,7 +862,7 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
             className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize"
             style={{
               background: filter === f ? `${GOLD}18` : 'transparent',
-              color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)',
+              color:      filter === f ? GOLD_L : 'rgba(255,255,255,0.35)',
             }}>
             {f} {f !== 'all' && <span className="ml-1 opacity-60">{counts[f]}</span>}
           </button>
@@ -931,8 +900,7 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
         ) : (
           <div className="space-y-2">
             {filtered.map(post => (
-              <div key={post.id}
-                className="flex items-start gap-4 p-4 rounded-xl border hover:bg-white/3 transition cursor-pointer"
+              <div key={post.id} className="flex items-start gap-4 p-4 rounded-xl border hover:bg-white/3 transition cursor-pointer"
                 style={{ borderColor: BORDER }}>
                 <div className="flex -space-x-1.5 shrink-0 pt-0.5">
                   {post.platforms.slice(0, 3).map((pid, i) => (
@@ -956,15 +924,13 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
                     </span>
                   </div>
                 </div>
-                <div className="shrink-0">
-                  <span className="px-2.5 py-1 rounded-lg text-xs font-bold"
-                    style={{
-                      background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : post.status === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`,
-                      color: post.status === 'published' ? '#86efac' : post.status === 'failed' ? '#fca5a5' : GOLD_L,
-                    }}>
-                    {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
-                  </span>
-                </div>
+                <span className="px-2.5 py-1 rounded-lg text-xs font-bold shrink-0"
+                  style={{
+                    background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : post.status === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`,
+                    color:      post.status === 'published' ? '#86efac'              : post.status === 'failed' ? '#fca5a5'              : GOLD_L,
+                  }}>
+                  {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                </span>
               </div>
             ))}
           </div>
@@ -1009,9 +975,9 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
           <button key={item.id} onClick={() => setView(item.id)}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition"
             style={{
-              background: view === item.id ? `${GOLD}15` : 'transparent',
-              color: view === item.id ? GOLD_L : 'rgba(255,255,255,0.4)',
-              borderLeft: view === item.id ? `2px solid ${GOLD}` : '2px solid transparent',
+              background:  view === item.id ? `${GOLD}15` : 'transparent',
+              color:       view === item.id ? GOLD_L : 'rgba(255,255,255,0.4)',
+              borderLeft:  view === item.id ? `2px solid ${GOLD}` : '2px solid transparent',
             }}>
             {item.icon} {item.label}
           </button>
@@ -1105,15 +1071,15 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
 // ROOT PAGE
 // ─────────────────────────────────────────────
 export function MediaDistributionPage() {
-  const [view, setView] = useState<ViewMode>('composer');
+  const [view, setView]                       = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
 
   // ── AUTH STATE ──
-  const [postizToken, setPostizToken] = useState<string | null>(() => localStorage.getItem(LS_TOKEN_KEY));
-  const [integrations, setIntegrations] = useState<PostizIntegration[]>([]);
+  const [postizToken, setPostizToken]           = useState<string | null>(() => localStorage.getItem(LS_TOKEN_KEY));
+  const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] = useState(false);
-  const [oauthError, setOauthError] = useState<string | null>(null);
+  const [oauthLoading, setOauthLoading]         = useState(false);
+  const [oauthError, setOauthError]             = useState<string | null>(null);
 
   // ── LOAD INTEGRATIONS ──
   const loadIntegrations = useCallback(async (token: string) => {
@@ -1128,66 +1094,37 @@ export function MediaDistributionPage() {
     else setIntegrations([]);
   }, [postizToken, loadIntegrations]);
 
-  // ── OAUTH CALLBACK ──
-  // Handles two distinct return flows on the same URL:
-  //   Branch A — Social platform callback  (Instagram/TikTok/etc returning after user approved)
-  //   Branch B — Postiz account login callback (initial Postiz OAuth)
+  // ── OAUTH / RETURN CALLBACK ──
+  // Handles three possible returns to this URL:
+  //   Case A — User returning from Postiz after connecting a social channel
+  //            (LS_SOCIAL_RETURN_KEY is set, no code/state in URL)
+  //   Case B — Postiz account login callback (code + state in URL)
+  //   Case C — Nothing to handle (normal page load)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const code  = params.get('code');
-    const state = params.get('state');
-    const error = params.get('error');
+    const code   = params.get('code');
+    const state  = params.get('state');
+    const error  = params.get('error');
 
-    if (!code && !error) return;
-
-    // Clean URL immediately so a page refresh doesn't re-trigger
-    window.history.replaceState({}, '', window.location.pathname);
-
-    // ── Branch A: Returning from a social platform (Instagram, TikTok, etc.) ──
-    const isSocialCallback = localStorage.getItem(LS_SOCIAL_CALLBACK_KEY) === 'true';
-    if (isSocialCallback) {
-      localStorage.removeItem(LS_SOCIAL_CALLBACK_KEY);
-      const provider = localStorage.getItem(LS_SOCIAL_PROVIDER_KEY) || '';
-      localStorage.removeItem(LS_SOCIAL_PROVIDER_KEY);
-
-      if (error) {
-        setOauthError(`${provider} authorization was denied. Please try again.`);
-        return;
-      }
-      if (!code || !state || !provider) {
-        setOauthError('Social callback was missing required parameters.');
-        return;
-      }
-
+    // ── Case A: returning from Postiz integrations page after adding a channel ──
+    const isSocialReturn = localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1';
+    if (isSocialReturn) {
+      localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
+      window.history.replaceState({}, '', window.location.pathname);
       const token = localStorage.getItem(LS_TOKEN_KEY);
-      if (!token) {
-        setOauthError('Your Postiz session expired. Please reconnect your Postiz account first.');
-        return;
+      if (token) {
+        // Refresh the integrations list to show the newly connected channel
+        loadIntegrations(token);
+        setConnectModalOpen(true);
       }
-
-      setOauthLoading(true);
-      fetch('/.netlify/functions/postiz-connect-callback', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ provider, code, state, token }),
-      })
-        .then(async res => {
-          const data = await res.json().catch(() => ({}));
-          if (!res.ok) throw new Error(data?.error || `Connect failed (${res.status})`);
-          return data;
-        })
-        .then(() => {
-          setOauthError(null);
-          loadIntegrations(token);   // refresh channel list
-          setConnectModalOpen(true); // re-open modal to show new channel
-        })
-        .catch((e: any) => setOauthError(e?.message || 'Failed to connect channel'))
-        .finally(() => setOauthLoading(false));
-
       return;
     }
 
-    // ── Branch B: Returning from Postiz account authorization ──
+    // ── Case B: Postiz OAuth login callback ──
+    if (!code && !error) return; // Case C — nothing to do
+
+    window.history.replaceState({}, '', window.location.pathname);
+
     if (error === 'access_denied') { setOauthError('Authorization denied.'); return; }
     if (!code) { setOauthError('No authorization code received.'); return; }
 
@@ -1229,8 +1166,7 @@ export function MediaDistributionPage() {
   const handleDisconnect = () => {
     localStorage.removeItem(LS_TOKEN_KEY);
     localStorage.removeItem(LS_STATE_KEY);
-    localStorage.removeItem(LS_SOCIAL_PROVIDER_KEY);
-    localStorage.removeItem(LS_SOCIAL_CALLBACK_KEY);
+    localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
     setPostizToken(null);
     setIntegrations([]);
     setOauthError(null);
@@ -1243,7 +1179,7 @@ export function MediaDistributionPage() {
         * { box-sizing: border-box; }
       `}</style>
 
-      {/* Full-screen loading overlay (OAuth in progress) */}
+      {/* Full-screen loading overlay */}
       {oauthLoading && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: 'rgba(10,10,10,0.95)' }}>
           <div className="flex flex-col items-center gap-4">
