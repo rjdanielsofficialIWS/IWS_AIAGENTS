@@ -722,8 +722,6 @@ function ComposePanel({ token, integrations, integrationsLoading, onOpenConnectM
     instagram:{date:'',time:''}, tiktok:{date:'',time:''}, facebook:{date:'',time:''},
     youtube:{date:'',time:''}, twitterVideo:{date:'',time:''}, linkedin:{date:'',time:''}, twitterPosts:{date:'',time:''},
   });
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string|null>(null);
   const [submitOk, setSubmitOk] = useState(false);
   const [submitResults, setSubmitResults] = useState<{platform:string;ok:boolean;message:string}[]>([]);
 
