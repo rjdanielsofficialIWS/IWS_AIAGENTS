@@ -32,7 +32,10 @@ const GREEN_PROGRESS = '#22c55e';
 const POSTIZ_FRONTEND_URL = 'https://platform.postiz.com';
 const POSTIZ_BACKEND_URL = 'https://api.postiz.com';
 const POSTIZ_CLIENT_ID = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
-const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine?postiz_callback=1';
+
+// FIX 1: Redirect URI must NOT include query string — register this exact URL
+// in your Postiz dashboard under Settings > Developers > Apps
+const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
 const LS_TOKEN_KEY = 'postiz_access_token';
 const LS_STATE_KEY = 'postiz_oauth_state';
@@ -104,13 +107,13 @@ type PostizIntegration = {
 };
 
 const PLATFORM_META: Record<PlatformKey, { label: string; sub: string; kind: 'caption' | 'title' | 'text' | 'posts' }> = {
-  instagram:    { label: 'Instagram',        sub: 'Reels caption',          kind: 'caption' },
-  tiktok:       { label: 'TikTok',           sub: 'Caption',                kind: 'caption' },
-  facebook:     { label: 'Facebook',         sub: 'Reels caption',          kind: 'caption' },
-  youtube:      { label: 'YouTube',          sub: 'Shorts title',           kind: 'title'   },
-  twitterVideo: { label: 'Twitter/X (Video)',sub: 'Post text for video',    kind: 'text'    },
-  linkedin:     { label: 'LinkedIn',         sub: 'Post text',              kind: 'text'    },
-  twitterPosts: { label: 'Twitter/X Posts',  sub: 'Standalone posts',       kind: 'posts'   },
+  instagram:    { label: 'Instagram',         sub: 'Reels caption',         kind: 'caption' },
+  tiktok:       { label: 'TikTok',            sub: 'Caption',               kind: 'caption' },
+  facebook:     { label: 'Facebook',          sub: 'Reels caption',         kind: 'caption' },
+  youtube:      { label: 'YouTube',           sub: 'Shorts title',          kind: 'title'   },
+  twitterVideo: { label: 'Twitter/X (Video)', sub: 'Post text for video',   kind: 'text'    },
+  linkedin:     { label: 'LinkedIn',          sub: 'Post text',             kind: 'text'    },
+  twitterPosts: { label: 'Twitter/X Posts',   sub: 'Standalone posts',      kind: 'posts'   },
 };
 
 // ─────────────────────────────────────────────
@@ -130,6 +133,8 @@ function generateState(): string {
   return Array.from(arr, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+// FIX 2: Redirect URI no longer contains a query string — callback detection
+// is handled by checking for the presence of `code` param instead.
 function buildPostizAuthUrl(state: string): string {
   const params = new URLSearchParams({
     client_id: POSTIZ_CLIENT_ID,
@@ -145,6 +150,7 @@ async function postizFetch(path: string, token: string, options: RequestInit = {
     ...options,
     headers: {
       'Content-Type': 'application/json',
+      // FIX 3: Token is passed as-is (no "Bearer" prefix) per Postiz docs
       Authorization: token,
       ...(options.headers || {}),
     },
@@ -392,14 +398,19 @@ export function MediaDistributionPage() {
   const [oauthError, setOauthError] = useState<string | null>(null);
 
   // ── HANDLE OAUTH CALLBACK ──
+  // FIX 4: Callback is now detected by the presence of `code` in the URL
+  // rather than a `?postiz_callback=1` query param that would break the
+  // registered redirect URI matching on Postiz's server.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('postiz_callback') !== '1') return;
-
     const code = params.get('code');
     const state = params.get('state');
     const error = params.get('error');
 
+    // Only proceed if there's a code or error — this is the OAuth callback
+    if (!code && !error) return;
+
+    // Clean up the URL immediately so a refresh doesn't re-trigger this
     window.history.replaceState({}, '', window.location.pathname);
 
     if (error === 'access_denied') {
@@ -411,14 +422,20 @@ export function MediaDistributionPage() {
       return;
     }
 
+    // FIX 5: Verify the state param to prevent CSRF attacks
     const savedState = localStorage.getItem(LS_STATE_KEY);
     if (!savedState || savedState !== state) {
-      setOauthError('Security check failed. Please try again.');
+      setOauthError('Security check failed (state mismatch). Please try again.');
       return;
     }
     localStorage.removeItem(LS_STATE_KEY);
 
     setOauthLoading(true);
+
+    // FIX 6: The Netlify function handles the full token exchange server-side.
+    // It receives only the `code` and appends grant_type, client_id, and
+    // client_secret from environment variables — the secret never touches
+    // the frontend bundle.
     fetch('/.netlify/functions/postiz-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -432,7 +449,7 @@ export function MediaDistributionPage() {
         return res.json();
       })
       .then(({ access_token }) => {
-        if (!access_token) throw new Error('No access_token in response');
+        if (!access_token) throw new Error('No access_token in response from Netlify function');
         localStorage.setItem(LS_TOKEN_KEY, access_token);
         setPostizToken(access_token);
         setOauthError(null);
@@ -464,6 +481,7 @@ export function MediaDistributionPage() {
   const handleConnect = () => {
     const state = generateState();
     localStorage.setItem(LS_STATE_KEY, state);
+    // FIX 7: Redirect to clean Postiz auth URL — no query params in redirect_uri
     window.location.href = buildPostizAuthUrl(state);
   };
 
@@ -755,6 +773,9 @@ export function MediaDistributionPage() {
     if (!captionsReady) { setSubmitError('Fill in copy for every selected platform.'); return; }
     if (!twitterPostsReady) { setSubmitError('Add at least 1 Twitter/X post.'); return; }
     if (!scheduleReady) { setSubmitError('Complete scheduling for all platforms.'); return; }
+
+    // FIX 8: Guard against submitting without a valid token
+    if (!postizToken) { setSubmitError('Connect your social accounts before submitting.'); return; }
 
     setSubmitting(true);
     const results: { platform: string; ok: boolean; message: string }[] = [];
