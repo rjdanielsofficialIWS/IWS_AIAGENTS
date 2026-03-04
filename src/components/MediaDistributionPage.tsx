@@ -30,7 +30,6 @@ const GREEN_PROGRESS = '#22c55e';
 // POSTIZ CONFIG
 // ─────────────────────────────────────────────
 const POSTIZ_FRONTEND_URL = 'https://platform.postiz.com';
-const POSTIZ_BACKEND_URL = 'https://api.postiz.com';
 const POSTIZ_CLIENT_ID = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
 
 // FIX 1: Redirect URI must NOT include query string — register this exact URL
