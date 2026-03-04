@@ -194,12 +194,6 @@ function ConnectAccountsModal({
 
   const connectedIds = integrations.map(i => i.identifier);
 
-  // Open Postiz integrations page in a new tab so user can connect the platform.
-  // When they're done they close that tab and click "Refresh" here.
-  const handleConnectPlatform = (platformId: PlatformId) => {
-    window.open(`${POSTIZ_FRONTEND_URL}/launches`, '_blank');
-  };
-
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
@@ -237,82 +231,71 @@ function ConnectAccountsModal({
             </button>
           </div>
         ) : (
-          <div className="overflow-y-auto flex-1 p-6">
+          <div className="overflow-y-auto flex-1 p-6 space-y-5">
 
-            {/* Loading */}
-            {integrationsLoading ? (
-              <div className="flex items-center justify-center py-8 gap-3 text-white/30">
-                <Loader className="w-5 h-5 animate-spin" /> Loading channels…
-              </div>
-            ) : (
-              <>
-                {/* Already connected */}
-                {integrations.length > 0 && (
-                  <div className="mb-6">
-                    <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
-                      Connected ({integrations.length})
-                    </div>
-                    <div className="space-y-2">
-                      {integrations.map(int => (
-                        <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
-                          style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
-                          <PlatformIcon id={int.identifier} size="md" />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm font-bold text-white truncate">{int.name}</div>
-                            <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
-                          </div>
-                          <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Platform grid */}
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
-                    Add a Channel
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    {(Object.entries(PLATFORMS) as [PlatformId, typeof PLATFORMS[PlatformId]][]).map(([id, p]) => {
-                      const isConnected = connectedIds.some(c => c === id || c === p.postizType);
-                      return (
-                        <button key={id}
-                          onClick={() => !isConnected && handleConnectPlatform(id)}
-                          disabled={isConnected}
-                          className="flex items-center gap-3 p-3 rounded-xl border transition text-left disabled:cursor-default"
-                          style={{
-                            borderColor: isConnected ? 'rgba(34,197,94,0.25)' : BORDER,
-                            background: isConnected ? 'rgba(34,197,94,0.05)' : 'transparent',
-                          }}>
-                          <PlatformIcon id={id} size="sm" />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-bold text-white truncate">{p.label}</div>
-                            <div className="text-xs" style={{
-                              color: isConnected ? '#86efac' : 'rgba(255,255,255,0.25)',
-                            }}>
-                              {isConnected ? '● Connected' : '+ Connect'}
-                            </div>
-                          </div>
-                          {isConnected && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <p className="text-xs text-white/20 mt-4 text-center">
-                    Clicking a platform opens Postiz in a new tab. Connect it there, then click Refresh below.
-                  </p>
-                  <button onClick={onRefresh} disabled={integrationsLoading}
-                    className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
-                    style={{ borderColor: `${GOLD}40`, color: GOLD }}>
-                    {integrationsLoading
-                      ? <><Loader className="w-4 h-4 animate-spin" /> Refreshingu2026</>
-                      : <><RefreshCw className="w-4 h-4" /> Done u2014 Refresh Channels</>
-                    }
-                  </button>
+            {/* Connected channels list */}
+            {integrations.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
+                  Connected ({integrations.length})
                 </div>
-              </>
+                <div className="space-y-2">
+                  {integrations.map(int => (
+                    <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
+                      style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
+                      <PlatformIcon id={int.identifier} size="md" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-white truncate">{int.name}</div>
+                        <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
+                      </div>
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
+
+            {/* How to add a channel — step by step */}
+            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${GOLD}25`, background: `${GOLD}06` }}>
+              <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
+                How to add a channel
+              </div>
+              {[
+                { n: '1', text: 'Click "Open Postiz" below — it opens in a new tab' },
+                { n: '2', text: 'In the left sidebar, click the "+" icon next to Channels' },
+                { n: '3', text: 'Pick a platform (Instagram, TikTok, etc.) and authorize it' },
+                { n: '4', text: 'Come back to this tab and click "Refresh Channels"' },
+              ].map(step => (
+                <div key={step.n} className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 mt-0.5"
+                    style={{ background: `${GOLD}25`, color: GOLD }}>
+                    {step.n}
+                  </div>
+                  <p className="text-sm text-white/60">{step.text}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Action buttons */}
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/launches`, '_blank')}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition hover:brightness-110"
+                style={{ background: GOLD, color: '#000' }}>
+                <Link2 className="w-4 h-4" /> Open Postiz to Add a Channel
+              </button>
+              <button
+                onClick={onRefresh}
+                disabled={integrationsLoading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
+                {integrationsLoading
+                  ? <><Loader className="w-4 h-4 animate-spin" /> Refreshing…</>
+                  : <><RefreshCw className="w-4 h-4" /> Refresh Channels</>
+                }
+              </button>
+            </div>
+
           </div>
         )}
       </div>
