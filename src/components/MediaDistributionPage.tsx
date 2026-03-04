@@ -175,38 +175,29 @@ function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'l
 //
 // HOW IT WORKS:
 // The Postiz OAuth token only grants access to /public/v1/ endpoints.
-// Connecting individual social platforms (Instagram, TikTok, etc.) requires
-// a full Postiz browser session — it cannot be done with an API call.
+// Connecting individual social platforms requires a full Postiz browser session.
 //
-// So the flow is:
-//   1. User clicks a platform (e.g. Instagram)
-//   2. We redirect them to Postiz's integrations page with ?redirectUrl=<your site>
-//   3. They connect Instagram inside Postiz (Postiz handles all the OAuth)
-//   4. Postiz sends them back to your site
-//   5. We detect the return via LS_SOCIAL_RETURN_KEY and refresh the channel list
-//
-// This is exactly how Buffer, Hootsuite, etc. handle third-party platform connections.
+// Flow:
+//   1. User clicks a platform → Postiz integrations page opens in a NEW TAB
+//   2. They connect the platform inside Postiz (takes ~10 seconds)
+//   3. They close that tab and click "Done, refresh channels" here
+//   4. We fetch the updated integrations list and the new channel appears
 // ─────────────────────────────────────────────
 function ConnectAccountsModal({
-  open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading,
+  open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
 }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   onConnectPostiz: () => void; postizToken: string | null; integrationsLoading: boolean;
+  onRefresh: () => void;
 }) {
   if (!open) return null;
 
   const connectedIds = integrations.map(i => i.identifier);
 
-  // Redirect to Postiz integrations page for this platform.
-  // Postiz will send the user back to POSTIZ_REDIRECT_URL after they connect.
+  // Open Postiz integrations page in a new tab so user can connect the platform.
+  // When they're done they close that tab and click "Refresh" here.
   const handleConnectPlatform = (platformId: PlatformId) => {
-    // Set flag so we know the user is returning from connecting a channel
-    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-    const params = new URLSearchParams({
-      redirectUrl: POSTIZ_REDIRECT_URL,
-      provider: PLATFORMS[platformId].postizType,
-    });
-    window.location.href = `${POSTIZ_FRONTEND_URL}/integrations?${params.toString()}`;
+    window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank');
   };
 
   return (
@@ -309,8 +300,16 @@ function ConnectAccountsModal({
                     })}
                   </div>
                   <p className="text-xs text-white/20 mt-4 text-center">
-                    You'll be taken to Postiz to authorize each platform securely, then returned here automatically.
+                    Clicking a platform opens Postiz in a new tab. Connect it there, then click Refresh below.
                   </p>
+                  <button onClick={onRefresh} disabled={integrationsLoading}
+                    className="mt-3 w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
+                    style={{ borderColor: `${GOLD}40`, color: GOLD }}>
+                    {integrationsLoading
+                      ? <><Loader className="w-4 h-4 animate-spin" /> Refreshingu2026</>
+                      : <><RefreshCw className="w-4 h-4" /> Done u2014 Refresh Channels</>
+                    }
+                  </button>
                 </div>
               </>
             )}
@@ -1225,6 +1224,7 @@ export function MediaDistributionPage() {
         onConnectPostiz={handleConnect}
         postizToken={postizToken}
         integrationsLoading={integrationsLoading}
+        onRefresh={() => postizToken && loadIntegrations(postizToken)}
       />
     </div>
   );
