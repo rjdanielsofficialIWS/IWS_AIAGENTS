@@ -56,9 +56,7 @@ export function PostizCallbackPage() {
         setStatus('success');
         setMessage('Account connected successfully!');
 
-        setTimeout(() => {
-          navigate('/mediamachine?postiz_connected=true');
-        }, 1500);
+        setTimeout(() => navigate('/MediaMachine'), 1500);
       } catch (error) {
         console.error('Postiz callback error:', error);
         setStatus('error');
