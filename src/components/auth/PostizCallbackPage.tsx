@@ -17,14 +17,14 @@ export function PostizCallbackPage() {
         if (error) {
           setStatus('error');
           setMessage(`Authorization failed: ${error}`);
-          setTimeout(() => navigate('/MediaMachine'), 3000);
+          setTimeout(() => navigate('/mediamachine'), 3000);
           return;
         }
 
         if (!code) {
           setStatus('error');
           setMessage('No authorization code received');
-          setTimeout(() => navigate('/MediaMachine'), 3000);
+          setTimeout(() => navigate('/mediamachine'), 3000);
           return;
         }
 
@@ -38,7 +38,7 @@ export function PostizCallbackPage() {
           const errorData = await response.json().catch(() => ({}));
           setStatus('error');
           setMessage(errorData.error || 'Failed to exchange authorization code');
-          setTimeout(() => navigate('/MediaMachine'), 3000);
+          setTimeout(() => navigate('/mediamachine'), 3000);
           return;
         }
 
@@ -47,7 +47,7 @@ export function PostizCallbackPage() {
         if (!data.access_token) {
           setStatus('error');
           setMessage('No access token received');
-          setTimeout(() => navigate('/MediaMachine'), 3000);
+          setTimeout(() => navigate('/mediamachine'), 3000);
           return;
         }
 
@@ -56,12 +56,14 @@ export function PostizCallbackPage() {
         setStatus('success');
         setMessage('Account connected successfully!');
 
-        setTimeout(() => navigate('/MediaMachine'), 1500);
+        setTimeout(() => {
+          navigate('/mediamachine?postiz_connected=true');
+        }, 1500);
       } catch (error) {
         console.error('Postiz callback error:', error);
         setStatus('error');
         setMessage(error instanceof Error ? error.message : 'An unexpected error occurred');
-        setTimeout(() => navigate('/MediaMachine'), 3000);
+        setTimeout(() => navigate('/mediamachine'), 3000);
       }
     };
 

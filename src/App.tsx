@@ -53,6 +53,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
           <p className="text-gray-300 mb-8">
             You need an active premium membership to access our premium services.
           </p>
+
           <button
             onClick={() =>
               (window.location.href =
@@ -164,7 +165,7 @@ function AppContent() {
           }
         />
 
-        {/* Postiz OAuth Callback — must be defined BEFORE the /:slug catch-all */}
+        {/* Postiz OAuth Callback */}
         <Route
           path="/mediamachine/oauth/postiz/callback"
           element={<PostizCallbackPage />}
