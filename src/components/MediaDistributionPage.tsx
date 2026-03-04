@@ -145,22 +145,28 @@ function buildPostizAuthUrl(state: string): string {
   return `${POSTIZ_FRONTEND_URL}/oauth/authorize?${params.toString()}`;
 }
 
-async function postizFetch(path: string, token: string, options: RequestInit = {}): Promise<Response> {
-  return fetch(`${POSTIZ_BACKEND_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      // FIX 3: Token is passed as-is (no "Bearer" prefix) per Postiz docs
-      Authorization: token,
-      ...(options.headers || {}),
-    },
+async function postizProxyFetch(
+  path: string,
+  token: string,
+  method: string = 'GET',
+  body?: object
+): Promise<any> {
+  const res = await fetch('/.netlify/functions/postiz-api', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, token, method, body }),
   });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || `Postiz API error (${res.status})`);
+  }
+
+  return res.json();
 }
 
 async function fetchPostizIntegrations(token: string): Promise<PostizIntegration[]> {
-  const res = await postizFetch('/public/v1/integrations', token);
-  if (!res.ok) throw new Error(`Failed to load integrations (${res.status})`);
-  const data = await res.json();
+  const data = await postizProxyFetch('/public/v1/integrations', token);
   return Array.isArray(data?.integrations) ? data.integrations : [];
 }
 
