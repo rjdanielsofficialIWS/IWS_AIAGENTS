@@ -20,7 +20,7 @@ const GOLD_BORDER = 'rgba(214,178,94,0.35)';
 const POSTIZ_FRONTEND_URL = 'https://platform.postiz.com';
 const POSTIZ_BACKEND_URL  = 'https://api.postiz.com';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
-const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine?postiz_callback=1';
+const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine/oauth/postiz/callback';
 const LS_TOKEN_KEY        = 'postiz_access_token';
 const LS_STATE_KEY        = 'postiz_oauth_state';
 
@@ -236,11 +236,11 @@ function generateState() {
 // Build OAuth2 Authorization Code URL per Postiz docs
 function buildAuthUrl(state: string) {
   const params = new URLSearchParams({
-    client_id:     POSTIZ_CLIENT_ID,
-    response_type: 'code',
-    state,
-    // redirect_uri is registered on the Postiz app settings
-  });
+  client_id:     POSTIZ_CLIENT_ID,
+  response_type: 'code',
+  redirect_uri:  POSTIZ_REDIRECT_URL,
+  state,
+});
   return `${POSTIZ_FRONTEND_URL}/oauth/authorize?${params.toString()}`;
 }
 async function postizFetch(path: string, token: string, opts: RequestInit = {}) {
