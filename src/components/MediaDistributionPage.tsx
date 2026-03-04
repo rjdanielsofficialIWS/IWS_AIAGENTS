@@ -1239,16 +1239,6 @@ export function MediaDistributionPage() {
       <div style={{ flex:1, display:'flex', flexDirection:'column', minHeight:'100vh', minWidth:0 }}>
         <TopBar view={view} onView={setView} onCompose={()=>setView('compose')}/>
 
-        {/* OAuth notifications */}
-        {(oauthLoading||oauthError)&&(
-          <div style={{ padding:'10px 22px', background:oauthError?'rgba(239,68,68,0.07)':'rgba(255,255,255,0.03)', borderBottom:'1px solid rgba(255,255,255,0.05)', display:'flex', alignItems:'center', gap:8, fontSize:13 }}>
-            {oauthLoading
-              ? <><Loader style={{width:13,height:13,animation:'spin 1s linear infinite'}}/><span style={{color:'rgba(255,255,255,0.55)'}}>Completing Postiz authorization…</span></>
-              : <><AlertCircle style={{width:13,height:13,color:'#f87171'}}/><span style={{color:'#fca5a5'}}>{oauthError}</span><button type="button" onClick={()=>setOauthError(null)} style={{marginLeft:'auto',background:'none',border:'none',cursor:'pointer',color:'rgba(255,255,255,0.3)',padding:0,lineHeight:0}}><X style={{width:13,height:13}}/></button></>
-            }
-          </div>
-        )}
-
         {/* Views */}
         <div style={{ flex:1, overflowY:'auto' }}>
           {view==='calendar' && <CalendarView selectedDate={selectedDate} onSelectDate={setSelectedDate} posts={posts} onCompose={()=>setView('compose')}/>}
