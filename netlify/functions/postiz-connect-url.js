@@ -1,80 +1,50 @@
 // netlify/functions/postiz-connect-url.js
 //
-// Step 1 of the "Connect a social channel" flow.
+// Builds the correct URL to send the user to Postiz so they can
+// connect a specific social platform (Instagram, TikTok, etc.).
 //
-// The browser POSTs:
-//   { provider: "instagram", token: "<postiz_access_token>", redirectUrl: "https://yoursite.com/mediamachine" }
+// Postiz's internal /integrations/social/:provider endpoint requires a
+// full Postiz browser session — it cannot be called with an OAuth token.
 //
-// This function calls Postiz's internal integration API to generate the OAuth
-// authorization URL for that provider, then returns it to the browser.
-// The browser then redirects the user to that URL.
+// The correct approach is to redirect the user to Postiz's own integrations
+// page with a `redirectUrl` parameter. After they connect the platform,
+// Postiz sends them back to your site automatically.
 //
-// Postiz endpoint used:
-//   GET https://api.postiz.com/integrations/social/:provider
-//   (Note: this is the INTERNAL Postiz API, not the public /public/v1 path)
+// No API call needed — this just constructs the URL server-side.
 
-const POSTIZ_API = 'https://api.postiz.com';
+const POSTIZ_FRONTEND_URL = 'https://platform.postiz.com';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
-  let provider, token, redirectUrl;
+  let provider, redirectUrl;
   try {
     const body = JSON.parse(event.body || '{}');
-    provider    = body.provider;
-    token       = body.token;
-    redirectUrl = body.redirectUrl;
+    provider    = body.provider;    // e.g. "instagram", "tiktok", "x"
+    redirectUrl = body.redirectUrl; // where to send the user after connecting
   } catch {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body' }) };
   }
 
-  if (!provider || !token) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Missing provider or token' }) };
+  if (!provider) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Missing provider' }) };
   }
 
-  try {
-    // Build query params – redirectUrl tells Postiz where to send the user after OAuth
-    const params = new URLSearchParams();
-    if (redirectUrl) params.set('redirectUrl', redirectUrl);
+  // Build the Postiz integrations page URL.
+  // The `redirectUrl` param tells Postiz where to send the user after they
+  // finish connecting the platform. We also pass `provider` so Postiz can
+  // pre-select or highlight the correct platform.
+  const params = new URLSearchParams();
+  if (redirectUrl) params.set('redirectUrl', redirectUrl);
+  params.set('provider', provider);
 
-    const url = `${POSTIZ_API}/integrations/social/${encodeURIComponent(provider)}?${params.toString()}`;
+  const url = `${POSTIZ_FRONTEND_URL}/integrations?${params.toString()}`;
 
-    const resp = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        // Postiz OAuth tokens are sent as Bearer
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const data = await resp.json().catch(() => ({}));
-
-    if (!resp.ok) {
-      console.error(`Postiz connect-url error (${resp.status}):`, data);
-      return {
-        statusCode: resp.status,
-        body: JSON.stringify({ error: data?.message || data?.error || `Postiz error ${resp.status}` }),
-      };
-    }
-
-    // Postiz returns { url: "https://..." } — the URL to redirect the user to
-    if (!data?.url) {
-      return {
-        statusCode: 502,
-        body: JSON.stringify({ error: 'Postiz did not return an authorization URL', raw: data }),
-      };
-    }
-
-    return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url: data.url }),
-    };
-  } catch (err) {
-    console.error('postiz-connect-url error:', err);
-    return { statusCode: 500, body: JSON.stringify({ error: err?.message || 'Internal error' }) };
-  }
+  return {
+    statusCode: 200,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  };
 };
