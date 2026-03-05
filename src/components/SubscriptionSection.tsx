@@ -2,55 +2,91 @@ import React from 'react';
 import { Check } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-export function SubscriptionSection() {
-  const plans = [
-    {
-      name: 'AI Voice Agents',
-      price: '$199',
-      period: '/mo',
-      features: [
-        'Answers calls 24/7 — after-hours & while busy',
-        'Books jobs & captures lead details',
-        'Transfers urgent calls when needed',
-        'Call summaries + basic analytics',
-        'Human-like natural speech',
-        'Setup & onboarding support included',
-      ],
-      popular: false,
-      cta: { label: 'Book Consultation', href: 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding', external: true },
-    },
-    {
-      name: 'Social Media Manager',
-      price: '$99',
-      period: '/mo',
-      features: [
-        'Schedule posts across 19+ platforms',
-        'AI-generated captions & content ideas',
-        'Visual content calendar',
-        'Analytics & performance tracking',
-        'Connect multiple social accounts',
-        'TikTok, Instagram, LinkedIn & more',
-      ],
-      popular: true,
-      cta: { label: 'Launch Media Machine', href: '/MediaMachine', external: false },
-    },
-    {
-      name: 'Web Development',
-      price: 'From $499',
-      period: '',
-      features: [
-        'Modern, high-converting design',
-        'Built from scratch — no templates',
-        'Mobile-optimized & SEO-friendly',
-        'Fast loading & performance tuned',
-        'Custom integrations & automations',
-        'Launch support included',
-      ],
-      popular: false,
-      cta: { label: 'Book Consultation', href: 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding', external: true },
-    },
-  ];
+interface Plan {
+  name: string;
+  price: string;
+  period: string;
+  features: string[];
+  popular: boolean;
+  cta: { label: string; href: string; external: boolean };
+}
 
+const plans: Plan[] = [
+  {
+    name: 'AI Voice Agents',
+    price: '$199',
+    period: '/mo',
+    popular: false,
+    features: [
+      'Answers calls 24/7 — after-hours & while busy',
+      'Books jobs & captures lead details',
+      'Transfers urgent calls when needed',
+      'Call summaries + basic analytics',
+      'Human-like natural speech',
+      'Setup & onboarding support included',
+    ],
+    cta: {
+      label: 'Book Consultation',
+      href: 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding',
+      external: true,
+    },
+  },
+  {
+    name: 'Social Media Manager',
+    price: '$99',
+    period: '/mo',
+    popular: true,
+    features: [
+      'Schedule posts across 19+ platforms',
+      'AI-generated captions & content ideas',
+      'Visual content calendar',
+      'Analytics & performance tracking',
+      'Connect multiple social accounts',
+      'TikTok, Instagram, LinkedIn & more',
+    ],
+    cta: {
+      label: 'Launch Media Machine',
+      href: '/MediaMachine',
+      external: false,
+    },
+  },
+  {
+    name: 'Web Development',
+    price: 'From $499',
+    period: '',
+    popular: false,
+    features: [
+      'Modern, high-converting design',
+      'Built from scratch — no templates',
+      'Mobile-optimized & SEO-friendly',
+      'Fast loading & performance tuned',
+      'Custom integrations & automations',
+      'Launch support included',
+    ],
+    cta: {
+      label: 'Book Consultation',
+      href: 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding',
+      external: true,
+    },
+  },
+];
+
+function PlanCTA({ cta, className }: { cta: Plan['cta']; className: string }) {
+  if (cta.external) {
+    return (
+      <a href={cta.href} target="_blank" rel="noopener noreferrer" className={className}>
+        {cta.label}
+      </a>
+    );
+  }
+  return (
+    <Link to={cta.href} className={className}>
+      {cta.label}
+    </Link>
+  );
+}
+
+export function SubscriptionSection() {
   return (
     <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
       <div className="max-w-7xl mx-auto">
@@ -89,9 +125,7 @@ export function SubscriptionSection() {
                 <div className="mb-6">
                   <h3 className="text-xl font-bold mb-3 text-white">{plan.name}</h3>
                   <div className="flex items-baseline gap-1">
-                    <span
-                      className={`font-black text-[#C8A24A] ${plan.price.startsWith('From') ? 'text-3xl' : 'text-4xl'}`}
-                    >
+                    <span className={`font-black text-[#C8A24A] ${plan.price.startsWith('From') ? 'text-3xl' : 'text-4xl'}`}>
                       {plan.price}
                     </span>
                     {plan.period && (
@@ -109,20 +143,7 @@ export function SubscriptionSection() {
                   ))}
                 </ul>
 
-                {plan.cta.external ? (
-                  
-                    href={plan.cta.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={ctaClass}
-                  >
-                    {plan.cta.label}
-                  </a>
-                ) : (
-                  <Link to={plan.cta.href} className={ctaClass}>
-                    {plan.cta.label}
-                  </Link>
-                )}
+                <PlanCTA cta={plan.cta} className={ctaClass} />
               </div>
             );
           })}
