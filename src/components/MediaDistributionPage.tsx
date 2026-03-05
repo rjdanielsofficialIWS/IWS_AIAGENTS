@@ -19,7 +19,7 @@ const BORDER  = 'rgba(255,255,255,0.08)';
 // ─────────────────────────────────────────────
 // POSTIZ CONFIG
 // ─────────────────────────────────────────────
-const POSTIZ_FRONTEND_URL = 'https://platform.postiz.com';
+const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
 const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
