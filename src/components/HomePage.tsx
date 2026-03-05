@@ -20,6 +20,51 @@ const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const HOME_VAPI_ASSISTANT_ID = '76efe9e0-957c-410a-9163-75acbceec45e';
 const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Alex speaking, how may I help you?';
 
+const useCases = [
+  {
+    scenario: 'A plumber misses calls while on the job',
+    outcome: 'AI agent answers, books the appointment, captures lead details',
+    service: 'AI Voice Agents',
+    icon: <Brain className="h-4 w-4" />,
+  },
+  {
+    scenario: 'A salon wants to post daily across TikTok & Instagram',
+    outcome: 'AI generates captions, schedules posts, tracks engagement',
+    service: 'Social Media Manager',
+    icon: <Share2 className="h-4 w-4" />,
+  },
+  {
+    scenario: 'A contractor needs a professional website fast',
+    outcome: 'Custom site built from scratch, mobile-optimized & live in days',
+    service: 'Web Development',
+    icon: <Zap className="h-4 w-4" />,
+  },
+  {
+    scenario: 'A restaurant gets flooded with after-hours calls',
+    outcome: 'AI handles reservations, FAQs, and urgent transfers 24/7',
+    service: 'AI Voice Agents',
+    icon: <Brain className="h-4 w-4" />,
+  },
+  {
+    scenario: 'A real estate agent needs consistent social presence',
+    outcome: 'Listings auto-posted across LinkedIn, Facebook & more on schedule',
+    service: 'Social Media Manager',
+    icon: <Share2 className="h-4 w-4" />,
+  },
+  {
+    scenario: 'A startup needs a site that converts visitors',
+    outcome: 'High-converting landing page with integrated AI lead capture',
+    service: 'Web Development',
+    icon: <Zap className="h-4 w-4" />,
+  },
+];
+
+const serviceColors: Record<string, string> = {
+  'AI Voice Agents':      '#C8A24A',
+  'Social Media Manager': '#C8A24A',
+  'Web Development':      '#C8A24A',
+};
+
 export function HomePage() {
   const [bgOffset, setBgOffset] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
@@ -227,6 +272,7 @@ export function HomePage() {
               <span className="text-lg font-black bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent sm:hidden">IWS AI</span>
             </div>
             <div className="hidden lg:flex items-center space-x-1">
+              <a href="#use-cases" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
               <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">AI Voice Agents</a>
               <Link to="/MediaMachine" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Social Media</Link>
               <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Web Development</a>
@@ -246,6 +292,7 @@ export function HomePage() {
         {mobileMenuOpen && (
           <div className="lg:hidden border-t border-white/5 bg-black/90 backdrop-blur-md">
             <div className="px-4 py-3 space-y-1">
+              <a href="#use-cases" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
               <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">AI Voice Agents</a>
               <Link to="/MediaMachine" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Social Media Manager</Link>
               <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Web Development</a>
@@ -289,6 +336,42 @@ export function HomePage() {
           <div className="flex flex-wrap justify-center gap-8">
             {[{ value: '500+', label: 'Businesses Helped' }, { value: '19+', label: 'Social Platforms' }, { value: '24/7', label: 'AI Availability' }].map(s => (
               <div key={s.label}><div className="text-2xl font-black text-[#C8A24A]">{s.value}</div><div className="text-xs text-gray-500 mt-0.5">{s.label}</div></div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* USE CASES */}
+      <section id="use-cases" className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-4xl sm:text-5xl font-bold mb-4">
+              Built for{' '}
+              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Real Businesses</span>
+            </h2>
+            <p className="text-gray-400 text-lg max-w-2xl mx-auto">See how businesses like yours are using our services every day.</p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {useCases.map((uc, i) => (
+              <div key={i} className="bg-gray-900/60 border border-white/6 rounded-2xl p-6 flex flex-col gap-4 hover:border-[#C8A24A]/30 transition-all duration-300">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-gray-700/60 flex items-center justify-center shrink-0 mt-0.5" style={{ color: GOLD_PRIMARY }}>
+                    {uc.icon}
+                  </div>
+                  <p className="text-white font-semibold text-sm leading-snug">{uc.scenario}</p>
+                </div>
+                <div className="flex items-start gap-2 pl-11">
+                  <ArrowRight className="h-4 w-4 text-[#C8A24A] shrink-0 mt-0.5" />
+                  <p className="text-gray-400 text-sm leading-snug">{uc.outcome}</p>
+                </div>
+                <div className="pl-11">
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border"
+                    style={{ borderColor: `${serviceColors[uc.service]}30`, color: serviceColors[uc.service], background: `${serviceColors[uc.service]}10` }}>
+                    {uc.icon}
+                    {uc.service}
+                  </span>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -394,7 +477,7 @@ export function HomePage() {
                 </Link>
               </div>
 
-              {/* Platform grid — all black boxes with icons */}
+              {/* Platform grid */}
               <div className="grid grid-cols-4 gap-3">
                 {platforms.map(p => (
                   <div key={p.name}
