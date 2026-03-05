@@ -1,683 +1,419 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Brain,
-  Zap,
-  TrendingUp,
-  Phone,
-  PhoneOff,
-  Mail,
-  User,
-  Building,
-  Globe,
-  MessageSquare,
-  CheckCircle,
-  AlertCircle,
-  Loader,
-  ArrowLeft,
-  ArrowRight,
-  Target,
-  Calendar,
-  Users,
-  X,
+  Brain, Zap, TrendingUp, Phone, PhoneOff, Mail, User, Building, Globe,
+  MessageSquare, CheckCircle, AlertCircle, Loader, ArrowLeft, ArrowRight,
+  Calendar, Users, X, Share2, BarChart2, Sparkles, Menu,
 } from 'lucide-react';
 import { SubscriptionSection } from './SubscriptionSection';
 import Vapi from '@vapi-ai/web';
 import { trackHighIntent } from '../lib/analytics';
 
 interface FormData {
-  name: string;
-  email: string;
-  phone: string;
-  countryCode: string;
-
-  // Step 1
-  business: string; // Company Name
-  websiteUrl: string; // optional
-
-  // Step 2
-  industryServices: string; // Industry + Services
-}
-
-interface EnhanceState {
-  isEnhancing: boolean;
-  hasEnhanced: boolean;
-}
-
-interface Question {
-  id: keyof FormData | 'contactInfo' | 'companyInfo';
-  title: string;
-  subtitle?: string;
-  label?: string;
-  type: 'input' | 'textarea' | 'multi-input' | 'select' | 'radio' | 'checkbox';
-  placeholder?: string;
-  rows?: number;
-  icon?: React.ComponentType<any>;
-  required?: boolean;
-  options?: { value: string; label: string }[];
-  fields?: {
-    id: keyof FormData;
-    label: string;
-    type: 'input' | 'email' | 'tel';
-    placeholder: string;
-    icon: React.ComponentType<any>;
-    required: boolean;
-  }[];
+  name: string; email: string; phone: string; countryCode: string;
+  business: string; websiteUrl: string; industryServices: string;
 }
 
 const GOLD_PRIMARY = '#C8A24A';
 const GOLD_HOVER = '#E3C36A';
-
-// 📞 Vapi Phone Agent (Homepage floating)
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const HOME_VAPI_ASSISTANT_ID = '76efe9e0-957c-410a-9163-75acbceec45e';
 const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Alex speaking, how may I help you?';
 
-type PhoneModalMode = 'voice' | null;
-
 export function HomePage() {
   const [bgOffset, setBgOffset] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
-
-  const [formData, setFormData] = useState<FormData>({
-    name: '',
-    email: '',
-    phone: '',
-    countryCode: '+1',
-    business: '',
-    websiteUrl: '',
-    industryServices: '',
-  });
-
-  const [currentError, setCurrentError] = useState<string>('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [formData, setFormData] = useState<FormData>({ name: '', email: '', phone: '', countryCode: '+1', business: '', websiteUrl: '', industryServices: '' });
+  const [currentError, setCurrentError] = useState('');
   const [isStepValid, setIsStepValid] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'success' | 'error' | null>(null);
-  const [createdAssistantId, setCreatedAssistantId] = useState<string | null>(null);
   const [createdSlug, setCreatedSlug] = useState<string | null>(null);
-
-  const [enhanceState, setEnhanceState] = useState<EnhanceState>({
-    isEnhancing: false,
-    hasEnhanced: false,
-  });
-
-  // ✅ Floating Phone Agent Modal State
-  const [phoneModal, setPhoneModal] = useState<PhoneModalMode>(null);
+  const [phoneModal, setPhoneModal] = useState<'voice' | null>(null);
   const vapiRef = React.useRef<Vapi | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'live' | 'ended' | 'error'>('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
-  const questions: Question[] = [
+  const questions = [
     {
-      id: 'companyInfo',
-      title: 'Company Name',
-      subtitle: 'Website URL is optional, but recommended',
-      type: 'multi-input',
-      icon: Building,
-      required: true,
+      id: 'companyInfo', title: 'Company Name', subtitle: 'Website URL is optional, but recommended',
+      type: 'multi-input' as const, icon: Building, required: true,
       fields: [
-        {
-          id: 'business',
-          label: 'Company Name',
-          type: 'input',
-          placeholder: 'Your company name',
-          icon: Building,
-          required: true,
-        },
-        {
-          id: 'websiteUrl',
-          label: 'Website URL (optional)',
-          type: 'input',
-          placeholder: 'https://yourwebsite.com',
-          icon: Globe,
-          required: false,
-        },
+        { id: 'business' as keyof FormData, label: 'Company Name', type: 'input' as const, placeholder: 'Your company name', icon: Building, required: true },
+        { id: 'websiteUrl' as keyof FormData, label: 'Website URL (optional)', type: 'input' as const, placeholder: 'https://yourwebsite.com', icon: Globe, required: false },
       ],
     },
+    { id: 'industryServices', title: 'Industry and Services', type: 'textarea' as const, placeholder: 'Example: Plumbing — Drain cleaning, water heaters, emergency calls, etc.', rows: 4, icon: MessageSquare, required: true },
     {
-      id: 'industryServices',
-      title: 'Industry and Services',
-      type: 'textarea',
-      placeholder: 'Example: Plumbing — Drain cleaning, water heaters, emergency calls, etc.',
-      rows: 4,
-      icon: MessageSquare,
-      required: true,
-    },
-    // ✅ Contact info collected BEFORE submission
-    {
-      id: 'contactInfo',
-      title: 'Your Contact Info',
-      subtitle: 'We\'ll send your demo link here',
-      type: 'multi-input',
+      id: 'contactInfo', title: 'Your Contact Info', subtitle: "We'll send your demo link here", type: 'multi-input' as const,
       fields: [
-        {
-          id: 'name',
-          label: 'Name',
-          type: 'input',
-          placeholder: 'Your full name',
-          icon: User,
-          required: true,
-        },
-        {
-          id: 'email',
-          label: 'Email',
-          type: 'email',
-          placeholder: 'your@email.com',
-          icon: Mail,
-          required: true,
-        },
-        {
-          id: 'phone',
-          label: 'Phone Number',
-          type: 'tel',
-          placeholder: '(555) 123-4567',
-          icon: Phone,
-          required: true,
-        },
+        { id: 'name' as keyof FormData, label: 'Name', type: 'input' as const, placeholder: 'Your full name', icon: User, required: true },
+        { id: 'email' as keyof FormData, label: 'Email', type: 'email' as const, placeholder: 'your@email.com', icon: Mail, required: true },
+        { id: 'phone' as keyof FormData, label: 'Phone Number', type: 'tel' as const, placeholder: '(555) 123-4567', icon: Phone, required: true },
       ],
     },
   ];
 
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
+  const validateEmail = (e: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+  const validatePhone = (p: string) => /^[\d\s\-\(\)]{7,15}$/.test(p.replace(/\s/g, ''));
+  const validateUrl = (u: string) => {
+    if (!u.trim()) return true;
+    try { new URL(/^https?:\/\//i.test(u) ? u : `https://${u}`); return true; } catch { return false; }
   };
 
-  const validatePhone = (phone: string): boolean => {
-    const phoneRegex = /^[\d\s\-\(\)]{7,15}$/;
-    return phoneRegex.test(phone.replace(/\s/g, ''));
-  };
-
-  const validateWebsiteUrl = (url: string): boolean => {
-    const v = (url || '').trim();
-    if (!v) return true;
-
-    const withScheme = /^https?:\/\//i.test(v) ? v : `https://${v}`;
-    try {
-      // eslint-disable-next-line no-new
-      new URL(withScheme);
-      return true;
-    } catch {
-      return false;
-    }
-  };
-
-  const validateCurrentStep = (): boolean => {
-    const currentQuestion = questions[currentStep];
-    let isValid = true;
-    let error = '';
-
-    if (currentQuestion.type === 'multi-input') {
-      for (const field of currentQuestion.fields || []) {
-        const value = (formData[field.id] || '').toString();
-
-        if (field.required !== false && !value.trim()) {
-          isValid = false;
-          error = `${field.label} is required`;
-          break;
-        }
-
-        if (field.id === 'email' && value.trim() && !validateEmail(value)) {
-          isValid = false;
-          error = 'Please enter a valid email address';
-          break;
-        } else if (field.id === 'phone' && value.trim() && !validatePhone(value)) {
-          isValid = false;
-          error = 'Please enter a valid phone number (digits only)';
-          break;
-        } else if (field.id === 'websiteUrl' && value.trim() && !validateWebsiteUrl(value)) {
-          isValid = false;
-          error = 'Please enter a valid website URL';
-          break;
-        }
-      }
-    } else if (currentQuestion.type === 'select' || currentQuestion.type === 'radio') {
-      const value = formData[currentQuestion.id as keyof FormData];
-      if (!value || value.trim() === '') {
-        isValid = false;
-        error = 'Please select an option';
-      }
-    } else if (currentQuestion.type === 'checkbox') {
-      const value = formData[currentQuestion.id as keyof FormData] as string[];
-      if (!value || value.length === 0) {
-        isValid = false;
-        error = 'Please select at least one option';
+  const validateCurrentStep = () => {
+    const q = questions[currentStep];
+    let valid = true, error = '';
+    if (q.type === 'multi-input') {
+      for (const f of q.fields || []) {
+        const val = (formData[f.id] || '').toString();
+        if (f.required !== false && !val.trim()) { valid = false; error = `${f.label} is required`; break; }
+        if (f.id === 'email' && val && !validateEmail(val)) { valid = false; error = 'Please enter a valid email'; break; }
+        if (f.id === 'phone' && val && !validatePhone(val)) { valid = false; error = 'Please enter a valid phone number'; break; }
+        if (f.id === 'websiteUrl' && val && !validateUrl(val)) { valid = false; error = 'Please enter a valid URL'; break; }
       }
     } else {
-      const value = formData[currentQuestion.id as keyof FormData];
-      if (!value.trim()) {
-        isValid = false;
-        error = `${currentQuestion.label} is required`;
-      } else if (currentQuestion.id === 'email' && !validateEmail(value)) {
-        isValid = false;
-        error = 'Please enter a valid email address';
-      } else if (currentQuestion.id === 'phone' && !validatePhone(value)) {
-        isValid = false;
-        error = 'Please enter a valid phone number';
-      }
+      const val = formData[q.id as keyof FormData] as string;
+      if (!val?.trim()) { valid = false; error = 'This field is required'; }
     }
-
-    setCurrentError(error);
-    setIsStepValid(isValid);
-    return isValid;
+    setCurrentError(error); setIsStepValid(valid); return valid;
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target;
-
-    if (e.target.type === 'checkbox') {
-      const checkboxValue = (e.target as HTMLInputElement).value;
-      const isChecked = (e.target as HTMLInputElement).checked;
-
-      setFormData((prev) => ({
-        ...prev,
-        [name]: isChecked
-          ? [...(prev[name as keyof FormData] as any[]), checkboxValue]
-          : (prev[name as keyof FormData] as any[]).filter((item) => item !== checkboxValue),
-      }));
-    } else {
-      setFormData((prev) => ({ ...prev, [name]: value }));
-    }
-  };
-
-  const handleCountryCodeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFormData((prev) => ({ ...prev, countryCode: e.target.value }));
-  };
-
-  const submitLeadFlow = async (
-    data: FormData,
-  ): Promise<{ ok: boolean; assistantId?: string; slug?: string; error?: string }> => {
-    try {
-      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
-      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
-
-      if (!supabaseUrl || !anonKey) {
-        return { ok: false, error: 'Missing Supabase env vars.' };
-      }
-
-      const response = await fetch(`${supabaseUrl}/functions/v1/lead-capture-flow`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          apikey: anonKey,
-          Authorization: `Bearer ${anonKey}`,
-        },
-        body: JSON.stringify({
-          companyName: data.business,
-          websiteUrl: data.websiteUrl,
-          industryServices: data.industryServices,
-          // ✅ Contact info now included in submission
-          contactName: data.name,
-          contactEmail: data.email,
-          contactPhone: `${data.countryCode} ${data.phone}`,
-        }),
-      });
-
-      const txt = await response.text();
-      if (!response.ok) return { ok: false, error: txt || 'Lead flow failed.' };
-
-      const json = txt ? JSON.parse(txt) : {};
-      return { ok: true, assistantId: json.assistantId, slug: json.slug };
-    } catch (error: any) {
-      console.error('Error running lead flow:', error);
-      return { ok: false, error: error?.message || 'Unknown error' };
-    }
+    setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
   const handleSubmit = async () => {
-    // Validate all required fields before submitting
-    if (!formData.business.trim()) {
-      setCurrentError('Company Name is required');
-      setSubmitStatus('error');
-      return;
-    }
-    if (formData.websiteUrl.trim() && !validateWebsiteUrl(formData.websiteUrl)) {
-      setCurrentError('Please enter a valid website URL');
-      setSubmitStatus('error');
-      return;
-    }
-    if (!formData.industryServices.trim()) {
-      setCurrentError('Industry and Services is required');
-      setSubmitStatus('error');
-      return;
-    }
-    if (!formData.name.trim()) {
-      setCurrentError('Name is required');
-      setSubmitStatus('error');
-      return;
-    }
-    if (!formData.email.trim() || !validateEmail(formData.email)) {
-      setCurrentError('A valid email address is required');
-      setSubmitStatus('error');
-      return;
-    }
-    if (!formData.phone.trim() || !validatePhone(formData.phone)) {
-      setCurrentError('A valid phone number is required');
-      setSubmitStatus('error');
-      return;
-    }
-
     setIsSubmitting(true);
-    setSubmitStatus(null);
-    setCreatedAssistantId(null);
-    setCreatedSlug(null);
-
     trackHighIntent({ name: 'form_submit', label: 'package_quote_form' });
-
     try {
-      const result = await submitLeadFlow(formData);
-
-      if (result.ok) {
-        setSubmitStatus('success');
-        setCreatedAssistantId(result.assistantId || null);
-        setCreatedSlug(result.slug || null);
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+      const response = await fetch(`${supabaseUrl}/functions/v1/lead-capture-flow`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: anonKey, Authorization: `Bearer ${anonKey}` },
+        body: JSON.stringify({
+          companyName: formData.business, websiteUrl: formData.websiteUrl, industryServices: formData.industryServices,
+          contactName: formData.name, contactEmail: formData.email, contactPhone: `${formData.countryCode} ${formData.phone}`,
+        }),
+      });
+      const txt = await response.text();
+      if (response.ok) {
+        const json = txt ? JSON.parse(txt) : {};
+        setSubmitStatus('success'); setCreatedSlug(json.slug || null);
         trackHighIntent({ name: 'form_success', label: 'package_quote_form' });
-
-        // Reset form fields after successful submission
-        setFormData((prev) => ({
-          ...prev,
-          name: '',
-          email: '',
-          phone: '',
-          business: '',
-          websiteUrl: '',
-          industryServices: '',
-        }));
-      } else {
-        console.error(result.error || 'Lead flow failed');
-        setSubmitStatus('error');
-      }
-    } catch (error) {
-      console.error('Submission error:', error);
-      setSubmitStatus('error');
-    } finally {
-      setIsSubmitting(false);
-    }
+      } else { setSubmitStatus('error'); }
+    } catch { setSubmitStatus('error'); }
+    finally { setIsSubmitting(false); }
   };
 
   const handleNext = () => {
     if (!validateCurrentStep()) return;
-
-    // ✅ Step 3 (index 2) is the contact info step — it triggers submission
-    if (currentStep === 2) {
-      handleSubmit();
-      return;
-    }
-
-    if (currentStep < questions.length - 1) {
-      setCurrentStep(currentStep + 1);
-      setCurrentError('');
-    }
+    if (currentStep === 2) { handleSubmit(); return; }
+    setCurrentStep(s => s + 1); setCurrentError('');
   };
 
-  const handlePrevious = () => {
-    if (currentStep > 0) {
-      setCurrentStep(currentStep - 1);
-      setCurrentError('');
-    }
-  };
-
-  React.useEffect(() => {
-    validateCurrentStep();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentStep, formData]);
+  React.useEffect(() => { validateCurrentStep(); }, [currentStep, formData]);
 
   React.useEffect(() => {
     let raf = 0;
     const onScroll = () => {
       if (raf) return;
-      raf = window.requestAnimationFrame(() => {
-        setBgOffset(window.scrollY * 0.15);
-        raf = 0;
-      });
+      raf = requestAnimationFrame(() => { setBgOffset(scrollY * 0.15); raf = 0; });
     };
-
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      if (raf) window.cancelAnimationFrame(raf);
-    };
+    onScroll(); window.addEventListener('scroll', onScroll, { passive: true });
+    return () => { window.removeEventListener('scroll', onScroll); if (raf) cancelAnimationFrame(raf); };
   }, []);
 
   React.useEffect(() => {
     if (phoneModal !== 'voice') return;
-
     let cancelled = false;
-
-    const startCall = async () => {
+    (async () => {
       try {
-        setVoiceError(null);
-        setVoiceStatus('connecting');
-
-        try {
-          vapiRef.current?.stop();
-        } catch {}
-        vapiRef.current = null;
-
-        const vapi = new Vapi(VAPI_PUBLIC_KEY);
-        vapiRef.current = vapi;
-
-        vapi.on('call-start', () => {
-          if (cancelled) return;
-          setVoiceStatus('live');
-        });
-
-        vapi.on('call-end', () => {
-          if (cancelled) return;
-          setVoiceStatus('ended');
-        });
-
-        (vapi as any).on?.('error', (e: any) => {
-          if (cancelled) return;
-          setVoiceStatus('error');
-          setVoiceError(e?.message || 'Voice error');
-        });
-
+        setVoiceError(null); setVoiceStatus('connecting');
+        try { vapiRef.current?.stop(); } catch {}
+        const vapi = new Vapi(VAPI_PUBLIC_KEY); vapiRef.current = vapi;
+        vapi.on('call-start', () => { if (!cancelled) setVoiceStatus('live'); });
+        vapi.on('call-end', () => { if (!cancelled) setVoiceStatus('ended'); });
+        (vapi as any).on?.('error', (e: any) => { if (!cancelled) { setVoiceStatus('error'); setVoiceError(e?.message || 'Error'); } });
         await vapi.start(HOME_VAPI_ASSISTANT_ID);
-
-        try {
-          await (vapi as any).say(HOME_VAPI_FIRST_MESSAGE, false);
-        } catch {}
-      } catch (e: any) {
-        if (cancelled) return;
-        setVoiceStatus('error');
-        setVoiceError(e?.message || 'Failed to start voice');
-      }
-    };
-
-    startCall();
-
+        try { await (vapi as any).say(HOME_VAPI_FIRST_MESSAGE, false); } catch {}
+      } catch (e: any) { if (!cancelled) { setVoiceStatus('error'); setVoiceError(e?.message || 'Failed'); } }
+    })();
     return () => {
       cancelled = true;
-      try {
-        vapiRef.current?.stop();
-      } catch {}
-      vapiRef.current = null;
-      setVoiceStatus('idle');
-      setVoiceError(null);
+      try { vapiRef.current?.stop(); } catch {}
+      vapiRef.current = null; setVoiceStatus('idle'); setVoiceError(null);
     };
   }, [phoneModal]);
 
   const closePhoneModal = () => {
-    try {
-      vapiRef.current?.stop();
-    } catch {}
-    vapiRef.current = null;
-    setVoiceStatus('idle');
-    setVoiceError(null);
-    setPhoneModal(null);
+    try { vapiRef.current?.stop(); } catch {}
+    vapiRef.current = null; setVoiceStatus('idle'); setVoiceError(null); setPhoneModal(null);
   };
 
   return (
-    <div
-      className="min-h-screen text-white overflow-x-hidden"
-      style={{
-        backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(200, 162, 74, 0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`,
-        backgroundAttachment: 'fixed',
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: 'cover',
-      }}
-    >
-      <style>
-        {`
-          .gold-shimmer {
-            background-image: linear-gradient(
-              110deg,
-              #b9892b 0%,
-              #f7dc8a 20%,
-              #ffffff 30%,
-              #f1d27b 40%,
-              #b9892b 60%,
-              #f7dc8a 80%,
-              #ffffff 90%,
-              #b9892b 100%
-            );
-            background-size: 240% 100%;
-            background-position: 0% 50%;
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            animation: goldShimmerSweep 4.8s ease-in-out infinite;
-            filter: drop-shadow(0 0 10px rgba(240, 210, 124, 0.12));
-          }
-
-          @keyframes goldShimmerSweep {
-            0% { background-position: 0% 50%; }
-            55% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-          }
-
-          @media (prefers-reduced-motion: reduce) {
-            .gold-shimmer { animation: none; }
-          }
-        `}
-      </style>
-
+    <div className="min-h-screen text-white overflow-x-hidden"
+      style={{ backgroundImage: `radial-gradient(1200px 600px at 50% ${-200 + bgOffset}px, rgba(200,162,74,0.18), transparent 62%), linear-gradient(to bottom, #2a2a2a, #0b0b0b, #000)`, backgroundAttachment: 'fixed', backgroundRepeat: 'no-repeat', backgroundSize: 'cover' }}>
+      <style>{`
+        .gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
+        @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        .svc-card { transition: transform 0.3s ease, border-color 0.3s ease; }
+        .svc-card:hover { transform: translateY(-4px); }
+      `}</style>
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
       </div>
 
-      <header className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex items-center space-x-3 mb-6"></div>
+      {/* NAV */}
+      <nav className="relative z-20 border-b border-white/5 backdrop-blur-md bg-black/20 sticky top-0">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center space-x-2">
+              <Zap className="h-6 w-6 text-[#C8A24A]" />
+              <span className="text-lg font-black bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent hidden sm:block">Infinite Wealth Solutions AI</span>
+              <span className="text-lg font-black bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent sm:hidden">IWS AI</span>
+            </div>
+            <div className="hidden lg:flex items-center space-x-1">
+              <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">AI Voice Agents</a>
+              <Link to="/MediaMachine" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Social Media</Link>
+              <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Lead Generation</a>
+              <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Web Development</a>
+              <a href="#pricing" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Pricing</a>
+            </div>
+            <div className="flex items-center space-x-3">
+              <a href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer"
+                className="hidden sm:flex items-center space-x-2 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-2 px-4 rounded-xl transition-all text-sm">
+                <Calendar className="h-4 w-4" /><span>Get Started</span>
+              </a>
+              <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="lg:hidden p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/5 transition-all">
+                <Menu className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         </div>
-      </header>
+        {mobileMenuOpen && (
+          <div className="lg:hidden border-t border-white/5 bg-black/90 backdrop-blur-md">
+            <div className="px-4 py-3 space-y-1">
+              <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">AI Voice Agents</a>
+              <Link to="/MediaMachine" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Social Media Manager</Link>
+              <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Lead Generation</a>
+              <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Web Development</a>
+              <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Pricing</a>
+              <div className="pt-2">
+                <a href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer"
+                  className="flex items-center justify-center space-x-2 bg-[#C8A24A] text-black font-bold py-2.5 px-4 rounded-xl text-sm">
+                  <Calendar className="h-4 w-4" /><span>Get Started</span>
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+      </nav>
 
-      <section className="relative z-10 py-8 px-4 sm:px-6 lg:px-8">
+      {/* HERO */}
+      <section className="relative z-10 py-16 sm:py-24 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold mb-8 leading-tight">
+          <div className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-8">
+            <Sparkles className="h-4 w-4 text-[#C8A24A]" />
+            <span className="text-sm text-[#C8A24A] font-semibold">AI-Powered Business Solutions</span>
+          </div>
+          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
             <span className="gold-shimmer block font-extrabold">Infinite Wealth Solutions</span>
             <span className="block mt-3 text-white font-bold">Transform your business with AI</span>
-          </h2>
-
-          <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed">
-            From AI-powered voice agents to high volume lead generation, and custom websites - we deliver premium digital solutions that drive results.
+          </h1>
+          <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed max-w-3xl mx-auto">
+            From AI-powered voice agents to social media management, high volume lead generation, and custom websites — we deliver premium digital solutions that drive results.
           </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-12">
-            <button
-              data-track="cta"
-              data-track-label="Get a Package Quote"
-              onClick={() => {
-                const leadCaptureSection = document.getElementById('lead-capture');
-                if (leadCaptureSection) {
-                  leadCaptureSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else {
-                  window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
-                }
-              }}
-              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3"
-            >
-              <MessageSquare className="h-6 w-6" />
-              <span>FREE AI Phone Agent</span>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-10">
+            <button data-track="cta" data-track-label="Get a Package Quote"
+              onClick={() => document.getElementById('lead-capture')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3">
+              <MessageSquare className="h-6 w-6" /><span>FREE AI Phone Agent</span>
             </button>
-
-            <a
-              data-track="book"
-              data-track-label="Get Started"
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full sm:w-auto bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 flex items-center justify-center space-x-3"
-            >
-              <Calendar className="h-6 w-6" />
-              <span>Get Started</span>
+            <Link to="/MediaMachine"
+              className="w-full sm:w-auto bg-gradient-to-r from-[#C8A24A]/20 to-[#E3C36A]/20 border border-[#C8A24A]/40 hover:border-[#C8A24A] text-[#E3C36A] font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] flex items-center justify-center space-x-3">
+              <Share2 className="h-6 w-6" /><span>Social Media Manager</span>
+            </Link>
+            <a data-track="book" data-track-label="Get Started"
+              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer"
+              className="w-full sm:w-auto bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 flex items-center justify-center space-x-3">
+              <Calendar className="h-6 w-6" /><span>Get Started</span>
             </a>
           </div>
+          <div className="flex flex-wrap justify-center gap-8">
+            {[{ value: '500+', label: 'Businesses Helped' }, { value: '19+', label: 'Social Platforms' }, { value: '24/7', label: 'AI Availability' }].map(s => (
+              <div key={s.label}><div className="text-2xl font-black text-[#C8A24A]">{s.value}</div><div className="text-xs text-gray-500 mt-0.5">{s.label}</div></div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-          <div
-            id="lead-capture"
-            className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12 max-w-3xl mx-auto"
-          >
+      {/* SERVICES */}
+      <section id="services" className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-16">
+            <h2 className="text-4xl sm:text-5xl font-bold mb-6">
+              Premium Services for{' '}
+              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Modern Businesses</span>
+            </h2>
+            <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
+              Comprehensive digital solutions that transform how businesses operate, generate leads, and serve customers.
+            </p>
+          </div>
+          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* AI Voice Agents */}
+            <div className="svc-card bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 group">
+              <div className="bg-[#C8A24A]/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors"><Brain className="h-8 w-8 text-[#C8A24A]" /></div>
+              <h3 className="text-xl font-bold mb-3 text-center">AI Voice Agents</h3>
+              <p className="text-gray-400 text-center text-sm leading-relaxed">Intelligent AI agents that handle calls, bookings, customer service, and sales with human-like natural speech.</p>
+              <div className="mt-5 flex flex-wrap justify-center gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1"><Phone className="h-3 w-3" />24/7</span>
+                <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />Auto Booking</span>
+              </div>
+              <button onClick={() => setPhoneModal('voice')} className="mt-6 w-full py-2 rounded-lg text-xs font-bold border border-[#C8A24A]/30 text-[#C8A24A] hover:bg-[#C8A24A]/10 transition-all">Try Demo Agent</button>
+            </div>
+
+            {/* Social Media — FEATURED */}
+            <div className="svc-card bg-gradient-to-br from-[#C8A24A]/10 to-gray-900/50 backdrop-blur-sm border border-[#C8A24A]/40 rounded-xl p-8 hover:border-[#C8A24A]/80 group relative overflow-hidden">
+              <div className="absolute top-3 right-3 bg-[#C8A24A] text-black text-[10px] font-black px-2 py-0.5 rounded-full">NEW</div>
+              <div className="bg-[#C8A24A]/15 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/25 transition-colors"><Share2 className="h-8 w-8 text-[#C8A24A]" /></div>
+              <h3 className="text-xl font-bold mb-3 text-center">Social Media Manager</h3>
+              <p className="text-gray-400 text-center text-sm leading-relaxed">AI-powered scheduling and content creation across 19+ platforms from one unified dashboard.</p>
+              <div className="mt-5 flex flex-wrap justify-center gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1"><Sparkles className="h-3 w-3" />AI Content</span>
+                <span className="flex items-center gap-1"><BarChart2 className="h-3 w-3" />Analytics</span>
+              </div>
+              <Link to="/MediaMachine" className="mt-6 w-full py-2 rounded-lg text-xs font-bold bg-[#C8A24A] text-black hover:bg-[#E3C36A] transition-all text-center block">Launch Media Machine</Link>
+            </div>
+
+            {/* Lead Generation */}
+            <div className="svc-card bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 group">
+              <div className="bg-[#C8A24A]/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors"><TrendingUp className="h-8 w-8 text-[#C8A24A]" /></div>
+              <h3 className="text-xl font-bold mb-3 text-center">Lead Generation</h3>
+              <p className="text-gray-400 text-center text-sm leading-relaxed">Drive qualified leads through strategic social media marketing, targeted advertising, and digital campaigns.</p>
+              <div className="mt-5 flex flex-wrap justify-center gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1"><Users className="h-3 w-3" />Targeted</span>
+                <span className="flex items-center gap-1"><TrendingUp className="h-3 w-3" />Growth</span>
+              </div>
+              <a href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer" className="mt-6 w-full py-2 rounded-lg text-xs font-bold border border-[#C8A24A]/30 text-[#C8A24A] hover:bg-[#C8A24A]/10 transition-all text-center block">Learn More</a>
+            </div>
+
+            {/* Web Development */}
+            <div className="svc-card bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 group">
+              <div className="bg-[#C8A24A]/10 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors"><Zap className="h-8 w-8 text-[#C8A24A]" /></div>
+              <h3 className="text-xl font-bold mb-3 text-center">Web Development</h3>
+              <p className="text-gray-400 text-center text-sm leading-relaxed">Unique, professionally designed websites built from scratch. No templates — a site that truly represents your brand.</p>
+              <div className="mt-5 flex flex-wrap justify-center gap-3 text-xs text-gray-500">
+                <span className="flex items-center gap-1"><Building className="h-3 w-3" />Custom</span>
+                <span className="flex items-center gap-1"><Zap className="h-3 w-3" />Fast</span>
+              </div>
+              <a href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer" className="mt-6 w-full py-2 rounded-lg text-xs font-bold border border-[#C8A24A]/30 text-[#C8A24A] hover:bg-[#C8A24A]/10 transition-all text-center block">Learn More</a>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* SOCIAL MEDIA SPOTLIGHT */}
+      <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="bg-gradient-to-br from-[#C8A24A]/8 to-gray-900/50 border border-[#C8A24A]/20 rounded-2xl p-8 sm:p-12">
+            <div className="grid lg:grid-cols-2 gap-12 items-center">
+              <div>
+                <div className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-6">
+                  <Share2 className="h-4 w-4 text-[#C8A24A]" />
+                  <span className="text-sm text-[#C8A24A] font-semibold">Media Machine</span>
+                </div>
+                <h2 className="text-3xl sm:text-4xl font-bold mb-6">
+                  Manage All Your Social Media{' '}
+                  <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">In One Place</span>
+                </h2>
+                <p className="text-gray-300 text-lg leading-relaxed mb-8">
+                  Connect TikTok, Instagram, LinkedIn, YouTube, and 15+ more platforms. Use AI to generate captions, schedule posts at optimal times, and track performance — all from your personalized dashboard.
+                </p>
+                <div className="space-y-3 mb-8">
+                  {[
+                    'AI-generated captions and content ideas',
+                    'Schedule posts across 19+ social platforms',
+                    'Visual content calendar',
+                    'Analytics and performance tracking',
+                    'Connect multiple client accounts',
+                  ].map(f => (
+                    <div key={f} className="flex items-center space-x-3">
+                      <CheckCircle className="h-5 w-5 text-[#C8A24A] shrink-0" />
+                      <span className="text-gray-300 text-sm">{f}</span>
+                    </div>
+                  ))}
+                </div>
+                <Link to="/MediaMachine" className="inline-flex items-center space-x-3 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02]">
+                  <Share2 className="h-5 w-5" /><span>Launch Media Machine</span><ArrowRight className="h-5 w-5" />
+                </Link>
+              </div>
+              <div className="grid grid-cols-4 gap-3">
+                {[
+                  { name: 'TikTok', color: '#ffffff', bg: 'rgba(255,255,255,0.06)' },
+                  { name: 'Instagram', color: '#E1306C', bg: 'rgba(225,48,108,0.12)' },
+                  { name: 'LinkedIn', color: '#0A66C2', bg: 'rgba(10,102,194,0.12)' },
+                  { name: 'YouTube', color: '#FF0000', bg: 'rgba(255,0,0,0.12)' },
+                  { name: 'Facebook', color: '#1877F2', bg: 'rgba(24,119,242,0.12)' },
+                  { name: 'Twitter/X', color: '#ffffff', bg: 'rgba(255,255,255,0.06)' },
+                  { name: 'Threads', color: '#ffffff', bg: 'rgba(255,255,255,0.06)' },
+                  { name: 'Bluesky', color: '#0085ff', bg: 'rgba(0,133,255,0.12)' },
+                  { name: 'Reddit', color: '#FF4500', bg: 'rgba(255,69,0,0.12)' },
+                  { name: 'Pinterest', color: '#E60023', bg: 'rgba(230,0,35,0.12)' },
+                  { name: 'Discord', color: '#5865F2', bg: 'rgba(88,101,242,0.12)' },
+                  { name: '+ More', color: '#C8A24A', bg: 'rgba(200,162,74,0.12)' },
+                ].map(p => (
+                  <div key={p.name} className="aspect-square rounded-xl border flex items-center justify-center text-xs font-bold text-center p-2 transition-all hover:scale-105"
+                    style={{ background: p.bg, borderColor: `${p.color}25`, color: p.color }}>{p.name}</div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* LEAD CAPTURE */}
+      <section className="relative z-10 py-16 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-10">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4">
+              Get Your <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">FREE AI Demo</span>
+            </h2>
+            <p className="text-gray-400">See how AI can transform your business in under 5 minutes</p>
+          </div>
+          <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12">
             {submitStatus === 'error' && (
               <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center space-x-3">
-                <AlertCircle className="h-6 w-6 text-red-400" />
-                <p className="text-red-300">Sorry, there was an error submitting your form. Please try again.</p>
+                <AlertCircle className="h-6 w-6 text-red-400" /><p className="text-red-300">Sorry, there was an error. Please try again.</p>
               </div>
             )}
-
             {submitStatus !== 'success' && (
-              <div className="mb-12">
-                <div className="flex items-center justify-center space-x-4 mb-6">
-                  {questions.map((_, index) => (
-                    <React.Fragment key={index}>
-                      <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg transition-all duration-300 ${
-                          index < currentStep
-                            ? 'bg-green-500 text-white shadow-lg shadow-green-500/50'
-                            : index === currentStep
-                              ? 'bg-[#C8A24A] text-black shadow-lg shadow-black/40'
-                              : 'bg-gray-600 text-gray-400'
-                        }`}
-                      >
-                        {index < currentStep ? <CheckCircle className="h-6 w-6" /> : index + 1}
+              <div className="mb-10">
+                <div className="flex items-center justify-center space-x-4 mb-4">
+                  {questions.map((_, i) => (
+                    <React.Fragment key={i}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold transition-all ${i < currentStep ? 'bg-green-500 text-white' : i === currentStep ? 'bg-[#C8A24A] text-black' : 'bg-gray-600 text-gray-400'}`}>
+                        {i < currentStep ? <CheckCircle className="h-5 w-5" /> : i + 1}
                       </div>
-                      {index < questions.length - 1 && (
-                        <div className={`w-8 h-1 transition-all duration-300 ${index < currentStep ? 'bg-green-500' : 'bg-gray-600'}`}></div>
-                      )}
+                      {i < questions.length - 1 && <div className={`w-8 h-1 transition-all ${i < currentStep ? 'bg-green-500' : 'bg-gray-600'}`} />}
                     </React.Fragment>
                   ))}
                 </div>
-                <p className="text-center text-gray-400 text-sm">
-                  Step {currentStep + 1} of {questions.length}
-                </p>
+                <p className="text-center text-gray-400 text-sm">Step {currentStep + 1} of {questions.length}</p>
               </div>
             )}
-
             {submitStatus === 'success' ? (
-              // ✅ Confirmation message: only show the demo link
               <div className="text-center py-12">
-                <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle className="h-12 w-12 text-green-400" />
-                </div>
+                <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="h-12 w-12 text-green-400" /></div>
                 <h4 className="text-3xl font-bold mb-6">You're All Set!</h4>
-                <p className="text-lg text-gray-300 mb-8">
-                  You can test out your demo agent here:
-                </p>
-                {createdSlug ? (
-                  <a
-                    href={`https://infinitewealthsolutionsai.com/demo/${createdSlug}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center space-x-2 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 text-lg"
-                  >
-                    <span>infinitewealthsolutionsai.com/demo/{createdSlug}</span>
-                    <ArrowRight className="h-5 w-5" />
-                  </a>
-                ) : (
-                  <a
-                    href="https://infinitewealthsolutionsai.com/demo"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center space-x-2 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 text-lg"
-                  >
-                    <span>infinitewealthsolutionsai.com/demo</span>
-                    <ArrowRight className="h-5 w-5" />
-                  </a>
-                )}
+                <p className="text-lg text-gray-300 mb-8">You can test out your demo agent here:</p>
+                <a href={createdSlug ? `https://infinitewealthsolutionsai.com/demo/${createdSlug}` : 'https://infinitewealthsolutionsai.com/demo'}
+                  target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center space-x-2 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all">
+                  <span>View Your Demo</span><ArrowRight className="h-5 w-5" />
+                </a>
               </div>
             ) : (
               <div className="relative overflow-hidden">
@@ -686,103 +422,47 @@ export function HomePage() {
                     <div key={question.id} className="w-full flex-shrink-0 px-4">
                       {question.title && (
                         <div className="text-center mb-8">
-                          <h4 className="text-2xl sm:text-3xl font-bold mb-4">
-                            {question.title}
-                            {question.subtitle && (
-                              <span className="block text-sm sm:text-base font-normal text-gray-400 mt-2">{question.subtitle}</span>
-                            )}
+                          <h4 className="text-2xl font-bold mb-2">{question.title}
+                            {question.subtitle && <span className="block text-sm font-normal text-gray-400 mt-1">{question.subtitle}</span>}
                           </h4>
                         </div>
                       )}
-
-                      <div className="space-y-2 sm:space-y-4">
-                        {question.type !== 'multi-input' && question.label && (
-                          <label className="block text-sm font-medium text-gray-300 mb-3">
-                            {question.icon && <question.icon className="inline h-4 w-4 mr-2" />}
-                            {question.label} *
-                          </label>
-                        )}
-
+                      <div className="space-y-4">
                         {question.type === 'multi-input' ? (
-                          <div className="space-y-4 sm:space-y-6">
-                            {question.fields?.map((field) => (
+                          <div className="space-y-4">
+                            {question.fields?.map(field => (
                               <div key={field.id}>
-                                <label className="block text-sm font-medium text-gray-300 mb-3">
-                                  <field.icon className="inline h-4 w-4 mr-2" />
-                                  {field.label}{field.required === false ? '' : ' *'}
+                                <label className="block text-sm font-medium text-gray-300 mb-2">
+                                  <field.icon className="inline h-4 w-4 mr-2" />{field.label}{field.required === false ? '' : ' *'}
                                 </label>
-
                                 {field.id === 'phone' ? (
                                   <div className="flex">
-                                    <select
-                                      value={formData.countryCode}
-                                      onChange={handleCountryCodeChange}
-                                      className={`px-3 py-3 bg-gray-900/50 border ${
-                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
-                                    >
+                                    <select value={formData.countryCode} onChange={e => setFormData(p => ({ ...p, countryCode: e.target.value }))}
+                                      className="px-3 py-3 bg-gray-900/50 border border-gray-600 border-r-0 rounded-l-lg text-white focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all">
                                       <option value="+1">🇨🇦 +1</option>
                                       <option value="+1">🇺🇸 +1</option>
                                       <option value="+44">🇬🇧 +44</option>
                                       <option value="+33">🇫🇷 +33</option>
                                       <option value="+49">🇩🇪 +49</option>
                                       <option value="+61">🇦🇺 +61</option>
-                                      <option value="+81">🇯🇵 +81</option>
-                                      <option value="+86">🇨🇳 +86</option>
-                                      <option value="+91">🇮🇳 +91</option>
-                                      <option value="+55">🇧🇷 +55</option>
-                                      <option value="+52">🇲🇽 +52</option>
-                                      <option value="+34">🇪🇸 +34</option>
-                                      <option value="+39">🇮🇹 +39</option>
-                                      <option value="+31">🇳🇱 +31</option>
-                                      <option value="+46">🇸🇪 +46</option>
-                                      <option value="+47">🇳🇴 +47</option>
-                                      <option value="+45">🇩🇰 +45</option>
-                                      <option value="+41">🇨🇭 +41</option>
-                                      <option value="+43">🇦🇹 +43</option>
-                                      <option value="+32">🇧🇪 +32</option>
                                     </select>
-
-                                    <input
-                                      type={field.type}
-                                      id={field.id}
-                                      name={field.id}
-                                      value={formData[field.id]}
-                                      onChange={handleInputChange}
-                                      className={`flex-1 px-4 py-3 bg-gray-900/50 border ${
-                                        currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                      } rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
-                                      placeholder="555-123-4567"
-                                    />
+                                    <input type={field.type} name={field.id} value={formData[field.id]} onChange={handleInputChange}
+                                      className="flex-1 px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-r-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all" placeholder="555-123-4567" />
                                   </div>
                                 ) : (
-                                  <input
-                                    type={field.type}
-                                    id={field.id}
-                                    name={field.id}
-                                    value={formData[field.id]}
-                                    onChange={handleInputChange}
-                                    className={`w-full px-4 py-3 bg-gray-900/50 border ${
-                                      currentError && index === currentStep ? 'border-red-500' : 'border-gray-600'
-                                    } rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all`}
-                                    placeholder={field.placeholder}
-                                  />
+                                  <input type={field.type} name={field.id} value={formData[field.id]} onChange={handleInputChange}
+                                    className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all"
+                                    placeholder={field.placeholder} />
                                 )}
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <textarea
-                            id={question.id as string}
-                            name={question.id as string}
-                            value={formData[question.id as keyof FormData] as any}
-                            onChange={handleInputChange}
+                          <textarea name={question.id as string} value={formData[question.id as keyof FormData] as any} onChange={handleInputChange}
                             rows={question.rows || 4}
-                            className={`w-full px-4 py-3 bg-gray-900/50 border ${currentError ? 'border-red-500' : 'border-gray-600'} rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all resize-vertical`}
-                            placeholder={question.placeholder}
-                          />
+                            className="w-full px-4 py-3 bg-gray-900/50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#C8A24A]/50 focus:border-[#C8A24A] transition-all resize-vertical"
+                            placeholder={question.placeholder} />
                         )}
-
                         {currentError && index === currentStep && <p className="mt-2 text-sm text-red-400">{currentError}</p>}
                       </div>
                     </div>
@@ -790,48 +470,17 @@ export function HomePage() {
                 </div>
               </div>
             )}
-
             {submitStatus !== 'success' && (
-              <div className="flex justify-between items-center mt-4 pt-4 sm:mt-8 sm:pt-6 border-t border-gray-700/50">
-                <button
-                  type="button"
-                  onClick={handlePrevious}
-                  disabled={currentStep === 0}
-                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all flex-shrink-0 ${
-                    currentStep === 0 ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' : 'bg-gray-600 text-white hover:bg-gray-700'
-                  }`}
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                  <span>Previous</span>
+              <div className="flex justify-between items-center mt-8 pt-6 border-t border-gray-700/50">
+                <button type="button" onClick={() => { if (currentStep > 0) { setCurrentStep(s => s - 1); setCurrentError(''); } }} disabled={currentStep === 0}
+                  className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all ${currentStep === 0 ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' : 'bg-gray-600 text-white hover:bg-gray-700'}`}>
+                  <ArrowLeft className="h-5 w-5" /><span>Previous</span>
                 </button>
-
-                {/* ✅ Step 3 (index 2) triggers submit */}
-                <button
-                  type="button"
-                  onClick={handleNext}
-                  disabled={!isStepValid || isSubmitting}
-                  className={`px-8 py-3 rounded-xl font-semibold transition-all flex items-center space-x-2 flex-shrink-0 ${
-                    !isStepValid || isSubmitting
-                      ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed'
-                      : 'bg-[#C8A24A] text-black hover:bg-[#E3C36A] shadow-lg shadow-black/40'
-                  }`}
-                >
-                  {isSubmitting ? (
-                    <>
-                      <Loader className="h-5 w-5 animate-spin" />
-                      <span>Submitting...</span>
-                    </>
-                  ) : currentStep === 2 ? (
-                    <>
-                      <span>Submit</span>
-                      <ArrowRight className="h-5 w-5" />
-                    </>
-                  ) : (
-                    <>
-                      <span>Next</span>
-                      <ArrowRight className="h-5 w-5" />
-                    </>
-                  )}
+                <button type="button" onClick={handleNext} disabled={!isStepValid || isSubmitting}
+                  className={`px-8 py-3 rounded-xl font-semibold transition-all flex items-center space-x-2 ${!isStepValid || isSubmitting ? 'bg-gray-600/50 text-gray-400 cursor-not-allowed' : 'bg-[#C8A24A] text-black hover:bg-[#E3C36A]'}`}>
+                  {isSubmitting ? (<><Loader className="h-5 w-5 animate-spin" /><span>Submitting...</span></>) :
+                   currentStep === 2 ? (<><span>Submit</span><ArrowRight className="h-5 w-5" /></>) :
+                   (<><span>Next</span><ArrowRight className="h-5 w-5" /></>)}
                 </button>
               </div>
             )}
@@ -839,204 +488,84 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* Everything below stays EXACTLY the same */}
-      <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-              Premium Services for{' '}
-              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Modern Businesses</span>
-            </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
-              We provide comprehensive digital solutions that transform how businesses operate, generate leads, and serve customers.
-            </p>
-          </div>
+      <div id="pricing"><SubscriptionSection /></div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
-              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
-                <Brain className="h-10 w-10 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">AI Voice Agents</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Intelligent AI agents that handle calls, bookings, customer service, and sales conversations with human-like natural speech and understanding.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Phone className="h-4 w-4" />
-                  <span>24/7 Availability</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Calendar className="h-4 w-4" />
-                  <span>Auto Booking</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
-              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Lead Generation</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Drive qualified leads and grow your customer base through strategic social media marketing, targeted advertising, content creation, and comprehensive digital marketing campaigns.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Users className="h-4 w-4" />
-                  <span>Targeted Audience</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <TrendingUp className="h-4 w-4" />
-                  <span>Growth Focused</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 transition-all duration-300 group">
-              <div className="bg-[#C8A24A]/10 w-20 h-20 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-[#C8A24A]/20 transition-colors">
-                <TrendingUp className="h-10 w-10 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-2xl font-bold mb-4 text-center">Custom Website Development</h3>
-              <p className="text-gray-400 text-center leading-relaxed">
-                Unique, professionally designed websites built from scratch with no templates. Get a website that truly represents your brand and converts visitors.
-              </p>
-              <div className="mt-6 flex items-center justify-center space-x-4 text-sm text-gray-500">
-                <div className="flex items-center space-x-1">
-                  <Building className="h-4 w-4" />
-                  <span>Custom Design</span>
-                </div>
-                <div className="flex items-center space-x-1">
-                  <Zap className="h-4 w-4" />
-                  <span>High Performance</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="text-center mt-16">
-            <p className="text-lg text-gray-300 mb-8">Ready to transform your business with our premium digital solutions?</p>
-            <a
-              href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/30 flex items-center justify-center space-x-3 mx-auto"
-            >
-              <Calendar className="h-6 w-6" />
-              <span>Schedule Your Consultation</span>
-            </a>
-          </div>
-        </div>
-      </section>
-
-      <SubscriptionSection />
-
+      {/* FOOTER */}
       <footer className="relative z-10 py-12 px-4 sm:px-6 lg:px-8 border-t border-gray-800">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center space-x-3 mb-4">
-            <Zap className="h-8 w-8 text-[#C8A24A]" />
-            <h3 className="text-2xl font-bold bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">
-              Infinite Wealth Solutions
-            </h3>
+        <div className="max-w-7xl mx-auto">
+          <div className="grid sm:grid-cols-3 gap-8 mb-8">
+            <div>
+              <div className="flex items-center space-x-2 mb-3"><Zap className="h-6 w-6 text-[#C8A24A]" /><span className="font-bold text-[#C8A24A]">Infinite Wealth Solutions AI</span></div>
+              <p className="text-gray-500 text-sm">Transforming businesses with premium AI-powered digital solutions.</p>
+            </div>
+            <div>
+              <h4 className="font-semibold text-gray-300 mb-3 text-sm">Services</h4>
+              <div className="space-y-2">
+                <button onClick={() => setPhoneModal('voice')} className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">AI Voice Agents</button>
+                <Link to="/MediaMachine" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Social Media Manager</Link>
+                <a href="#services" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Lead Generation</a>
+                <a href="#services" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Web Development</a>
+              </div>
+            </div>
+            <div>
+              <h4 className="font-semibold text-gray-300 mb-3 text-sm">Legal</h4>
+              <div className="space-y-2">
+                <Link to="/privacy-policy" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Privacy Policy</Link>
+                <Link to="/terms-and-conditions" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Terms & Conditions</Link>
+                <Link to="/demo" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">AI Agent Demos</Link>
+              </div>
+            </div>
           </div>
-          <p className="text-gray-400 mb-3">
-            © 2024 Infinite Wealth Solutions. Transforming businesses with premium digital solutions.
-          </p>
-
-          <div className="flex items-center justify-center gap-6">
-            <Link to="/demo" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
-              Try AI Agent Demos
-            </Link>
-
-            <Link to="/privacy-policy" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
-              Privacy Policy
-            </Link>
-
-            <Link to="/terms-and-conditions" className="text-gray-500 hover:text-gray-400 text-xs transition-colors">
-              Terms &amp; Conditions
-            </Link>
+          <div className="border-t border-gray-800 pt-6 text-center">
+            <p className="text-gray-600 text-sm">© 2025 Infinite Wealth Solutions AI. All rights reserved.</p>
           </div>
         </div>
       </footer>
 
+      {/* FLOATING PHONE AGENT */}
       <div className="fixed bottom-5 right-5 z-[60]">
-        <button
-          onClick={() => setPhoneModal('voice')}
+        <button onClick={() => setPhoneModal('voice')}
           className="group flex items-center gap-3 rounded-2xl px-4 py-3 border backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition"
-          style={{
-            borderColor: 'rgba(200, 162, 74, 0.40)',
-            backgroundColor: 'rgba(0,0,0,0.35)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(227, 195, 106, 0.65)';
-            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.45)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = 'rgba(200, 162, 74, 0.40)';
-            e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.35)';
-          }}
-        >
-          <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(200, 162, 74, 0.18)' }}>
+          style={{ borderColor: 'rgba(200,162,74,0.40)', backgroundColor: 'rgba(0,0,0,0.35)' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(227,195,106,0.65)'; e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.45)'; }}
+          onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,162,74,0.40)'; e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.35)'; }}>
+          <div className="h-10 w-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: 'rgba(200,162,74,0.18)' }}>
             <Phone className="h-5 w-5" style={{ color: GOLD_HOVER }} />
           </div>
-
           <div className="text-left">
-            <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>
-              Try Our AI Phone Agent
-            </div>
+            <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>Try Our AI Phone Agent</div>
             <div className="text-[11px] text-gray-300 leading-tight">Alex answers instantly</div>
           </div>
         </button>
       </div>
 
+      {/* PHONE MODAL */}
       {phoneModal === 'voice' && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4" data-homephone-modal="true">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
           <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60">
               <div className="font-bold">Try Our AI Phone Agent</div>
-              <button className="text-gray-300 hover:text-white" onClick={closePhoneModal} aria-label="Close">
-                <X className="h-5 w-5" />
-              </button>
+              <button className="text-gray-300 hover:text-white" onClick={closePhoneModal}><X className="h-5 w-5" /></button>
             </div>
-
             <div className="p-5">
               <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
-                <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>
-                  Alex — AI Voice Agent
-                </h3>
-
+                <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>Alex — AI Voice Agent</h3>
                 <p className="text-gray-300">
-                  {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
+                  {voiceStatus === 'connecting' && 'Connecting…'}
                   {voiceStatus === 'live' && 'Live — speak normally.'}
                   {voiceStatus === 'ended' && 'Call ended.'}
                   {voiceStatus === 'error' && 'Could not start the call.'}
                   {voiceStatus === 'idle' && 'Ready.'}
                 </p>
-
                 {voiceError && <p className="mt-2 text-sm text-red-300">{voiceError}</p>}
-
-                <button
-                  className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
-                  style={{
-                    backgroundColor: '#DC2626',
-                    boxShadow: '0 18px 60px rgba(0,0,0,0.6)',
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
-                  onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
-                  onClick={() => {
-                    try {
-                      vapiRef.current?.stop();
-                    } catch {}
-                    setVoiceStatus('ended');
-                  }}
-                  aria-label="End call"
-                >
+                <button className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
+                  style={{ backgroundColor: '#DC2626', boxShadow: '0 18px 60px rgba(0,0,0,0.6)' }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#B91C1C')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = '#DC2626')}
+                  onClick={() => { try { vapiRef.current?.stop(); } catch {} setVoiceStatus('ended'); }}>
                   <PhoneOff className="h-10 w-10 text-white" />
                 </button>
-
-                <p className="mt-6 text-xs text-gray-400 max-w-sm">
-                  Your mic may prompt for permission. If it doesn't connect, close and try again.
-                </p>
+                <p className="mt-6 text-xs text-gray-400 max-w-sm">Your mic may prompt for permission. If it doesn't connect, close and try again.</p>
               </div>
             </div>
           </div>
