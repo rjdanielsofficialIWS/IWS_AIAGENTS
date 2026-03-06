@@ -22,47 +22,41 @@ const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Alex speaking, h
 
 const useCases = [
   {
-    scenario: 'A plumber misses calls while on the job',
-    outcome: 'AI agent answers, books the appointment, captures lead details',
+    scenario: 'A customer calls after hours — AI answers, books the appointment, and sends a confirmation.',
     service: 'AI Voice Agents',
-    icon: <Brain className="h-4 w-4" />,
+    icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'A salon wants to post daily across TikTok & Instagram',
-    outcome: 'AI generates captions, schedules posts, tracks engagement',
+    scenario: 'You record one video — AI repurposes and schedules it across TikTok, Instagram, and LinkedIn automatically.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'A contractor needs a professional website fast',
-    outcome: 'Custom site built from scratch, mobile-optimized & live in days',
+    scenario: 'A lead visits your site at 2am — AI answers their questions, qualifies them, and books a call.',
+    service: 'AI Voice Agents',
+    icon: <Phone className="h-4 w-4" />,
+  },
+  {
+    scenario: 'Your competitor has a slick website — yours converts 3x better because it was built for your specific audience.',
     service: 'Web Development',
     icon: <Zap className="h-4 w-4" />,
   },
   {
-    scenario: 'A restaurant gets flooded with after-hours calls',
-    outcome: 'AI handles reservations, FAQs, and urgent transfers 24/7',
-    service: 'AI Voice Agents',
-    icon: <Brain className="h-4 w-4" />,
-  },
-  {
-    scenario: 'A real estate agent needs consistent social presence',
-    outcome: 'Listings auto-posted across LinkedIn, Facebook & more on schedule',
+    scenario: 'You go on vacation — your social media keeps posting, engaging, and growing on autopilot.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'A startup needs a site that converts visitors',
-    outcome: 'High-converting landing page with integrated AI lead capture',
-    service: 'Web Development',
-    icon: <Zap className="h-4 w-4" />,
+    scenario: 'Your phone line is busy — AI handles the overflow, captures every lead, and never puts anyone on hold.',
+    service: 'AI Voice Agents',
+    icon: <Phone className="h-4 w-4" />,
   },
 ];
 
-const serviceColors: Record<string, string> = {
-  'AI Voice Agents':      '#C8A24A',
-  'Social Media Manager': '#C8A24A',
-  'Web Development':      '#C8A24A',
+const serviceTagColors: Record<string, { bg: string; text: string; border: string }> = {
+  'AI Voice Agents':       { bg: 'rgba(200,162,74,0.10)', text: '#C8A24A', border: 'rgba(200,162,74,0.30)' },
+  'Social Media Manager':  { bg: 'rgba(139,92,246,0.10)', text: '#a78bfa', border: 'rgba(139,92,246,0.30)' },
+  'Web Development':       { bg: 'rgba(34,197,94,0.10)',  text: '#4ade80', border: 'rgba(34,197,94,0.30)'  },
 };
 
 export function HomePage() {
@@ -272,7 +266,6 @@ export function HomePage() {
               <span className="text-lg font-black bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent sm:hidden">IWS AI</span>
             </div>
             <div className="hidden lg:flex items-center space-x-1">
-              <a href="#use-cases" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
               <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">AI Voice Agents</a>
               <Link to="/MediaMachine" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Social Media</Link>
               <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Web Development</a>
@@ -292,7 +285,6 @@ export function HomePage() {
         {mobileMenuOpen && (
           <div className="lg:hidden border-t border-white/5 bg-black/90 backdrop-blur-md">
             <div className="px-4 py-3 space-y-1">
-              <a href="#use-cases" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
               <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">AI Voice Agents</a>
               <Link to="/MediaMachine" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Social Media Manager</Link>
               <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Web Development</a>
@@ -342,37 +334,33 @@ export function HomePage() {
       </section>
 
       {/* USE CASES */}
-      <section id="use-cases" className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
+      <section className="relative z-10 py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <h2 className="text-4xl sm:text-5xl font-bold mb-4">
-              Built for{' '}
-              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Real Businesses</span>
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-white">
+              Real Problems.{' '}
+              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Real Solutions.</span>
             </h2>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">See how businesses like yours are using our services every day.</p>
+            <p className="text-gray-400 text-lg">See exactly how our services work in the real world.</p>
           </div>
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {useCases.map((uc, i) => (
-              <div key={i} className="bg-gray-900/60 border border-white/6 rounded-2xl p-6 flex flex-col gap-4 hover:border-[#C8A24A]/30 transition-all duration-300">
-                <div className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gray-700/60 flex items-center justify-center shrink-0 mt-0.5" style={{ color: GOLD_PRIMARY }}>
-                    {uc.icon}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {useCases.map((uc, i) => {
+              const tag = serviceTagColors[uc.service];
+              return (
+                <div key={i} className="bg-gray-900/60 border border-white/8 rounded-xl p-6 flex flex-col gap-4 hover:border-white/15 transition-all">
+                  <p className="text-gray-200 text-sm leading-relaxed flex-1">"{uc.scenario}"</p>
+                  <div className="flex items-center gap-2 mt-auto">
+                    <span
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border"
+                      style={{ background: tag.bg, color: tag.text, borderColor: tag.border }}
+                    >
+                      {uc.icon}
+                      {uc.service}
+                    </span>
                   </div>
-                  <p className="text-white font-semibold text-sm leading-snug">{uc.scenario}</p>
                 </div>
-                <div className="flex items-start gap-2 pl-11">
-                  <ArrowRight className="h-4 w-4 text-[#C8A24A] shrink-0 mt-0.5" />
-                  <p className="text-gray-400 text-sm leading-snug">{uc.outcome}</p>
-                </div>
-                <div className="pl-11">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border"
-                    style={{ borderColor: `${serviceColors[uc.service]}30`, color: serviceColors[uc.service], background: `${serviceColors[uc.service]}10` }}>
-                    {uc.icon}
-                    {uc.service}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </section>
@@ -477,7 +465,7 @@ export function HomePage() {
                 </Link>
               </div>
 
-              {/* Platform grid */}
+              {/* Platform grid — black boxes with icons */}
               <div className="grid grid-cols-4 gap-3">
                 {platforms.map(p => (
                   <div key={p.name}
