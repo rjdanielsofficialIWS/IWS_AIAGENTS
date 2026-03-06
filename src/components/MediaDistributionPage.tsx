@@ -21,7 +21,7 @@ const BORDER  = 'rgba(255,255,255,0.08)';
 // ─────────────────────────────────────────────
 const POSTIZ_FRONTEND_URL = 'https://www.tiktok.com/v2/auth/authorize/?client_key=awfz2mivhmm64h6g&redirect_uri=https%3A%2F%2Fplatform.postiz.com%2Fintegrations%2Fsocial%2Ftiktok&state=zsvjji145o&response_type=code&scope=video.list%2Cuser.info.basic%2Cvideo.publish%2Cvideo.upload%2Cuser.info.profile%2Cuser.info.stats';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
-const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
+const POSTIZ_REDIRECT_URL = 'https://platform.postiz.com/launches';
 
 const LS_TOKEN_KEY         = 'postiz_access_token';
 const LS_STATE_KEY         = 'postiz_oauth_state';
