@@ -12,7 +12,7 @@
 //
 // No API call needed — this just constructs the URL server-side.
 
-const POSTIZ_FRONTEND_URL = 'https://www.postiz.infitewealthsolutionsai.com';
+const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
