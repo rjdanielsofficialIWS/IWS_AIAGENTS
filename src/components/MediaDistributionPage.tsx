@@ -23,17 +23,16 @@ const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
 const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
-// localStorage keys
-const LS_TOKEN_KEY           = 'postiz_access_token';    // Postiz OAuth access token
-const LS_STATE_KEY           = 'postiz_oauth_state';     // CSRF state for Postiz login
-const LS_SOCIAL_RETURN_KEY   = 'postiz_social_return';   // flag: user is returning from Postiz after connecting a channel
+const LS_TOKEN_KEY         = 'postiz_access_token';
+const LS_STATE_KEY         = 'postiz_oauth_state';
+const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
 
 // ─────────────────────────────────────────────
 // SUPABASE STORAGE
 // ─────────────────────────────────────────────
 const BUCKET          = 'media';
-
 const SIGNED_URL_SECS = 60 * 60 * 24 * 7;
+const SUPABASE_URL    = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
 // ─────────────────────────────────────────────
 // PLATFORM DEFINITIONS
@@ -93,7 +92,7 @@ const PLATFORMS: Record<PlatformId, {
 // ─────────────────────────────────────────────
 type UploadState =
   | { status: 'idle' }
-  | { status: 'uploading' }
+  | { status: 'uploading'; progress?: number }
   | { status: 'done'; path: string; url: string; fileName: string; mime: string; size: number }
   | { status: 'error'; message: string };
 
@@ -112,12 +111,6 @@ type ScheduledPost = {
 // ─────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────
-function prettyBytes(b: number) {
-  if (!b) return '0 B';
-  const u = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.min(u.length - 1, Math.floor(Math.log(b) / Math.log(1024)));
-  return `${(b / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${u[i]}`;
-}
 function generateState() {
   const a = new Uint8Array(16);
   window.crypto.getRandomValues(a);
@@ -132,7 +125,6 @@ function buildPostizAuthUrl(state: string) {
   })}`;
 }
 
-// All Postiz Public API calls go through Netlify proxy to avoid CORS
 async function postizProxy(path: string, token: string, method = 'GET', body?: object) {
   const res = await fetch('/.netlify/functions/postiz-api', {
     method: 'POST',
@@ -149,6 +141,58 @@ async function postizProxy(path: string, token: string, method = 'GET', body?: o
 async function fetchIntegrations(token: string): Promise<PostizIntegration[]> {
   const data = await postizProxy('/public/v1/integrations', token);
   return Array.isArray(data?.integrations) ? data.integrations : Array.isArray(data) ? data : [];
+}
+
+// ─────────────────────────────────────────────
+// Upload a file directly via fetch (bypasses Supabase JS client 50MB limit)
+// Uses a Netlify function as a proxy to get a signed upload URL
+// ─────────────────────────────────────────────
+async function uploadViaNativeXHR(
+  file: File,
+  kind: 'video' | 'image',
+  onProgress?: (pct: number) => void
+): Promise<string> {
+  const ext  = file.name.split('.').pop() || 'mp4';
+  const path = `media-machine/${kind}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+
+  // Get a signed upload URL from Supabase via service role key (through edge function)
+  const signedRes = await fetch(`${SUPABASE_URL}/functions/v1/get-upload-url`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, contentType: file.type || 'video/mp4' }),
+  });
+
+  if (!signedRes.ok) {
+    // Fallback: try direct Supabase JS upload (works for smaller files)
+    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+      contentType: file.type,
+      upsert: true,
+    });
+    if (error) throw new Error(error.message);
+    const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
+    return pub.data.publicUrl;
+  }
+
+  const { signedUrl, token: uploadToken } = await signedRes.json();
+
+  // Upload directly to the signed URL using XHR for progress tracking
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', signedUrl);
+    xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
+    xhr.setRequestHeader('x-upsert', 'true');
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
+    }
+    xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(file);
+  });
+
+  const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return pub.data.publicUrl;
 }
 
 // ─────────────────────────────────────────────
@@ -172,16 +216,6 @@ function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'l
 
 // ─────────────────────────────────────────────
 // CONNECT ACCOUNTS MODAL
-//
-// HOW IT WORKS:
-// The Postiz OAuth token only grants access to /public/v1/ endpoints.
-// Connecting individual social platforms requires a full Postiz browser session.
-//
-// Flow:
-//   1. User clicks a platform → Postiz integrations page opens in a NEW TAB
-//   2. They connect the platform inside Postiz (takes ~10 seconds)
-//   3. They close that tab and click "Done, refresh channels" here
-//   4. We fetch the updated integrations list and the new channel appears
 // ─────────────────────────────────────────────
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
@@ -192,15 +226,12 @@ function ConnectAccountsModal({
 }) {
   if (!open) return null;
 
-  const connectedIds = integrations.map(i => i.identifier);
-
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
 
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
@@ -212,9 +243,7 @@ function ConnectAccountsModal({
           </button>
         </div>
 
-        {/* Body */}
         {!postizToken ? (
-          // Step 0 — Postiz account not yet connected
           <div className="p-8 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center"
               style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
@@ -232,8 +261,6 @@ function ConnectAccountsModal({
           </div>
         ) : (
           <div className="overflow-y-auto flex-1 p-6 space-y-5">
-
-            {/* TikTok highlight banner — shown when TikTok not yet connected */}
             {!integrations.find(i => i.identifier === 'tiktok') && (
               <div className="rounded-xl border p-4 flex items-center gap-4"
                 style={{ borderColor: 'rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}>
@@ -245,8 +272,7 @@ function ConnectAccountsModal({
                   <div className="text-sm font-bold text-white">Connect TikTok</div>
                   <div className="text-xs text-white/40 mt-0.5">Schedule & publish videos directly to TikTok</div>
                 </div>
-                <button
-                  onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank')}
+                <button onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank')}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110 shrink-0"
                   style={{ background: GOLD, color: '#000' }}>
                   Connect
@@ -274,11 +300,8 @@ function ConnectAccountsModal({
               </div>
             )}
 
-            {/* How to add a channel — step by step */}
             <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${GOLD}25`, background: `${GOLD}06` }}>
-              <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
-                How to add a channel
-              </div>
+              <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>How to add a channel</div>
               {[
                 { n: '1', text: 'Click "Open Postiz" below — it opens in a new tab' },
                 { n: '2', text: 'Find the platform you want (e.g. TikTok) and click Connect' },
@@ -287,34 +310,26 @@ function ConnectAccountsModal({
               ].map(step => (
                 <div key={step.n} className="flex items-start gap-3">
                   <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 mt-0.5"
-                    style={{ background: `${GOLD}25`, color: GOLD }}>
-                    {step.n}
-                  </div>
+                    style={{ background: `${GOLD}25`, color: GOLD }}>{step.n}</div>
                   <p className="text-sm text-white/60">{step.text}</p>
                 </div>
               ))}
             </div>
 
-            {/* Action buttons */}
             <div className="flex flex-col gap-2">
-              <button
-                onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank')}
+              <button onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank')}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition hover:brightness-110"
                 style={{ background: GOLD, color: '#000' }}>
                 <Link2 className="w-4 h-4" /> Open Postiz to Add a Channel
               </button>
-              <button
-                onClick={onRefresh}
-                disabled={integrationsLoading}
+              <button onClick={onRefresh} disabled={integrationsLoading}
                 className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
                 style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
                 {integrationsLoading
                   ? <><Loader className="w-4 h-4 animate-spin" /> Refreshing…</>
-                  : <><RefreshCw className="w-4 h-4" /> Refresh Channels</>
-                }
+                  : <><RefreshCw className="w-4 h-4" /> Refresh Channels</>}
               </button>
             </div>
-
           </div>
         )}
       </div>
@@ -324,8 +339,6 @@ function ConnectAccountsModal({
 
 // ─────────────────────────────────────────────
 // REPURPOSE POST SELECTOR
-// Shown inside the composer after generating Twitter/LinkedIn posts
-// Allows editing, highlighting, and using one post at a time
 // ─────────────────────────────────────────────
 function RepurposePostSelector({ posts, onUsePost }: {
   posts: { twitter: string[]; linkedin: string[] };
@@ -337,30 +350,17 @@ function RepurposePostSelector({ posts, onUsePost }: {
     linkedin: [...(posts.linkedin || [])],
   });
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+  const [editingIdx, setEditingIdx]   = useState<number | null>(null);
 
   const currentList = editedPosts[tab];
 
-  const handleSelect = (idx: number) => {
-    setSelectedIdx(idx === selectedIdx ? null : idx);
-    setEditingIdx(null);
-  };
-
-  const handleEdit = (idx: number, val: string) => {
-    setEditedPosts(prev => ({
-      ...prev,
-      [tab]: prev[tab].map((p, i) => i === idx ? val : p),
-    }));
-  };
-
-  const handleUse = () => {
-    if (selectedIdx === null) return;
-    onUsePost(currentList[selectedIdx]);
+  const handleSelect = (idx: number) => { setSelectedIdx(idx === selectedIdx ? null : idx); setEditingIdx(null); };
+  const handleEdit   = (idx: number, val: string) => {
+    setEditedPosts(prev => ({ ...prev, [tab]: prev[tab].map((p, i) => i === idx ? val : p) }));
   };
 
   return (
     <div className="space-y-3">
-      {/* Tab */}
       <div className="flex gap-2">
         {(['twitter', 'linkedin'] as const).map(t => (
           <button key={t} onClick={() => { setTab(t); setSelectedIdx(null); setEditingIdx(null); }}
@@ -374,53 +374,35 @@ function RepurposePostSelector({ posts, onUsePost }: {
           </button>
         ))}
       </div>
-
       <div className="text-xs text-white/30 px-0.5">Tap to select · tap again to edit · one post at a time</div>
-
-      {/* Post list */}
       <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
         {currentList.map((post, idx) => {
           const isSelected = selectedIdx === idx;
           const isEditing  = editingIdx === idx;
           return (
-            <div key={idx}
-              className="rounded-xl border overflow-hidden transition-all"
-              style={{
-                borderColor: isSelected ? GOLD : BORDER,
-                background:  isSelected ? `${GOLD}08` : 'rgba(0,0,0,0.2)',
-              }}>
-              {/* Header row */}
+            <div key={idx} className="rounded-xl border overflow-hidden transition-all"
+              style={{ borderColor: isSelected ? GOLD : BORDER, background: isSelected ? `${GOLD}08` : 'rgba(0,0,0,0.2)' }}>
               <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
-                <button
-                  onClick={() => handleSelect(idx)}
+                <button onClick={() => handleSelect(idx)}
                   className="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
-                  style={{
-                    borderColor: isSelected ? GOLD : 'rgba(255,255,255,0.2)',
-                    background:  isSelected ? GOLD : 'transparent',
-                  }}>
+                  style={{ borderColor: isSelected ? GOLD : 'rgba(255,255,255,0.2)', background: isSelected ? GOLD : 'transparent' }}>
                   {isSelected && <CheckCircle2 className="w-3 h-3 text-black" />}
                 </button>
                 <span className="text-xs text-white/25 font-bold">#{idx + 1}</span>
                 <div className="flex-1" />
-                <button
-                  onClick={() => setEditingIdx(isEditing ? null : idx)}
+                <button onClick={() => setEditingIdx(isEditing ? null : idx)}
                   className="text-xs px-2 py-0.5 rounded-md transition hover:bg-white/10"
                   style={{ color: isEditing ? GOLD : 'rgba(255,255,255,0.25)' }}>
                   {isEditing ? 'Done' : 'Edit'}
                 </button>
               </div>
-              {/* Content */}
               {isEditing ? (
-                <textarea
-                  value={post}
-                  onChange={e => handleEdit(idx, e.target.value)}
+                <textarea value={post} onChange={e => handleEdit(idx, e.target.value)}
                   rows={tab === 'linkedin' ? 6 : 3}
                   className="w-full px-3 pb-3 bg-transparent text-xs text-white leading-relaxed outline-none resize-none"
-                  autoFocus
-                />
+                  autoFocus />
               ) : (
-                <button
-                  onClick={() => handleSelect(idx)}
+                <button onClick={() => handleSelect(idx)}
                   className="w-full text-left px-3 pb-3 text-xs leading-relaxed"
                   style={{ color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' }}>
                   {post}
@@ -430,11 +412,8 @@ function RepurposePostSelector({ posts, onUsePost }: {
           );
         })}
       </div>
-
-      {/* Use button */}
       {selectedIdx !== null && (
-        <button
-          onClick={handleUse}
+        <button onClick={() => onUsePost(currentList[selectedIdx!])}
           className="w-full py-2.5 rounded-xl text-xs font-bold transition hover:brightness-110"
           style={{ background: GOLD, color: '#000' }}>
           ✓ Use Post #{selectedIdx + 1} in Composer
@@ -445,17 +424,16 @@ function RepurposePostSelector({ posts, onUsePost }: {
 }
 
 // ─────────────────────────────────────────────
-// REPURPOSE IDEAS MODAL (Dashboard modal)
+// REPURPOSE IDEAS MODAL
 // ─────────────────────────────────────────────
 function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
   const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
   const [description, setDescription] = useState('');
-  const [tone, setTone] = useState('');
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [ideas, setIdeas] = useState<any | null>(null);
+  const [tone, setTone]               = useState('');
+  const [videoFile, setVideoFile]     = useState<File | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [ideas, setIdeas]             = useState<any | null>(null);
 
   const handleGenerate = async () => {
     setLoading(true); setError(null); setIdeas(null);
@@ -463,19 +441,23 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
       let source = '';
       if (captionMode === 'from_video') {
         if (!videoFile) throw new Error('Select a video first');
+        // Send file directly — no storage upload needed
         const form = new FormData();
         form.append('file', videoFile, videoFile.name);
         const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-          method: 'POST',
-          body: form,
+          method: 'POST', body: form,
         });
-        if (!transcribeRes.ok) throw new Error('Transcription failed');
+        if (!transcribeRes.ok) {
+          const err = await transcribeRes.json().catch(() => ({}));
+          throw new Error(err.error || 'Transcription failed');
+        }
         const { transcript } = await transcribeRes.json();
         source = transcript;
       } else {
         if (!description.trim()) throw new Error('Enter a description of your video');
         source = description;
       }
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone }),
@@ -487,10 +469,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
     finally { setLoading(false); }
   };
 
-  const reset = () => {
-    setDescription(''); setTone(''); setVideoFile(null);
-    setIdeas(null); setError(null);
-  };
+  const reset = () => { setDescription(''); setTone(''); setVideoFile(null); setIdeas(null); setError(null); };
 
   if (!open) return null;
   return (
@@ -499,21 +478,17 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
       <div className="relative w-full max-w-xl rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
 
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">♻️ Content Ideas</h2>
             <p className="text-sm text-white/40 mt-0.5">Find new angles and formats from your existing video</p>
           </div>
-          <button onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <X className="w-4 h-4" />
           </button>
         </div>
 
-        {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          {/* Source toggle */}
           <div className="flex gap-2">
             {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
               <button key={m} onClick={() => setCaptionMode(m)}
@@ -528,7 +503,6 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
             ))}
           </div>
 
-          {/* Video upload */}
           {captionMode === 'from_video' && (
             <div>
               {!videoFile ? (
@@ -536,7 +510,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
                   style={{ borderColor: BORDER }}>
                   <Video className="w-6 h-6 text-white/25" />
                   <span className="text-xs text-white/40">Click to select your talking video</span>
-                  <span className="text-xs text-white/20">Any size supported</span>
+                  <span className="text-xs text-white/20">Any size — sent directly for transcription</span>
                   <input type="file" accept="video/*" className="hidden"
                     onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
                 </label>
@@ -544,24 +518,22 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
                 <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
                   <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
                   <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
-                  <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               )}
             </div>
           )}
 
-          {/* Description input */}
           {captionMode === 'from_description' && (
-            <textarea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
+            <textarea value={description} onChange={e => setDescription(e.target.value)}
               placeholder="Describe your video — what you talked about, main points, key takeaways…"
               rows={4}
               className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none"
               style={{ borderColor: BORDER }} />
           )}
 
-          {/* Tone */}
           <input value={tone} onChange={e => setTone(e.target.value)}
             placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
             className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
@@ -569,7 +541,6 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
 
           {error && <div className="text-xs text-red-300">{error}</div>}
 
-          {/* Generate button */}
           {!ideas && (
             <button onClick={handleGenerate} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
@@ -580,7 +551,6 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
             </button>
           )}
 
-          {/* Results */}
           {ideas && (
             <div className="space-y-5">
               {ideas.short_clips?.length > 0 && (
@@ -603,9 +573,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
                   <div className="space-y-1.5">
                     {ideas.social_hooks.map((hook: string, i: number) => (
                       <div key={i} className="p-3 rounded-xl border text-sm text-white/60 leading-relaxed"
-                        style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                        {hook}
-                      </div>
+                        style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>{hook}</div>
                     ))}
                   </div>
                 </div>
@@ -659,38 +627,37 @@ function PostComposerModal({
   token: string | null; defaultDate?: Date; onSuccess?: () => void;
 }) {
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
-  const [content, setContent] = useState('');
+  const [content, setContent]           = useState('');
   const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('schedule');
   const [scheduleDate, setScheduleDate] = useState(() => {
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
     return d.toISOString().slice(0, 16);
   });
-  const [videoFile, setVideoFile]   = useState<File | null>(null);
-  const [videoUpload, setVideoUpload] = useState<UploadState>({ status: 'idle' });
-  const [imageFiles, setImageFiles]   = useState<File[]>([]);
-  const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
-  const [perPlatform, setPerPlatform] = useState<Record<string, string>>({});
+  const [videoFile, setVideoFile]         = useState<File | null>(null);
+  const [videoUpload, setVideoUpload]     = useState<UploadState>({ status: 'idle' });
+  const [imageFiles, setImageFiles]       = useState<File[]>([]);
+  const [imageUploads, setImageUploads]   = useState<UploadState[]>([]);
+  const [perPlatform, setPerPlatform]     = useState<Record<string, string>>({});
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitOk, setSubmitOk]     = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
+  const [submitting, setSubmitting]       = useState(false);
+  const [submitOk, setSubmitOk]           = useState(false);
+  const [submitError, setSubmitError]     = useState<string | null>(null);
 
   // ── AI STATE ──
   type AiTab = 'captions' | 'repurpose';
   type CaptionMode = 'from_video' | 'from_description';
 
-  const [aiTab, setAiTab]                       = useState<AiTab>('captions');
-  const [captionMode, setCaptionMode]           = useState<CaptionMode>('from_video');
-  const [aiTone, setAiTone]                     = useState('');
-  const [aiDescription, setAiDescription]       = useState('');
-  const [aiLoading, setAiLoading]               = useState(false);
-  const [aiError, setAiError]                   = useState<string | null>(null);
-  const [transcript, setTranscript]             = useState<string | null>(null);
+  const [aiTab, setAiTab]               = useState<AiTab>('captions');
+  const [captionMode, setCaptionMode]   = useState<CaptionMode>('from_video');
+  const [aiTone, setAiTone]             = useState('');
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiLoading, setAiLoading]       = useState(false);
+  const [aiError, setAiError]           = useState<string | null>(null);
+  const [transcript, setTranscript]     = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
   const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
-  const [repurposePosts, setRepurposePosts]     = useState<any | null>(null);
-  const [showAiPanel, setShowAiPanel]           = useState(false);
+  const [repurposePosts, setRepurposePosts] = useState<any | null>(null);
+  const [showAiPanel, setShowAiPanel]   = useState(false);
 
   const getSelectedPlatforms = () =>
     selectedIntegrations.length > 0
@@ -702,21 +669,23 @@ function PostComposerModal({
     setAiError(null);
     setGeneratedCaptions(null);
     setRepurposePosts(null);
-
     try {
       let sourceText = '';
       const usingVideo = captionMode === 'from_video';
 
       if (usingVideo) {
-        if (!videoFile) throw new Error('Upload a talking video first');
-        // Send file directly to transcribe function — no Supabase storage needed
+        if (!videoFile) throw new Error('Upload a talking video first using the Video button above');
+        // Send the video file DIRECTLY to transcribe — never touches Supabase storage
         const form = new FormData();
         form.append('file', videoFile, videoFile.name);
         const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
           method: 'POST',
           body: form,
         });
-        if (!transcribeRes.ok) throw new Error('Transcription failed');
+        if (!transcribeRes.ok) {
+          const err = await transcribeRes.json().catch(() => ({}));
+          throw new Error(err.error || 'Transcription failed');
+        }
         const { transcript: t } = await transcribeRes.json();
         setTranscript(t);
         sourceText = t;
@@ -725,23 +694,19 @@ function PostComposerModal({
         sourceText = aiDescription;
       }
 
-      // Determine mode
-      let mode = '';
-      if (aiTab === 'captions') {
-        mode = usingVideo ? 'captions_from_video' : 'captions_from_description';
-      } else {
-        mode = 'repurpose_posts';
-      }
+      const mode = aiTab === 'captions'
+        ? (usingVideo ? 'captions_from_video' : 'captions_from_description')
+        : 'repurpose_posts';
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode,
-          transcript: usingVideo ? sourceText : undefined,
+          transcript:  usingVideo ? sourceText : undefined,
           description: !usingVideo ? sourceText : undefined,
-          platforms: getSelectedPlatforms(),
-          tone: aiTone,
+          platforms:   getSelectedPlatforms(),
+          tone:        aiTone,
         }),
       });
       if (!res.ok) throw new Error('Generation failed');
@@ -766,12 +731,10 @@ function PostComposerModal({
       setSelectedIntegrations([]); setContent(''); setPerPlatform({});
       setVideoFile(null); setVideoUpload({ status: 'idle' });
       setImageFiles([]); setImageUploads([]);
-      setSubmitOk(false); setSubmitError(null);
-      setExpandedPlatform(null);
+      setSubmitOk(false); setSubmitError(null); setExpandedPlatform(null);
       setTranscript(null); setGeneratedCaptions(null);
       setAiError(null); setActiveCaptionPlatform(null);
-      setRepurposePosts(null);
-      setShowAiPanel(false); setAiDescription('');
+      setRepurposePosts(null); setShowAiPanel(false); setAiDescription('');
     }
   }, [open]);
 
@@ -782,42 +745,34 @@ function PostComposerModal({
     }
   }, [defaultDate]);
 
-  const getPublicOrSignedUrl = async (path: string) => {
-    const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
-    if (pub?.data?.publicUrl) return pub.data.publicUrl;
-    const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(path, SIGNED_URL_SECS);
-    if (error || !data?.signedUrl) throw new Error(error?.message || 'Failed URL');
-    return data.signedUrl;
-  };
-
-  const uploadFile = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
-    setU({ status: 'uploading' } as UploadState);
+  // Upload file for POSTING (attaching media to a post)
+  // Uses XHR with progress for large files — no size limit
+  const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
+    setU({ status: 'uploading', progress: 0 });
     try {
-      const ext  = file.name.split('.').pop();
-      const path = `media-machine/${kind}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type, upsert: true });
-      if (error) throw new Error(error.message || JSON.stringify(error));
-      const url = await getPublicOrSignedUrl(path);
-      setU({ status: 'done', path, url, fileName: file.name, mime: file.type, size: file.size });
-    } catch (e: any) { 
+      const url = await uploadViaNativeXHR(file, kind, (pct) => {
+        setU({ status: 'uploading', progress: pct });
+      });
+      setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
+    } catch (e: any) {
       console.error('Upload failed:', e);
-      setU({ status: 'error', message: e.message || 'Upload failed' }); 
+      setU({ status: 'error', message: e.message || 'Upload failed' });
     }
   };
 
   const buildSettings = (identifier: string, postContent: string) => {
     switch (identifier) {
-      case 'x':                   return { __type: 'x', who_can_reply_post: 'everyone' };
+      case 'x':                    return { __type: 'x', who_can_reply_post: 'everyone' };
       case 'instagram':
       case 'instagram-standalone': return { __type: identifier, post_type: 'post' };
-      case 'youtube':             return { __type: 'youtube', title: postContent.slice(0, 100) || 'Video', type: 'public', selfDeclaredMadeForKids: 'no' };
-      case 'tiktok':              return { __type: 'tiktok', privacy_level: 'PUBLIC_TO_EVERYONE', duet: true, stitch: true, comment: true, autoAddMusic: 'no', brand_content_toggle: false, brand_organic_toggle: false, content_posting_method: 'DIRECT_POST' };
-      case 'linkedin':            return { __type: 'linkedin' };
-      case 'linkedin-page':       return { __type: 'linkedin-page' };
-      case 'facebook':            return { __type: 'facebook' };
-      case 'threads':             return { __type: 'threads' };
-      case 'bluesky':             return { __type: 'bluesky' };
-      default:                    return { __type: identifier };
+      case 'youtube':              return { __type: 'youtube', title: postContent.slice(0, 100) || 'Video', type: 'public', selfDeclaredMadeForKids: 'no' };
+      case 'tiktok':               return { __type: 'tiktok', privacy_level: 'PUBLIC_TO_EVERYONE', duet: true, stitch: true, comment: true, autoAddMusic: 'no', brand_content_toggle: false, brand_organic_toggle: false, content_posting_method: 'DIRECT_POST' };
+      case 'linkedin':             return { __type: 'linkedin' };
+      case 'linkedin-page':        return { __type: 'linkedin-page' };
+      case 'facebook':             return { __type: 'facebook' };
+      case 'threads':              return { __type: 'threads' };
+      case 'bluesky':              return { __type: 'bluesky' };
+      default:                     return { __type: identifier };
     }
   };
 
@@ -825,13 +780,20 @@ function PostComposerModal({
     if (!token)                        { setSubmitError('Not connected. Connect your accounts first.'); return; }
     if (!selectedIntegrations.length)  { setSubmitError('Select at least one channel.'); return; }
     if (!content.trim())               { setSubmitError('Write some content first.'); return; }
+
+    // Prevent posting while media is still uploading
+    const stillUploading =
+      videoUpload.status === 'uploading' ||
+      imageUploads.some(u => u.status === 'uploading');
+    if (stillUploading) { setSubmitError('Please wait for media to finish uploading.'); return; }
+
     setSubmitting(true); setSubmitError(null);
     try {
       const mediaImages: { id: string; path: string }[] = [];
       imageUploads.forEach((u, i) => { if (u.status === 'done') mediaImages.push({ id: `img-${i}`, path: (u as any).url }); });
-      const videoArr  = videoUpload.status === 'done' ? [{ id: 'video-0', path: (videoUpload as any).url }] : [];
-      const dateUTC   = scheduleType === 'now' ? new Date().toISOString() : new Date(scheduleDate).toISOString();
-      const posts     = selectedIntegrations.map(integId => {
+      const videoArr = videoUpload.status === 'done' ? [{ id: 'video-0', path: (videoUpload as any).url }] : [];
+      const dateUTC  = scheduleType === 'now' ? new Date().toISOString() : new Date(scheduleDate).toISOString();
+      const posts    = selectedIntegrations.map(integId => {
         const int         = integrations.find(i => i.id === integId);
         const identifier  = int?.identifier || '';
         const postContent = perPlatform[integId]?.trim() || content;
@@ -856,15 +818,11 @@ function PostComposerModal({
       <div className="relative w-full max-w-2xl flex flex-col rounded-2xl border overflow-hidden shadow-2xl max-h-[90vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
 
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <h2 className="text-base font-bold text-white">Create Post</h2>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
@@ -917,13 +875,16 @@ function PostComposerModal({
                     setImageFiles(files);
                     const states: UploadState[] = files.map(() => ({ status: 'idle' }));
                     setImageUploads(states);
-                    files.forEach((f, i) => uploadFile(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
+                    files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
                   }} />
               </label>
               <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
                 <Video className="w-3.5 h-3.5" /> Video
                 <input type="file" accept="video/*" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) { setVideoFile(f); uploadFile(f, 'video', setVideoUpload); } }} />
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) { setVideoFile(f); uploadFileForPost(f, 'video', setVideoUpload); }
+                  }} />
               </label>
               <div className="ml-auto text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
                 {content.length}
@@ -939,22 +900,36 @@ function PostComposerModal({
                 return (
                   <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border" style={{ borderColor: BORDER }}>
                     <img src={URL.createObjectURL(f)} className="w-full h-full object-cover" alt="" />
-                    {u?.status === 'uploading' && <div className="absolute inset-0 bg-black/60 flex items-center justify-center"><Loader className="w-4 h-4 animate-spin text-white" /></div>}
-                    {u?.status === 'done'      && <div className="absolute bottom-1 right-1"><CheckCircle2 className="w-4 h-4 text-green-400" /></div>}
+                    {u?.status === 'uploading' && (
+                      <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
+                        <Loader className="w-4 h-4 animate-spin text-white" />
+                        {(u as any).progress != null && <span className="text-xs text-white/60">{(u as any).progress}%</span>}
+                      </div>
+                    )}
+                    {u?.status === 'done' && <div className="absolute bottom-1 right-1"><CheckCircle2 className="w-4 h-4 text-green-400" /></div>}
+                    {u?.status === 'error' && <div className="absolute inset-0 bg-red-900/60 flex items-center justify-center"><span className="text-xs text-red-300 text-center px-1">{(u as any).message}</span></div>}
                   </div>
                 );
               })}
               {videoFile && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm" 
+                <div className="flex flex-col gap-1 px-3 py-2 rounded-xl border min-w-[160px]"
                   style={{ borderColor: videoUpload.status === 'error' ? 'rgba(239,68,68,0.4)' : BORDER }}>
-                  <Video className="w-4 h-4 text-white/40" />
-                  <span className="truncate max-w-[130px] text-xs text-white/60">{videoFile.name}</span>
-                  {videoUpload.status === 'uploading' && <Loader className="w-3.5 h-3.5 animate-spin text-white/40" />}
-                  {videoUpload.status === 'done'      && <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />}
-                  {videoUpload.status === 'error'     && (
-                    <span className="text-xs text-red-400 truncate max-w-[120px]">
-                      ✕ {(videoUpload as any).message}
-                    </span>
+                  <div className="flex items-center gap-2">
+                    <Video className="w-4 h-4 text-white/40 shrink-0" />
+                    <span className="truncate text-xs text-white/60 flex-1">{videoFile.name}</span>
+                    {videoUpload.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                    {videoUpload.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                  </div>
+                  {videoUpload.status === 'uploading' && (
+                    <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(videoUpload as any).progress ?? 0}%` }} />
+                    </div>
+                  )}
+                  {videoUpload.status === 'uploading' && (
+                    <span className="text-xs text-white/30">{(videoUpload as any).progress ?? 0}% uploading…</span>
+                  )}
+                  {videoUpload.status === 'error' && (
+                    <span className="text-xs text-red-400">{(videoUpload as any).message}</span>
                   )}
                 </div>
               )}
@@ -963,9 +938,7 @@ function PostComposerModal({
 
           {/* ── AI PANEL ── */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-            {/* Panel toggle header */}
-            <button
-              onClick={() => setShowAiPanel(v => !v)}
+            <button onClick={() => setShowAiPanel(v => !v)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
@@ -977,7 +950,6 @@ function PostComposerModal({
             {showAiPanel && (
               <div className="border-t px-4 pb-4 space-y-4" style={{ borderColor: BORDER }}>
 
-                {/* Tab: Captions vs Repurpose */}
                 <div className="flex gap-2 mt-3">
                   {(['captions', 'repurpose'] as const).map(tab => (
                     <button key={tab} onClick={() => setAiTab(tab)}
@@ -992,7 +964,6 @@ function PostComposerModal({
                   ))}
                 </div>
 
-                {/* Sub-mode selector */}
                 {aiTab === 'captions' && (
                   <div className="flex gap-2">
                     {([['from_video', '🎙 From Video (talking)'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
@@ -1010,68 +981,53 @@ function PostComposerModal({
                 )}
 
                 {aiTab === 'repurpose' && (
-                  <div className="text-xs text-white/40 px-1">
-                    Generates 10 Twitter/X posts + 10 LinkedIn posts from your video. Edit and pick the ones you want to post one at a time.
-                  </div>
+                  <>
+                    <div className="text-xs text-white/40 px-1">
+                      Generates 10 Twitter/X posts + 10 LinkedIn posts. Edit and pick one at a time.
+                    </div>
+                    <div className="flex gap-2">
+                      {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                        <button key={m} onClick={() => setCaptionMode(m)}
+                          className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                          style={{
+                            borderColor: captionMode === m ? GOLD : BORDER,
+                            background:  captionMode === m ? `${GOLD}12` : 'transparent',
+                            color:       captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)',
+                          }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
 
-                {/* Source input */}
-                {/* For repurpose, show the from_video/from_description toggle */}
-                {aiTab === 'repurpose' && (
-                  <div className="flex gap-2">
-                    {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-                      <button key={m} onClick={() => setCaptionMode(m)}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
-                        style={{
-                          borderColor: captionMode === m ? GOLD : BORDER,
-                          background:  captionMode === m ? `${GOLD}12` : 'transparent',
-                          color:       captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)',
-                        }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {/* Warning: video not uploaded yet */}
                 {captionMode === 'from_video' && !videoFile && (
-                  <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above first to use this mode</div>
+                  <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video using the Video button above first</div>
                 )}
 
-                {/* Description textarea — only shown when from_description is selected */}
                 {captionMode === 'from_description' && (
-                  <textarea
-                    value={aiDescription}
-                    onChange={e => setAiDescription(e.target.value)}
+                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
                     placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…"
                     rows={3}
                     className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none"
                     style={{ borderColor: BORDER }} />
                 )}
 
-                {/* Tone */}
-                <input
-                  value={aiTone}
-                  onChange={e => setAiTone(e.target.value)}
+                <input value={aiTone} onChange={e => setAiTone(e.target.value)}
                   placeholder="Tone (optional): casual, alex hormozi, luxury, funny, professional…"
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none"
                   style={{ borderColor: BORDER }} />
 
-                {/* Generate button */}
-                <button
-                  onClick={handleAiGenerate}
-                  disabled={aiLoading}
+                <button onClick={handleAiGenerate} disabled={aiLoading}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
                   {aiLoading
-                    ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {aiTab === 'captions' && captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</>
+                    ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</>
                     : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
                 </button>
 
-                {/* Error */}
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
 
-                {/* Transcript preview */}
                 {transcript && (
                   <div>
                     <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-1">Transcript</div>
@@ -1079,7 +1035,6 @@ function PostComposerModal({
                   </div>
                 )}
 
-                {/* ── CAPTIONS RESULTS ── */}
                 {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                   <div className="space-y-2">
                     <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
@@ -1104,12 +1059,8 @@ function PostComposerModal({
                   </div>
                 )}
 
-                {/* ── REPURPOSE POSTS RESULTS: Twitter/LinkedIn selector ── */}
                 {repurposePosts && (
-                  <RepurposePostSelector
-                    posts={repurposePosts}
-                    onUsePost={(text) => setContent(text)}
-                  />
+                  <RepurposePostSelector posts={repurposePosts} onUsePost={(text) => setContent(text)} />
                 )}
 
               </div>
@@ -1124,7 +1075,7 @@ function PostComposerModal({
               </div>
               <div className="space-y-1.5">
                 {selectedIntegrations.map(integId => {
-                  const int      = integrations.find(i => i.id === integId);
+                  const int = integrations.find(i => i.id === integId);
                   if (!int) return null;
                   const expanded = expandedPlatform === integId;
                   return (
@@ -1184,7 +1135,6 @@ function PostComposerModal({
           )}
         </div>
 
-        {/* Footer */}
         <div className="px-6 py-4 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: BORDER }}>
           <span className="text-xs text-white/25">
             {selectedIntegrations.length > 0
@@ -1194,9 +1144,9 @@ function PostComposerModal({
           <button onClick={handleSubmit} disabled={submitting || submitOk}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
             style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-            {submitting  ? <Loader className="w-4 h-4 animate-spin" />  :
-             submitOk    ? <CheckCircle2 className="w-4 h-4" />         :
-                           <Send className="w-4 h-4" />}
+            {submitting ? <Loader className="w-4 h-4 animate-spin" /> :
+             submitOk   ? <CheckCircle2 className="w-4 h-4" /> :
+                          <Send className="w-4 h-4" />}
             {submitting ? 'Scheduling…' : submitOk ? 'Scheduled!' : scheduleType === 'now' ? 'Post Now' : 'Schedule Post'}
           </button>
         </div>
@@ -1209,19 +1159,19 @@ function PostComposerModal({
 // CALENDAR PANEL
 // ─────────────────────────────────────────────
 function CalendarPanel({ token, integrations }: { token: string | null; integrations: PostizIntegration[] }) {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [posts, setPosts]             = useState<ScheduledPost[]>([]);
-  const [loading, setLoading]         = useState(false);
-  const [composerOpen, setComposerOpen]   = useState(false);
-  const [composerDate, setComposerDate]   = useState<Date | undefined>();
+  const [currentDate, setCurrentDate]   = useState(new Date());
+  const [posts, setPosts]               = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerDate, setComposerDate] = useState<Date | undefined>();
   const [repurposeOpen, setRepurposeOpen] = useState(false);
 
-  const year       = currentDate.getFullYear();
-  const month      = currentDate.getMonth();
+  const year        = currentDate.getFullYear();
+  const month       = currentDate.getMonth();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay   = new Date(year, month, 1).getDay();
-  const monthName  = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-  const today      = new Date();
+  const firstDay    = new Date(year, month, 1).getDay();
+  const monthName   = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const today       = new Date();
 
   const loadPosts = useCallback(async () => {
     if (!token) return;
@@ -1229,10 +1179,8 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
     try {
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-      const data  = await postizProxy(
-        `/public/v1/posts?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, token
-      );
-      const list = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
+      const data  = await postizProxy(`/public/v1/posts?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, token);
+      const list  = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
       setPosts(list.map((p: any) => ({
         id: p.id || p.postId,
         content: p.value?.[0]?.content || p.content || '',
@@ -1296,9 +1244,9 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
         ))}
         {Array.from({ length: daysInMonth }).map((_, i) => {
-          const day       = i + 1;
-          const dayPosts  = postsOnDay(day);
-          const isToday   = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
+          const day      = i + 1;
+          const dayPosts = postsOnDay(day);
+          const isToday  = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
           const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
           return (
             <div key={day}
@@ -1306,9 +1254,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
               style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
               onClick={() => { setComposerDate(new Date(year, month, day, 10, 0)); setComposerOpen(true); }}>
               <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold mb-1.5"
-                style={isToday
-                  ? { background: GOLD, color: '#000' }
-                  : { color: isWeekend ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.55)' }}>
+                style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.55)' }}>
                 {day}
               </div>
               <div className="space-y-1">
@@ -1334,11 +1280,8 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
         })}
       </div>
 
-      <PostComposerModal
-        open={composerOpen} onClose={() => setComposerOpen(false)}
-        integrations={integrations} token={token}
-        defaultDate={composerDate} onSuccess={loadPosts}
-      />
+      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
+        integrations={integrations} token={token} defaultDate={composerDate} onSuccess={loadPosts} />
       <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
     </div>
   );
@@ -1348,11 +1291,11 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
 // COMPOSER / POSTS LIST PANEL
 // ─────────────────────────────────────────────
 function ComposerPanel({ integrations, token }: { integrations: PostizIntegration[]; token: string | null }) {
-  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerOpen, setComposerOpen]   = useState(false);
   const [repurposeOpen, setRepurposeOpen] = useState(false);
-  const [posts, setPosts]   = useState<ScheduledPost[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter] = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
+  const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]             = useState(false);
+  const [filter, setFilter]               = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
 
   const loadPosts = useCallback(async () => {
     if (!token) return;
@@ -1406,7 +1349,6 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
         </div>
       </div>
 
-      {/* Stats */}
       <div className="grid grid-cols-3 gap-4 px-8 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
         {[
           { key: 'scheduled', label: 'Scheduled', color: GOLD },
@@ -1421,7 +1363,6 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
         ))}
       </div>
 
-      {/* Filter tabs */}
       <div className="flex items-center gap-1 px-8 py-3 border-b shrink-0" style={{ borderColor: BORDER }}>
         {(['all', 'scheduled', 'published', 'failed'] as const).map(f => (
           <button key={f} onClick={() => setFilter(f)}
@@ -1436,7 +1377,6 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
         {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20" />}
       </div>
 
-      {/* Post list */}
       <div className="flex-1 overflow-y-auto px-8 py-5">
         {!token ? (
           <div className="flex flex-col items-center justify-center h-56 text-center">
@@ -1503,10 +1443,8 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
         )}
       </div>
 
-      <PostComposerModal
-        open={composerOpen} onClose={() => setComposerOpen(false)}
-        integrations={integrations} token={token} onSuccess={loadPosts}
-      />
+      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
+        integrations={integrations} token={token} onSuccess={loadPosts} />
       <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
     </div>
   );
@@ -1638,17 +1576,15 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
 // ROOT PAGE
 // ─────────────────────────────────────────────
 export function MediaDistributionPage() {
-  const [view, setView]                       = useState<ViewMode>('composer');
+  const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
 
-  // ── AUTH STATE ──
-  const [postizToken, setPostizToken]           = useState<string | null>(() => localStorage.getItem(LS_TOKEN_KEY));
-  const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
-  const [integrationsLoading, setIntegrationsLoading] = useState(false);
-  const [oauthLoading, setOauthLoading]         = useState(false);
-  const [oauthError, setOauthError]             = useState<string | null>(null);
+  const [postizToken, setPostizToken]                   = useState<string | null>(() => localStorage.getItem(LS_TOKEN_KEY));
+  const [integrations, setIntegrations]                 = useState<PostizIntegration[]>([]);
+  const [integrationsLoading, setIntegrationsLoading]   = useState(false);
+  const [oauthLoading, setOauthLoading]                 = useState(false);
+  const [oauthError, setOauthError]                     = useState<string | null>(null);
 
-  // ── LOAD INTEGRATIONS ──
   const loadIntegrations = useCallback(async (token: string) => {
     setIntegrationsLoading(true);
     try { setIntegrations(await fetchIntegrations(token)); }
@@ -1661,45 +1597,29 @@ export function MediaDistributionPage() {
     else setIntegrations([]);
   }, [postizToken, loadIntegrations]);
 
-  // ── OAUTH / RETURN CALLBACK ──
-  // Handles three possible returns to this URL:
-  //   Case A — User returning from Postiz after connecting a social channel
-  //            (LS_SOCIAL_RETURN_KEY is set, no code/state in URL)
-  //   Case B — Postiz account login callback (code + state in URL)
-  //   Case C — Nothing to handle (normal page load)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code   = params.get('code');
     const state  = params.get('state');
     const error  = params.get('error');
 
-    // ── Case A: returning from Postiz integrations page after adding a channel ──
     const isSocialReturn = localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1';
     if (isSocialReturn) {
       localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
       window.history.replaceState({}, '', window.location.pathname);
       const token = localStorage.getItem(LS_TOKEN_KEY);
-      if (token) {
-        // Refresh the integrations list to show the newly connected channel
-        loadIntegrations(token);
-        setConnectModalOpen(true);
-      }
+      if (token) { loadIntegrations(token); setConnectModalOpen(true); }
       return;
     }
 
-    // ── Case B: Postiz OAuth login callback ──
-    if (!code && !error) return; // Case C — nothing to do
-
+    if (!code && !error) return;
     window.history.replaceState({}, '', window.location.pathname);
 
     if (error === 'access_denied') { setOauthError('Authorization denied.'); return; }
     if (!code) { setOauthError('No authorization code received.'); return; }
 
     const savedState = localStorage.getItem(LS_STATE_KEY);
-    if (!savedState || savedState !== state) {
-      setOauthError('Security check failed. Please try again.');
-      return;
-    }
+    if (!savedState || savedState !== state) { setOauthError('Security check failed. Please try again.'); return; }
     localStorage.removeItem(LS_STATE_KEY);
 
     setOauthLoading(true);
@@ -1721,7 +1641,6 @@ export function MediaDistributionPage() {
       })
       .catch((e: any) => setOauthError(e?.message || 'Authorization failed'))
       .finally(() => setOauthLoading(false));
-
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = () => {
@@ -1746,7 +1665,6 @@ export function MediaDistributionPage() {
         * { box-sizing: border-box; }
       `}</style>
 
-      {/* Full-screen loading overlay */}
       {oauthLoading && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: 'rgba(10,10,10,0.95)' }}>
           <div className="flex flex-col items-center gap-4">
@@ -1756,7 +1674,6 @@ export function MediaDistributionPage() {
         </div>
       )}
 
-      {/* Error banner */}
       {oauthError && (
         <div className="flex items-center gap-3 px-6 py-3 text-sm text-red-200 shrink-0 z-50"
           style={{ background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.18)' }}>
@@ -1775,10 +1692,8 @@ export function MediaDistributionPage() {
       />
 
       <div className="flex flex-1 overflow-hidden">
-        <Sidebar
-          view={view} setView={setView} integrations={integrations}
-          onOpenConnect={() => setConnectModalOpen(true)} postizToken={postizToken}
-        />
+        <Sidebar view={view} setView={setView} integrations={integrations}
+          onOpenConnect={() => setConnectModalOpen(true)} postizToken={postizToken} />
         <main className="flex-1 overflow-hidden">
           {view === 'composer' && <ComposerPanel integrations={integrations} token={postizToken} />}
           {view === 'calendar' && <CalendarPanel integrations={integrations} token={postizToken} />}
@@ -1786,12 +1701,9 @@ export function MediaDistributionPage() {
       </div>
 
       <ConnectAccountsModal
-        open={connectModalOpen}
-        onClose={() => setConnectModalOpen(false)}
-        integrations={integrations}
-        onConnectPostiz={handleConnect}
-        postizToken={postizToken}
-        integrationsLoading={integrationsLoading}
+        open={connectModalOpen} onClose={() => setConnectModalOpen(false)}
+        integrations={integrations} onConnectPostiz={handleConnect}
+        postizToken={postizToken} integrationsLoading={integrationsLoading}
         onRefresh={() => postizToken && loadIntegrations(postizToken)}
       />
     </div>
