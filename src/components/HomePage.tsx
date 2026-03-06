@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Brain, Zap, Phone, PhoneOff, Mail, User, Building, Globe,
+  Phone, PhoneOff, Mail, User, Building, Globe,
   MessageSquare, CheckCircle, AlertCircle, Loader, ArrowLeft, ArrowRight,
-  Calendar, X, Share2, BarChart2, Sparkles, Menu,
+  Calendar, X, Share2, Sparkles, Menu, Zap,
 } from 'lucide-react';
 import { SubscriptionSection } from './SubscriptionSection';
 import Vapi from '@vapi-ai/web';
@@ -54,9 +54,9 @@ const useCases = [
 ];
 
 const serviceTagColors: Record<string, { bg: string; text: string; border: string }> = {
-  'AI Voice Agents':       { bg: 'rgba(200,162,74,0.10)', text: '#C8A24A', border: 'rgba(200,162,74,0.30)' },
-  'Social Media Manager':  { bg: 'rgba(139,92,246,0.10)', text: '#a78bfa', border: 'rgba(139,92,246,0.30)' },
-  'Web Development':       { bg: 'rgba(34,197,94,0.10)',  text: '#4ade80', border: 'rgba(34,197,94,0.30)'  },
+  'AI Voice Agents':      { bg: 'rgba(200,162,74,0.10)', text: '#C8A24A', border: 'rgba(200,162,74,0.30)' },
+  'Social Media Manager': { bg: 'rgba(139,92,246,0.10)', text: '#a78bfa', border: 'rgba(139,92,246,0.30)' },
+  'Web Development':      { bg: 'rgba(34,197,94,0.10)',  text: '#4ade80', border: 'rgba(34,197,94,0.30)'  },
 };
 
 export function HomePage() {
@@ -249,8 +249,6 @@ export function HomePage() {
       <style>{`
         .gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
         @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-        .svc-card { transition: transform 0.3s ease, border-color 0.3s ease; }
-        .svc-card:hover { transform: translateY(-4px); }
       `}</style>
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
@@ -266,9 +264,8 @@ export function HomePage() {
               <span className="text-lg font-black bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent sm:hidden">IWS AI</span>
             </div>
             <div className="hidden lg:flex items-center space-x-1">
-              <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">AI Voice Agents</a>
+              <a href="#use-cases" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
               <Link to="/MediaMachine" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Social Media</Link>
-              <a href="#services" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Web Development</a>
               <a href="#pricing" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Pricing</a>
             </div>
             <div className="flex items-center space-x-3">
@@ -285,9 +282,8 @@ export function HomePage() {
         {mobileMenuOpen && (
           <div className="lg:hidden border-t border-white/5 bg-black/90 backdrop-blur-md">
             <div className="px-4 py-3 space-y-1">
-              <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">AI Voice Agents</a>
+              <a href="#use-cases" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
               <Link to="/MediaMachine" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Social Media Manager</Link>
-              <a href="#services" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Web Development</a>
               <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Pricing</a>
               <div className="pt-2">
                 <a href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer"
@@ -334,7 +330,7 @@ export function HomePage() {
       </section>
 
       {/* USE CASES */}
-      <section className="relative z-10 py-16 px-4 sm:px-6 lg:px-8">
+      <section id="use-cases" className="relative z-10 py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-white">
@@ -350,81 +346,14 @@ export function HomePage() {
                 <div key={i} className="bg-gray-900/60 border border-white/8 rounded-xl p-6 flex flex-col gap-4 hover:border-white/15 transition-all">
                   <p className="text-gray-200 text-sm leading-relaxed flex-1">"{uc.scenario}"</p>
                   <div className="flex items-center gap-2 mt-auto">
-                    <span
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border"
-                      style={{ background: tag.bg, color: tag.text, borderColor: tag.border }}
-                    >
-                      {uc.icon}
-                      {uc.service}
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border"
+                      style={{ background: tag.bg, color: tag.text, borderColor: tag.border }}>
+                      {uc.icon}{uc.service}
                     </span>
                   </div>
                 </div>
               );
             })}
-          </div>
-        </div>
-      </section>
-
-      {/* SERVICES */}
-      <section id="services" className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-4xl sm:text-5xl font-bold mb-6">
-              Premium Services for{' '}
-              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Modern Businesses</span>
-            </h2>
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
-              Comprehensive digital solutions that transform how businesses operate and serve customers.
-            </p>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-
-            {/* AI Voice Agents */}
-            <div className="svc-card bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 group">
-              <div className="bg-gray-700/50 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-gray-600/50 transition-colors">
-                <Brain className="h-8 w-8 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-xl font-bold mb-1 text-center">AI Voice Agents</h3>
-              <p className="text-[#C8A24A] text-center text-sm font-bold mb-4">$199/mo</p>
-              <p className="text-gray-400 text-center text-sm leading-relaxed">Intelligent AI agents that handle calls, bookings, customer service, and sales with human-like natural speech.</p>
-              <div className="mt-5 flex flex-wrap justify-center gap-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1"><Phone className="h-3 w-3" />24/7</span>
-                <span className="flex items-center gap-1"><Calendar className="h-3 w-3" />Auto Booking</span>
-              </div>
-              <button onClick={() => setPhoneModal('voice')} className="mt-6 w-full py-2 rounded-lg text-xs font-bold border border-[#C8A24A]/30 text-[#C8A24A] hover:bg-[#C8A24A]/10 transition-all">Try Demo Agent</button>
-            </div>
-
-            {/* Social Media Manager — FEATURED */}
-            <div className="svc-card bg-gradient-to-br from-[#C8A24A]/10 to-gray-900/50 backdrop-blur-sm border border-[#C8A24A]/40 rounded-xl p-8 hover:border-[#C8A24A]/80 group relative overflow-hidden">
-              <div className="absolute top-3 right-3 bg-[#C8A24A] text-black text-[10px] font-black px-2 py-0.5 rounded-full">NEW</div>
-              <div className="bg-gray-700/50 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-gray-600/50 transition-colors">
-                <Share2 className="h-8 w-8 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-xl font-bold mb-1 text-center">Social Media Manager</h3>
-              <p className="text-[#C8A24A] text-center text-sm font-bold mb-4">$99/mo</p>
-              <p className="text-gray-400 text-center text-sm leading-relaxed">AI-powered scheduling and content creation across 19+ platforms from one unified dashboard.</p>
-              <div className="mt-5 flex flex-wrap justify-center gap-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1"><Sparkles className="h-3 w-3" />AI Content</span>
-                <span className="flex items-center gap-1"><BarChart2 className="h-3 w-3" />Analytics</span>
-              </div>
-              <Link to="/MediaMachine" className="mt-6 w-full py-2 rounded-lg text-xs font-bold bg-[#C8A24A] text-black hover:bg-[#E3C36A] transition-all text-center block">Launch Media Machine</Link>
-            </div>
-
-            {/* Web Development */}
-            <div className="svc-card bg-gradient-to-br from-gray-800/50 to-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-8 hover:border-[#C8A24A]/45 group">
-              <div className="bg-gray-700/50 w-16 h-16 rounded-xl flex items-center justify-center mx-auto mb-6 group-hover:bg-gray-600/50 transition-colors">
-                <Zap className="h-8 w-8 text-[#C8A24A]" />
-              </div>
-              <h3 className="text-xl font-bold mb-1 text-center">Web Development</h3>
-              <p className="text-[#C8A24A] text-center text-sm font-bold mb-4">From $499</p>
-              <p className="text-gray-400 text-center text-sm leading-relaxed">Unique, professionally designed websites built from scratch. No templates — a site that truly represents your brand.</p>
-              <div className="mt-5 flex flex-wrap justify-center gap-3 text-xs text-gray-500">
-                <span className="flex items-center gap-1"><Building className="h-3 w-3" />Custom</span>
-                <span className="flex items-center gap-1"><Zap className="h-3 w-3" />Fast</span>
-              </div>
-              <a href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer" className="mt-6 w-full py-2 rounded-lg text-xs font-bold border border-[#C8A24A]/30 text-[#C8A24A] hover:bg-[#C8A24A]/10 transition-all text-center block">Book Consultation</a>
-            </div>
-
           </div>
         </div>
       </section>
@@ -465,7 +394,7 @@ export function HomePage() {
                 </Link>
               </div>
 
-              {/* Platform grid — black boxes with icons */}
+              {/* Platform grid */}
               <div className="grid grid-cols-4 gap-3">
                 {platforms.map(p => (
                   <div key={p.name}
@@ -610,7 +539,7 @@ export function HomePage() {
               <div className="space-y-2">
                 <button onClick={() => setPhoneModal('voice')} className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">AI Voice Agents</button>
                 <Link to="/MediaMachine" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Social Media Manager</Link>
-                <a href="#services" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Web Development</a>
+                <a href="#pricing" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Web Development</a>
               </div>
             </div>
             <div>
