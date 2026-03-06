@@ -696,26 +696,10 @@ function PostComposerModal({
                 )}
 
                 {/* Source input */}
-                {((aiTab === 'captions' && captionMode === 'from_video') ||
-                  (aiTab === 'repurpose')) && videoUpload.status !== 'done' && captionMode === 'from_video' && (
-                  <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above first to use this mode</div>
-                )}
-
-                {((aiTab === 'captions' && captionMode === 'from_description') ||
-                  (aiTab === 'repurpose' && captionMode === 'from_description')) && (
-                  <textarea
-                    value={aiDescription}
-                    onChange={e => setAiDescription(e.target.value)}
-                    placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…"
-                    rows={3}
-                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none"
-                    style={{ borderColor: BORDER }} />
-                )}
-
-                {/* For repurpose, always show description input as the source selector */}
+                {/* For repurpose, show the from_video/from_description toggle */}
                 {aiTab === 'repurpose' && (
                   <div className="flex gap-2">
-                    {([['from_video', '🎙 From Video'] , ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                    {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                       <button key={m} onClick={() => setCaptionMode(m)}
                         className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
                         style={{
@@ -727,6 +711,22 @@ function PostComposerModal({
                       </button>
                     ))}
                   </div>
+                )}
+
+                {/* Warning: video not uploaded yet */}
+                {captionMode === 'from_video' && videoUpload.status !== 'done' && (
+                  <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above first to use this mode</div>
+                )}
+
+                {/* Description textarea — only shown when from_description is selected */}
+                {captionMode === 'from_description' && (
+                  <textarea
+                    value={aiDescription}
+                    onChange={e => setAiDescription(e.target.value)}
+                    placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…"
+                    rows={3}
+                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none"
+                    style={{ borderColor: BORDER }} />
                 )}
 
                 {/* Tone */}
