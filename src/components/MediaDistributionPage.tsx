@@ -157,7 +157,8 @@ async function uploadViaNativeXHR(
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/.netlify/functions/postiz-upload');
+    // Use Supabase Edge Function as proxy — handles binary perfectly
+    xhr.open('POST', 'https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/postiz-upload');
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
