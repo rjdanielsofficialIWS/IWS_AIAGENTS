@@ -323,6 +323,354 @@ function ConnectAccountsModal({
 }
 
 // ─────────────────────────────────────────────
+// REPURPOSE POST SELECTOR
+// Shown inside the composer after generating Twitter/LinkedIn posts
+// Allows editing, highlighting, and using one post at a time
+// ─────────────────────────────────────────────
+function RepurposePostSelector({ posts, onUsePost }: {
+  posts: { twitter: string[]; linkedin: string[] };
+  onUsePost: (text: string) => void;
+}) {
+  const [tab, setTab] = useState<'twitter' | 'linkedin'>('twitter');
+  const [editedPosts, setEditedPosts] = useState<{ twitter: string[]; linkedin: string[] }>({
+    twitter: [...(posts.twitter || [])],
+    linkedin: [...(posts.linkedin || [])],
+  });
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [editingIdx, setEditingIdx] = useState<number | null>(null);
+
+  const currentList = editedPosts[tab];
+
+  const handleSelect = (idx: number) => {
+    setSelectedIdx(idx === selectedIdx ? null : idx);
+    setEditingIdx(null);
+  };
+
+  const handleEdit = (idx: number, val: string) => {
+    setEditedPosts(prev => ({
+      ...prev,
+      [tab]: prev[tab].map((p, i) => i === idx ? val : p),
+    }));
+  };
+
+  const handleUse = () => {
+    if (selectedIdx === null) return;
+    onUsePost(currentList[selectedIdx]);
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Tab */}
+      <div className="flex gap-2">
+        {(['twitter', 'linkedin'] as const).map(t => (
+          <button key={t} onClick={() => { setTab(t); setSelectedIdx(null); setEditingIdx(null); }}
+            className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
+            style={{
+              borderColor: tab === t ? GOLD : BORDER,
+              background:  tab === t ? `${GOLD}18` : 'transparent',
+              color:       tab === t ? GOLD_L : 'rgba(255,255,255,0.35)',
+            }}>
+            {t === 'twitter' ? '𝕏 Twitter/X (10)' : 'in LinkedIn (10)'}
+          </button>
+        ))}
+      </div>
+
+      <div className="text-xs text-white/30 px-0.5">Tap to select · tap again to edit · one post at a time</div>
+
+      {/* Post list */}
+      <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+        {currentList.map((post, idx) => {
+          const isSelected = selectedIdx === idx;
+          const isEditing  = editingIdx === idx;
+          return (
+            <div key={idx}
+              className="rounded-xl border overflow-hidden transition-all"
+              style={{
+                borderColor: isSelected ? GOLD : BORDER,
+                background:  isSelected ? `${GOLD}08` : 'rgba(0,0,0,0.2)',
+              }}>
+              {/* Header row */}
+              <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+                <button
+                  onClick={() => handleSelect(idx)}
+                  className="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
+                  style={{
+                    borderColor: isSelected ? GOLD : 'rgba(255,255,255,0.2)',
+                    background:  isSelected ? GOLD : 'transparent',
+                  }}>
+                  {isSelected && <CheckCircle2 className="w-3 h-3 text-black" />}
+                </button>
+                <span className="text-xs text-white/25 font-bold">#{idx + 1}</span>
+                <div className="flex-1" />
+                <button
+                  onClick={() => setEditingIdx(isEditing ? null : idx)}
+                  className="text-xs px-2 py-0.5 rounded-md transition hover:bg-white/10"
+                  style={{ color: isEditing ? GOLD : 'rgba(255,255,255,0.25)' }}>
+                  {isEditing ? 'Done' : 'Edit'}
+                </button>
+              </div>
+              {/* Content */}
+              {isEditing ? (
+                <textarea
+                  value={post}
+                  onChange={e => handleEdit(idx, e.target.value)}
+                  rows={tab === 'linkedin' ? 6 : 3}
+                  className="w-full px-3 pb-3 bg-transparent text-xs text-white leading-relaxed outline-none resize-none"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={() => handleSelect(idx)}
+                  className="w-full text-left px-3 pb-3 text-xs leading-relaxed"
+                  style={{ color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' }}>
+                  {post}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Use button */}
+      {selectedIdx !== null && (
+        <button
+          onClick={handleUse}
+          className="w-full py-2.5 rounded-xl text-xs font-bold transition hover:brightness-110"
+          style={{ background: GOLD, color: '#000' }}>
+          ✓ Use Post #{selectedIdx + 1} in Composer
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
+// REPURPOSE IDEAS MODAL (Dashboard modal)
+// ─────────────────────────────────────────────
+function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
+  const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
+  const [description, setDescription] = useState('');
+  const [tone, setTone] = useState('');
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoUpload, setVideoUpload] = useState<UploadState>({ status: 'idle' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [ideas, setIdeas] = useState<any | null>(null);
+
+  const uploadVideo = async (file: File) => {
+    if (file.size > 49 * 1024 * 1024) { setVideoUpload({ status: 'error', message: 'File too large (max 49MB)' }); return; }
+    setVideoUpload({ status: 'uploading' });
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `repurpose/${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type });
+      if (upErr) throw new Error(upErr.message);
+      const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
+      const url = pub?.data?.publicUrl || '';
+      setVideoUpload({ status: 'done', path, url, fileName: file.name, mime: file.type, size: file.size });
+    } catch (e: any) { setVideoUpload({ status: 'error', message: e.message }); }
+  };
+
+  const handleGenerate = async () => {
+    setLoading(true); setError(null); setIdeas(null);
+    try {
+      let source = '';
+      if (captionMode === 'from_video') {
+        if (videoUpload.status !== 'done') throw new Error('Upload a video first');
+        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl: (videoUpload as any).url }),
+        });
+        if (!transcribeRes.ok) throw new Error('Transcription failed');
+        const { transcript } = await transcribeRes.json();
+        source = transcript;
+      } else {
+        if (!description.trim()) throw new Error('Enter a description of your video');
+        source = description;
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone }),
+      });
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json();
+      setIdeas(data.ideas);
+    } catch (e: any) { setError(e.message || 'Something went wrong'); }
+    finally { setLoading(false); }
+  };
+
+  const reset = () => {
+    setDescription(''); setTone(''); setVideoFile(null);
+    setVideoUpload({ status: 'idle' }); setIdeas(null); setError(null);
+  };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-xl rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <h2 className="text-base font-bold text-white">♻️ Content Ideas</h2>
+            <p className="text-sm text-white/40 mt-0.5">Find new angles and formats from your existing video</p>
+          </div>
+          <button onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {/* Source toggle */}
+          <div className="flex gap-2">
+            {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setCaptionMode(m)}
+                className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
+                style={{
+                  borderColor: captionMode === m ? GOLD : BORDER,
+                  background:  captionMode === m ? `${GOLD}15` : 'transparent',
+                  color:       captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)',
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Video upload */}
+          {captionMode === 'from_video' && (
+            <div>
+              {videoUpload.status === 'idle' && (
+                <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition"
+                  style={{ borderColor: BORDER }}>
+                  <Video className="w-6 h-6 text-white/25" />
+                  <span className="text-xs text-white/40">Click to upload your talking video</span>
+                  <input type="file" accept="video/*" className="hidden"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) { setVideoFile(f); uploadVideo(f); } }} />
+                </label>
+              )}
+              {videoUpload.status === 'uploading' && (
+                <div className="flex items-center gap-2 p-3 rounded-xl border text-xs text-white/40" style={{ borderColor: BORDER }}>
+                  <Loader className="w-4 h-4 animate-spin" /> Uploading…
+                </div>
+              )}
+              {videoUpload.status === 'done' && (
+                <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  <span className="text-white/60 truncate">{(videoUpload as any).fileName}</span>
+                  <button onClick={reset} className="ml-auto text-white/30 hover:text-white transition"><X className="w-3.5 h-3.5" /></button>
+                </div>
+              )}
+              {videoUpload.status === 'error' && (
+                <div className="text-xs text-red-300 px-1">{(videoUpload as any).message}</div>
+              )}
+            </div>
+          )}
+
+          {/* Description input */}
+          {captionMode === 'from_description' && (
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Describe your video — what you talked about, main points, key takeaways…"
+              rows={4}
+              className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none"
+              style={{ borderColor: BORDER }} />
+          )}
+
+          {/* Tone */}
+          <input value={tone} onChange={e => setTone(e.target.value)}
+            placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
+            className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
+            style={{ borderColor: BORDER }} />
+
+          {error && <div className="text-xs text-red-300">{error}</div>}
+
+          {/* Generate button */}
+          {!ideas && (
+            <button onClick={handleGenerate} disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+              style={{ background: GOLD, color: '#000' }}>
+              {loading
+                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Transcribing & Generating…' : 'Generating Ideas…'}</span>
+                : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
+            </button>
+          )}
+
+          {/* Results */}
+          {ideas && (
+            <div className="space-y-5">
+              {ideas.short_clips?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🎬 Short Clip Ideas</div>
+                  <div className="space-y-2">
+                    {ideas.short_clips.map((clip: any, i: number) => (
+                      <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                        <div className="text-sm font-bold text-white">{clip.title}</div>
+                        <div className="text-xs text-white/45 mt-1">{clip.angle}</div>
+                        <div className="text-xs font-semibold mt-1.5" style={{ color: GOLD }}>{clip.platform}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {ideas.social_hooks?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🪝 Hook Ideas</div>
+                  <div className="space-y-1.5">
+                    {ideas.social_hooks.map((hook: string, i: number) => (
+                      <div key={i} className="p-3 rounded-xl border text-sm text-white/60 leading-relaxed"
+                        style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                        {hook}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {ideas.blog_angles?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">✍️ Blog / Article Angles</div>
+                  <div className="space-y-2">
+                    {ideas.blog_angles.map((b: any, i: number) => (
+                      <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                        <div className="text-sm font-bold text-white">{b.headline}</div>
+                        <div className="text-xs text-white/45 mt-1">{b.angle}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {ideas.other_formats?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📦 Other Formats</div>
+                  <div className="space-y-2">
+                    {ideas.other_formats.map((f: any, i: number) => (
+                      <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                        <div className="text-sm font-bold text-white">{f.format}</div>
+                        <div className="text-xs text-white/45 mt-1">{f.concept}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <button onClick={reset}
+                className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+                ↺ Generate New Ideas
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────
 // POST COMPOSER MODAL
 // ─────────────────────────────────────────────
 function PostComposerModal({
@@ -352,11 +700,9 @@ function PostComposerModal({
   // ── AI STATE ──
   type AiTab = 'captions' | 'repurpose';
   type CaptionMode = 'from_video' | 'from_description';
-  type RepurposeMode = 'ideas' | 'posts';
 
   const [aiTab, setAiTab]                       = useState<AiTab>('captions');
   const [captionMode, setCaptionMode]           = useState<CaptionMode>('from_video');
-  const [repurposeMode, setRepurposeMode]       = useState<RepurposeMode>('ideas');
   const [aiTone, setAiTone]                     = useState('');
   const [aiDescription, setAiDescription]       = useState('');
   const [aiLoading, setAiLoading]               = useState(false);
@@ -364,7 +710,6 @@ function PostComposerModal({
   const [transcript, setTranscript]             = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
   const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
-  const [repurposeIdeas, setRepurposeIdeas]     = useState<any | null>(null);
   const [repurposePosts, setRepurposePosts]     = useState<any | null>(null);
   const [showAiPanel, setShowAiPanel]           = useState(false);
 
@@ -377,7 +722,6 @@ function PostComposerModal({
     setAiLoading(true);
     setAiError(null);
     setGeneratedCaptions(null);
-    setRepurposeIdeas(null);
     setRepurposePosts(null);
 
     try {
@@ -406,7 +750,7 @@ function PostComposerModal({
       if (aiTab === 'captions') {
         mode = usingVideo ? 'captions_from_video' : 'captions_from_description';
       } else {
-        mode = repurposeMode === 'ideas' ? 'repurpose_ideas' : 'repurpose_posts';
+        mode = 'repurpose_posts';
       }
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
@@ -428,7 +772,6 @@ function PostComposerModal({
         const first = Object.keys(data.captions)[0];
         if (first) { setContent(data.captions[first]); setActiveCaptionPlatform(first); }
       }
-      if (data.ideas) setRepurposeIdeas(data.ideas);
       if (data.posts) setRepurposePosts(data.posts);
 
     } catch (e: any) {
@@ -447,7 +790,7 @@ function PostComposerModal({
       setExpandedPlatform(null);
       setTranscript(null); setGeneratedCaptions(null);
       setAiError(null); setActiveCaptionPlatform(null);
-      setRepurposeIdeas(null); setRepurposePosts(null);
+      setRepurposePosts(null);
       setShowAiPanel(false); setAiDescription('');
     }
   }, [open]);
@@ -656,7 +999,7 @@ function PostComposerModal({
                         background:  aiTab === tab ? `${GOLD}18` : 'transparent',
                         color:       aiTab === tab ? GOLD_L : 'rgba(255,255,255,0.35)',
                       }}>
-                      {tab === 'captions' ? '✍️ Caption Generator' : '♻️ Repurpose Content'}
+                      {tab === 'captions' ? '✍️ Caption Generator' : '🐦 Twitter & LinkedIn'}
                     </button>
                   ))}
                 </div>
@@ -679,18 +1022,8 @@ function PostComposerModal({
                 )}
 
                 {aiTab === 'repurpose' && (
-                  <div className="flex gap-2">
-                    {([['ideas', '💡 Content Ideas'], ['posts', '🐦 Twitter & LinkedIn']] as const).map(([m, label]) => (
-                      <button key={m} onClick={() => setRepurposeMode(m)}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
-                        style={{
-                          borderColor: repurposeMode === m ? GOLD : BORDER,
-                          background:  repurposeMode === m ? `${GOLD}12` : 'transparent',
-                          color:       repurposeMode === m ? GOLD_L : 'rgba(255,255,255,0.3)',
-                        }}>
-                        {label}
-                      </button>
-                    ))}
+                  <div className="text-xs text-white/40 px-1">
+                    Generates 10 Twitter/X posts + 10 LinkedIn posts from your video. Edit and pick the ones you want to post one at a time.
                   </div>
                 )}
 
@@ -783,85 +1116,12 @@ function PostComposerModal({
                   </div>
                 )}
 
-                {/* ── REPURPOSE IDEAS RESULTS ── */}
-                {repurposeIdeas && (
-                  <div className="space-y-3">
-                    {repurposeIdeas.short_clips?.length > 0 && (
-                      <div>
-                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">Short Clip Ideas</div>
-                        {repurposeIdeas.short_clips.map((clip: any, i: number) => (
-                          <div key={i} className="p-3 rounded-xl border mb-1.5" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                            <div className="text-xs font-bold text-white">{clip.title}</div>
-                            <div className="text-xs text-white/40 mt-0.5">{clip.angle}</div>
-                            <div className="text-xs mt-1 font-semibold" style={{ color: GOLD }}>{clip.platform}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {repurposeIdeas.social_hooks?.length > 0 && (
-                      <div>
-                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">Hook Ideas</div>
-                        {repurposeIdeas.social_hooks.map((hook: string, i: number) => (
-                          <button key={i} onClick={() => setContent(hook)}
-                            className="w-full text-left p-2.5 rounded-lg border mb-1 text-xs text-white/60 hover:text-white hover:bg-white/5 transition"
-                            style={{ borderColor: BORDER }}>
-                            {hook}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {repurposeIdeas.other_formats?.length > 0 && (
-                      <div>
-                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">Other Formats</div>
-                        {repurposeIdeas.other_formats.map((f: any, i: number) => (
-                          <div key={i} className="p-3 rounded-xl border mb-1.5" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                            <div className="text-xs font-bold text-white">{f.format}</div>
-                            <div className="text-xs text-white/40 mt-0.5">{f.concept}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {/* ── REPURPOSE POSTS RESULTS ── */}
+                {/* ── REPURPOSE POSTS RESULTS: Twitter/LinkedIn selector ── */}
                 {repurposePosts && (
-                  <div className="space-y-3">
-                    {repurposePosts.twitter_thread && (
-                      <div>
-                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">Twitter/X Thread</div>
-                        <div className="space-y-1.5">
-                          {[repurposePosts.twitter_thread.hook, ...(repurposePosts.twitter_thread.tweets || []), repurposePosts.twitter_thread.cta].filter(Boolean).map((tweet: string, i: number) => (
-                            <button key={i} onClick={() => setContent(tweet)}
-                              className="w-full text-left p-2.5 rounded-lg border text-xs text-white/60 hover:text-white hover:bg-white/5 transition"
-                              style={{ borderColor: BORDER }}>
-                              <span className="text-white/25 mr-2">{i + 1}.</span>{tweet}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {repurposePosts.linkedin_post && (
-                      <div>
-                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">LinkedIn Post</div>
-                        <button onClick={() => setContent(repurposePosts.linkedin_post)}
-                          className="w-full text-left p-3 rounded-xl border text-xs text-white/60 hover:text-white hover:bg-white/5 transition leading-relaxed"
-                          style={{ borderColor: BORDER }}>
-                          {repurposePosts.linkedin_post}
-                        </button>
-                      </div>
-                    )}
-                    {repurposePosts.linkedin_short && (
-                      <div>
-                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">LinkedIn Short</div>
-                        <button onClick={() => setContent(repurposePosts.linkedin_short)}
-                          className="w-full text-left p-3 rounded-xl border text-xs text-white/60 hover:text-white hover:bg-white/5 transition leading-relaxed"
-                          style={{ borderColor: BORDER }}>
-                          {repurposePosts.linkedin_short}
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                  <RepurposePostSelector
+                    posts={repurposePosts}
+                    onUsePost={(text) => setContent(text)}
+                  />
                 )}
 
               </div>
@@ -966,6 +1226,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
   const [loading, setLoading]         = useState(false);
   const [composerOpen, setComposerOpen]   = useState(false);
   const [composerDate, setComposerDate]   = useState<Date | undefined>();
+  const [repurposeOpen, setRepurposeOpen] = useState(false);
 
   const year       = currentDate.getFullYear();
   const month      = currentDate.getMonth();
@@ -1022,11 +1283,18 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
           </button>
           {loading && <Loader className="w-4 h-4 animate-spin text-white/20" />}
         </div>
-        <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition hover:brightness-110"
-          style={{ background: GOLD, color: '#000' }}>
-          <Plus className="w-4 h-4" /> New Post
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setRepurposeOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition hover:bg-white/5"
+            style={{ borderColor: `${GOLD}35`, color: GOLD }}>
+            <Sparkles className="w-4 h-4" /> Content Ideas
+          </button>
+          <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
+            <Plus className="w-4 h-4" /> New Post
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
@@ -1083,6 +1351,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
         integrations={integrations} token={token}
         defaultDate={composerDate} onSuccess={loadPosts}
       />
+      <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
     </div>
   );
 }
@@ -1092,6 +1361,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
 // ─────────────────────────────────────────────
 function ComposerPanel({ integrations, token }: { integrations: PostizIntegration[]; token: string | null }) {
   const [composerOpen, setComposerOpen] = useState(false);
+  const [repurposeOpen, setRepurposeOpen] = useState(false);
   const [posts, setPosts]   = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(false);
   const [filter, setFilter] = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
@@ -1134,11 +1404,18 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
           <h1 className="text-xl font-black text-white">Posts</h1>
           <p className="text-sm text-white/30 mt-0.5">Schedule and manage your content</p>
         </div>
-        <button onClick={() => setComposerOpen(true)}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition hover:brightness-110"
-          style={{ background: GOLD, color: '#000' }}>
-          <Plus className="w-4 h-4" /> Create Post
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setRepurposeOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition hover:bg-white/5"
+            style={{ borderColor: `${GOLD}35`, color: GOLD }}>
+            <Sparkles className="w-4 h-4" /> Content Ideas
+          </button>
+          <button onClick={() => setComposerOpen(true)}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
+            <Plus className="w-4 h-4" /> Create Post
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -1242,6 +1519,7 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
         open={composerOpen} onClose={() => setComposerOpen(false)}
         integrations={integrations} token={token} onSuccess={loadPosts}
       />
+      <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
     </div>
   );
 }
