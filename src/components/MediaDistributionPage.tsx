@@ -151,49 +151,39 @@ async function uploadViaNativeXHR(
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
-  const ext  = file.name.split('.').pop() || 'mp4';
-  const path = `media-machine/${kind}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
+  // Upload directly to self-hosted Postiz — stored on DigitalOcean, no size limit
+  const token = localStorage.getItem(LS_TOKEN_KEY);
+  const formData = new FormData();
+  formData.append('file', file);
 
-  // Use Netlify function to get a signed URL, then upload directly to Supabase
-  // This avoids any size limits on either side
-  try {
-    const res = await fetch('/.netlify/functions/upload-media', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ path, contentType: file.type || 'application/octet-stream' }),
-    });
+  return new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', `${POSTIZ_FRONTEND_URL}/api/public/v1/upload`);
+    if (token) xhr.setRequestHeader('Authorization', token);
 
-    if (res.ok) {
-      const { signedUrl, publicUrl } = await res.json();
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open('PUT', signedUrl);
-        xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
-        if (onProgress) {
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-          };
-        }
-        xhr.onload = () => xhr.status >= 200 && xhr.status < 300
-          ? resolve()
-          : reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
-        xhr.onerror = () => reject(new Error('Network error during upload'));
-        xhr.send(file);
-      });
-      return publicUrl;
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+      };
     }
-  } catch (e) {
-    console.warn('Netlify upload failed, falling back to Supabase JS client:', e);
-  }
 
-  // Fallback: direct Supabase JS client upload
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-    contentType: file.type,
-    upsert: true,
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          // Postiz returns { id, path, name, ... } — path is the public URL
+          resolve(data.path);
+        } catch {
+          reject(new Error('Invalid response from Postiz upload'));
+        }
+      } else {
+        console.error('Postiz upload failed:', xhr.status, xhr.responseText);
+        reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error('Network error during upload'));
+    xhr.send(formData);
   });
-  if (error) throw new Error(error.message);
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return data.publicUrl;
 }
 
 // ─────────────────────────────────────────────
