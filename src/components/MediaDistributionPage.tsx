@@ -20,6 +20,7 @@ const BORDER  = 'rgba(255,255,255,0.08)';
 // POSTIZ CONFIG
 // ─────────────────────────────────────────────
 const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
+const POSTIZ_API_URL      = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
 const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
@@ -28,11 +29,9 @@ const LS_STATE_KEY         = 'postiz_oauth_state';
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
 
 // ─────────────────────────────────────────────
-// SUPABASE STORAGE
+// SUPABASE
 // ─────────────────────────────────────────────
-const BUCKET          = 'media';
-const SIGNED_URL_SECS = 60 * 60 * 24 * 7;
-const SUPABASE_URL    = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
+const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
 // ─────────────────────────────────────────────
 // PLATFORM DEFINITIONS
@@ -116,6 +115,7 @@ function generateState() {
   window.crypto.getRandomValues(a);
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
 }
+
 function buildPostizAuthUrl(state: string) {
   return `${POSTIZ_FRONTEND_URL}/oauth/authorize?${new URLSearchParams({
     client_id: POSTIZ_CLIENT_ID,
@@ -144,21 +144,29 @@ async function fetchIntegrations(token: string): Promise<PostizIntegration[]> {
 }
 
 // ─────────────────────────────────────────────
-// Upload via Netlify proxy → Postiz (no CORS, no size limit)
+// Upload directly to Postiz (CORS is open).
+// API key fetched securely from Netlify function.
 // ─────────────────────────────────────────────
 async function uploadViaNativeXHR(
   file: File,
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
-  const token = localStorage.getItem(LS_TOKEN_KEY);
+  // Fetch the API key securely from our Netlify key-dispenser function
+  const keyRes = await fetch('/.netlify/functions/postiz-upload');
+  if (!keyRes.ok) throw new Error('Could not retrieve upload credentials');
+  const { apiKey } = await keyRes.json();
+  if (!apiKey) throw new Error('POSTIZ_API_KEY not configured in Netlify environment variables');
+
   const formData = new FormData();
   formData.append('file', file);
-  if (token) formData.append('token', token);
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/.netlify/functions/postiz-upload');
+    // Upload directly to Postiz — CORS is open, no binary proxying needed
+    xhr.open('POST', `${POSTIZ_API_URL}/public/v1/upload`);
+    // Raw API key, no Bearer prefix — this is what Postiz expects
+    xhr.setRequestHeader('Authorization', apiKey);
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
@@ -170,14 +178,13 @@ async function uploadViaNativeXHR(
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
-          // Postiz returns { id, path, name, ... } — path is the public URL
-          if (!data.path) throw new Error('No path in response');
+          if (!data.path) throw new Error('No path in upload response');
           resolve(data.path);
         } catch {
-          reject(new Error('Invalid response from upload proxy'));
+          reject(new Error('Invalid response from Postiz upload'));
         }
       } else {
-        console.error('Upload proxy failed:', xhr.status, xhr.responseText);
+        console.error('Postiz upload failed:', xhr.status, xhr.responseText);
         reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
       }
     };
@@ -216,7 +223,6 @@ function ConnectAccountsModal({
   onRefresh: () => void;
 }) {
   if (!open) return null;
-
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
@@ -228,8 +234,7 @@ function ConnectAccountsModal({
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
             <p className="text-sm text-white/40 mt-0.5">Link your social accounts to start scheduling</p>
           </div>
-          <button onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -272,9 +277,7 @@ function ConnectAccountsModal({
             )}
             {integrations.length > 0 && (
               <div>
-                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
-                  Connected ({integrations.length})
-                </div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Connected ({integrations.length})</div>
                 <div className="space-y-2">
                   {integrations.map(int => (
                     <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
@@ -290,7 +293,6 @@ function ConnectAccountsModal({
                 </div>
               </div>
             )}
-
             <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${GOLD}25`, background: `${GOLD}06` }}>
               <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>How to add a channel</div>
               {[
@@ -306,7 +308,6 @@ function ConnectAccountsModal({
                 </div>
               ))}
             </div>
-
             <div className="flex flex-col gap-2">
               <button onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank')}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition hover:brightness-110"
@@ -342,25 +343,18 @@ function RepurposePostSelector({ posts, onUsePost }: {
   });
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [editingIdx, setEditingIdx]   = useState<number | null>(null);
-
   const currentList = editedPosts[tab];
-
   const handleSelect = (idx: number) => { setSelectedIdx(idx === selectedIdx ? null : idx); setEditingIdx(null); };
   const handleEdit   = (idx: number, val: string) => {
     setEditedPosts(prev => ({ ...prev, [tab]: prev[tab].map((p, i) => i === idx ? val : p) }));
   };
-
   return (
     <div className="space-y-3">
       <div className="flex gap-2">
         {(['twitter', 'linkedin'] as const).map(t => (
           <button key={t} onClick={() => { setTab(t); setSelectedIdx(null); setEditingIdx(null); }}
             className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
-            style={{
-              borderColor: tab === t ? GOLD : BORDER,
-              background:  tab === t ? `${GOLD}18` : 'transparent',
-              color:       tab === t ? GOLD_L : 'rgba(255,255,255,0.35)',
-            }}>
+            style={{ borderColor: tab === t ? GOLD : BORDER, background: tab === t ? `${GOLD}18` : 'transparent', color: tab === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
             {t === 'twitter' ? '𝕏 Twitter/X (10)' : 'in LinkedIn (10)'}
           </button>
         ))}
@@ -390,11 +384,9 @@ function RepurposePostSelector({ posts, onUsePost }: {
               {isEditing ? (
                 <textarea value={post} onChange={e => handleEdit(idx, e.target.value)}
                   rows={tab === 'linkedin' ? 6 : 3}
-                  className="w-full px-3 pb-3 bg-transparent text-xs text-white leading-relaxed outline-none resize-none"
-                  autoFocus />
+                  className="w-full px-3 pb-3 bg-transparent text-xs text-white leading-relaxed outline-none resize-none" autoFocus />
               ) : (
-                <button onClick={() => handleSelect(idx)}
-                  className="w-full text-left px-3 pb-3 text-xs leading-relaxed"
+                <button onClick={() => handleSelect(idx)} className="w-full text-left px-3 pb-3 text-xs leading-relaxed"
                   style={{ color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' }}>
                   {post}
                 </button>
@@ -432,23 +424,16 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
       let source = '';
       if (captionMode === 'from_video') {
         if (!videoFile) throw new Error('Select a video first');
-        // Send file directly — no storage upload needed
         const form = new FormData();
         form.append('file', videoFile, videoFile.name);
-        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-          method: 'POST', body: form,
-        });
-        if (!transcribeRes.ok) {
-          const err = await transcribeRes.json().catch(() => ({}));
-          throw new Error(err.error || 'Transcription failed');
-        }
+        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+        if (!transcribeRes.ok) { const err = await transcribeRes.json().catch(() => ({})); throw new Error(err.error || 'Transcription failed'); }
         const { transcript } = await transcribeRes.json();
         source = transcript;
       } else {
         if (!description.trim()) throw new Error('Enter a description of your video');
         source = description;
       }
-
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone }),
@@ -468,70 +453,46 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-xl rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
-
         <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">♻️ Content Ideas</h2>
             <p className="text-sm text-white/40 mt-0.5">Find new angles and formats from your existing video</p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
-            <X className="w-4 h-4" />
-          </button>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
-
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
           <div className="flex gap-2">
             {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-              <button key={m} onClick={() => setCaptionMode(m)}
-                className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
-                style={{
-                  borderColor: captionMode === m ? GOLD : BORDER,
-                  background:  captionMode === m ? `${GOLD}15` : 'transparent',
-                  color:       captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)',
-                }}>
+              <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
+                style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
                 {label}
               </button>
             ))}
           </div>
-
           {captionMode === 'from_video' && (
-            <div>
-              {!videoFile ? (
-                <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition"
-                  style={{ borderColor: BORDER }}>
-                  <Video className="w-6 h-6 text-white/25" />
-                  <span className="text-xs text-white/40">Click to select your talking video</span>
-                  <span className="text-xs text-white/20">Any size — sent directly for transcription</span>
-                  <input type="file" accept="video/*" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
-                </label>
-              ) : (
-                <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                  <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                  <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
-                  <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-            </div>
+            !videoFile ? (
+              <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                <Video className="w-6 h-6 text-white/25" />
+                <span className="text-xs text-white/40">Click to select your talking video</span>
+                <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
+              </label>
+            ) : (
+              <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
+                <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            )
           )}
-
           {captionMode === 'from_description' && (
             <textarea value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="Describe your video — what you talked about, main points, key takeaways…"
-              rows={4}
-              className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none"
-              style={{ borderColor: BORDER }} />
+              placeholder="Describe your video — what you talked about, main points, key takeaways…" rows={4}
+              className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
           )}
-
           <input value={tone} onChange={e => setTone(e.target.value)}
             placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
-            className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
-            style={{ borderColor: BORDER }} />
-
+            className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
           {error && <div className="text-xs text-red-300">{error}</div>}
-
           {!ideas && (
             <button onClick={handleGenerate} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
@@ -541,7 +502,6 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
                 : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
             </button>
           )}
-
           {ideas && (
             <div className="space-y-5">
               {ideas.short_clips?.length > 0 && (
@@ -563,8 +523,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
                   <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🪝 Hook Ideas</div>
                   <div className="space-y-1.5">
                     {ideas.social_hooks.map((hook: string, i: number) => (
-                      <div key={i} className="p-3 rounded-xl border text-sm text-white/60 leading-relaxed"
-                        style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>{hook}</div>
+                      <div key={i} className="p-3 rounded-xl border text-sm text-white/60 leading-relaxed" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>{hook}</div>
                     ))}
                   </div>
                 </div>
@@ -595,8 +554,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
                   </div>
                 </div>
               )}
-              <button onClick={reset}
-                className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
                 style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
                 ↺ Generate New Ideas
               </button>
@@ -624,31 +582,30 @@ function PostComposerModal({
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
     return d.toISOString().slice(0, 16);
   });
-  const [videoFile, setVideoFile]         = useState<File | null>(null);
-  const [videoUpload, setVideoUpload]     = useState<UploadState>({ status: 'idle' });
-  const [imageFiles, setImageFiles]       = useState<File[]>([]);
-  const [imageUploads, setImageUploads]   = useState<UploadState[]>([]);
-  const [perPlatform, setPerPlatform]     = useState<Record<string, string>>({});
+  const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
+  const [imageFiles, setImageFiles]     = useState<File[]>([]);
+  const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
+  const [perPlatform, setPerPlatform]   = useState<Record<string, string>>({});
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
-  const [submitting, setSubmitting]       = useState(false);
-  const [submitOk, setSubmitOk]           = useState(false);
-  const [submitError, setSubmitError]     = useState<string | null>(null);
+  const [submitting, setSubmitting]     = useState(false);
+  const [submitOk, setSubmitOk]         = useState(false);
+  const [submitError, setSubmitError]   = useState<string | null>(null);
 
-  // ── AI STATE ──
   type AiTab = 'captions' | 'repurpose';
   type CaptionMode = 'from_video' | 'from_description';
 
-  const [aiTab, setAiTab]               = useState<AiTab>('captions');
-  const [captionMode, setCaptionMode]   = useState<CaptionMode>('from_video');
-  const [aiTone, setAiTone]             = useState('');
+  const [aiTab, setAiTab]             = useState<AiTab>('captions');
+  const [captionMode, setCaptionMode] = useState<CaptionMode>('from_video');
+  const [aiTone, setAiTone]           = useState('');
   const [aiDescription, setAiDescription] = useState('');
-  const [aiLoading, setAiLoading]       = useState(false);
-  const [aiError, setAiError]           = useState<string | null>(null);
-  const [transcript, setTranscript]     = useState<string | null>(null);
+  const [aiLoading, setAiLoading]     = useState(false);
+  const [aiError, setAiError]         = useState<string | null>(null);
+  const [transcript, setTranscript]   = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
   const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
   const [repurposePosts, setRepurposePosts] = useState<any | null>(null);
-  const [showAiPanel, setShowAiPanel]   = useState(false);
+  const [showAiPanel, setShowAiPanel] = useState(false);
 
   const getSelectedPlatforms = () =>
     selectedIntegrations.length > 0
@@ -656,65 +613,39 @@ function PostComposerModal({
       : ['tiktok', 'instagram', 'linkedin', 'x'];
 
   const handleAiGenerate = async () => {
-    setAiLoading(true);
-    setAiError(null);
-    setGeneratedCaptions(null);
-    setRepurposePosts(null);
+    setAiLoading(true); setAiError(null); setGeneratedCaptions(null); setRepurposePosts(null);
     try {
       let sourceText = '';
       const usingVideo = captionMode === 'from_video';
-
       if (usingVideo) {
         if (!videoFile) throw new Error('Upload a talking video first using the Video button above');
-        // Send the video file DIRECTLY to transcribe — never touches Supabase storage
         const form = new FormData();
         form.append('file', videoFile, videoFile.name);
-        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-          method: 'POST',
-          body: form,
-        });
-        if (!transcribeRes.ok) {
-          const err = await transcribeRes.json().catch(() => ({}));
-          throw new Error(err.error || 'Transcription failed');
-        }
+        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+        if (!transcribeRes.ok) { const err = await transcribeRes.json().catch(() => ({})); throw new Error(err.error || 'Transcription failed'); }
         const { transcript: t } = await transcribeRes.json();
-        setTranscript(t);
-        sourceText = t;
+        setTranscript(t); sourceText = t;
       } else {
         if (!aiDescription.trim()) throw new Error('Enter a description of your video');
         sourceText = aiDescription;
       }
-
       const mode = aiTab === 'captions'
         ? (usingVideo ? 'captions_from_video' : 'captions_from_description')
         : 'repurpose_posts';
-
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode,
-          transcript:  usingVideo ? sourceText : undefined,
-          description: !usingVideo ? sourceText : undefined,
-          platforms:   getSelectedPlatforms(),
-          tone:        aiTone,
-        }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode, transcript: usingVideo ? sourceText : undefined, description: !usingVideo ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
       });
       if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
-
       if (data.captions) {
         setGeneratedCaptions(data.captions);
         const first = Object.keys(data.captions)[0];
         if (first) { setContent(data.captions[first]); setActiveCaptionPlatform(first); }
       }
       if (data.posts) setRepurposePosts(data.posts);
-
-    } catch (e: any) {
-      setAiError(e.message || 'Something went wrong');
-    } finally {
-      setAiLoading(false);
-    }
+    } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
+    finally { setAiLoading(false); }
   };
 
   useEffect(() => {
@@ -736,14 +667,10 @@ function PostComposerModal({
     }
   }, [defaultDate]);
 
-  // Upload file for POSTING (attaching media to a post)
-  // Uses XHR with progress for large files — no size limit
   const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
     setU({ status: 'uploading', progress: 0 });
     try {
-      const url = await uploadViaNativeXHR(file, kind, (pct) => {
-        setU({ status: 'uploading', progress: pct });
-      });
+      const url = await uploadViaNativeXHR(file, kind, (pct) => setU({ status: 'uploading', progress: pct }));
       setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
     } catch (e: any) {
       console.error('Upload failed:', e);
@@ -768,16 +695,12 @@ function PostComposerModal({
   };
 
   const handleSubmit = async () => {
-    if (!token)                        { setSubmitError('Not connected. Connect your accounts first.'); return; }
-    if (!selectedIntegrations.length)  { setSubmitError('Select at least one channel.'); return; }
-    if (!content.trim())               { setSubmitError('Write some content first.'); return; }
-
-    // Prevent posting while media is still uploading
-    const stillUploading =
-      videoUpload.status === 'uploading' ||
-      imageUploads.some(u => u.status === 'uploading');
-    if (stillUploading) { setSubmitError('Please wait for media to finish uploading.'); return; }
-
+    if (!token)                       { setSubmitError('Not connected. Connect your accounts first.'); return; }
+    if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
+    if (!content.trim())              { setSubmitError('Write some content first.'); return; }
+    if (videoUpload.status === 'uploading' || imageUploads.some(u => u.status === 'uploading')) {
+      setSubmitError('Please wait for media to finish uploading.'); return;
+    }
     setSubmitting(true); setSubmitError(null);
     try {
       const mediaImages: { id: string; path: string }[] = [];
@@ -785,8 +708,8 @@ function PostComposerModal({
       const videoArr = videoUpload.status === 'done' ? [{ id: 'video-0', path: (videoUpload as any).url }] : [];
       const dateUTC  = scheduleType === 'now' ? new Date().toISOString() : new Date(scheduleDate).toISOString();
       const posts    = selectedIntegrations.map(integId => {
-        const int         = integrations.find(i => i.id === integId);
-        const identifier  = int?.identifier || '';
+        const int        = integrations.find(i => i.id === integId);
+        const identifier = int?.identifier || '';
         const postContent = perPlatform[integId]?.trim() || content;
         return {
           integration: { id: integId },
@@ -811,9 +734,7 @@ function PostComposerModal({
 
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <h2 className="text-base font-bold text-white">Create Post</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
-            <X className="w-4 h-4" />
-          </button>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-5">
@@ -822,9 +743,7 @@ function PostComposerModal({
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
             {integrations.length === 0 ? (
-              <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>
-                No channels connected yet.
-              </div>
+              <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>No channels connected yet.</div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {integrations.map(int => {
@@ -832,15 +751,9 @@ function PostComposerModal({
                   const p = PLATFORMS[int.identifier as PlatformId];
                   return (
                     <button key={int.id}
-                      onClick={() => setSelectedIntegrations(prev =>
-                        prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]
-                      )}
+                      onClick={() => setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id])}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
-                      style={{
-                        borderColor: selected ? (p?.color || GOLD) : BORDER,
-                        background:  selected ? (p?.bg || `${GOLD}15`) : 'transparent',
-                        color:       selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)',
-                      }}>
+                      style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
                       <PlatformIcon id={int.identifier} size="sm" />
                       <span className="max-w-[90px] truncate text-xs">{int.name}</span>
                       {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
@@ -854,8 +767,7 @@ function PostComposerModal({
           {/* Content */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
             <textarea value={content} onChange={e => setContent(e.target.value)}
-              placeholder="What's on your mind? Write your post content here…"
-              rows={5}
+              placeholder="What's on your mind? Write your post content here…" rows={5}
               className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
             <div className="flex items-center gap-1 px-3 py-2.5 border-t" style={{ borderColor: BORDER }}>
               <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
@@ -864,22 +776,16 @@ function PostComposerModal({
                   onChange={e => {
                     const files = Array.from(e.target.files || []);
                     setImageFiles(files);
-                    const states: UploadState[] = files.map(() => ({ status: 'idle' }));
-                    setImageUploads(states);
+                    setImageUploads(files.map(() => ({ status: 'idle' })));
                     files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
                   }} />
               </label>
               <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
                 <Video className="w-3.5 h-3.5" /> Video
                 <input type="file" accept="video/*" className="hidden"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f) { setVideoFile(f); uploadFileForPost(f, 'video', setVideoUpload); }
-                  }} />
+                  onChange={e => { const f = e.target.files?.[0]; if (f) { setVideoFile(f); uploadFileForPost(f, 'video', setVideoUpload); } }} />
               </label>
-              <div className="ml-auto text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
-                {content.length}
-              </div>
+              <div className="ml-auto text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length}</div>
             </div>
           </div>
 
@@ -912,103 +818,60 @@ function PostComposerModal({
                     {videoUpload.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
                   </div>
                   {videoUpload.status === 'uploading' && (
-                    <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(videoUpload as any).progress ?? 0}%` }} />
-                    </div>
+                    <>
+                      <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(videoUpload as any).progress ?? 0}%` }} />
+                      </div>
+                      <span className="text-xs text-white/30">{(videoUpload as any).progress ?? 0}% uploading…</span>
+                    </>
                   )}
-                  {videoUpload.status === 'uploading' && (
-                    <span className="text-xs text-white/30">{(videoUpload as any).progress ?? 0}% uploading…</span>
-                  )}
-                  {videoUpload.status === 'error' && (
-                    <span className="text-xs text-red-400">{(videoUpload as any).message}</span>
-                  )}
+                  {videoUpload.status === 'error' && <span className="text-xs text-red-400">{(videoUpload as any).message}</span>}
                 </div>
               )}
             </div>
           )}
 
-          {/* ── AI PANEL ── */}
+          {/* AI PANEL */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-            <button onClick={() => setShowAiPanel(v => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+            <button onClick={() => setShowAiPanel(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Write & Repurpose</span>
               </div>
               <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showAiPanel ? 'rotate-90' : ''}`} />
             </button>
-
             {showAiPanel && (
               <div className="border-t px-4 pb-4 space-y-4" style={{ borderColor: BORDER }}>
-
                 <div className="flex gap-2 mt-3">
                   {(['captions', 'repurpose'] as const).map(tab => (
-                    <button key={tab} onClick={() => setAiTab(tab)}
-                      className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
-                      style={{
-                        borderColor: aiTab === tab ? GOLD : BORDER,
-                        background:  aiTab === tab ? `${GOLD}18` : 'transparent',
-                        color:       aiTab === tab ? GOLD_L : 'rgba(255,255,255,0.35)',
-                      }}>
+                    <button key={tab} onClick={() => setAiTab(tab)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
+                      style={{ borderColor: aiTab === tab ? GOLD : BORDER, background: aiTab === tab ? `${GOLD}18` : 'transparent', color: aiTab === tab ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
                       {tab === 'captions' ? '✍️ Caption Generator' : '🐦 Twitter & LinkedIn'}
                     </button>
                   ))}
                 </div>
-
-                {aiTab === 'captions' && (
-                  <div className="flex gap-2">
-                    {([['from_video', '🎙 From Video (talking)'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-                      <button key={m} onClick={() => setCaptionMode(m)}
-                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
-                        style={{
-                          borderColor: captionMode === m ? GOLD : BORDER,
-                          background:  captionMode === m ? `${GOLD}12` : 'transparent',
-                          color:       captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)',
-                        }}>
-                        {label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
                 {aiTab === 'repurpose' && (
-                  <>
-                    <div className="text-xs text-white/40 px-1">
-                      Generates 10 Twitter/X posts + 10 LinkedIn posts. Edit and pick one at a time.
-                    </div>
-                    <div className="flex gap-2">
-                      {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-                        <button key={m} onClick={() => setCaptionMode(m)}
-                          className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
-                          style={{
-                            borderColor: captionMode === m ? GOLD : BORDER,
-                            background:  captionMode === m ? `${GOLD}12` : 'transparent',
-                            color:       captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)',
-                          }}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                  </>
+                  <div className="text-xs text-white/40 px-1">Generates 10 Twitter/X posts + 10 LinkedIn posts. Edit and pick one at a time.</div>
                 )}
-
+                <div className="flex gap-2">
+                  {([['from_video', aiTab === 'captions' ? '🎙 From Video (talking)' : '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                      style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 {captionMode === 'from_video' && !videoFile && (
                   <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video using the Video button above first</div>
                 )}
-
                 {captionMode === 'from_description' && (
                   <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
-                    placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…"
-                    rows={3}
-                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none"
-                    style={{ borderColor: BORDER }} />
+                    placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…" rows={3}
+                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
                 )}
-
                 <input value={aiTone} onChange={e => setAiTone(e.target.value)}
                   placeholder="Tone (optional): casual, alex hormozi, luxury, funny, professional…"
-                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none"
-                  style={{ borderColor: BORDER }} />
-
+                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
                 <button onClick={handleAiGenerate} disabled={aiLoading}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
@@ -1016,27 +879,20 @@ function PostComposerModal({
                     ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</>
                     : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
                 </button>
-
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
-
                 {transcript && (
                   <div>
                     <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-1">Transcript</div>
                     <div className="text-xs text-white/40 leading-relaxed line-clamp-2">{transcript}</div>
                   </div>
                 )}
-
                 {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                   <div className="space-y-2">
                     <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
                     {Object.entries(generatedCaptions).map(([platform, caption]) => (
-                      <button key={platform}
-                        onClick={() => { setContent(caption as string); setActiveCaptionPlatform(platform); }}
+                      <button key={platform} onClick={() => { setContent(caption as string); setActiveCaptionPlatform(platform); }}
                         className="w-full text-left p-3 rounded-xl border transition"
-                        style={{
-                          borderColor: activeCaptionPlatform === platform ? GOLD : BORDER,
-                          background:  activeCaptionPlatform === platform ? `${GOLD}10` : 'rgba(0,0,0,0.2)',
-                        }}>
+                        style={{ borderColor: activeCaptionPlatform === platform ? GOLD : BORDER, background: activeCaptionPlatform === platform ? `${GOLD}10` : 'rgba(0,0,0,0.2)' }}>
                         <div className="flex items-center gap-2 mb-1">
                           <PlatformIcon id={platform} size="sm" />
                           <span className="text-xs font-bold capitalize" style={{ color: activeCaptionPlatform === platform ? GOLD : 'rgba(255,255,255,0.4)' }}>
@@ -1049,11 +905,7 @@ function PostComposerModal({
                     ))}
                   </div>
                 )}
-
-                {repurposePosts && (
-                  <RepurposePostSelector posts={repurposePosts} onUsePost={(text) => setContent(text)} />
-                )}
-
+                {repurposePosts && <RepurposePostSelector posts={repurposePosts} onUsePost={(text) => setContent(text)} />}
               </div>
             )}
           </div>
@@ -1082,8 +934,7 @@ function PostComposerModal({
                         <div className="px-4 pb-4 border-t" style={{ borderColor: BORDER }}>
                           <textarea value={perPlatform[integId] || ''}
                             onChange={e => setPerPlatform(prev => ({ ...prev, [integId]: e.target.value }))}
-                            placeholder={`Custom caption for ${int.name}…`}
-                            rows={3}
+                            placeholder={`Custom caption for ${int.name}…`} rows={3}
                             className="w-full mt-3 bg-black/25 rounded-lg border px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none resize-none"
                             style={{ borderColor: BORDER }} />
                         </div>
@@ -1100,21 +951,15 @@ function PostComposerModal({
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
             <div className="flex gap-2 mb-3">
               {(['schedule', 'now'] as const).map(t => (
-                <button key={t} onClick={() => setScheduleType(t)}
-                  className="px-4 py-2 rounded-xl text-sm font-bold border transition"
-                  style={{
-                    borderColor: scheduleType === t ? GOLD : BORDER,
-                    background:  scheduleType === t ? `${GOLD}18` : 'transparent',
-                    color:       scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)',
-                  }}>
+                <button key={t} onClick={() => setScheduleType(t)} className="px-4 py-2 rounded-xl text-sm font-bold border transition"
+                  style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
                   {t === 'schedule' ? '🗓 Schedule' : '⚡ Post Now'}
                 </button>
               ))}
             </div>
             {scheduleType === 'schedule' && (
               <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)}
-                className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none"
-                style={{ borderColor: BORDER }} />
+                className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER }} />
             )}
           </div>
 
@@ -1128,16 +973,12 @@ function PostComposerModal({
 
         <div className="px-6 py-4 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: BORDER }}>
           <span className="text-xs text-white/25">
-            {selectedIntegrations.length > 0
-              ? `${selectedIntegrations.length} channel${selectedIntegrations.length !== 1 ? 's' : ''} selected`
-              : 'No channels selected'}
+            {selectedIntegrations.length > 0 ? `${selectedIntegrations.length} channel${selectedIntegrations.length !== 1 ? 's' : ''} selected` : 'No channels selected'}
           </span>
           <button onClick={handleSubmit} disabled={submitting || submitOk}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
             style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-            {submitting ? <Loader className="w-4 h-4 animate-spin" /> :
-             submitOk   ? <CheckCircle2 className="w-4 h-4" /> :
-                          <Send className="w-4 h-4" />}
+            {submitting ? <Loader className="w-4 h-4 animate-spin" /> : submitOk ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
             {submitting ? 'Scheduling…' : submitOk ? 'Scheduled!' : scheduleType === 'now' ? 'Post Now' : 'Schedule Post'}
           </button>
         </div>
@@ -1150,9 +991,9 @@ function PostComposerModal({
 // CALENDAR PANEL
 // ─────────────────────────────────────────────
 function CalendarPanel({ token, integrations }: { token: string | null; integrations: PostizIntegration[] }) {
-  const [currentDate, setCurrentDate]   = useState(new Date());
-  const [posts, setPosts]               = useState<ScheduledPost[]>([]);
-  const [loading, setLoading]           = useState(false);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [posts, setPosts]             = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]         = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerDate, setComposerDate] = useState<Date | undefined>();
   const [repurposeOpen, setRepurposeOpen] = useState(false);
@@ -1179,7 +1020,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
         scheduledAt: new Date(p.publishDate || p.scheduledAt || p.date),
         status: p.state === 'PUBLISHED' ? 'published' : p.state === 'ERROR' ? 'failed' : 'scheduled',
       })));
-    } catch (e) { /* fail silently */ }
+    } catch (e) {}
     finally { setLoading(false); }
   }, [token, year, month]);
 
@@ -1223,13 +1064,11 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
           </button>
         </div>
       </div>
-
       <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
           <div key={d} className="py-2.5 text-center text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
         ))}
       </div>
-
       <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(100px,1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
@@ -1270,7 +1109,6 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
           );
         })}
       </div>
-
       <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
         integrations={integrations} token={token} defaultDate={composerDate} onSuccess={loadPosts} />
       <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
@@ -1294,10 +1132,8 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
     try {
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const data  = await postizProxy(
-        `/public/v1/posts?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, token
-      );
-      const list = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
+      const data  = await postizProxy(`/public/v1/posts?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, token);
+      const list  = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
       setPosts(list.map((p: any) => ({
         id: p.id || p.postId,
         content: p.value?.[0]?.content || p.content || '',
@@ -1313,7 +1149,7 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
 
   const filtered = posts.filter(p => filter === 'all' || p.status === filter);
   const counts = {
-    all:       posts.length,
+    all: posts.length,
     scheduled: posts.filter(p => p.status === 'scheduled').length,
     published: posts.filter(p => p.status === 'published').length,
     failed:    posts.filter(p => p.status === 'failed').length,
@@ -1339,7 +1175,6 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
           </button>
         </div>
       </div>
-
       <div className="grid grid-cols-3 gap-4 px-8 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
         {[
           { key: 'scheduled', label: 'Scheduled', color: GOLD },
@@ -1353,43 +1188,29 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
           </div>
         ))}
       </div>
-
       <div className="flex items-center gap-1 px-8 py-3 border-b shrink-0" style={{ borderColor: BORDER }}>
         {(['all', 'scheduled', 'published', 'failed'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize"
-            style={{
-              background: filter === f ? `${GOLD}18` : 'transparent',
-              color:      filter === f ? GOLD_L : 'rgba(255,255,255,0.35)',
-            }}>
+          <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize"
+            style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
             {f} {f !== 'all' && <span className="ml-1 opacity-60">{counts[f]}</span>}
           </button>
         ))}
         {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20" />}
       </div>
-
       <div className="flex-1 overflow-y-auto px-8 py-5">
         {!token ? (
           <div className="flex flex-col items-center justify-center h-56 text-center">
-            <div className="w-16 h-16 rounded-2xl border mb-4 flex items-center justify-center" style={{ borderColor: BORDER }}>
-              <Link2Off className="w-7 h-7 text-white/15" />
-            </div>
+            <div className="w-16 h-16 rounded-2xl border mb-4 flex items-center justify-center" style={{ borderColor: BORDER }}><Link2Off className="w-7 h-7 text-white/15" /></div>
             <div className="text-sm font-bold text-white/30">Connect your accounts to get started</div>
           </div>
         ) : loading && posts.length === 0 ? (
-          <div className="flex items-center justify-center h-40 gap-3 text-white/25">
-            <Loader className="w-5 h-5 animate-spin" /> Loading posts…
-          </div>
+          <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading posts…</div>
         ) : filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-56 text-center">
-            <div className="w-14 h-14 rounded-2xl border mb-4 flex items-center justify-center" style={{ borderColor: BORDER }}>
-              <Edit3 className="w-6 h-6 text-white/15" />
-            </div>
+            <div className="w-14 h-14 rounded-2xl border mb-4 flex items-center justify-center" style={{ borderColor: BORDER }}><Edit3 className="w-6 h-6 text-white/15" /></div>
             <div className="text-sm font-bold text-white/30">No {filter === 'all' ? '' : filter} posts yet</div>
             {filter === 'all' && (
-              <button onClick={() => setComposerOpen(true)}
-                className="mt-4 px-4 py-2 rounded-xl text-sm font-bold hover:brightness-110 transition"
-                style={{ background: GOLD, color: '#000' }}>
+              <button onClick={() => setComposerOpen(true)} className="mt-4 px-4 py-2 rounded-xl text-sm font-bold hover:brightness-110 transition" style={{ background: GOLD, color: '#000' }}>
                 Create your first post
               </button>
             )}
@@ -1397,17 +1218,13 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
         ) : (
           <div className="space-y-2">
             {filtered.map(post => (
-              <div key={post.id} className="flex items-start gap-4 p-4 rounded-xl border hover:bg-white/3 transition cursor-pointer"
-                style={{ borderColor: BORDER }}>
+              <div key={post.id} className="flex items-start gap-4 p-4 rounded-xl border hover:bg-white/3 transition cursor-pointer" style={{ borderColor: BORDER }}>
                 <div className="flex -space-x-1.5 shrink-0 pt-0.5">
                   {post.platforms.slice(0, 3).map((pid, i) => (
-                    <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
-                      <PlatformIcon id={pid} size="sm" />
-                    </div>
+                    <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
                   ))}
                   {post.platforms.length > 3 && (
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2"
-                      style={{ borderColor: SURFACE, background: SURFACE }}>
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
                       +{post.platforms.length - 3}
                     </div>
                   )}
@@ -1433,9 +1250,7 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
           </div>
         )}
       </div>
-
-      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
-        integrations={integrations} token={token} onSuccess={loadPosts} />
+      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)} integrations={integrations} token={token} onSuccess={loadPosts} />
       <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
     </div>
   );
@@ -1462,7 +1277,6 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
           </div>
         </div>
       </div>
-
       <nav className="px-3 py-4 space-y-0.5">
         {([
           { id: 'composer', label: 'Posts',    icon: <Edit3 className="w-4 h-4" /> },
@@ -1470,33 +1284,25 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
         ] as { id: ViewMode; label: string; icon: React.ReactNode }[]).map(item => (
           <button key={item.id} onClick={() => setView(item.id)}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition"
-            style={{
-              background:  view === item.id ? `${GOLD}15` : 'transparent',
-              color:       view === item.id ? GOLD_L : 'rgba(255,255,255,0.4)',
-              borderLeft:  view === item.id ? `2px solid ${GOLD}` : '2px solid transparent',
-            }}>
+            style={{ background: view === item.id ? `${GOLD}15` : 'transparent', color: view === item.id ? GOLD_L : 'rgba(255,255,255,0.4)', borderLeft: view === item.id ? `2px solid ${GOLD}` : '2px solid transparent' }}>
             {item.icon} {item.label}
           </button>
         ))}
       </nav>
-
       <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: BORDER }}>
         <div className="flex items-center justify-between px-1 mb-2">
           <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Channels</span>
-          <button onClick={onOpenConnect}
-            className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
+          <button onClick={onOpenConnect} className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
             <Plus className="w-3.5 h-3.5" />
           </button>
         </div>
         {!postizToken ? (
-          <button onClick={onOpenConnect}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
+          <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
             style={{ borderColor: `${GOLD}35`, color: GOLD }}>
             <Link2 className="w-3.5 h-3.5" /> Connect accounts
           </button>
         ) : integrations.length === 0 ? (
-          <button onClick={onOpenConnect}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
+          <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
             style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
             <Plus className="w-3.5 h-3.5" /> Add channels
           </button>
@@ -1524,8 +1330,7 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
   onConnect: () => void; onDisconnect: () => void; onRefresh: () => void; onOpenConnect: () => void;
 }) {
   return (
-    <div className="h-12 border-b flex items-center justify-between px-6 shrink-0"
-      style={{ background: SURFACE, borderColor: BORDER }}>
+    <div className="h-12 border-b flex items-center justify-between px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
       <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-white transition">
         <ArrowLeft className="w-3.5 h-3.5" /> Back
       </Link>
@@ -1569,12 +1374,11 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
-
-  const [postizToken, setPostizToken]                   = useState<string | null>(() => localStorage.getItem(LS_TOKEN_KEY));
-  const [integrations, setIntegrations]                 = useState<PostizIntegration[]>([]);
-  const [integrationsLoading, setIntegrationsLoading]   = useState(false);
-  const [oauthLoading, setOauthLoading]                 = useState(false);
-  const [oauthError, setOauthError]                     = useState<string | null>(null);
+  const [postizToken, setPostizToken]           = useState<string | null>(() => localStorage.getItem(LS_TOKEN_KEY));
+  const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
+  const [integrationsLoading, setIntegrationsLoading] = useState(false);
+  const [oauthLoading, setOauthLoading]         = useState(false);
+  const [oauthError, setOauthError]             = useState<string | null>(null);
 
   const loadIntegrations = useCallback(async (token: string) => {
     setIntegrationsLoading(true);
@@ -1669,9 +1473,7 @@ export function MediaDistributionPage() {
         <div className="flex items-center gap-3 px-6 py-3 text-sm text-red-200 shrink-0 z-50"
           style={{ background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.18)' }}>
           <AlertCircle className="w-4 h-4 shrink-0 text-red-300" /> {oauthError}
-          <button onClick={() => setOauthError(null)} className="ml-auto text-red-300/60 hover:text-red-200 transition">
-            <X className="w-4 h-4" />
-          </button>
+          <button onClick={() => setOauthError(null)} className="ml-auto text-red-300/60 hover:text-red-200 transition"><X className="w-4 h-4" /></button>
         </div>
       )}
 
