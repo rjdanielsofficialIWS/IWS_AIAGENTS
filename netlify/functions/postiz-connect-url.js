@@ -12,7 +12,7 @@
 //
 // No API call needed — this just constructs the URL server-side.
 
-const POSTIZ_FRONTEND_URL = 'https://www.tiktok.com/v2/auth/authorize/?client_key=awfz2mivhmm64h6g&redirect_uri=https%3A%2F%2Fplatform.postiz.com%2Fintegrations%2Fsocial%2Ftiktok&state=f4oel1iv7st&response_type=code&scope=video.list%2Cuser.info.basic%2Cvideo.publish%2Cvideo.upload%2Cuser.info.profile%2Cuser.info.stats';
+const POSTIZ_FRONTEND_URL = 'https://www.postiz.infitewealthsolutionsai.com';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
