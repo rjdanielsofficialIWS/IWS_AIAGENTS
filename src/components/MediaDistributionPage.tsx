@@ -459,7 +459,6 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
   const [ideas, setIdeas] = useState<any | null>(null);
 
   const uploadVideo = async (file: File) => {
-    if (file.size > 49 * 1024 * 1024) { setVideoUpload({ status: 'error', message: 'File too large (max 49MB)' }); return; }
     setVideoUpload({ status: 'uploading' });
     try {
       const ext = file.name.split('.').pop();
@@ -811,7 +810,6 @@ function PostComposerModal({
   };
 
   const uploadFile = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
-    if (file.size > MAX_BYTES) { setU({ status: 'error', message: `File too large. Max ${prettyBytes(MAX_BYTES)}` }); return; }
     setU({ status: 'uploading' } as UploadState);
     try {
       const ext  = file.name.split('.').pop();
