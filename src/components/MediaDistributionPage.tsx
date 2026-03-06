@@ -233,7 +233,26 @@ function ConnectAccountsModal({
         ) : (
           <div className="overflow-y-auto flex-1 p-6 space-y-5">
 
-            {/* Connected channels list */}
+            {/* TikTok highlight banner — shown when TikTok not yet connected */}
+            {!integrations.find(i => i.identifier === 'tiktok') && (
+              <div className="rounded-xl border p-4 flex items-center gap-4"
+                style={{ borderColor: 'rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>
+                  {PLATFORMS.tiktok.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-white">Connect TikTok</div>
+                  <div className="text-xs text-white/40 mt-0.5">Schedule & publish videos directly to TikTok</div>
+                </div>
+                <button
+                  onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110 shrink-0"
+                  style={{ background: GOLD, color: '#000' }}>
+                  Connect
+                </button>
+              </div>
+            )}
             {integrations.length > 0 && (
               <div>
                 <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
@@ -262,8 +281,8 @@ function ConnectAccountsModal({
               </div>
               {[
                 { n: '1', text: 'Click "Open Postiz" below — it opens in a new tab' },
-                { n: '2', text: 'In the left sidebar, click the "+" icon next to Channels' },
-                { n: '3', text: 'Pick a platform (Instagram, TikTok, etc.) and authorize it' },
+                { n: '2', text: 'Find the platform you want (e.g. TikTok) and click Connect' },
+                { n: '3', text: 'Authorize the platform — it only takes a few seconds' },
                 { n: '4', text: 'Come back to this tab and click "Refresh Channels"' },
               ].map(step => (
                 <div key={step.n} className="flex items-start gap-3">
@@ -279,7 +298,7 @@ function ConnectAccountsModal({
             {/* Action buttons */}
             <div className="flex flex-col gap-2">
               <button
-                onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/launches`, '_blank')}
+                onClick={() => window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank')}
                 className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition hover:brightness-110"
                 style={{ background: GOLD, color: '#000' }}>
                 <Link2 className="w-4 h-4" /> Open Postiz to Add a Channel
