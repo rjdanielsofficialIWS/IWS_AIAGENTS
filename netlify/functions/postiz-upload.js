@@ -1,3 +1,7 @@
+// netlify/functions/postiz-upload.js
+// Returns the Postiz API key so the browser can upload directly.
+// Postiz CORS is open, so no binary proxying needed.
+
 exports.handler = async (event) => {
   const cors = {
     'Access-Control-Allow-Origin': '*',
