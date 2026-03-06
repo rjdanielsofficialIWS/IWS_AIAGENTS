@@ -382,11 +382,10 @@ function PostComposerModal({
 
     try {
       let sourceText = '';
+      const usingVideo = captionMode === 'from_video';
 
-      // For video-based modes, transcribe first
-      if ((aiTab === 'captions' && captionMode === 'from_video') ||
-          (aiTab === 'repurpose' && repurposeMode !== 'posts' && captionMode === 'from_video')) {
-        if (videoUpload.status !== 'done') throw new Error('Upload a video first');
+      if (usingVideo) {
+        if (videoUpload.status !== 'done') throw new Error('Upload a talking video first');
         const videoUrl = (videoUpload as any).url;
         const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
           method: 'POST',
@@ -405,7 +404,7 @@ function PostComposerModal({
       // Determine mode
       let mode = '';
       if (aiTab === 'captions') {
-        mode = captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description';
+        mode = usingVideo ? 'captions_from_video' : 'captions_from_description';
       } else {
         mode = repurposeMode === 'ideas' ? 'repurpose_ideas' : 'repurpose_posts';
       }
@@ -415,8 +414,8 @@ function PostComposerModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode,
-          transcript: captionMode === 'from_video' ? sourceText : undefined,
-          description: captionMode === 'from_description' ? sourceText : undefined,
+          transcript: usingVideo ? sourceText : undefined,
+          description: !usingVideo ? sourceText : undefined,
           platforms: getSelectedPlatforms(),
           tone: aiTone,
         }),
