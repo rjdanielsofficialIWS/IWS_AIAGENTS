@@ -152,21 +152,12 @@ async function uploadViaNativeXHR(
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
-  // Fetch the API key securely from our Netlify key-dispenser function
-  const keyRes = await fetch('/.netlify/functions/postiz-upload');
-  if (!keyRes.ok) throw new Error('Could not retrieve upload credentials');
-  const { apiKey } = await keyRes.json();
-  if (!apiKey) throw new Error('POSTIZ_API_KEY not configured in Netlify environment variables');
-
   const formData = new FormData();
   formData.append('file', file);
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    // Upload directly to Postiz — CORS is open, no binary proxying needed
-    xhr.open('POST', `${POSTIZ_API_URL}/public/v1/upload`);
-    // Raw API key, no Bearer prefix — this is what Postiz expects
-    xhr.setRequestHeader('Authorization', apiKey);
+    xhr.open('POST', '/.netlify/functions/postiz-upload');
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
@@ -181,10 +172,10 @@ async function uploadViaNativeXHR(
           if (!data.path) throw new Error('No path in upload response');
           resolve(data.path);
         } catch {
-          reject(new Error('Invalid response from Postiz upload'));
+          reject(new Error('Invalid response from upload proxy'));
         }
       } else {
-        console.error('Postiz upload failed:', xhr.status, xhr.responseText);
+        console.error('Upload proxy failed:', xhr.status, xhr.responseText);
         reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
       }
     };
