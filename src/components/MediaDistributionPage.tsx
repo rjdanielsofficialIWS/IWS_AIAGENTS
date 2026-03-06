@@ -816,11 +816,14 @@ function PostComposerModal({
     try {
       const ext  = file.name.split('.').pop();
       const path = `media-machine/${kind}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
-      const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type });
-      if (error) throw new Error(error.message);
+      const { error } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type, upsert: true });
+      if (error) throw new Error(error.message || JSON.stringify(error));
       const url = await getPublicOrSignedUrl(path);
       setU({ status: 'done', path, url, fileName: file.name, mime: file.type, size: file.size });
-    } catch (e: any) { setU({ status: 'error', message: e.message }); }
+    } catch (e: any) { 
+      console.error('Upload failed:', e);
+      setU({ status: 'error', message: e.message || 'Upload failed' }); 
+    }
   };
 
   const buildSettings = (identifier: string, postContent: string) => {
@@ -963,11 +966,17 @@ function PostComposerModal({
                 );
               })}
               {videoFile && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm text-white/60" style={{ borderColor: BORDER }}>
-                  <Video className="w-4 h-4" />
-                  <span className="truncate max-w-[130px] text-xs">{videoFile.name}</span>
-                  {videoUpload.status === 'uploading' && <Loader className="w-3.5 h-3.5 animate-spin" />}
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm" 
+                  style={{ borderColor: videoUpload.status === 'error' ? 'rgba(239,68,68,0.4)' : BORDER }}>
+                  <Video className="w-4 h-4 text-white/40" />
+                  <span className="truncate max-w-[130px] text-xs text-white/60">{videoFile.name}</span>
+                  {videoUpload.status === 'uploading' && <Loader className="w-3.5 h-3.5 animate-spin text-white/40" />}
                   {videoUpload.status === 'done'      && <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />}
+                  {videoUpload.status === 'error'     && (
+                    <span className="text-xs text-red-400 truncate max-w-[120px]">
+                      ✕ {(videoUpload as any).message}
+                    </span>
+                  )}
                 </div>
               )}
             </div>
