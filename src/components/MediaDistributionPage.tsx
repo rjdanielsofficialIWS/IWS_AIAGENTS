@@ -156,7 +156,7 @@ async function uploadViaNativeXHR(
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${SUPABASE_URL}/functions/v1/upload-media`);
+    xhr.open('POST', '/.netlify/functions/upload-media');
     xhr.setRequestHeader('x-file-path', path);
     xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
 
