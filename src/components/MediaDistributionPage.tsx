@@ -169,14 +169,13 @@ async function uploadViaNativeXHR(
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
-          if (!data.path) throw new Error('No path in upload response');
+          if (!data.path) throw new Error('No path in response');
           resolve(data.path);
         } catch {
           reject(new Error('Invalid response from upload proxy'));
         }
       } else {
-        console.error('Upload proxy failed:', xhr.status, xhr.responseText);
-        reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
+        reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`));
       }
     };
     xhr.onerror = () => reject(new Error('Network error during upload'));
