@@ -19,9 +19,9 @@ const BORDER  = 'rgba(255,255,255,0.08)';
 // ─────────────────────────────────────────────
 // POSTIZ CONFIG
 // ─────────────────────────────────────────────
-const POSTIZ_FRONTEND_URL = 'https://www.tiktok.com/v2/auth/authorize/?client_key=awfz2mivhmm64h6g&redirect_uri=https%3A%2F%2Fplatform.postiz.com%2Fintegrations%2Fsocial%2Ftiktok&state=elfh1gyabkl&response_type=code&scope=video.list%2Cuser.info.basic%2Cvideo.publish%2Cvideo.upload%2Cuser.info.profile%2Cuser.info.stats';
+const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
-const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine/oauth/postiz/callback';
+const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
 // localStorage keys
 const LS_TOKEN_KEY           = 'postiz_access_token';    // Postiz OAuth access token
@@ -350,6 +350,58 @@ function PostComposerModal({
   const [aiLoading, setAiLoading]   = useState(false);
   const [tone, setTone]             = useState('engaging, value-first');
   const [showAi, setShowAi]         = useState(false);
+  const [transcribing, setTranscribing]         = useState(false);
+  const [transcript, setTranscript]             = useState<string | null>(null);
+  const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
+  const [transcribeError, setTranscribeError]   = useState<string | null>(null);
+  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
+
+  const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
+
+  const handleTranscribeAndGenerate = async () => {
+    if (videoUpload.status !== 'done') return;
+    const videoUrl = (videoUpload as any).url;
+    setTranscribing(true);
+    setTranscribeError(null);
+    setTranscript(null);
+    setGeneratedCaptions(null);
+    try {
+      // Step 1: Transcribe
+      const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl }),
+      });
+      if (!transcribeRes.ok) throw new Error('Transcription failed');
+      const { transcript: t } = await transcribeRes.json();
+      setTranscript(t);
+
+      // Step 2: Generate platform-specific captions
+      const platforms = selectedIntegrations.length > 0
+        ? selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean)
+        : ['tiktok', 'instagram', 'linkedin', 'x'];
+
+      const captionRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ transcript: t, platforms, tone }),
+      });
+      if (!captionRes.ok) throw new Error('Caption generation failed');
+      const { captions } = await captionRes.json();
+      setGeneratedCaptions(captions);
+
+      // Auto-fill content with first available caption
+      const firstPlatform = platforms[0] as string;
+      if (captions[firstPlatform]) {
+        setContent(captions[firstPlatform]);
+        setActiveCaptionPlatform(firstPlatform);
+      }
+    } catch (e: any) {
+      setTranscribeError(e.message || 'Something went wrong');
+    } finally {
+      setTranscribing(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) {
@@ -358,6 +410,8 @@ function PostComposerModal({
       setImageFiles([]); setImageUploads([]);
       setSubmitOk(false); setSubmitError(null);
       setShowAi(false); setExpandedPlatform(null);
+      setTranscript(null); setGeneratedCaptions(null);
+      setTranscribeError(null); setActiveCaptionPlatform(null);
     }
   }, [open]);
 
@@ -444,11 +498,6 @@ function PostComposerModal({
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <h2 className="text-base font-bold text-white">Create Post</h2>
           <div className="flex items-center gap-2">
-            <button onClick={() => setShowAi(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:bg-white/10"
-              style={{ color: showAi ? GOLD_L : 'rgba(255,255,255,0.4)', background: showAi ? `${GOLD}18` : 'transparent' }}>
-              <Sparkles className="w-3.5 h-3.5" /> AI Write
-            </button>
             <button onClick={onClose}
               className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
               <X className="w-4 h-4" />
@@ -490,30 +539,6 @@ function PostComposerModal({
               </div>
             )}
           </div>
-
-          {/* AI panel */}
-          {showAi && (
-            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${GOLD}30`, background: `${GOLD}06` }}>
-              <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Caption Generator</div>
-              <input value={tone} onChange={e => setTone(e.target.value)}
-                placeholder="Tone: confident, engaging, value-first…"
-                className="w-full rounded-lg border bg-black/30 px-3 py-2 text-sm text-white placeholder-white/25 outline-none"
-                style={{ borderColor: BORDER }} />
-              <button onClick={async () => {
-                setAiLoading(true);
-                try {
-                  const { data, error } = await supabase.functions.invoke('content-ai', { body: { tone, content } });
-                  if (error) throw error;
-                  if (data?.best?.instagram) setContent(data.best.instagram);
-                } catch (e: any) { setSubmitError(e.message); }
-                finally { setAiLoading(false); }
-              }} disabled={aiLoading}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold disabled:opacity-40 transition hover:brightness-110"
-                style={{ background: GOLD, color: '#000' }}>
-                {aiLoading ? <Loader className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />} Generate
-              </button>
-            </div>
-          )}
 
           {/* Content */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
@@ -568,7 +593,80 @@ function PostComposerModal({
             </div>
           )}
 
-          {/* Per-platform customization */}
+          {/* Transcribe & Generate Captions — shown after video uploaded */}
+          {videoUpload.status === 'done' && (
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}06` }}>
+              <div className="px-4 py-3 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
+                    🎙 AI Transcribe & Generate Captions
+                  </div>
+                  <div className="text-xs text-white/40 mt-0.5">
+                    Transcribes your video and writes platform-specific captions
+                  </div>
+                </div>
+                <button
+                  onClick={handleTranscribeAndGenerate}
+                  disabled={transcribing}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                  style={{ background: GOLD, color: '#000' }}>
+                  {transcribing
+                    ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Transcribing…</>
+                    : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
+                </button>
+              </div>
+
+              {/* Tone input */}
+              {!generatedCaptions && (
+                <div className="px-4 pb-3">
+                  <input value={tone} onChange={e => setTone(e.target.value)}
+                    placeholder="Tone: confident, engaging, value-first…"
+                    className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none"
+                    style={{ borderColor: BORDER }} />
+                </div>
+              )}
+
+              {/* Error */}
+              {transcribeError && (
+                <div className="px-4 pb-3 text-xs text-red-300">{transcribeError}</div>
+              )}
+
+              {/* Transcript preview */}
+              {transcript && (
+                <div className="px-4 pb-3 border-t" style={{ borderColor: BORDER }}>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-1 mt-3">Transcript</div>
+                  <div className="text-xs text-white/50 leading-relaxed line-clamp-3">{transcript}</div>
+                </div>
+              )}
+
+              {/* Generated captions per platform */}
+              {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
+                <div className="px-4 pb-4 border-t space-y-2" style={{ borderColor: BORDER }}>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mt-3 mb-2">
+                    Generated Captions — click to use
+                  </div>
+                  {Object.entries(generatedCaptions).map(([platform, caption]) => (
+                    <button key={platform}
+                      onClick={() => { setContent(caption); setActiveCaptionPlatform(platform); }}
+                      className="w-full text-left p-3 rounded-xl border transition hover:brightness-110"
+                      style={{
+                        borderColor: activeCaptionPlatform === platform ? GOLD : BORDER,
+                        background: activeCaptionPlatform === platform ? `${GOLD}12` : 'rgba(0,0,0,0.2)',
+                      }}>
+                      <div className="flex items-center gap-2 mb-1">
+                        <PlatformIcon id={platform} size="sm" />
+                        <span className="text-xs font-bold capitalize" style={{ color: activeCaptionPlatform === platform ? GOLD : 'rgba(255,255,255,0.5)' }}>
+                          {PLATFORMS[platform as PlatformId]?.label || platform}
+                        </span>
+                        {activeCaptionPlatform === platform && <CheckCircle2 className="w-3 h-3 ml-auto" style={{ color: GOLD }} />}
+                      </div>
+                      <div className="text-xs text-white/60 leading-relaxed line-clamp-3">{caption}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {selectedIntegrations.length > 0 && (
             <div>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">
