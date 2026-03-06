@@ -32,7 +32,7 @@ const LS_SOCIAL_RETURN_KEY   = 'postiz_social_return';   // flag: user is return
 // SUPABASE STORAGE
 // ─────────────────────────────────────────────
 const BUCKET          = 'media';
-const MAX_BYTES       = 49 * 1024 * 1024;
+
 const SIGNED_URL_SECS = 60 * 60 * 24 * 7;
 
 // ─────────────────────────────────────────────
