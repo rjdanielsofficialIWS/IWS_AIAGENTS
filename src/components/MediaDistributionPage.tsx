@@ -453,33 +453,21 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
   const [description, setDescription] = useState('');
   const [tone, setTone] = useState('');
   const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoUpload, setVideoUpload] = useState<UploadState>({ status: 'idle' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ideas, setIdeas] = useState<any | null>(null);
-
-  const uploadVideo = async (file: File) => {
-    setVideoUpload({ status: 'uploading' });
-    try {
-      const ext = file.name.split('.').pop();
-      const path = `repurpose/${Date.now()}.${ext}`;
-      const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, file, { contentType: file.type });
-      if (upErr) throw new Error(upErr.message);
-      const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
-      const url = pub?.data?.publicUrl || '';
-      setVideoUpload({ status: 'done', path, url, fileName: file.name, mime: file.type, size: file.size });
-    } catch (e: any) { setVideoUpload({ status: 'error', message: e.message }); }
-  };
 
   const handleGenerate = async () => {
     setLoading(true); setError(null); setIdeas(null);
     try {
       let source = '';
       if (captionMode === 'from_video') {
-        if (videoUpload.status !== 'done') throw new Error('Upload a video first');
+        if (!videoFile) throw new Error('Select a video first');
+        const form = new FormData();
+        form.append('file', videoFile, videoFile.name);
         const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoUrl: (videoUpload as any).url }),
+          method: 'POST',
+          body: form,
         });
         if (!transcribeRes.ok) throw new Error('Transcription failed');
         const { transcript } = await transcribeRes.json();
@@ -501,7 +489,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
 
   const reset = () => {
     setDescription(''); setTone(''); setVideoFile(null);
-    setVideoUpload({ status: 'idle' }); setIdeas(null); setError(null);
+    setIdeas(null); setError(null);
   };
 
   if (!open) return null;
@@ -543,29 +531,21 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
           {/* Video upload */}
           {captionMode === 'from_video' && (
             <div>
-              {videoUpload.status === 'idle' && (
+              {!videoFile ? (
                 <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition"
                   style={{ borderColor: BORDER }}>
                   <Video className="w-6 h-6 text-white/25" />
-                  <span className="text-xs text-white/40">Click to upload your talking video</span>
+                  <span className="text-xs text-white/40">Click to select your talking video</span>
+                  <span className="text-xs text-white/20">Any size supported</span>
                   <input type="file" accept="video/*" className="hidden"
-                    onChange={e => { const f = e.target.files?.[0]; if (f) { setVideoFile(f); uploadVideo(f); } }} />
+                    onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
                 </label>
-              )}
-              {videoUpload.status === 'uploading' && (
-                <div className="flex items-center gap-2 p-3 rounded-xl border text-xs text-white/40" style={{ borderColor: BORDER }}>
-                  <Loader className="w-4 h-4 animate-spin" /> Uploading…
-                </div>
-              )}
-              {videoUpload.status === 'done' && (
+              ) : (
                 <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                  <CheckCircle2 className="w-4 h-4 text-green-400" />
-                  <span className="text-white/60 truncate">{(videoUpload as any).fileName}</span>
-                  <button onClick={reset} className="ml-auto text-white/30 hover:text-white transition"><X className="w-3.5 h-3.5" /></button>
+                  <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                  <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
+                  <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
                 </div>
-              )}
-              {videoUpload.status === 'error' && (
-                <div className="text-xs text-red-300 px-1">{(videoUpload as any).message}</div>
               )}
             </div>
           )}
@@ -728,12 +708,13 @@ function PostComposerModal({
       const usingVideo = captionMode === 'from_video';
 
       if (usingVideo) {
-        if (videoUpload.status !== 'done') throw new Error('Upload a talking video first');
-        const videoUrl = (videoUpload as any).url;
+        if (!videoFile) throw new Error('Upload a talking video first');
+        // Send file directly to transcribe function — no Supabase storage needed
+        const form = new FormData();
+        form.append('file', videoFile, videoFile.name);
         const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoUrl }),
+          body: form,
         });
         if (!transcribeRes.ok) throw new Error('Transcription failed');
         const { transcript: t } = await transcribeRes.json();
@@ -1053,7 +1034,7 @@ function PostComposerModal({
                 )}
 
                 {/* Warning: video not uploaded yet */}
-                {captionMode === 'from_video' && videoUpload.status !== 'done' && (
+                {captionMode === 'from_video' && !videoFile && (
                   <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above first to use this mode</div>
                 )}
 
