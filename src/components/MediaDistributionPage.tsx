@@ -144,22 +144,21 @@ async function fetchIntegrations(token: string): Promise<PostizIntegration[]> {
 }
 
 // ─────────────────────────────────────────────
-// Upload via edge function — uses service role key, no size limit
+// Upload via Netlify proxy → Postiz (no CORS, no size limit)
 // ─────────────────────────────────────────────
 async function uploadViaNativeXHR(
   file: File,
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
-  // Upload directly to self-hosted Postiz — stored on DigitalOcean, no size limit
   const token = localStorage.getItem(LS_TOKEN_KEY);
   const formData = new FormData();
   formData.append('file', file);
+  if (token) formData.append('token', token);
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${POSTIZ_FRONTEND_URL}/api/public/v1/upload`);
-    if (token) xhr.setRequestHeader('Authorization', token);
+    xhr.open('POST', '/.netlify/functions/postiz-upload');
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
@@ -172,12 +171,13 @@ async function uploadViaNativeXHR(
         try {
           const data = JSON.parse(xhr.responseText);
           // Postiz returns { id, path, name, ... } — path is the public URL
+          if (!data.path) throw new Error('No path in response');
           resolve(data.path);
         } catch {
-          reject(new Error('Invalid response from Postiz upload'));
+          reject(new Error('Invalid response from upload proxy'));
         }
       } else {
-        console.error('Postiz upload failed:', xhr.status, xhr.responseText);
+        console.error('Upload proxy failed:', xhr.status, xhr.responseText);
         reject(new Error(`Upload failed: ${xhr.status} ${xhr.responseText}`));
       }
     };
