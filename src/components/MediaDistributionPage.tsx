@@ -144,8 +144,7 @@ async function fetchIntegrations(token: string): Promise<PostizIntegration[]> {
 }
 
 // ─────────────────────────────────────────────
-// Upload a file directly via fetch (bypasses Supabase JS client 50MB limit)
-// Uses a Netlify function as a proxy to get a signed upload URL
+// Upload via edge function — uses service role key, no size limit
 // ─────────────────────────────────────────────
 async function uploadViaNativeXHR(
   file: File,
@@ -155,44 +154,34 @@ async function uploadViaNativeXHR(
   const ext  = file.name.split('.').pop() || 'mp4';
   const path = `media-machine/${kind}/${Date.now()}-${Math.random().toString(16).slice(2)}.${ext}`;
 
-  // Get a signed upload URL from Supabase via service role key (through edge function)
-  const signedRes = await fetch(`${SUPABASE_URL}/functions/v1/get-upload-url`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, contentType: file.type || 'video/mp4' }),
-  });
-
-  if (!signedRes.ok) {
-    // Fallback: try direct Supabase JS upload (works for smaller files)
-    const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-      contentType: file.type,
-      upsert: true,
-    });
-    if (error) throw new Error(error.message);
-    const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
-    return pub.data.publicUrl;
-  }
-
-  const { signedUrl, token: uploadToken } = await signedRes.json();
-
-  // Upload directly to the signed URL using XHR for progress tracking
-  await new Promise<void>((resolve, reject) => {
+  return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('PUT', signedUrl);
-    xhr.setRequestHeader('Content-Type', file.type || 'video/mp4');
-    xhr.setRequestHeader('x-upsert', 'true');
+    xhr.open('POST', `${SUPABASE_URL}/functions/v1/upload-media`);
+    xhr.setRequestHeader('x-file-path', path);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
       };
     }
-    xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`));
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          const data = JSON.parse(xhr.responseText);
+          resolve(data.url);
+        } catch { reject(new Error('Invalid response from upload')); }
+      } else {
+        try {
+          const err = JSON.parse(xhr.responseText);
+          reject(new Error(err.error || `Upload failed: ${xhr.status}`));
+        } catch { reject(new Error(`Upload failed: ${xhr.status}`)); }
+      }
+    };
     xhr.onerror = () => reject(new Error('Network error during upload'));
     xhr.send(file);
   });
-
-  const pub = supabase.storage.from(BUCKET).getPublicUrl(path);
-  return pub.data.publicUrl;
 }
 
 // ─────────────────────────────────────────────
