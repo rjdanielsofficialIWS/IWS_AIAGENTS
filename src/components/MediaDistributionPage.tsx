@@ -347,59 +347,95 @@ function PostComposerModal({
   const [submitting, setSubmitting] = useState(false);
   const [submitOk, setSubmitOk]     = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [aiLoading, setAiLoading]   = useState(false);
-  const [tone, setTone]             = useState('engaging, value-first');
-  const [showAi, setShowAi]         = useState(false);
-  const [transcribing, setTranscribing]         = useState(false);
-  const [transcript, setTranscript]             = useState<string | null>(null);
-  const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
-  const [transcribeError, setTranscribeError]   = useState<string | null>(null);
-  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
-
   const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
-  const handleTranscribeAndGenerate = async () => {
-    if (videoUpload.status !== 'done') return;
-    const videoUrl = (videoUpload as any).url;
-    setTranscribing(true);
-    setTranscribeError(null);
-    setTranscript(null);
+  // ── AI STATE ──
+  type AiTab = 'captions' | 'repurpose';
+  type CaptionMode = 'from_video' | 'from_description';
+  type RepurposeMode = 'ideas' | 'posts';
+
+  const [aiTab, setAiTab]                       = useState<AiTab>('captions');
+  const [captionMode, setCaptionMode]           = useState<CaptionMode>('from_video');
+  const [repurposeMode, setRepurposeMode]       = useState<RepurposeMode>('ideas');
+  const [aiTone, setAiTone]                     = useState('');
+  const [aiDescription, setAiDescription]       = useState('');
+  const [aiLoading, setAiLoading]               = useState(false);
+  const [aiError, setAiError]                   = useState<string | null>(null);
+  const [transcript, setTranscript]             = useState<string | null>(null);
+  const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
+  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
+  const [repurposeIdeas, setRepurposeIdeas]     = useState<any | null>(null);
+  const [repurposePosts, setRepurposePosts]     = useState<any | null>(null);
+  const [showAiPanel, setShowAiPanel]           = useState(false);
+
+  const getSelectedPlatforms = () =>
+    selectedIntegrations.length > 0
+      ? selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[]
+      : ['tiktok', 'instagram', 'linkedin', 'x'];
+
+  const handleAiGenerate = async () => {
+    setAiLoading(true);
+    setAiError(null);
     setGeneratedCaptions(null);
+    setRepurposeIdeas(null);
+    setRepurposePosts(null);
+
     try {
-      // Step 1: Transcribe
-      const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl }),
-      });
-      if (!transcribeRes.ok) throw new Error('Transcription failed');
-      const { transcript: t } = await transcribeRes.json();
-      setTranscript(t);
+      let sourceText = '';
 
-      // Step 2: Generate platform-specific captions
-      const platforms = selectedIntegrations.length > 0
-        ? selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean)
-        : ['tiktok', 'instagram', 'linkedin', 'x'];
-
-      const captionRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript: t, platforms, tone }),
-      });
-      if (!captionRes.ok) throw new Error('Caption generation failed');
-      const { captions } = await captionRes.json();
-      setGeneratedCaptions(captions);
-
-      // Auto-fill content with first available caption
-      const firstPlatform = platforms[0] as string;
-      if (captions[firstPlatform]) {
-        setContent(captions[firstPlatform]);
-        setActiveCaptionPlatform(firstPlatform);
+      // For video-based modes, transcribe first
+      if ((aiTab === 'captions' && captionMode === 'from_video') ||
+          (aiTab === 'repurpose' && repurposeMode !== 'posts' && captionMode === 'from_video')) {
+        if (videoUpload.status !== 'done') throw new Error('Upload a video first');
+        const videoUrl = (videoUpload as any).url;
+        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl }),
+        });
+        if (!transcribeRes.ok) throw new Error('Transcription failed');
+        const { transcript: t } = await transcribeRes.json();
+        setTranscript(t);
+        sourceText = t;
+      } else {
+        if (!aiDescription.trim()) throw new Error('Enter a description of your video');
+        sourceText = aiDescription;
       }
+
+      // Determine mode
+      let mode = '';
+      if (aiTab === 'captions') {
+        mode = captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description';
+      } else {
+        mode = repurposeMode === 'ideas' ? 'repurpose_ideas' : 'repurpose_posts';
+      }
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          transcript: captionMode === 'from_video' ? sourceText : undefined,
+          description: captionMode === 'from_description' ? sourceText : undefined,
+          platforms: getSelectedPlatforms(),
+          tone: aiTone,
+        }),
+      });
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json();
+
+      if (data.captions) {
+        setGeneratedCaptions(data.captions);
+        const first = Object.keys(data.captions)[0];
+        if (first) { setContent(data.captions[first]); setActiveCaptionPlatform(first); }
+      }
+      if (data.ideas) setRepurposeIdeas(data.ideas);
+      if (data.posts) setRepurposePosts(data.posts);
+
     } catch (e: any) {
-      setTranscribeError(e.message || 'Something went wrong');
+      setAiError(e.message || 'Something went wrong');
     } finally {
-      setTranscribing(false);
+      setAiLoading(false);
     }
   };
 
@@ -409,9 +445,11 @@ function PostComposerModal({
       setVideoFile(null); setVideoUpload({ status: 'idle' });
       setImageFiles([]); setImageUploads([]);
       setSubmitOk(false); setSubmitError(null);
-      setShowAi(false); setExpandedPlatform(null);
+      setExpandedPlatform(null);
       setTranscript(null); setGeneratedCaptions(null);
-      setTranscribeError(null); setActiveCaptionPlatform(null);
+      setAiError(null); setActiveCaptionPlatform(null);
+      setRepurposeIdeas(null); setRepurposePosts(null);
+      setShowAiPanel(false); setAiDescription('');
     }
   }, [open]);
 
@@ -593,80 +631,245 @@ function PostComposerModal({
             </div>
           )}
 
-          {/* Transcribe & Generate Captions — shown after video uploaded */}
-          {videoUpload.status === 'done' && (
-            <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}06` }}>
-              <div className="px-4 py-3 flex items-center justify-between">
-                <div>
-                  <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
-                    🎙 AI Transcribe & Generate Captions
-                  </div>
-                  <div className="text-xs text-white/40 mt-0.5">
-                    Transcribes your video and writes platform-specific captions
-                  </div>
-                </div>
-                <button
-                  onClick={handleTranscribeAndGenerate}
-                  disabled={transcribing}
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
-                  style={{ background: GOLD, color: '#000' }}>
-                  {transcribing
-                    ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Transcribing…</>
-                    : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
-                </button>
+          {/* ── AI PANEL ── */}
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+            {/* Panel toggle header */}
+            <button
+              onClick={() => setShowAiPanel(v => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Write & Repurpose</span>
               </div>
+              <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showAiPanel ? 'rotate-90' : ''}`} />
+            </button>
 
-              {/* Tone input */}
-              {!generatedCaptions && (
-                <div className="px-4 pb-3">
-                  <input value={tone} onChange={e => setTone(e.target.value)}
-                    placeholder="Tone: confident, engaging, value-first…"
-                    className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none"
-                    style={{ borderColor: BORDER }} />
-                </div>
-              )}
+            {showAiPanel && (
+              <div className="border-t px-4 pb-4 space-y-4" style={{ borderColor: BORDER }}>
 
-              {/* Error */}
-              {transcribeError && (
-                <div className="px-4 pb-3 text-xs text-red-300">{transcribeError}</div>
-              )}
-
-              {/* Transcript preview */}
-              {transcript && (
-                <div className="px-4 pb-3 border-t" style={{ borderColor: BORDER }}>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-1 mt-3">Transcript</div>
-                  <div className="text-xs text-white/50 leading-relaxed line-clamp-3">{transcript}</div>
-                </div>
-              )}
-
-              {/* Generated captions per platform */}
-              {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
-                <div className="px-4 pb-4 border-t space-y-2" style={{ borderColor: BORDER }}>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mt-3 mb-2">
-                    Generated Captions — click to use
-                  </div>
-                  {Object.entries(generatedCaptions).map(([platform, caption]) => (
-                    <button key={platform}
-                      onClick={() => { setContent(caption); setActiveCaptionPlatform(platform); }}
-                      className="w-full text-left p-3 rounded-xl border transition hover:brightness-110"
+                {/* Tab: Captions vs Repurpose */}
+                <div className="flex gap-2 mt-3">
+                  {(['captions', 'repurpose'] as const).map(tab => (
+                    <button key={tab} onClick={() => setAiTab(tab)}
+                      className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
                       style={{
-                        borderColor: activeCaptionPlatform === platform ? GOLD : BORDER,
-                        background: activeCaptionPlatform === platform ? `${GOLD}12` : 'rgba(0,0,0,0.2)',
+                        borderColor: aiTab === tab ? GOLD : BORDER,
+                        background:  aiTab === tab ? `${GOLD}18` : 'transparent',
+                        color:       aiTab === tab ? GOLD_L : 'rgba(255,255,255,0.35)',
                       }}>
-                      <div className="flex items-center gap-2 mb-1">
-                        <PlatformIcon id={platform} size="sm" />
-                        <span className="text-xs font-bold capitalize" style={{ color: activeCaptionPlatform === platform ? GOLD : 'rgba(255,255,255,0.5)' }}>
-                          {PLATFORMS[platform as PlatformId]?.label || platform}
-                        </span>
-                        {activeCaptionPlatform === platform && <CheckCircle2 className="w-3 h-3 ml-auto" style={{ color: GOLD }} />}
-                      </div>
-                      <div className="text-xs text-white/60 leading-relaxed line-clamp-3">{caption}</div>
+                      {tab === 'captions' ? '✍️ Caption Generator' : '♻️ Repurpose Content'}
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
+
+                {/* Sub-mode selector */}
+                {aiTab === 'captions' && (
+                  <div className="flex gap-2">
+                    {([['from_video', '🎙 From Video (talking)'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                      <button key={m} onClick={() => setCaptionMode(m)}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                        style={{
+                          borderColor: captionMode === m ? GOLD : BORDER,
+                          background:  captionMode === m ? `${GOLD}12` : 'transparent',
+                          color:       captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)',
+                        }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {aiTab === 'repurpose' && (
+                  <div className="flex gap-2">
+                    {([['ideas', '💡 Content Ideas'], ['posts', '🐦 Twitter & LinkedIn']] as const).map(([m, label]) => (
+                      <button key={m} onClick={() => setRepurposeMode(m)}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                        style={{
+                          borderColor: repurposeMode === m ? GOLD : BORDER,
+                          background:  repurposeMode === m ? `${GOLD}12` : 'transparent',
+                          color:       repurposeMode === m ? GOLD_L : 'rgba(255,255,255,0.3)',
+                        }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Source input */}
+                {((aiTab === 'captions' && captionMode === 'from_video') ||
+                  (aiTab === 'repurpose')) && videoUpload.status !== 'done' && captionMode === 'from_video' && (
+                  <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above first to use this mode</div>
+                )}
+
+                {((aiTab === 'captions' && captionMode === 'from_description') ||
+                  (aiTab === 'repurpose' && captionMode === 'from_description')) && (
+                  <textarea
+                    value={aiDescription}
+                    onChange={e => setAiDescription(e.target.value)}
+                    placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…"
+                    rows={3}
+                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none"
+                    style={{ borderColor: BORDER }} />
+                )}
+
+                {/* For repurpose, always show description input as the source selector */}
+                {aiTab === 'repurpose' && (
+                  <div className="flex gap-2">
+                    {([['from_video', '🎙 From Video'] , ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                      <button key={m} onClick={() => setCaptionMode(m)}
+                        className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                        style={{
+                          borderColor: captionMode === m ? GOLD : BORDER,
+                          background:  captionMode === m ? `${GOLD}12` : 'transparent',
+                          color:       captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)',
+                        }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Tone */}
+                <input
+                  value={aiTone}
+                  onChange={e => setAiTone(e.target.value)}
+                  placeholder="Tone (optional): casual, alex hormozi, luxury, funny, professional…"
+                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none"
+                  style={{ borderColor: BORDER }} />
+
+                {/* Generate button */}
+                <button
+                  onClick={handleAiGenerate}
+                  disabled={aiLoading}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                  style={{ background: GOLD, color: '#000' }}>
+                  {aiLoading
+                    ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {aiTab === 'captions' && captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</>
+                    : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
+                </button>
+
+                {/* Error */}
+                {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
+
+                {/* Transcript preview */}
+                {transcript && (
+                  <div>
+                    <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-1">Transcript</div>
+                    <div className="text-xs text-white/40 leading-relaxed line-clamp-2">{transcript}</div>
+                  </div>
+                )}
+
+                {/* ── CAPTIONS RESULTS ── */}
+                {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
+                    {Object.entries(generatedCaptions).map(([platform, caption]) => (
+                      <button key={platform}
+                        onClick={() => { setContent(caption as string); setActiveCaptionPlatform(platform); }}
+                        className="w-full text-left p-3 rounded-xl border transition"
+                        style={{
+                          borderColor: activeCaptionPlatform === platform ? GOLD : BORDER,
+                          background:  activeCaptionPlatform === platform ? `${GOLD}10` : 'rgba(0,0,0,0.2)',
+                        }}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <PlatformIcon id={platform} size="sm" />
+                          <span className="text-xs font-bold capitalize" style={{ color: activeCaptionPlatform === platform ? GOLD : 'rgba(255,255,255,0.4)' }}>
+                            {PLATFORMS[platform as PlatformId]?.label || platform}
+                          </span>
+                          {activeCaptionPlatform === platform && <CheckCircle2 className="w-3 h-3 ml-auto" style={{ color: GOLD }} />}
+                        </div>
+                        <div className="text-xs text-white/60 leading-relaxed line-clamp-4">{caption as string}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* ── REPURPOSE IDEAS RESULTS ── */}
+                {repurposeIdeas && (
+                  <div className="space-y-3">
+                    {repurposeIdeas.short_clips?.length > 0 && (
+                      <div>
+                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">Short Clip Ideas</div>
+                        {repurposeIdeas.short_clips.map((clip: any, i: number) => (
+                          <div key={i} className="p-3 rounded-xl border mb-1.5" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                            <div className="text-xs font-bold text-white">{clip.title}</div>
+                            <div className="text-xs text-white/40 mt-0.5">{clip.angle}</div>
+                            <div className="text-xs mt-1 font-semibold" style={{ color: GOLD }}>{clip.platform}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {repurposeIdeas.social_hooks?.length > 0 && (
+                      <div>
+                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">Hook Ideas</div>
+                        {repurposeIdeas.social_hooks.map((hook: string, i: number) => (
+                          <button key={i} onClick={() => setContent(hook)}
+                            className="w-full text-left p-2.5 rounded-lg border mb-1 text-xs text-white/60 hover:text-white hover:bg-white/5 transition"
+                            style={{ borderColor: BORDER }}>
+                            {hook}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {repurposeIdeas.other_formats?.length > 0 && (
+                      <div>
+                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">Other Formats</div>
+                        {repurposeIdeas.other_formats.map((f: any, i: number) => (
+                          <div key={i} className="p-3 rounded-xl border mb-1.5" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                            <div className="text-xs font-bold text-white">{f.format}</div>
+                            <div className="text-xs text-white/40 mt-0.5">{f.concept}</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* ── REPURPOSE POSTS RESULTS ── */}
+                {repurposePosts && (
+                  <div className="space-y-3">
+                    {repurposePosts.twitter_thread && (
+                      <div>
+                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">Twitter/X Thread</div>
+                        <div className="space-y-1.5">
+                          {[repurposePosts.twitter_thread.hook, ...(repurposePosts.twitter_thread.tweets || []), repurposePosts.twitter_thread.cta].filter(Boolean).map((tweet: string, i: number) => (
+                            <button key={i} onClick={() => setContent(tweet)}
+                              className="w-full text-left p-2.5 rounded-lg border text-xs text-white/60 hover:text-white hover:bg-white/5 transition"
+                              style={{ borderColor: BORDER }}>
+                              <span className="text-white/25 mr-2">{i + 1}.</span>{tweet}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {repurposePosts.linkedin_post && (
+                      <div>
+                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">LinkedIn Post</div>
+                        <button onClick={() => setContent(repurposePosts.linkedin_post)}
+                          className="w-full text-left p-3 rounded-xl border text-xs text-white/60 hover:text-white hover:bg-white/5 transition leading-relaxed"
+                          style={{ borderColor: BORDER }}>
+                          {repurposePosts.linkedin_post}
+                        </button>
+                      </div>
+                    )}
+                    {repurposePosts.linkedin_short && (
+                      <div>
+                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-2">LinkedIn Short</div>
+                        <button onClick={() => setContent(repurposePosts.linkedin_short)}
+                          className="w-full text-left p-3 rounded-xl border text-xs text-white/60 hover:text-white hover:bg-white/5 transition leading-relaxed"
+                          style={{ borderColor: BORDER }}>
+                          {repurposePosts.linkedin_short}
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+              </div>
+            )}
+          </div>
+
+          {/* Per-platform customization */}
           {selectedIntegrations.length > 0 && (
             <div>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">
