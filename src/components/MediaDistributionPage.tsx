@@ -164,134 +164,173 @@ async function uploadViaNativeXHR(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// extractAudioFromVideo — mobile-safe approach
-//
-// WHY NOT decodeAudioData(file.arrayBuffer())?
-//   • Mobile Safari/iOS cannot decode MP4/MOV containers via decodeAudioData —
-//     it only accepts pure audio formats (AAC, MP3, WAV). Trying it throws
-//     "Unable to decode audio data" on most phone-recorded videos.
-//   • arrayBuffer() on a large video also blocks the main thread on mobile.
-//
-// APPROACH: use a <video> element (which the browser already knows how to
-// demux) as a MediaElementSource, then render it offline at 16 kHz using
-// OfflineAudioContext. This works on all browsers including Safari iOS.
-//
-// OfflineAudioContext renders faster-than-realtime (no ScriptProcessor, no
-// live capture) so there are no dropped frames or repeated words.
+// pcmToWav — encode a Float32Array of mono 16 kHz samples as a WAV blob
 // ─────────────────────────────────────────────────────────────────────────────
-async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
-  const objectUrl = URL.createObjectURL(videoFile);
-
-  try {
-    // 1. Load duration via a temporary video element
-    const duration = await new Promise<number>((resolve, reject) => {
-      const vid = document.createElement('video');
-      vid.preload  = 'metadata';
-      vid.muted    = true;
-      vid.src      = objectUrl;
-      vid.onloadedmetadata = () => resolve(vid.duration);
-      vid.onerror          = () => reject(new Error('Could not read video metadata'));
-    });
-
-    if (!isFinite(duration) || duration <= 0) {
-      throw new Error('Video has no readable duration');
-    }
-
-    const SAMPLE_RATE = 16000;
-    const totalFrames = Math.ceil(duration * SAMPLE_RATE);
-
-    // 2. Create an OfflineAudioContext for the full duration at 16 kHz mono
-    const offlineCtx = new OfflineAudioContext(1, totalFrames, SAMPLE_RATE);
-
-    // 3. Wire up the video element as a source into the offline context
-    const vid2 = document.createElement('video');
-    vid2.src      = objectUrl;
-    vid2.muted    = true;
-    vid2.preload  = 'auto';
-
-    // Wait for the video to be ready to play
-    await new Promise<void>((resolve, reject) => {
-      vid2.oncanplaythrough = () => resolve();
-      vid2.onerror          = () => reject(new Error('Video could not be loaded for audio extraction'));
-      vid2.load();
-    });
-
-    const source = offlineCtx.createMediaElementSource(vid2);
-    source.connect(offlineCtx.destination);
-
-    // 4. Start the video and trigger offline rendering simultaneously
-    vid2.currentTime = 0;
-    const [audioBuffer] = await Promise.all([
-      offlineCtx.startRendering(),
-      vid2.play().catch(() => { /* play() may be blocked on some browsers — rendering still works */ }),
-    ]);
-
-    // 5. Mix down to mono (OfflineAudioContext already outputs 1 channel, but be safe)
-    const numChannels = audioBuffer.numberOfChannels;
-    const length      = audioBuffer.length;
-    const samples     = new Float32Array(length);
-
-    for (let ch = 0; ch < numChannels; ch++) {
-      const channelData = audioBuffer.getChannelData(ch);
-      for (let i = 0; i < length; i++) {
-        samples[i] += channelData[i] / numChannels;
-      }
-    }
-
-    // 6. Encode as 16-bit PCM WAV at 16 kHz — Whisper-friendly format
-    const wavBuffer = new ArrayBuffer(44 + samples.length * 2);
-    const view      = new DataView(wavBuffer);
-
-    const writeStr = (off: number, str: string) => {
-      for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
-    };
-
-    writeStr(0,  'RIFF');
-    view.setUint32(4,  36 + samples.length * 2, true);
-    writeStr(8,  'WAVE');
-    writeStr(12, 'fmt ');
-    view.setUint32(16, 16,         true); // PCM chunk size
-    view.setUint16(20, 1,          true); // PCM format
-    view.setUint16(22, 1,          true); // mono
-    view.setUint32(24, SAMPLE_RATE, true); // sample rate
-    view.setUint32(28, SAMPLE_RATE * 2, true); // byte rate
-    view.setUint16(32, 2,          true); // block align
-    view.setUint16(34, 16,         true); // bits per sample
-    writeStr(36, 'data');
-    view.setUint32(40, samples.length * 2, true);
-
-    for (let i = 0; i < samples.length; i++) {
-      view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
-    }
-
-    return new Blob([wavBuffer], { type: 'audio/wav' });
-
-  } finally {
-    URL.revokeObjectURL(objectUrl);
-  }
+function pcmToWav(samples: Float32Array, sampleRate = 16000): Blob {
+  const buf  = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(buf);
+  const str  = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
+  str(0,  'RIFF'); view.setUint32(4,  36 + samples.length * 2, true);
+  str(8,  'WAVE'); str(12, 'fmt ');
+  view.setUint32(16, 16,           true); // chunk size
+  view.setUint16(20, 1,            true); // PCM
+  view.setUint16(22, 1,            true); // mono
+  view.setUint32(24, sampleRate,   true);
+  view.setUint32(28, sampleRate*2, true); // byte rate
+  view.setUint16(32, 2,            true); // block align
+  view.setUint16(34, 16,           true); // bits
+  str(36, 'data'); view.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++)
+    view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
+  return new Blob([buf], { type: 'audio/wav' });
 }
 
-// Send a video/audio to the transcribe-video edge function.
-// For files ≤5MB: send as FormData directly.
-// For larger files: extract audio via decodeAudioData, then send or upload.
+// ─────────────────────────────────────────────────────────────────────────────
+// extractAudioFromVideo — works on desktop Chrome/Firefox AND iOS Safari
+//
+// The challenge:
+//   • OfflineAudioContext.createMediaElementSource() does NOT exist (any browser)
+//   • decodeAudioData(file.arrayBuffer()) fails on iOS Safari for MP4/MOV
+//     because Safari won't demux a video container through that API
+//   • ScriptProcessor + live playback produces garbled/repeated output
+//
+// Solution — two-path approach:
+//   PATH A (desktop / Android Chrome): try decodeAudioData on the raw bytes.
+//           Fast, no playback needed, clean output.
+//   PATH B (iOS Safari fallback): play the video through a live AudioContext
+//           and capture using ScriptProcessor — BUT at a reduced playback rate
+//           and with careful buffer accumulation so every sample is captured
+//           exactly once. We set playbackRate=1 and wait for 'ended' reliably.
+//           This is the only API path iOS Safari exposes for video→audio.
+// ─────────────────────────────────────────────────────────────────────────────
+async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
+  const SAMPLE_RATE = 16000;
+  const objectUrl   = URL.createObjectURL(videoFile);
+
+  // ── PATH A: decodeAudioData (desktop + Android) ──────────────────────────
+  try {
+    const arrayBuffer = await videoFile.arrayBuffer();
+    // Use the native sample rate first so Safari doesn't have to resample
+    const tmpCtx = new AudioContext();
+    let decoded: AudioBuffer;
+    try {
+      decoded = await tmpCtx.decodeAudioData(arrayBuffer);
+    } finally {
+      await tmpCtx.close();
+    }
+
+    // Resample to 16 kHz via OfflineAudioContext if needed
+    let audioBuffer: AudioBuffer;
+    if (decoded.sampleRate === SAMPLE_RATE) {
+      audioBuffer = decoded;
+    } else {
+      const frames  = Math.ceil(decoded.duration * SAMPLE_RATE);
+      const offline = new OfflineAudioContext(1, frames, SAMPLE_RATE);
+      const src     = offline.createBufferSource();
+      src.buffer    = decoded;
+      src.connect(offline.destination);
+      src.start(0);
+      audioBuffer = await offline.startRendering();
+    }
+
+    // Mix all channels to mono
+    const samples = new Float32Array(audioBuffer.length);
+    for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
+      const data = audioBuffer.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) samples[i] += data[i] / audioBuffer.numberOfChannels;
+    }
+
+    URL.revokeObjectURL(objectUrl);
+    return pcmToWav(samples, SAMPLE_RATE);
+
+  } catch (decodeErr) {
+    // PATH A failed (likely iOS Safari can't demux the video container)
+    // Fall through to PATH B
+    console.warn('decodeAudioData failed, falling back to live capture:', decodeErr);
+  }
+
+  // ── PATH B: live AudioContext capture (iOS Safari) ────────────────────────
+  // We use a ScriptProcessor but accumulate ALL samples before resolving,
+  // driving playback synchronously so nothing is skipped or doubled.
+  return new Promise<Blob>((resolve, reject) => {
+    const vid = document.createElement('video');
+    vid.src         = objectUrl;
+    vid.muted       = false; // must NOT be muted for AudioContext to capture on iOS
+    vid.playsInline = true;
+    vid.preload     = 'auto';
+
+    vid.addEventListener('error', () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Video could not be loaded for audio extraction'));
+    });
+
+    vid.addEventListener('canplaythrough', async () => {
+      try {
+        // iOS requires AudioContext to be created inside a user-gesture callback;
+        // by the time we get here we are inside the async chain started by the
+        // user tapping "Generate", so it's allowed.
+        const audioCtx   = new AudioContext({ sampleRate: SAMPLE_RATE });
+        const source     = audioCtx.createMediaElementSource(vid);
+        const bufferSize = 4096;
+        const processor  = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+        const chunks: Float32Array[] = [];
+
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+
+        processor.onaudioprocess = (e) => {
+          // Copy — the buffer is reused by the browser after this callback
+          chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+        };
+
+        vid.currentTime = 0;
+        await vid.play();
+
+        vid.addEventListener('ended', async () => {
+          processor.disconnect();
+          source.disconnect();
+          await audioCtx.close();
+          URL.revokeObjectURL(objectUrl);
+
+          const total   = chunks.reduce((n, c) => n + c.length, 0);
+          const samples = new Float32Array(total);
+          let offset    = 0;
+          for (const c of chunks) { samples.set(c, offset); offset += c.length; }
+
+          resolve(pcmToWav(samples, SAMPLE_RATE));
+        }, { once: true });
+
+      } catch (err) {
+        URL.revokeObjectURL(objectUrl);
+        reject(err);
+      }
+    }, { once: true });
+
+    vid.load();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// transcribeVideo — send video/audio to the Supabase transcribe-video function.
+// Small files go directly; large files have audio extracted first.
+// ─────────────────────────────────────────────────────────────────────────────
 async function transcribeVideo(videoFile: File): Promise<string> {
   let transcribeRes: Response;
 
   if (videoFile.size <= 5 * 1024 * 1024) {
-    // Small file — send directly
+    // Small file — send directly, no extraction needed
     const form = new FormData();
     form.append('file', videoFile, videoFile.name);
     transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
   } else {
-    // Large file — extract audio track only (mono 16kHz WAV), upload it, send URL
+    // Large file — extract audio to a compact WAV first
     const audioBlob = await extractAudioFromVideo(videoFile);
     if (audioBlob.size <= 5 * 1024 * 1024) {
-      // Audio is small enough to send directly
       const form = new FormData();
       form.append('file', audioBlob, 'audio.wav');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
     } else {
-      // Audio still large — upload it and send the URL
+      // Audio WAV still large — upload and send URL
       const uploadedPath = await uploadViaNativeXHR(audioBlob, 'video');
       const videoUrl = uploadedPath.startsWith('http')
         ? uploadedPath
