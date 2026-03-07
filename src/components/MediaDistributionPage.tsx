@@ -972,11 +972,8 @@ function PostComposerModal({
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
                 {transcript && (
-                  <div>
-                    <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-1">Transcript</div>
-                    <div className="text-xs text-white/40 leading-relaxed line-clamp-2">{transcript}</div>
-                  </div>
-                )}
+  <TranscriptViewer transcript={transcript} />
+)}
                 {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                   <div className="space-y-2">
                     <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
