@@ -1,17 +1,17 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft, Loader, CheckCircle2, AlertCircle, Sparkles, X,
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
-const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)';
-const SURFACE = 'rgba(255,255,255,0.04)';
+const BG      = '#0a0a0a';
+const SURFACE = '#111111';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
 const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
@@ -739,6 +739,254 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MediaPreviewCard — rich preview for an uploaded image or video.
+//
+// • Images: full-width preview with remove button
+// • Videos: native <video> player with custom controls overlay:
+//   play/pause, scrubber, mute toggle, volume slider, time display, fullscreen
+//   Works on desktop and mobile (playsInline, no autoplay).
+// ─────────────────────────────────────────────────────────────────────────────
+function VideoPreviewCard({
+  file, uploadState, onRemove,
+}: { file: File; uploadState: UploadState; onRemove: () => void }) {
+  const videoRef   = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying]       = useState(false);
+  const [muted, setMuted]           = useState(false);
+  const [volume, setVolume]         = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration]     = useState(0);
+  const [showVolume, setShowVolume] = useState(false);
+  const [objectUrl]                 = useState(() => URL.createObjectURL(file));
+
+  // Revoke object URL on unmount
+  useEffect(() => () => URL.revokeObjectURL(objectUrl), [objectUrl]);
+
+  const togglePlay = () => {
+    const v = videoRef.current; if (!v) return;
+    if (v.paused) { v.play(); setPlaying(true); }
+    else          { v.pause(); setPlaying(false); }
+  };
+
+  const handleTimeUpdate = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
+  const handleLoadedMetadata = () => setDuration(videoRef.current?.duration ?? 0);
+  const handleEnded = () => setPlaying(false);
+
+  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const t = parseFloat(e.target.value);
+    if (videoRef.current) videoRef.current.currentTime = t;
+    setCurrentTime(t);
+  };
+
+  const toggleMute = () => {
+    const v = videoRef.current; if (!v) return;
+    v.muted = !v.muted; setMuted(v.muted);
+  };
+
+  const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (videoRef.current) { videoRef.current.volume = val; videoRef.current.muted = val === 0; }
+    setVolume(val); setMuted(val === 0);
+  };
+
+  const handleFullscreen = () => {
+    const v = videoRef.current; if (!v) return;
+    if (v.requestFullscreen) v.requestFullscreen();
+    else if ((v as any).webkitEnterFullscreen) (v as any).webkitEnterFullscreen(); // iOS Safari
+  };
+
+  const fmt = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: '#000' }}>
+      {/* Video element */}
+      <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
+        <video
+          ref={videoRef}
+          src={objectUrl}
+          className="w-full h-full object-contain"
+          playsInline
+          preload="metadata"
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={handleEnded}
+          onClick={togglePlay}
+          style={{ cursor: 'pointer' }}
+        />
+
+        {/* Play overlay when paused */}
+        {!playing && (
+          <button
+            onClick={togglePlay}
+            className="absolute inset-0 flex items-center justify-center group"
+            style={{ background: 'rgba(0,0,0,0.35)' }}>
+            <div className="w-14 h-14 rounded-full flex items-center justify-center transition group-hover:scale-105"
+              style={{ background: 'rgba(0,0,0,0.7)', border: `2px solid ${GOLD}` }}>
+              <Play className="w-6 h-6 ml-0.5" style={{ color: GOLD }} />
+            </div>
+          </button>
+        )}
+
+        {/* Remove button */}
+        <button onClick={onRemove}
+          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
+          style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
+          <X className="w-3.5 h-3.5 text-white/70" />
+        </button>
+      </div>
+
+      {/* Controls bar */}
+      <div className="px-3 py-2 space-y-1.5" style={{ background: 'rgba(0,0,0,0.6)' }}>
+        {/* Scrubber */}
+        <input
+          type="range" min={0} max={duration || 1} step={0.1} value={currentTime}
+          onChange={handleScrub}
+          className="w-full h-1 rounded-full appearance-none cursor-pointer"
+          style={{ accentColor: GOLD }}
+        />
+        {/* Controls row */}
+        <div className="flex items-center gap-2">
+          {/* Play/Pause */}
+          <button onClick={togglePlay}
+            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition shrink-0"
+            style={{ color: GOLD }}>
+            {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+          </button>
+
+          {/* Time */}
+          <span className="text-[10px] font-mono text-white/40 shrink-0 tabular-nums">
+            {fmt(currentTime)} / {fmt(duration)}
+          </span>
+
+          <div className="flex-1" />
+
+          {/* Volume */}
+          <div className="relative flex items-center gap-1">
+            <button onClick={toggleMute}
+              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/50 hover:text-white"
+              onMouseEnter={() => setShowVolume(true)}
+              onMouseLeave={() => setShowVolume(false)}>
+              {muted || volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            </button>
+            {/* Volume slider — hover on desktop, always visible on touch */}
+            <div
+              className={`transition-all overflow-hidden ${showVolume ? 'w-16 opacity-100' : 'w-0 opacity-0 pointer-events-none'} md:block`}
+              onMouseEnter={() => setShowVolume(true)}
+              onMouseLeave={() => setShowVolume(false)}>
+              <input
+                type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
+                onChange={handleVolume}
+                className="w-16 h-1 rounded-full appearance-none cursor-pointer"
+                style={{ accentColor: GOLD }}
+              />
+            </div>
+          </div>
+
+          {/* Fullscreen */}
+          <button onClick={handleFullscreen}
+            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/40 hover:text-white shrink-0">
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Upload status bar under controls */}
+      {(uploadState.status === 'preparing' || uploadState.status === 'uploading' || uploadState.status === 'error') && (
+        <div className="px-3 py-2 border-t" style={{ borderColor: BORDER }}>
+          {uploadState.status === 'preparing' && (
+            <div className="flex items-center gap-2 text-xs text-white/40">
+              <Loader className="w-3 h-3 animate-spin shrink-0" /> Preparing…
+            </div>
+          )}
+          {uploadState.status === 'uploading' && (
+            <div className="space-y-1">
+              <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(uploadState as any).progress ?? 0}%` }} />
+              </div>
+              <div className="text-[10px] text-white/30">Uploading… {(uploadState as any).progress ?? 0}%</div>
+            </div>
+          )}
+          {uploadState.status === 'error' && (
+            <div className="flex items-center gap-1.5 text-xs text-red-400">
+              <AlertCircle className="w-3 h-3 shrink-0" /> {(uploadState as any).message}
+            </div>
+          )}
+        </div>
+      )}
+      {uploadState.status === 'done' && (
+        <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-green-400 border-t" style={{ borderColor: BORDER }}>
+          <CheckCircle2 className="w-3 h-3" /> Uploaded — ready to post
+        </div>
+      )}
+
+      {/* Filename */}
+      <div className="px-3 py-1.5 border-t" style={{ borderColor: BORDER }}>
+        <span className="text-[10px] text-white/25 truncate block">{file.name}</span>
+      </div>
+    </div>
+  );
+}
+
+function ImagePreviewCard({
+  file, uploadState, onRemove,
+}: { file: File; uploadState: UploadState; onRemove: () => void }) {
+  const [objectUrl] = useState(() => URL.createObjectURL(file));
+  useEffect(() => () => URL.revokeObjectURL(objectUrl), [objectUrl]);
+
+  return (
+    <div className="relative rounded-xl border overflow-hidden group" style={{ borderColor: BORDER }}>
+      <img src={objectUrl} className="w-full object-cover max-h-64" alt={file.name} />
+
+      {/* Gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition" />
+
+      {/* Remove */}
+      <button onClick={onRemove}
+        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
+        style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
+        <X className="w-3.5 h-3.5 text-white/70" />
+      </button>
+
+      {/* Status */}
+      {uploadState.status === 'uploading' && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ background: 'rgba(0,0,0,0.55)' }}>
+          <Loader className="w-5 h-5 animate-spin text-white" />
+          <div className="w-24 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.15)' }}>
+            <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(uploadState as any).progress ?? 0}%` }} />
+          </div>
+          <span className="text-xs text-white/60">{(uploadState as any).progress ?? 0}%</span>
+        </div>
+      )}
+      {uploadState.status === 'done' && (
+        <div className="absolute bottom-2 right-2">
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-green-400"
+            style={{ background: 'rgba(0,0,0,0.7)' }}>
+            <CheckCircle2 className="w-3 h-3" /> Ready
+          </div>
+        </div>
+      )}
+      {uploadState.status === 'error' && (
+        <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
+          <div className="text-center px-3">
+            <AlertCircle className="w-5 h-5 text-red-400 mx-auto mb-1" />
+            <span className="text-xs text-red-300">{(uploadState as any).message}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Filename bar */}
+      <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 text-[10px] text-white/40 truncate opacity-0 group-hover:opacity-100 transition"
+        style={{ background: 'rgba(0,0,0,0.6)' }}>
+        {file.name}
+      </div>
+    </div>
+  );
+}
+
 function PostComposerModal({
   open, onClose, integrations, token, defaultDate, onSuccess,
 }: {
@@ -973,45 +1221,36 @@ function PostComposerModal({
 
           {/* Media previews */}
           {(imageFiles.length > 0 || videoFile) && (
-            <div className="flex flex-wrap gap-2">
-              {imageFiles.map((f, i) => {
-                const u = imageUploads[i];
-                return (
-                  <div key={i} className="relative w-20 h-20 rounded-xl overflow-hidden border" style={{ borderColor: BORDER }}>
-                    <img src={URL.createObjectURL(f)} className="w-full h-full object-cover" alt="" />
-                    {u?.status === 'uploading' && (
-                      <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-1">
-                        <Loader className="w-4 h-4 animate-spin text-white" />
-                        {(u as any).progress != null && <span className="text-xs text-white/60">{(u as any).progress}%</span>}
-                      </div>
-                    )}
-                    {u?.status === 'done' && <div className="absolute bottom-1 right-1"><CheckCircle2 className="w-4 h-4 text-green-400" /></div>}
-                    {u?.status === 'error' && <div className="absolute inset-0 bg-red-900/60 flex items-center justify-center"><span className="text-xs text-red-300 text-center px-1">{(u as any).message}</span></div>}
-                  </div>
-                );
-              })}
+            <div className="space-y-3">
+              {/* Video preview */}
               {videoFile && (
-                <div className="flex flex-col gap-1 px-3 py-2 rounded-xl border min-w-[160px]"
-                  style={{ borderColor: videoUpload.status === 'error' ? 'rgba(239,68,68,0.4)' : BORDER }}>
-                  <div className="flex items-center gap-2">
-                    <Video className="w-4 h-4 text-white/40 shrink-0" />
-                    <span className="truncate text-xs text-white/60 flex-1">{videoFile.name}</span>
-                    {videoUpload.status === 'preparing' && <Loader className="w-3.5 h-3.5 text-white/30 animate-spin shrink-0" />}
-                    {videoUpload.status === 'done'      && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
-                    {videoUpload.status === 'error'     && <AlertCircle  className="w-3.5 h-3.5 text-red-400 shrink-0" />}
-                  </div>
-                  {videoUpload.status === 'preparing' && (
-                    <span className="text-xs text-white/30">Preparing…</span>
-                  )}
-                  {videoUpload.status === 'uploading' && (
-                    <>
-                      <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
-                        <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(videoUpload as any).progress ?? 0}%` }} />
-                      </div>
-                      <span className="text-xs text-white/30">{(videoUpload as any).progress ?? 0}% uploading…</span>
-                    </>
-                  )}
-                  {videoUpload.status === 'error' && <span className="text-xs text-red-400">{(videoUpload as any).message}</span>}
+                <VideoPreviewCard
+                  file={videoFile}
+                  uploadState={videoUpload}
+                  onRemove={() => { setVideoFile(null); setVideoUpload({ status: 'idle' }); }}
+                />
+              )}
+              {/* Image previews — single image full-width, multiple in a 2-col grid */}
+              {imageFiles.length === 1 && (
+                <ImagePreviewCard
+                  file={imageFiles[0]}
+                  uploadState={imageUploads[0] ?? { status: 'idle' }}
+                  onRemove={() => { setImageFiles([]); setImageUploads([]); }}
+                />
+              )}
+              {imageFiles.length > 1 && (
+                <div className="grid grid-cols-2 gap-2">
+                  {imageFiles.map((f, i) => (
+                    <ImagePreviewCard
+                      key={i}
+                      file={f}
+                      uploadState={imageUploads[i] ?? { status: 'idle' }}
+                      onRemove={() => {
+                        setImageFiles(prev => prev.filter((_, xi) => xi !== i));
+                        setImageUploads(prev => prev.filter((_, xi) => xi !== i));
+                      }}
+                    />
+                  ))}
                 </div>
               )}
             </div>
@@ -1054,7 +1293,7 @@ function PostComposerModal({
                 )}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && (
                   <div className="text-xs px-1" style={{ color: GOLD }}>
-                    ⏳ Video uploading ({(videoUpload as any).progress ?? 0}%)… Once complete you will be able to generate content.
+                    ⏳ Video uploading ({(videoUpload as any).progress ?? 0}%)… you can still generate captions, the audio will be extracted locally.
                   </div>
                 )}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && (
@@ -1701,14 +1940,10 @@ export function MediaDistributionPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: BG, backgroundAttachment: 'fixed', fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: BG, fontFamily: "'DM Sans', sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
         * { box-sizing: border-box; }
-        html, body {
-          background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
-          min-height: 100vh;
-        }
       `}</style>
 
       {oauthLoading && (
