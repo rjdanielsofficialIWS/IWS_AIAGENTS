@@ -77,6 +77,7 @@ const PLATFORMS: Record<PlatformId, {
 
 type UploadState =
   | { status: 'idle' }
+  | { status: 'preparing' }
   | { status: 'uploading'; progress?: number }
   | { status: 'done'; path: string; url: string; fileName: string; mime: string; size: number }
   | { status: 'error'; message: string };
@@ -163,62 +164,111 @@ async function uploadViaNativeXHR(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// FIX: Extract audio using decodeAudioData (reads raw file bytes directly,
-// no playback required). This avoids the ScriptProcessor/real-time capture
-// approach that caused "you you you" repeats and garbled/random-letter output.
+// extractAudioFromVideo — mobile-safe approach
+//
+// WHY NOT decodeAudioData(file.arrayBuffer())?
+//   • Mobile Safari/iOS cannot decode MP4/MOV containers via decodeAudioData —
+//     it only accepts pure audio formats (AAC, MP3, WAV). Trying it throws
+//     "Unable to decode audio data" on most phone-recorded videos.
+//   • arrayBuffer() on a large video also blocks the main thread on mobile.
+//
+// APPROACH: use a <video> element (which the browser already knows how to
+// demux) as a MediaElementSource, then render it offline at 16 kHz using
+// OfflineAudioContext. This works on all browsers including Safari iOS.
+//
+// OfflineAudioContext renders faster-than-realtime (no ScriptProcessor, no
+// live capture) so there are no dropped frames or repeated words.
 // ─────────────────────────────────────────────────────────────────────────────
 async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
-  // Read the entire file as an ArrayBuffer
-  const arrayBuffer = await videoFile.arrayBuffer();
+  const objectUrl = URL.createObjectURL(videoFile);
 
-  // Decode audio from the raw bytes — no video element, no playback needed
-  const audioCtx = new AudioContext({ sampleRate: 16000 });
-  let audioBuffer: AudioBuffer;
   try {
-    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-  } finally {
-    await audioCtx.close();
-  }
+    // 1. Load duration via a temporary video element
+    const duration = await new Promise<number>((resolve, reject) => {
+      const vid = document.createElement('video');
+      vid.preload  = 'metadata';
+      vid.muted    = true;
+      vid.src      = objectUrl;
+      vid.onloadedmetadata = () => resolve(vid.duration);
+      vid.onerror          = () => reject(new Error('Could not read video metadata'));
+    });
 
-  // Mix down to mono by averaging all channels
-  const numChannels = audioBuffer.numberOfChannels;
-  const length      = audioBuffer.length;
-  const samples     = new Float32Array(length);
-
-  for (let ch = 0; ch < numChannels; ch++) {
-    const channelData = audioBuffer.getChannelData(ch);
-    for (let i = 0; i < length; i++) {
-      samples[i] += channelData[i] / numChannels;
+    if (!isFinite(duration) || duration <= 0) {
+      throw new Error('Video has no readable duration');
     }
+
+    const SAMPLE_RATE = 16000;
+    const totalFrames = Math.ceil(duration * SAMPLE_RATE);
+
+    // 2. Create an OfflineAudioContext for the full duration at 16 kHz mono
+    const offlineCtx = new OfflineAudioContext(1, totalFrames, SAMPLE_RATE);
+
+    // 3. Wire up the video element as a source into the offline context
+    const vid2 = document.createElement('video');
+    vid2.src      = objectUrl;
+    vid2.muted    = true;
+    vid2.preload  = 'auto';
+
+    // Wait for the video to be ready to play
+    await new Promise<void>((resolve, reject) => {
+      vid2.oncanplaythrough = () => resolve();
+      vid2.onerror          = () => reject(new Error('Video could not be loaded for audio extraction'));
+      vid2.load();
+    });
+
+    const source = offlineCtx.createMediaElementSource(vid2);
+    source.connect(offlineCtx.destination);
+
+    // 4. Start the video and trigger offline rendering simultaneously
+    vid2.currentTime = 0;
+    const [audioBuffer] = await Promise.all([
+      offlineCtx.startRendering(),
+      vid2.play().catch(() => { /* play() may be blocked on some browsers — rendering still works */ }),
+    ]);
+
+    // 5. Mix down to mono (OfflineAudioContext already outputs 1 channel, but be safe)
+    const numChannels = audioBuffer.numberOfChannels;
+    const length      = audioBuffer.length;
+    const samples     = new Float32Array(length);
+
+    for (let ch = 0; ch < numChannels; ch++) {
+      const channelData = audioBuffer.getChannelData(ch);
+      for (let i = 0; i < length; i++) {
+        samples[i] += channelData[i] / numChannels;
+      }
+    }
+
+    // 6. Encode as 16-bit PCM WAV at 16 kHz — Whisper-friendly format
+    const wavBuffer = new ArrayBuffer(44 + samples.length * 2);
+    const view      = new DataView(wavBuffer);
+
+    const writeStr = (off: number, str: string) => {
+      for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+    };
+
+    writeStr(0,  'RIFF');
+    view.setUint32(4,  36 + samples.length * 2, true);
+    writeStr(8,  'WAVE');
+    writeStr(12, 'fmt ');
+    view.setUint32(16, 16,         true); // PCM chunk size
+    view.setUint16(20, 1,          true); // PCM format
+    view.setUint16(22, 1,          true); // mono
+    view.setUint32(24, SAMPLE_RATE, true); // sample rate
+    view.setUint32(28, SAMPLE_RATE * 2, true); // byte rate
+    view.setUint16(32, 2,          true); // block align
+    view.setUint16(34, 16,         true); // bits per sample
+    writeStr(36, 'data');
+    view.setUint32(40, samples.length * 2, true);
+
+    for (let i = 0; i < samples.length; i++) {
+      view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
+    }
+
+    return new Blob([wavBuffer], { type: 'audio/wav' });
+
+  } finally {
+    URL.revokeObjectURL(objectUrl);
   }
-
-  // Encode as 16-bit PCM WAV at 16 kHz (mono) — Whisper-friendly format
-  const wavBuffer = new ArrayBuffer(44 + samples.length * 2);
-  const view      = new DataView(wavBuffer);
-
-  const writeStr = (off: number, str: string) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
-  };
-
-  writeStr(0,  'RIFF');
-  view.setUint32(4,  36 + samples.length * 2, true);
-  writeStr(8,  'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16,    true); // PCM chunk size
-  view.setUint16(20, 1,     true); // PCM format
-  view.setUint16(22, 1,     true); // mono
-  view.setUint32(24, 16000, true); // sample rate
-  view.setUint32(28, 32000, true); // byte rate (16000 * 1 * 2)
-  view.setUint16(32, 2,     true); // block align
-  view.setUint16(34, 16,    true); // bits per sample
-  writeStr(36, 'data');
-  view.setUint32(40, samples.length * 2, true);
-
-  for (let i = 0; i < samples.length; i++) {
-    view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
-  }
-
-  return new Blob([wavBuffer], { type: 'audio/wav' });
 }
 
 // Send a video/audio to the transcribe-video edge function.
@@ -864,7 +914,16 @@ function PostComposerModal({
               <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
                 <Video className="w-3.5 h-3.5" /> Video
                 <input type="file" accept="video/*" className="hidden"
-                  onChange={e => { const f = e.target.files?.[0]; if (f) { setVideoFile(f); uploadFileForPost(f, 'video', setVideoUpload); } }} />
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      // Show the file card immediately — before any async work begins
+                      setVideoFile(f);
+                      setVideoUpload({ status: 'preparing' });
+                      // Defer upload so the UI re-renders first (critical on mobile)
+                      setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
+                    }
+                  }} />
               </label>
               <div className="ml-auto text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length}</div>
             </div>
@@ -895,9 +954,13 @@ function PostComposerModal({
                   <div className="flex items-center gap-2">
                     <Video className="w-4 h-4 text-white/40 shrink-0" />
                     <span className="truncate text-xs text-white/60 flex-1">{videoFile.name}</span>
-                    {videoUpload.status === 'done' && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
-                    {videoUpload.status === 'error' && <AlertCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />}
+                    {videoUpload.status === 'preparing' && <Loader className="w-3.5 h-3.5 text-white/30 animate-spin shrink-0" />}
+                    {videoUpload.status === 'done'      && <CheckCircle2 className="w-3.5 h-3.5 text-green-400 shrink-0" />}
+                    {videoUpload.status === 'error'     && <AlertCircle  className="w-3.5 h-3.5 text-red-400 shrink-0" />}
                   </div>
+                  {videoUpload.status === 'preparing' && (
+                    <span className="text-xs text-white/30">Preparing…</span>
+                  )}
                   {videoUpload.status === 'uploading' && (
                     <>
                       <div className="w-full h-1 rounded-full bg-white/10 overflow-hidden">
