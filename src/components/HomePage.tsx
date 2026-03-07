@@ -343,7 +343,9 @@ export function HomePage() {
             {useCases.map((uc, i) => {
               const tag = serviceTagColors[uc.service];
               return (
-                <div key={i} className="bg-gray-900/60 border border-white/8 rounded-xl p-6 flex flex-col gap-4 hover:border-white/15 transition-all">
+                <div key={i}
+                  className="border rounded-xl p-6 flex flex-col gap-4 hover:border-white/15 transition-all"
+                  style={{ background: 'rgba(42,44,48,0.75)', borderColor: 'rgba(255,255,255,0.07)' }}>
                   <p className="text-gray-200 text-sm leading-relaxed flex-1">"{uc.scenario}"</p>
                   <div className="flex items-center gap-2 mt-auto">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border"
