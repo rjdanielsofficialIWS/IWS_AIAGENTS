@@ -10,8 +10,8 @@ import { supabase } from '../services/vapiAI';
 
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
-const BG      = '#0a0a0a';
-const SURFACE = '#111111';
+const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)';
+const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
 const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
@@ -1975,10 +1975,14 @@ export function MediaDistributionPage() {
   };
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: BG, fontFamily: "'DM Sans', sans-serif" }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: BG, backgroundAttachment: 'fixed', fontFamily: "'DM Sans', sans-serif" }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
         * { box-sizing: border-box; }
+        html, body {
+          background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
+          min-height: 100vh;
+        }
       `}</style>
 
       {oauthLoading && (
