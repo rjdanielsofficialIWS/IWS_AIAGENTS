@@ -262,20 +262,18 @@ async function transcribeVideo(videoFile: File): Promise<string> {
   let transcribeRes: Response;
 
   if (videoFile.size <= 5 * 1024 * 1024) {
-    // Small file — send directly
     const form = new FormData();
     form.append('file', videoFile, videoFile.name);
     transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
   } else {
-    // Large file — extract audio track only (mono 16kHz WAV), upload it, send URL
     const audioBlob = await extractAudioFromVideo(videoFile);
+    console.log('[transcribe] audio blob size:', audioBlob.size, 'bytes');
+
     if (audioBlob.size <= 5 * 1024 * 1024) {
-      // Audio is small enough to send directly
       const form = new FormData();
       form.append('file', audioBlob, 'audio.wav');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
     } else {
-      // Audio still large — upload it and send the URL
       const uploadedPath = await uploadViaNativeXHR(audioBlob, 'video');
       const videoUrl = uploadedPath.startsWith('http')
         ? uploadedPath
