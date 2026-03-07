@@ -341,23 +341,6 @@ async function transcribeVideo(videoFile: File, uploadedUrl?: string): Promise<s
   const { transcript } = await transcribeRes.json();
   return transcript;
 }
-
-  if (!transcribeRes.ok) {
-    const err = await transcribeRes.json().catch(() => ({}));
-    throw new Error(err.error || 'Transcription failed');
-  }
-  const { transcript } = await transcribeRes.json();
-  return transcript;
-}
-
-function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'lg' }) {
-  const p = PLATFORMS[id as PlatformId];
-  const dim = size === 'sm' ? 'w-6 h-6' : size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
-  if (!p) return (
-    <div className={`${dim} rounded-xl flex items-center justify-center bg-white/10`}>
-      <span className="text-xs text-white/50">{id?.[0]?.toUpperCase()}</span>
-    </div>
-  );
   return (
     <div className={`${dim} rounded-xl flex items-center justify-center shrink-0`}
       style={{ background: p.bg, color: p.color }}>
