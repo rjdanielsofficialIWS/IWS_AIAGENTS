@@ -205,7 +205,8 @@ function pcmToWav(samples: Float32Array, sampleRate = 16000): Blob {
 // ─────────────────────────────────────────────────────────────────────────────
 async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
   const SAMPLE_RATE = 16000;
-  const objectUrl   = URL.createObjectURL(videoFile);
+  // Create a SEPARATE object URL just for audio extraction — independent of any preview URL
+  const objectUrl = URL.createObjectURL(videoFile);
 
   // ── PATH A: decodeAudioData (desktop + Android) ──────────────────────────
   try {
@@ -744,23 +745,31 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
 //
 // • Images: full-width preview with remove button
 // • Videos: native <video> player with custom controls overlay:
-//   play/pause, scrubber, mute toggle, volume slider, time display, fullscreen
-//   Works on desktop and mobile (playsInline, no autoplay).
+//   autoplay (muted), unmute button, scrubber, time display, fullscreen
+//   Works on desktop and mobile (playsInline).
+//
+// IMPORTANT: objectUrl is passed in from the parent — NOT created inside
+// the component. This prevents a double-revoke bug where extractAudioFromVideo
+// revokes its own objectUrl and accidentally kills the preview src.
 // ─────────────────────────────────────────────────────────────────────────────
 function VideoPreviewCard({
-  file, uploadState, onRemove,
-}: { file: File; uploadState: UploadState; onRemove: () => void }) {
+  file, objectUrl, uploadState, onRemove,
+}: { file: File; objectUrl: string; uploadState: UploadState; onRemove: () => void }) {
   const videoRef   = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying]       = useState(false);
-  const [muted, setMuted]           = useState(false);
-  const [volume, setVolume]         = useState(1);
+  const [playing, setPlaying]         = useState(true);   // starts playing (autoplay)
+  const [muted, setMuted]             = useState(true);   // starts muted (browser autoplay policy)
+  const [volume, setVolume]           = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration]     = useState(0);
-  const [showVolume, setShowVolume] = useState(false);
-  const [objectUrl]                 = useState(() => URL.createObjectURL(file));
+  const [duration, setDuration]       = useState(0);
+  const [showVolume, setShowVolume]   = useState(false);
 
-  // Revoke object URL on unmount
-  useEffect(() => () => URL.revokeObjectURL(objectUrl), [objectUrl]);
+  // Autoplay as soon as the video element is ready
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = true; // must be muted for autoplay policy
+    v.play().catch(() => setPlaying(false)); // gracefully handle blocked autoplay
+  }, []);
 
   const togglePlay = () => {
     const v = videoRef.current; if (!v) return;
@@ -770,7 +779,7 @@ function VideoPreviewCard({
 
   const handleTimeUpdate = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
   const handleLoadedMetadata = () => setDuration(videoRef.current?.duration ?? 0);
-  const handleEnded = () => setPlaying(false);
+  const handleEnded = () => { setPlaying(false); };
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
     const t = parseFloat(e.target.value);
@@ -780,13 +789,21 @@ function VideoPreviewCard({
 
   const toggleMute = () => {
     const v = videoRef.current; if (!v) return;
-    v.muted = !v.muted; setMuted(v.muted);
+    const newMuted = !v.muted;
+    v.muted = newMuted;
+    setMuted(newMuted);
+    // If unmuting and volume was 0, restore to 1
+    if (!newMuted && v.volume === 0) { v.volume = 1; setVolume(1); }
   };
 
   const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
-    if (videoRef.current) { videoRef.current.volume = val; videoRef.current.muted = val === 0; }
-    setVolume(val); setMuted(val === 0);
+    if (videoRef.current) {
+      videoRef.current.volume = val;
+      videoRef.current.muted = val === 0;
+    }
+    setVolume(val);
+    setMuted(val === 0);
   };
 
   const handleFullscreen = () => {
@@ -796,6 +813,7 @@ function VideoPreviewCard({
   };
 
   const fmt = (s: number) => {
+    if (!isFinite(s)) return '0:00';
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
     return `${m}:${sec.toString().padStart(2, '0')}`;
@@ -810,10 +828,13 @@ function VideoPreviewCard({
           src={objectUrl}
           className="w-full h-full object-contain"
           playsInline
-          preload="metadata"
+          muted
+          preload="auto"
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={handleEnded}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
           onClick={togglePlay}
           style={{ cursor: 'pointer' }}
         />
@@ -823,11 +844,22 @@ function VideoPreviewCard({
           <button
             onClick={togglePlay}
             className="absolute inset-0 flex items-center justify-center group"
-            style={{ background: 'rgba(0,0,0,0.35)' }}>
+            style={{ background: 'rgba(0,0,0,0.4)' }}>
             <div className="w-14 h-14 rounded-full flex items-center justify-center transition group-hover:scale-105"
-              style={{ background: 'rgba(0,0,0,0.7)', border: `2px solid ${GOLD}` }}>
+              style={{ background: 'rgba(0,0,0,0.75)', border: `2px solid ${GOLD}` }}>
               <Play className="w-6 h-6 ml-0.5" style={{ color: GOLD }} />
             </div>
+          </button>
+        )}
+
+        {/* Muted badge — tap to unmute */}
+        {muted && playing && (
+          <button
+            onClick={toggleMute}
+            className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold transition hover:scale-105"
+            style={{ background: 'rgba(0,0,0,0.75)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
+            <VolumeX className="w-3.5 h-3.5" />
+            <span>Tap to unmute</span>
           </button>
         )}
 
@@ -840,7 +872,7 @@ function VideoPreviewCard({
       </div>
 
       {/* Controls bar */}
-      <div className="px-3 py-2 space-y-1.5" style={{ background: 'rgba(0,0,0,0.6)' }}>
+      <div className="px-3 py-2 space-y-1.5" style={{ background: 'rgba(0,0,0,0.7)' }}>
         {/* Scrubber */}
         <input
           type="range" min={0} max={duration || 1} step={0.1} value={currentTime}
@@ -865,18 +897,14 @@ function VideoPreviewCard({
           <div className="flex-1" />
 
           {/* Volume */}
-          <div className="relative flex items-center gap-1">
+          <div className="flex items-center gap-1"
+            onMouseEnter={() => setShowVolume(true)}
+            onMouseLeave={() => setShowVolume(false)}>
             <button onClick={toggleMute}
-              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/50 hover:text-white"
-              onMouseEnter={() => setShowVolume(true)}
-              onMouseLeave={() => setShowVolume(false)}>
+              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/50 hover:text-white">
               {muted || volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
             </button>
-            {/* Volume slider — hover on desktop, always visible on touch */}
-            <div
-              className={`transition-all overflow-hidden ${showVolume ? 'w-16 opacity-100' : 'w-0 opacity-0 pointer-events-none'} md:block`}
-              onMouseEnter={() => setShowVolume(true)}
-              onMouseLeave={() => setShowVolume(false)}>
+            <div className={`overflow-hidden transition-all duration-200 ${showVolume ? 'w-16 opacity-100' : 'w-0 opacity-0 pointer-events-none'}`}>
               <input
                 type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
                 onChange={handleVolume}
@@ -894,12 +922,12 @@ function VideoPreviewCard({
         </div>
       </div>
 
-      {/* Upload status bar under controls */}
-      {(uploadState.status === 'preparing' || uploadState.status === 'uploading' || uploadState.status === 'error') && (
+      {/* Upload status */}
+      {(uploadState.status === 'preparing' || uploadState.status === 'uploading') && (
         <div className="px-3 py-2 border-t" style={{ borderColor: BORDER }}>
           {uploadState.status === 'preparing' && (
             <div className="flex items-center gap-2 text-xs text-white/40">
-              <Loader className="w-3 h-3 animate-spin shrink-0" /> Preparing…
+              <Loader className="w-3 h-3 animate-spin shrink-0" /> Preparing upload…
             </div>
           )}
           {uploadState.status === 'uploading' && (
@@ -910,11 +938,11 @@ function VideoPreviewCard({
               <div className="text-[10px] text-white/30">Uploading… {(uploadState as any).progress ?? 0}%</div>
             </div>
           )}
-          {uploadState.status === 'error' && (
-            <div className="flex items-center gap-1.5 text-xs text-red-400">
-              <AlertCircle className="w-3 h-3 shrink-0" /> {(uploadState as any).message}
-            </div>
-          )}
+        </div>
+      )}
+      {uploadState.status === 'error' && (
+        <div className="flex items-center gap-1.5 px-3 py-2 text-xs text-red-400 border-t" style={{ borderColor: BORDER }}>
+          <AlertCircle className="w-3 h-3 shrink-0" /> {(uploadState as any).message}
         </div>
       )}
       {uploadState.status === 'done' && (
@@ -922,11 +950,6 @@ function VideoPreviewCard({
           <CheckCircle2 className="w-3 h-3" /> Uploaded — ready to post
         </div>
       )}
-
-      {/* Filename */}
-      <div className="px-3 py-1.5 border-t" style={{ borderColor: BORDER }}>
-        <span className="text-[10px] text-white/25 truncate block">{file.name}</span>
-      </div>
     </div>
   );
 }
@@ -1001,6 +1024,7 @@ function PostComposerModal({
     return d.toISOString().slice(0, 16);
   });
   const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
   const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
@@ -1069,14 +1093,16 @@ function PostComposerModal({
   useEffect(() => {
     if (!open) {
       setSelectedIntegrations([]); setContent(''); setPerPlatform({});
-      setVideoFile(null); setVideoUpload({ status: 'idle' });
+      setVideoFile(null);
+      if (videoObjectUrl) { URL.revokeObjectURL(videoObjectUrl); setVideoObjectUrl(null); }
+      setVideoUpload({ status: 'idle' });
       setImageFiles([]); setImageUploads([]);
       setSubmitOk(false); setSubmitError(null); setExpandedPlatform(null);
       setTranscript(null); setGeneratedCaptions(null);
       setAiError(null); setActiveCaptionPlatform(null);
       setRepurposePosts(null); setShowAiPanel(false); setAiDescription('');
     }
-  }, [open]);
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (defaultDate) {
@@ -1207,10 +1233,13 @@ function PostComposerModal({
                   onChange={e => {
                     const f = e.target.files?.[0];
                     if (f) {
-                      // Show the file card immediately — before any async work begins
+                      // Revoke any previous object URL
+                      if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+                      // Create ONE object URL here — shared with VideoPreviewCard and extractAudioFromVideo
+                      const url = URL.createObjectURL(f);
                       setVideoFile(f);
+                      setVideoObjectUrl(url);
                       setVideoUpload({ status: 'preparing' });
-                      // Defer upload so the UI re-renders first (critical on mobile)
                       setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
                     }
                   }} />
@@ -1223,11 +1252,17 @@ function PostComposerModal({
           {(imageFiles.length > 0 || videoFile) && (
             <div className="space-y-3">
               {/* Video preview */}
-              {videoFile && (
+              {videoFile && videoObjectUrl && (
                 <VideoPreviewCard
                   file={videoFile}
+                  objectUrl={videoObjectUrl}
                   uploadState={videoUpload}
-                  onRemove={() => { setVideoFile(null); setVideoUpload({ status: 'idle' }); }}
+                  onRemove={() => {
+                    URL.revokeObjectURL(videoObjectUrl);
+                    setVideoFile(null);
+                    setVideoObjectUrl(null);
+                    setVideoUpload({ status: 'idle' });
+                  }}
                 />
               )}
               {/* Image previews — single image full-width, multiple in a 2-col grid */}
