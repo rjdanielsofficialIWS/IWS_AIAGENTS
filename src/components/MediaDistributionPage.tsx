@@ -164,44 +164,87 @@ async function uploadViaNativeXHR(
 // Extract audio from video client-side and return as a compressed WAV blob.
 // A large video typically yields a much smaller audio file — helps stay under Whisper's 25MB cap.
 async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
-  const audioCtx = new AudioContext();
-  const arrayBuffer = await videoFile.arrayBuffer();
-  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(videoFile);
+    const video = document.createElement('video');
+    video.src = url;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = 'auto';
 
-  // Render to offline context at 16kHz mono — ideal for speech recognition
-  const offlineCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * 16000), 16000);
-  const source = offlineCtx.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(offlineCtx.destination);
-  source.start();
-  const renderedBuffer = await offlineCtx.startRendering();
+    video.addEventListener('error', () => {
+      URL.revokeObjectURL(url);
+      reject(new Error('Video could not be loaded for audio extraction'));
+    });
 
-  // Encode as WAV
-  const numSamples = renderedBuffer.length;
-  const wavBuffer = new ArrayBuffer(44 + numSamples * 2);
-  const view = new DataView(wavBuffer);
-  const writeStr = (offset: number, str: string) => {
-    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
-  };
-  const samples = renderedBuffer.getChannelData(0);
-  writeStr(0, 'RIFF');
-  view.setUint32(4, 36 + numSamples * 2, true);
-  writeStr(8, 'WAVE');
-  writeStr(12, 'fmt ');
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);    // PCM
-  view.setUint16(22, 1, true);    // mono
-  view.setUint32(24, 16000, true); // sample rate
-  view.setUint32(28, 32000, true); // byte rate
-  view.setUint16(32, 2, true);    // block align
-  view.setUint16(34, 16, true);   // bits per sample
-  writeStr(36, 'data');
-  view.setUint32(40, numSamples * 2, true);
-  for (let i = 0; i < numSamples; i++) {
-    view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
-  }
-  await audioCtx.close();
-  return new Blob([wavBuffer], { type: 'audio/wav' });
+    video.addEventListener('loadedmetadata', async () => {
+      try {
+        const audioCtx = new AudioContext({ sampleRate: 16000 });
+        const source = audioCtx.createMediaElementSource(video);
+
+        // Route through a ScriptProcessor to capture PCM samples
+        const bufferSize = 4096;
+        const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
+        const chunks: Float32Array[] = [];
+
+        source.connect(processor);
+        processor.connect(audioCtx.destination);
+
+        processor.onaudioprocess = (e) => {
+          const data = e.inputBuffer.getChannelData(0);
+          chunks.push(new Float32Array(data));
+        };
+
+        video.currentTime = 0;
+        await video.play();
+
+        video.addEventListener('ended', async () => {
+          processor.disconnect();
+          source.disconnect();
+          await audioCtx.close();
+          URL.revokeObjectURL(url);
+
+          // Flatten all chunks into one array
+          const totalSamples = chunks.reduce((acc, c) => acc + c.length, 0);
+          const samples = new Float32Array(totalSamples);
+          let offset = 0;
+          for (const chunk of chunks) {
+            samples.set(chunk, offset);
+            offset += chunk.length;
+          }
+
+          // Encode as 16-bit PCM WAV at 16kHz
+          const wavBuffer = new ArrayBuffer(44 + samples.length * 2);
+          const view = new DataView(wavBuffer);
+          const writeStr = (off: number, str: string) => {
+            for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+          };
+          writeStr(0, 'RIFF');
+          view.setUint32(4, 36 + samples.length * 2, true);
+          writeStr(8, 'WAVE');
+          writeStr(12, 'fmt ');
+          view.setUint32(16, 16, true);
+          view.setUint16(20, 1, true);
+          view.setUint16(22, 1, true);    // mono
+          view.setUint32(24, 16000, true); // sample rate
+          view.setUint32(28, 32000, true); // byte rate
+          view.setUint16(32, 2, true);
+          view.setUint16(34, 16, true);
+          writeStr(36, 'data');
+          view.setUint32(40, samples.length * 2, true);
+          for (let i = 0; i < samples.length; i++) {
+            view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
+          }
+
+          resolve(new Blob([wavBuffer], { type: 'audio/wav' }));
+        });
+
+      } catch (err) {
+        URL.revokeObjectURL(url);
+        reject(err);
+      }
+    });
+  });
 }
 
 // Send a video/audio to the transcribe-video edge function.
