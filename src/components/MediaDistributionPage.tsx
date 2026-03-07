@@ -4,6 +4,7 @@ import {
   ArrowLeft, Loader, CheckCircle2, AlertCircle, Sparkles, X,
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
+  ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
@@ -161,96 +162,68 @@ async function uploadViaNativeXHR(
   });
 }
 
-// Extract audio from video client-side and return as a compressed WAV blob.
-// A large video typically yields a much smaller audio file — helps stay under Whisper's 25MB cap.
+// ─────────────────────────────────────────────────────────────────────────────
+// FIX: Extract audio using decodeAudioData (reads raw file bytes directly,
+// no playback required). This avoids the ScriptProcessor/real-time capture
+// approach that caused "you you you" repeats and garbled/random-letter output.
+// ─────────────────────────────────────────────────────────────────────────────
 async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(videoFile);
-    const video = document.createElement('video');
-    video.src = url;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'auto';
+  // Read the entire file as an ArrayBuffer
+  const arrayBuffer = await videoFile.arrayBuffer();
 
-    video.addEventListener('error', () => {
-      URL.revokeObjectURL(url);
-      reject(new Error('Video could not be loaded for audio extraction'));
-    });
+  // Decode audio from the raw bytes — no video element, no playback needed
+  const audioCtx = new AudioContext({ sampleRate: 16000 });
+  let audioBuffer: AudioBuffer;
+  try {
+    audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  } finally {
+    await audioCtx.close();
+  }
 
-    video.addEventListener('loadedmetadata', async () => {
-      try {
-        const audioCtx = new AudioContext({ sampleRate: 16000 });
-        const source = audioCtx.createMediaElementSource(video);
+  // Mix down to mono by averaging all channels
+  const numChannels = audioBuffer.numberOfChannels;
+  const length      = audioBuffer.length;
+  const samples     = new Float32Array(length);
 
-        // Route through a ScriptProcessor to capture PCM samples
-        const bufferSize = 4096;
-        const processor = audioCtx.createScriptProcessor(bufferSize, 1, 1);
-        const chunks: Float32Array[] = [];
+  for (let ch = 0; ch < numChannels; ch++) {
+    const channelData = audioBuffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      samples[i] += channelData[i] / numChannels;
+    }
+  }
 
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
+  // Encode as 16-bit PCM WAV at 16 kHz (mono) — Whisper-friendly format
+  const wavBuffer = new ArrayBuffer(44 + samples.length * 2);
+  const view      = new DataView(wavBuffer);
 
-        processor.onaudioprocess = (e) => {
-          const data = e.inputBuffer.getChannelData(0);
-          chunks.push(new Float32Array(data));
-        };
+  const writeStr = (off: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
+  };
 
-        video.currentTime = 0;
-        await video.play();
+  writeStr(0,  'RIFF');
+  view.setUint32(4,  36 + samples.length * 2, true);
+  writeStr(8,  'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16,    true); // PCM chunk size
+  view.setUint16(20, 1,     true); // PCM format
+  view.setUint16(22, 1,     true); // mono
+  view.setUint32(24, 16000, true); // sample rate
+  view.setUint32(28, 32000, true); // byte rate (16000 * 1 * 2)
+  view.setUint16(32, 2,     true); // block align
+  view.setUint16(34, 16,    true); // bits per sample
+  writeStr(36, 'data');
+  view.setUint32(40, samples.length * 2, true);
 
-        video.addEventListener('ended', async () => {
-          processor.disconnect();
-          source.disconnect();
-          await audioCtx.close();
-          URL.revokeObjectURL(url);
+  for (let i = 0; i < samples.length; i++) {
+    view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
+  }
 
-          // Flatten all chunks into one array
-          const totalSamples = chunks.reduce((acc, c) => acc + c.length, 0);
-          const samples = new Float32Array(totalSamples);
-          let offset = 0;
-          for (const chunk of chunks) {
-            samples.set(chunk, offset);
-            offset += chunk.length;
-          }
-
-          // Encode as 16-bit PCM WAV at 16kHz
-          const wavBuffer = new ArrayBuffer(44 + samples.length * 2);
-          const view = new DataView(wavBuffer);
-          const writeStr = (off: number, str: string) => {
-            for (let i = 0; i < str.length; i++) view.setUint8(off + i, str.charCodeAt(i));
-          };
-          writeStr(0, 'RIFF');
-          view.setUint32(4, 36 + samples.length * 2, true);
-          writeStr(8, 'WAVE');
-          writeStr(12, 'fmt ');
-          view.setUint32(16, 16, true);
-          view.setUint16(20, 1, true);
-          view.setUint16(22, 1, true);    // mono
-          view.setUint32(24, 16000, true); // sample rate
-          view.setUint32(28, 32000, true); // byte rate
-          view.setUint16(32, 2, true);
-          view.setUint16(34, 16, true);
-          writeStr(36, 'data');
-          view.setUint32(40, samples.length * 2, true);
-          for (let i = 0; i < samples.length; i++) {
-            view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
-          }
-
-          resolve(new Blob([wavBuffer], { type: 'audio/wav' }));
-        });
-
-      } catch (err) {
-        URL.revokeObjectURL(url);
-        reject(err);
-      }
-    });
-  });
+  return new Blob([wavBuffer], { type: 'audio/wav' });
 }
 
 // Send a video/audio to the transcribe-video edge function.
 // For files ≤5MB: send as FormData directly.
-// For larger files: extract audio, upload it, then send the URL.
-// This avoids both Supabase's 6MB body limit (546) and Whisper's 25MB file limit.
+// For larger files: extract audio via decodeAudioData, then send or upload.
 async function transcribeVideo(videoFile: File): Promise<string> {
   let transcribeRes: Response;
 
@@ -301,6 +274,40 @@ function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'l
     <div className={`${dim} rounded-xl flex items-center justify-center shrink-0`}
       style={{ background: p.bg, color: p.color }}>
       {p.icon}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TranscriptViewer — shows a preview with an expand/collapse toggle
+// ─────────────────────────────────────────────────────────────────────────────
+function TranscriptViewer({ transcript }: { transcript: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const PREVIEW_LENGTH = 160;
+  const isLong = transcript.length > PREVIEW_LENGTH;
+
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}20`, background: 'rgba(0,0,0,0.25)' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: BORDER }}>
+        <span className="text-xs font-bold text-white/30 uppercase tracking-wider">Transcript</span>
+        <span className="text-xs text-white/20">{transcript.length} chars</span>
+      </div>
+      <div className="px-3 py-2.5">
+        <p className="text-xs text-white/50 leading-relaxed whitespace-pre-wrap break-words">
+          {expanded || !isLong ? transcript : transcript.slice(0, PREVIEW_LENGTH) + '…'}
+        </p>
+        {isLong && (
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="mt-2 flex items-center gap-1 text-xs font-bold transition hover:brightness-125"
+            style={{ color: GOLD }}
+          >
+            {expanded
+              ? <><ChevronUp className="w-3.5 h-3.5" /> Show less</>
+              : <><ChevronDown className="w-3.5 h-3.5" /> Read full transcript</>}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -688,6 +695,7 @@ function PostComposerModal({
 
   const handleAiGenerate = async () => {
     setAiLoading(true); setAiError(null); setGeneratedCaptions(null); setRepurposePosts(null);
+    setTranscript(null);
     try {
       let sourceText = '';
       const usingVideo = captionMode === 'from_video';
@@ -964,12 +972,10 @@ function PostComposerModal({
                     : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
-                {transcript && (
-                  <div>
-                    <div className="text-xs font-bold text-white/25 uppercase tracking-wider mb-1">Transcript</div>
-                    <div className="text-xs text-white/40 leading-relaxed line-clamp-2">{transcript}</div>
-                  </div>
-                )}
+
+                {/* ── Transcript with expand/collapse ── */}
+                {transcript && <TranscriptViewer transcript={transcript} />}
+
                 {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                   <div className="space-y-2">
                     <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
