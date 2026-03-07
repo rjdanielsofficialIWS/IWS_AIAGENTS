@@ -336,14 +336,6 @@ async function transcribeVideo(videoFile: File): Promise<string> {
   return transcript;
 }
 
-  if (!transcribeRes.ok) {
-    const err = await transcribeRes.json().catch(() => ({}));
-    throw new Error(err.error || 'Transcription failed');
-  }
-  const { transcript } = await transcribeRes.json();
-  return transcript;
-}
-
 function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'lg' }) {
   const p = PLATFORMS[id as PlatformId];
   const dim = size === 'sm' ? 'w-6 h-6' : size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
