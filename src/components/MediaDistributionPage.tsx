@@ -10,8 +10,8 @@ import { supabase } from '../services/vapiAI';
 
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
-const BG      = '#0a0a0a';
-const SURFACE = '#111111';
+const BG      = '#1a1a1a';
+const SURFACE = '#222222';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
 const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
