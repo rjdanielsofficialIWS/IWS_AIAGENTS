@@ -316,6 +316,64 @@ async function transcribeVideo(videoFile: File): Promise<string> {
   }
   const { transcript } = await transcribeRes.json();
   return transcript;
+}async function transcribeVideo(videoFile: File): Promise<string> {
+  let transcribeRes: Response;
+
+  const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+  if (isMobile) {
+    // On mobile, skip audio extraction entirely.
+    // iOS/Android record as AAC-in-MP4 which Whisper handles natively.
+    // Just enforce the 25MB limit — phone videos are typically compressed well.
+    if (videoFile.size <= 25 * 1024 * 1024) {
+      const form = new FormData();
+      form.append('file', videoFile, videoFile.name);
+      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+    } else {
+      // Over 25MB — upload and send URL
+      const uploadedPath = await uploadViaNativeXHR(videoFile, 'video');
+      const videoUrl = uploadedPath.startsWith('http')
+        ? uploadedPath
+        : `${POSTIZ_API_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
+      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl }),
+      });
+    }
+  } else {
+    // Desktop — extract audio to stay under limits
+    if (videoFile.size <= 5 * 1024 * 1024) {
+      const form = new FormData();
+      form.append('file', videoFile, videoFile.name);
+      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+    } else {
+      const audioBlob = await extractAudioFromVideo(videoFile);
+      console.log('[transcribe] audio blob size:', audioBlob.size, 'bytes');
+      if (audioBlob.size <= 5 * 1024 * 1024) {
+        const form = new FormData();
+        form.append('file', audioBlob, 'audio.wav');
+        transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+      } else {
+        const uploadedPath = await uploadViaNativeXHR(audioBlob, 'video');
+        const videoUrl = uploadedPath.startsWith('http')
+          ? uploadedPath
+          : `${POSTIZ_API_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
+        transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoUrl }),
+        });
+      }
+    }
+  }
+
+  if (!transcribeRes.ok) {
+    const err = await transcribeRes.json().catch(() => ({}));
+    throw new Error(err.error || 'Transcription failed');
+  }
+  const { transcript } = await transcribeRes.json();
+  return transcript;
 }
 
 function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'lg' }) {
