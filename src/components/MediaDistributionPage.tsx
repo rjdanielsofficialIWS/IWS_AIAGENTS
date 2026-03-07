@@ -143,10 +143,6 @@ async function fetchIntegrations(token: string): Promise<PostizIntegration[]> {
   return Array.isArray(data?.integrations) ? data.integrations : Array.isArray(data) ? data : [];
 }
 
-// ─────────────────────────────────────────────
-// Upload directly to Postiz (CORS is open).
-// API key fetched securely from Netlify function.
-// ─────────────────────────────────────────────
 async function uploadViaNativeXHR(
   file: File,
   kind: 'video' | 'image',
@@ -157,7 +153,6 @@ async function uploadViaNativeXHR(
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    // Use Supabase Edge Function as proxy — handles binary perfectly
     xhr.open('POST', 'https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/postiz-upload');
 
     if (onProgress) {
@@ -415,9 +410,23 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
       let source = '';
       if (captionMode === 'from_video') {
         if (!videoFile) throw new Error('Select a video first');
-        const form = new FormData();
-        form.append('file', videoFile, videoFile.name);
-        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+
+        let transcribeRes: Response;
+        if (videoFile.size <= 5 * 1024 * 1024) {
+          // Small file — safe to send as FormData directly
+          const form = new FormData();
+          form.append('file', videoFile, videoFile.name);
+          transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+        } else {
+          // Large file — upload first, then transcribe via URL to avoid the 6MB body limit (546 error)
+          const uploadedUrl = await uploadViaNativeXHR(videoFile, 'video');
+          transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: uploadedUrl }),
+          });
+        }
+
         if (!transcribeRes.ok) { const err = await transcribeRes.json().catch(() => ({})); throw new Error(err.error || 'Transcription failed'); }
         const { transcript } = await transcribeRes.json();
         source = transcript;
@@ -489,7 +498,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
               className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
               style={{ background: GOLD, color: '#000' }}>
               {loading
-                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Transcribing & Generating…' : 'Generating Ideas…'}</span>
+                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Uploading & Transcribing…' : 'Generating Ideas…'}</span>
                 : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
             </button>
           )}
@@ -603,6 +612,15 @@ function PostComposerModal({
       ? selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[]
       : ['tiktok', 'instagram', 'linkedin', 'x'];
 
+  // ─── FIX: transcribe-video 546 error ──────────────────────────────────────
+  // Supabase edge functions have a ~6MB body limit. Sending raw video as
+  // FormData causes HTTP 546 (wall-clock/memory timeout) for larger files.
+  //
+  // Priority order:
+  //   1. Video already uploaded (done) → send URL as JSON, no size limit
+  //   2. File ≤5MB and not yet uploaded → send as FormData (safe)
+  //   3. Large file still uploading → friendly error with progress %
+  // ──────────────────────────────────────────────────────────────────────────
   const handleAiGenerate = async () => {
     setAiLoading(true); setAiError(null); setGeneratedCaptions(null); setRepurposePosts(null);
     try {
@@ -610,10 +628,34 @@ function PostComposerModal({
       const usingVideo = captionMode === 'from_video';
       if (usingVideo) {
         if (!videoFile) throw new Error('Upload a talking video first using the Video button above');
-        const form = new FormData();
-        form.append('file', videoFile, videoFile.name);
-        const transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
-        if (!transcribeRes.ok) { const err = await transcribeRes.json().catch(() => ({})); throw new Error(err.error || 'Transcription failed'); }
+
+        let transcribeRes: Response;
+
+        if (videoUpload.status === 'done') {
+          // Best path: already uploaded — send URL, edge function fetches server-side
+          transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: (videoUpload as any).url }),
+          });
+        } else if (videoFile.size <= 5 * 1024 * 1024) {
+          // Small file, not yet uploaded — safe to send directly
+          const form = new FormData();
+          form.append('file', videoFile, videoFile.name);
+          transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+        } else {
+          // Large file still uploading — prevent 546 with a friendly message
+          throw new Error(
+            videoUpload.status === 'uploading'
+              ? `Video is still uploading (${(videoUpload as any).progress ?? 0}%). Wait for the green checkmark, then click Generate again.`
+              : 'Please add the video using the Video button above and wait for it to finish uploading before generating captions.'
+          );
+        }
+
+        if (!transcribeRes.ok) {
+          const err = await transcribeRes.json().catch(() => ({}));
+          throw new Error(err.error || 'Transcription failed');
+        }
         const { transcript: t } = await transcribeRes.json();
         setTranscript(t); sourceText = t;
       } else {
@@ -621,11 +663,11 @@ function PostComposerModal({
         sourceText = aiDescription;
       }
       const mode = aiTab === 'captions'
-        ? (usingVideo ? 'captions_from_video' : 'captions_from_description')
+        ? (captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description')
         : 'repurpose_posts';
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, transcript: usingVideo ? sourceText : undefined, description: !usingVideo ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
+        body: JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
       });
       if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
@@ -852,9 +894,20 @@ function PostComposerModal({
                     </button>
                   ))}
                 </div>
+
+                {/* Contextual upload-state hints */}
                 {captionMode === 'from_video' && !videoFile && (
                   <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video using the Video button above first</div>
                 )}
+                {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && (
+                  <div className="text-xs px-1" style={{ color: GOLD }}>
+                    ⏳ Video uploading ({(videoUpload as any).progress ?? 0}%)… captions will generate once it finishes.
+                  </div>
+                )}
+                {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && (
+                  <div className="text-xs text-green-400/80 px-1">✓ Video uploaded — ready to generate captions.</div>
+                )}
+
                 {captionMode === 'from_description' && (
                   <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
                     placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…" rows={3}
