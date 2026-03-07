@@ -423,7 +423,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
           transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: uploadedUrl }),
+            body: JSON.stringify({ videoUrl: uploadedUrl }),
           });
         }
 
@@ -636,7 +636,7 @@ function PostComposerModal({
           transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: (videoUpload as any).url }),
+            body: JSON.stringify({ videoUrl: uploadedUrl }),
           });
         } else if (videoFile.size <= 5 * 1024 * 1024) {
           // Small file, not yet uploaded — safe to send directly
