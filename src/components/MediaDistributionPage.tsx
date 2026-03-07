@@ -639,7 +639,7 @@ function PostComposerModal({
           transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl: uploadedUrl }),
+            body: JSON.stringify({ videoUrl: (videoUpload as any).url }),
           });
         } else if (videoFile.size <= 5 * 1024 * 1024) {
           // Small file, not yet uploaded — safe to send directly
