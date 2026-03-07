@@ -418,14 +418,17 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
           form.append('file', videoFile, videoFile.name);
           transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
         } else {
-          // Large file — upload first, then transcribe via URL to avoid the 6MB body limit (546 error)
-          const uploadedUrl = await uploadViaNativeXHR(videoFile, 'video');
-          transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl: uploadedUrl }),
-          });
-        }
+  // Large file — upload first, then transcribe via URL to avoid the 6MB body limit (546 error)
+  const uploadedPath = await uploadViaNativeXHR(videoFile, 'video');
+  const videoUrl = uploadedPath.startsWith('http')
+    ? uploadedPath
+    : `${POSTIZ_API_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
+  transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ videoUrl }),
+  });
+}
 
         if (!transcribeRes.ok) { const err = await transcribeRes.json().catch(() => ({})); throw new Error(err.error || 'Transcription failed'); }
         const { transcript } = await transcribeRes.json();
