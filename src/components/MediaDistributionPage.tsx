@@ -164,24 +164,47 @@ async function uploadViaNativeXHR(
 // Extract audio from video client-side and return as a compressed WAV blob.
 // A large video typically yields a much smaller audio file — helps stay under Whisper's 25MB cap.
 async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
-  // First try the ArrayBuffer approach (works on Android + desktop)
+  // Try direct ArrayBuffer decode first (desktop + Android)
   try {
     const audioCtx = new AudioContext();
     const arrayBuffer = await videoFile.arrayBuffer();
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-    const offlineCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * 16000), 16000);
-    const source = offlineCtx.createBufferSource();
-    source.buffer = audioBuffer;
-    source.connect(offlineCtx.destination);
-    source.start();
-    const renderedBuffer = await offlineCtx.startRendering();
     await audioCtx.close();
-    return encodePCMToWav(renderedBuffer.getChannelData(0), 16000);
-  } catch {
-    // Fallback for mobile Safari: play through a video element in real time
+
+    // Downmix to mono at original sample rate, then resample to 16kHz manually
+    const inputSampleRate = audioBuffer.sampleRate;
+    const inputLength = audioBuffer.length;
+    const outputSampleRate = 16000;
+    const outputLength = Math.floor(inputLength * outputSampleRate / inputSampleRate);
+
+    // Downmix channels to mono
+    const mono = new Float32Array(inputLength);
+    const numChannels = audioBuffer.numberOfChannels;
+    for (let ch = 0; ch < numChannels; ch++) {
+      const channelData = audioBuffer.getChannelData(ch);
+      for (let i = 0; i < inputLength; i++) {
+        mono[i] += channelData[i] / numChannels;
+      }
+    }
+
+    // Linear interpolation resample to 16kHz
+    const resampled = new Float32Array(outputLength);
+    for (let i = 0; i < outputLength; i++) {
+      const src = i * inputSampleRate / outputSampleRate;
+      const lo = Math.floor(src);
+      const hi = Math.min(lo + 1, inputLength - 1);
+      const frac = src - lo;
+      resampled[i] = mono[lo] * (1 - frac) + mono[hi] * frac;
+    }
+
+    console.log('[audio] decoded via ArrayBuffer, duration:', audioBuffer.duration, 'output samples:', outputLength);
+    return encodePCMToWav(resampled, outputSampleRate);
+
+  } catch (e) {
+    console.warn('[audio] ArrayBuffer decode failed, trying video element fallback:', e);
   }
 
-  // Mobile Safari fallback — plays the video silently and captures PCM via ScriptProcessor
+  // Mobile Safari fallback
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(videoFile);
     const video = document.createElement('video');
@@ -221,6 +244,7 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
           let off = 0;
           for (const c of chunks) { all.set(c, off); off += c.length; }
 
+          console.log('[audio] captured via video element, total samples:', totalSamples);
           resolve(encodePCMToWav(all, 16000));
         };
       } catch (err) {
