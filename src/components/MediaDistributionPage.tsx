@@ -650,6 +650,34 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
+function TranscriptViewer({ transcript }: { transcript: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const wordCount = transcript.trim().split(/\s+/).length;
+  const isLong = transcript.length > 300;
+
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: `rgba(255,255,255,0.1)`, background: 'rgba(0,0,0,0.3)' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+          <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Transcript</span>
+          <span className="text-xs text-white/20">{wordCount} words</span>
+        </div>
+        {isLong && (
+          <button onClick={() => setExpanded(v => !v)}
+            className="text-xs font-bold transition hover:text-white"
+            style={{ color: GOLD }}>
+            {expanded ? 'Collapse' : 'Read full'}
+          </button>
+        )}
+      </div>
+      <div className={`px-3 py-2.5 text-xs text-white/50 leading-relaxed ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
+        {transcript}
+      </div>
+    </div>
+  );
+}
+
 function PostComposerModal({
   open, onClose, integrations, token, defaultDate, onSuccess,
 }: {
