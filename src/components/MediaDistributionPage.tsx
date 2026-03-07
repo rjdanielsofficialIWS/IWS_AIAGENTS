@@ -287,21 +287,31 @@ async function transcribeVideo(videoFile: File): Promise<string> {
   const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
   if (isMobile) {
-    if (videoFile.size <= 25 * 1024 * 1024) {
-      const form = new FormData();
-      form.append('file', videoFile, videoFile.name);
-      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
-    } else {
-      const uploadedPath = await uploadViaNativeXHR(videoFile, 'video');
-      const videoUrl = uploadedPath.startsWith('http')
-        ? uploadedPath
-        : `${POSTIZ_API_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
-      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoUrl }),
-      });
-    }
+  if (videoUpload && (videoUpload as any).status === 'done' && (videoUpload as any).url) {
+    // Already uploaded — just send the URL, no size limit
+    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoUrl: (videoUpload as any).url }),
+    });
+  } else if (videoFile.size <= 24 * 1024 * 1024) {
+    // Small enough to send directly
+    const form = new FormData();
+    form.append('file', videoFile, videoFile.name);
+    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+  } else {
+    // Too large — upload first then send URL
+    const uploadedPath = await uploadViaNativeXHR(videoFile, 'video');
+    const videoUrl = uploadedPath.startsWith('http')
+      ? uploadedPath
+      : `${POSTIZ_API_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
+    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ videoUrl }),
+    });
+  }
+}
   } else {
     if (videoFile.size <= 5 * 1024 * 1024) {
       const form = new FormData();
