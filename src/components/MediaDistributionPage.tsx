@@ -7,18 +7,12 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 
-// ─────────────────────────────────────────────
-// BRAND COLOURS
-// ─────────────────────────────────────────────
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
 const BG      = '#0a0a0a';
 const SURFACE = '#111111';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
-// ─────────────────────────────────────────────
-// POSTIZ CONFIG
-// ─────────────────────────────────────────────
 const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
 const POSTIZ_API_URL      = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
@@ -28,14 +22,8 @@ const LS_TOKEN_KEY         = 'postiz_access_token';
 const LS_STATE_KEY         = 'postiz_oauth_state';
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
 
-// ─────────────────────────────────────────────
-// SUPABASE
-// ─────────────────────────────────────────────
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
-// ─────────────────────────────────────────────
-// PLATFORM DEFINITIONS
-// ─────────────────────────────────────────────
 type PlatformId =
   | 'instagram' | 'facebook' | 'tiktok' | 'youtube'
   | 'x' | 'linkedin' | 'threads' | 'bluesky';
@@ -86,9 +74,6 @@ const PLATFORMS: Record<PlatformId, {
   },
 };
 
-// ─────────────────────────────────────────────
-// TYPES
-// ─────────────────────────────────────────────
 type UploadState =
   | { status: 'idle' }
   | { status: 'uploading'; progress?: number }
@@ -107,9 +92,6 @@ type ScheduledPost = {
   scheduledAt: Date; status: 'scheduled' | 'published' | 'failed';
 };
 
-// ─────────────────────────────────────────────
-// HELPERS
-// ─────────────────────────────────────────────
 function generateState() {
   const a = new Uint8Array(16);
   window.crypto.getRandomValues(a);
@@ -144,12 +126,12 @@ async function fetchIntegrations(token: string): Promise<PostizIntegration[]> {
 }
 
 async function uploadViaNativeXHR(
-  file: File,
+  file: File | Blob,
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append('file', file, file instanceof File ? file.name : `audio.wav`);
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -179,9 +161,91 @@ async function uploadViaNativeXHR(
   });
 }
 
-// ─────────────────────────────────────────────
-// PLATFORM ICON
-// ─────────────────────────────────────────────
+// Extract audio from video client-side and return as a compressed WAV blob.
+// A large video typically yields a much smaller audio file — helps stay under Whisper's 25MB cap.
+async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
+  const audioCtx = new AudioContext();
+  const arrayBuffer = await videoFile.arrayBuffer();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+  // Render to offline context at 16kHz mono — ideal for speech recognition
+  const offlineCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * 16000), 16000);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineCtx.destination);
+  source.start();
+  const renderedBuffer = await offlineCtx.startRendering();
+
+  // Encode as WAV
+  const numSamples = renderedBuffer.length;
+  const wavBuffer = new ArrayBuffer(44 + numSamples * 2);
+  const view = new DataView(wavBuffer);
+  const writeStr = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+  const samples = renderedBuffer.getChannelData(0);
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);    // PCM
+  view.setUint16(22, 1, true);    // mono
+  view.setUint32(24, 16000, true); // sample rate
+  view.setUint32(28, 32000, true); // byte rate
+  view.setUint16(32, 2, true);    // block align
+  view.setUint16(34, 16, true);   // bits per sample
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+  for (let i = 0; i < numSamples; i++) {
+    view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
+  }
+  await audioCtx.close();
+  return new Blob([wavBuffer], { type: 'audio/wav' });
+}
+
+// Send a video/audio to the transcribe-video edge function.
+// For files ≤5MB: send as FormData directly.
+// For larger files: extract audio, upload it, then send the URL.
+// This avoids both Supabase's 6MB body limit (546) and Whisper's 25MB file limit.
+async function transcribeVideo(videoFile: File): Promise<string> {
+  let transcribeRes: Response;
+
+  if (videoFile.size <= 5 * 1024 * 1024) {
+    // Small file — send directly
+    const form = new FormData();
+    form.append('file', videoFile, videoFile.name);
+    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+  } else {
+    // Large file — extract audio track only (mono 16kHz WAV), upload it, send URL
+    const audioBlob = await extractAudioFromVideo(videoFile);
+    if (audioBlob.size <= 5 * 1024 * 1024) {
+      // Audio is small enough to send directly
+      const form = new FormData();
+      form.append('file', audioBlob, 'audio.wav');
+      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+    } else {
+      // Audio still large — upload it and send the URL
+      const uploadedPath = await uploadViaNativeXHR(audioBlob, 'video');
+      const videoUrl = uploadedPath.startsWith('http')
+        ? uploadedPath
+        : `${POSTIZ_API_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
+      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl }),
+      });
+    }
+  }
+
+  if (!transcribeRes.ok) {
+    const err = await transcribeRes.json().catch(() => ({}));
+    throw new Error(err.error || 'Transcription failed');
+  }
+  const { transcript } = await transcribeRes.json();
+  return transcript;
+}
+
 function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'lg' }) {
   const p = PLATFORMS[id as PlatformId];
   const dim = size === 'sm' ? 'w-6 h-6' : size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
@@ -198,9 +262,6 @@ function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'l
   );
 }
 
-// ─────────────────────────────────────────────
-// CONNECT ACCOUNTS MODAL
-// ─────────────────────────────────────────────
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
 }: {
@@ -214,7 +275,6 @@ function ConnectAccountsModal({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full max-w-lg rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
-
         <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
@@ -224,7 +284,6 @@ function ConnectAccountsModal({
             <X className="w-4 h-4" />
           </button>
         </div>
-
         {!postizToken ? (
           <div className="p-8 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center"
@@ -315,9 +374,6 @@ function ConnectAccountsModal({
   );
 }
 
-// ─────────────────────────────────────────────
-// REPURPOSE POST SELECTOR
-// ─────────────────────────────────────────────
 function RepurposePostSelector({ posts, onUsePost }: {
   posts: { twitter: string[]; linkedin: string[] };
   onUsePost: (text: string) => void;
@@ -392,9 +448,6 @@ function RepurposePostSelector({ posts, onUsePost }: {
   );
 }
 
-// ─────────────────────────────────────────────
-// REPURPOSE IDEAS MODAL
-// ─────────────────────────────────────────────
 function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
   const [description, setDescription] = useState('');
@@ -410,29 +463,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
       let source = '';
       if (captionMode === 'from_video') {
         if (!videoFile) throw new Error('Select a video first');
-
-        let transcribeRes: Response;
-        if (videoFile.size <= 5 * 1024 * 1024) {
-          // Small file — safe to send as FormData directly
-          const form = new FormData();
-          form.append('file', videoFile, videoFile.name);
-          transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
-        } else {
-  // Large file — upload first, then transcribe via URL to avoid the 6MB body limit (546 error)
-  const uploadedPath = await uploadViaNativeXHR(videoFile, 'video');
-  const videoUrl = uploadedPath.startsWith('http')
-    ? uploadedPath
-    : `${POSTIZ_API_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
-  transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ videoUrl }),
-  });
-}
-
-        if (!transcribeRes.ok) { const err = await transcribeRes.json().catch(() => ({})); throw new Error(err.error || 'Transcription failed'); }
-        const { transcript } = await transcribeRes.json();
-        source = transcript;
+        source = await transcribeVideo(videoFile);
       } else {
         if (!description.trim()) throw new Error('Enter a description of your video');
         source = description;
@@ -501,7 +532,7 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
               className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
               style={{ background: GOLD, color: '#000' }}>
               {loading
-                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Uploading & Transcribing…' : 'Generating Ideas…'}</span>
+                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Processing & Transcribing…' : 'Generating Ideas…'}</span>
                 : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
             </button>
           )}
@@ -569,9 +600,6 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
-// ─────────────────────────────────────────────
-// POST COMPOSER MODAL
-// ─────────────────────────────────────────────
 function PostComposerModal({
   open, onClose, integrations, token, defaultDate, onSuccess,
 }: {
@@ -615,15 +643,6 @@ function PostComposerModal({
       ? selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[]
       : ['tiktok', 'instagram', 'linkedin', 'x'];
 
-  // ─── FIX: transcribe-video 546 error ──────────────────────────────────────
-  // Supabase edge functions have a ~6MB body limit. Sending raw video as
-  // FormData causes HTTP 546 (wall-clock/memory timeout) for larger files.
-  //
-  // Priority order:
-  //   1. Video already uploaded (done) → send URL as JSON, no size limit
-  //   2. File ≤5MB and not yet uploaded → send as FormData (safe)
-  //   3. Large file still uploading → friendly error with progress %
-  // ──────────────────────────────────────────────────────────────────────────
   const handleAiGenerate = async () => {
     setAiLoading(true); setAiError(null); setGeneratedCaptions(null); setRepurposePosts(null);
     try {
@@ -631,36 +650,11 @@ function PostComposerModal({
       const usingVideo = captionMode === 'from_video';
       if (usingVideo) {
         if (!videoFile) throw new Error('Upload a talking video first using the Video button above');
-
-        let transcribeRes: Response;
-
-        if (videoUpload.status === 'done') {
-          // Best path: already uploaded — send URL, edge function fetches server-side
-          transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ videoUrl: (videoUpload as any).url }),
-          });
-        } else if (videoFile.size <= 5 * 1024 * 1024) {
-          // Small file, not yet uploaded — safe to send directly
-          const form = new FormData();
-          form.append('file', videoFile, videoFile.name);
-          transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
-        } else {
-          // Large file still uploading — prevent 546 with a friendly message
-          throw new Error(
-            videoUpload.status === 'uploading'
-              ? `Video is still uploading (${(videoUpload as any).progress ?? 0}%). Wait for the green checkmark, then click Generate again.`
-              : 'Please add the video using the Video button above and wait for it to finish uploading before generating captions.'
-          );
+        if (videoUpload.status === 'uploading') {
+          throw new Error(`Video is still uploading (${(videoUpload as any).progress ?? 0}%). Wait for the green checkmark, then click Generate again.`);
         }
-
-        if (!transcribeRes.ok) {
-          const err = await transcribeRes.json().catch(() => ({}));
-          throw new Error(err.error || 'Transcription failed');
-        }
-        const { transcript: t } = await transcribeRes.json();
-        setTranscript(t); sourceText = t;
+        sourceText = await transcribeVideo(videoFile);
+        setTranscript(sourceText);
       } else {
         if (!aiDescription.trim()) throw new Error('Enter a description of your video');
         sourceText = aiDescription;
@@ -744,8 +738,8 @@ function PostComposerModal({
       const videoArr = videoUpload.status === 'done' ? [{ id: 'video-0', path: (videoUpload as any).url }] : [];
       const dateUTC  = scheduleType === 'now' ? new Date().toISOString() : new Date(scheduleDate).toISOString();
       const posts    = selectedIntegrations.map(integId => {
-        const int        = integrations.find(i => i.id === integId);
-        const identifier = int?.identifier || '';
+        const int         = integrations.find(i => i.id === integId);
+        const identifier  = int?.identifier || '';
         const postContent = perPlatform[integId]?.trim() || content;
         return {
           integration: { id: integId },
@@ -904,11 +898,11 @@ function PostComposerModal({
                 )}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && (
                   <div className="text-xs px-1" style={{ color: GOLD }}>
-                    ⏳ Video uploading ({(videoUpload as any).progress ?? 0}%)… captions will generate once it finishes.
+                    ⏳ Video uploading ({(videoUpload as any).progress ?? 0}%)… you can still generate captions, the audio will be extracted locally.
                   </div>
                 )}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && (
-                  <div className="text-xs text-green-400/80 px-1">✓ Video uploaded — ready to generate captions.</div>
+                  <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate to transcribe and write captions.</div>
                 )}
 
                 {captionMode === 'from_description' && (
@@ -923,7 +917,7 @@ function PostComposerModal({
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
                   {aiLoading
-                    ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</>
+                    ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Processing & Transcribing…' : 'Writing…'}</>
                     : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
@@ -1034,9 +1028,6 @@ function PostComposerModal({
   );
 }
 
-// ─────────────────────────────────────────────
-// CALENDAR PANEL
-// ─────────────────────────────────────────────
 function CalendarPanel({ token, integrations }: { token: string | null; integrations: PostizIntegration[] }) {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [posts, setPosts]             = useState<ScheduledPost[]>([]);
@@ -1163,9 +1154,6 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
   );
 }
 
-// ─────────────────────────────────────────────
-// COMPOSER / POSTS LIST PANEL
-// ─────────────────────────────────────────────
 function ComposerPanel({ integrations, token }: { integrations: PostizIntegration[]; token: string | null }) {
   const [composerOpen, setComposerOpen]   = useState(false);
   const [repurposeOpen, setRepurposeOpen] = useState(false);
@@ -1303,9 +1291,6 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
   );
 }
 
-// ─────────────────────────────────────────────
-// SIDEBAR
-// ─────────────────────────────────────────────
 function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
   view: ViewMode; setView: (v: ViewMode) => void;
   integrations: PostizIntegration[]; onOpenConnect: () => void; postizToken: string | null;
@@ -1369,9 +1354,6 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
   );
 }
 
-// ─────────────────────────────────────────────
-// TOP BAR
-// ─────────────────────────────────────────────
 function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect }: {
   postizToken: string | null; integrations: PostizIntegration[]; integrationsLoading: boolean;
   onConnect: () => void; onDisconnect: () => void; onRefresh: () => void; onOpenConnect: () => void;
@@ -1415,9 +1397,6 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
   );
 }
 
-// ─────────────────────────────────────────────
-// ROOT PAGE
-// ─────────────────────────────────────────────
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
