@@ -161,18 +161,23 @@ async function uploadViaNativeXHR(
   });
 }
 
+// Extract audio from video client-side and return as a compressed WAV blob.
+// A large video typically yields a much smaller audio file — helps stay under Whisper's 25MB cap.
 async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
+  // Try direct ArrayBuffer decode first (desktop + Android)
   try {
     const audioCtx = new AudioContext();
     const arrayBuffer = await videoFile.arrayBuffer();
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
     await audioCtx.close();
 
+    // Downmix to mono at original sample rate, then resample to 16kHz manually
     const inputSampleRate = audioBuffer.sampleRate;
     const inputLength = audioBuffer.length;
     const outputSampleRate = 16000;
     const outputLength = Math.floor(inputLength * outputSampleRate / inputSampleRate);
 
+    // Downmix channels to mono
     const mono = new Float32Array(inputLength);
     const numChannels = audioBuffer.numberOfChannels;
     for (let ch = 0; ch < numChannels; ch++) {
@@ -182,6 +187,7 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
       }
     }
 
+    // Linear interpolation resample to 16kHz
     const resampled = new Float32Array(outputLength);
     for (let i = 0; i < outputLength; i++) {
       const src = i * inputSampleRate / outputSampleRate;
@@ -193,10 +199,12 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
 
     console.log('[audio] decoded via ArrayBuffer, duration:', audioBuffer.duration, 'output samples:', outputLength);
     return encodePCMToWav(resampled, outputSampleRate);
+
   } catch (e) {
     console.warn('[audio] ArrayBuffer decode failed, trying video element fallback:', e);
   }
 
+  // Mobile Safari fallback
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(videoFile);
     const video = document.createElement('video');
@@ -247,59 +255,45 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
   });
 }
 
+// Shared WAV encoder used by both paths above
 function encodePCMToWav(samples: Float32Array, sampleRate: number): Blob {
-  const numSamples = samples.length;
-  const bytesPerSample = 2;
-  const numChannels = 1;
-  const dataSize = numSamples * bytesPerSample;
-  const headerSize = 44;
-  const totalSize = headerSize + dataSize;
-
-  const buf = new ArrayBuffer(totalSize);
+  const buf = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buf);
-  const str = (off: number, s: string) => {
-    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
-  };
-
+  const str = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
   str(0, 'RIFF');
-  view.setUint32(4, totalSize - 8, true);
-  str(8, 'WAVE');
-  str(12, 'fmt ');
+  view.setUint32(4, 36 + samples.length * 2, true);
+  str(8, 'WAVE'); str(12, 'fmt ');
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
-  view.setUint16(22, numChannels, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numChannels * bytesPerSample, true);
-  view.setUint16(32, numChannels * bytesPerSample, true);
-  view.setUint16(34, bytesPerSample * 8, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
   str(36, 'data');
-  view.setUint32(40, dataSize, true);
-
-  for (let i = 0; i < numSamples; i++) {
-    view.setInt16(44 + i * bytesPerSample, Math.max(-32768, Math.min(32767, samples[i] * 32767)), true);
+  view.setUint32(40, samples.length * 2, true);
+  for (let i = 0; i < samples.length; i++) {
+    view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
   }
-
-  console.log('[wav] samples:', numSamples, 'sampleRate:', sampleRate, 'dataSize:', dataSize, 'totalSize:', totalSize);
   return new Blob([buf], { type: 'audio/wav' });
 }
 
-async function transcribeVideo(videoFile: File, uploadedUrl?: string): Promise<string> {
+// Send a video/audio to the transcribe-video edge function.
+// For files ≤5MB: send as FormData directly.
+// For larger files: extract audio, upload it, then send the URL.
+// This avoids both Supabase's 6MB body limit (546) and Whisper's 25MB file limit.
+async function transcribeVideo(videoFile: File): Promise<string> {
   let transcribeRes: Response;
 
-  if (uploadedUrl) {
-    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ videoUrl: uploadedUrl }),
-    });
-  } else if (videoFile.size <= 5 * 1024 * 1024) {
+  if (videoFile.size <= 5 * 1024 * 1024) {
     const form = new FormData();
     form.append('file', videoFile, videoFile.name);
     transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
   } else {
     const audioBlob = await extractAudioFromVideo(videoFile);
     console.log('[transcribe] audio blob size:', audioBlob.size, 'bytes');
-    if (audioBlob.size <= 24 * 1024 * 1024) {
+
+    if (audioBlob.size <= 5 * 1024 * 1024) {
       const form = new FormData();
       form.append('file', audioBlob, 'audio.wav');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
@@ -336,34 +330,6 @@ function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'l
     <div className={`${dim} rounded-xl flex items-center justify-center shrink-0`}
       style={{ background: p.bg, color: p.color }}>
       {p.icon}
-    </div>
-  );
-}
-
-function TranscriptViewer({ transcript }: { transcript: string }) {
-  const [expanded, setExpanded] = useState(false);
-  const wordCount = transcript.trim().split(/\s+/).length;
-  const isLong = transcript.length > 300;
-
-  return (
-    <div className="rounded-xl border overflow-hidden" style={{ borderColor: `rgba(255,255,255,0.1)`, background: 'rgba(0,0,0,0.3)' }}>
-      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <div className="flex items-center gap-2">
-          <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-          <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Transcript</span>
-          <span className="text-xs text-white/20">{wordCount} words</span>
-        </div>
-        {isLong && (
-          <button onClick={() => setExpanded(v => !v)}
-            className="text-xs font-bold transition hover:text-white"
-            style={{ color: GOLD }}>
-            {expanded ? 'Collapse' : 'Read full'}
-          </button>
-        )}
-      </div>
-      <div className={`px-3 py-2.5 text-xs text-white/50 leading-relaxed ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
-        {transcript}
-      </div>
     </div>
   );
 }
@@ -706,6 +672,34 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
+function TranscriptViewer({ transcript }: { transcript: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const wordCount = transcript.trim().split(/\s+/).length;
+  const isLong = transcript.length > 300;
+
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: `rgba(255,255,255,0.1)`, background: 'rgba(0,0,0,0.3)' }}>
+      <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+          <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Transcript</span>
+          <span className="text-xs text-white/20">{wordCount} words</span>
+        </div>
+        {isLong && (
+          <button onClick={() => setExpanded(v => !v)}
+            className="text-xs font-bold transition hover:text-white"
+            style={{ color: GOLD }}>
+            {expanded ? 'Collapse' : 'Read full'}
+          </button>
+        )}
+      </div>
+      <div className={`px-3 py-2.5 text-xs text-white/50 leading-relaxed ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
+        {transcript}
+      </div>
+    </div>
+  );
+}
+
 function PostComposerModal({
   open, onClose, integrations, token, defaultDate, onSuccess,
 }: {
@@ -759,10 +753,7 @@ function PostComposerModal({
         if (videoUpload.status === 'uploading') {
           throw new Error(`Video is still uploading (${(videoUpload as any).progress ?? 0}%). Wait for the green checkmark, then click Generate again.`);
         }
-        sourceText = await transcribeVideo(
-          videoFile,
-          videoUpload.status === 'done' ? (videoUpload as any).url : undefined
-        );
+        sourceText = await transcribeVideo(videoFile);
         setTranscript(sourceText);
       } else {
         if (!aiDescription.trim()) throw new Error('Enter a description of your video');
@@ -1001,6 +992,7 @@ function PostComposerModal({
                   ))}
                 </div>
 
+                {/* Contextual upload-state hints */}
                 {captionMode === 'from_video' && !videoFile && (
                   <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video using the Video button above first</div>
                 )}
@@ -1029,7 +1021,9 @@ function PostComposerModal({
                     : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
-                {transcript && <TranscriptViewer transcript={transcript} />}
+                {transcript && (
+  <TranscriptViewer transcript={transcript} />
+)}
                 {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                   <div className="space-y-2">
                     <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
