@@ -1054,7 +1054,7 @@ function PostComposerModal({
                 )}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && (
                   <div className="text-xs px-1" style={{ color: GOLD }}>
-                    ⏳ Video uploading ({(videoUpload as any).progress ?? 0}%)… you can still generate captions, the audio will be extracted locally.
+                    ⏳ Video uploading ({(videoUpload as any).progress ?? 0}%)… Once complete you will be able to generate content.
                   </div>
                 )}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && (
