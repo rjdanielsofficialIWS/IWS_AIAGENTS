@@ -106,7 +106,7 @@ function generateState() {
 async function ayrsharePost(userId: string, payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
 }) {
-  const res = await fetch('/.netlify/functions/ayrshare-post', {
+  const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-post', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ userId, ...payload }),
