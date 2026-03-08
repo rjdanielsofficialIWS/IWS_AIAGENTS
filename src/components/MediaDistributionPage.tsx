@@ -378,7 +378,6 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
   );
 }
 
-// ─── FIXED: ConnectAccountsModal now accepts postizToken prop for TikTok connect ─
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
 }: {
@@ -387,11 +386,20 @@ function ConnectAccountsModal({
   onRefresh: () => void;
 }) {
   if (!open) return null;
+
+  const handleConnect = () => {
+    // Set flag so when user returns from Postiz we auto-refresh
+    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+    window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank');
+  };
+
   return (
     <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full md:max-w-lg rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
+
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
@@ -401,116 +409,50 @@ function ConnectAccountsModal({
             <X className="w-4 h-4" />
           </button>
         </div>
-        {false ? (
-          <div className="p-8 flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center"
-              style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
-              <Link2 className="w-7 h-7" style={{ color: GOLD }} />
-            </div>
-            <h3 className="text-base font-bold text-white mb-2">Connect your Postiz account first</h3>
-            <p className="text-sm text-white/40 mb-6 max-w-xs">
-              Authorize once with Postiz, then connect any social platform directly from this page.
-            </p>
-            <button onClick={onConnectPostiz}
-              className="px-6 py-3 rounded-xl text-sm font-bold transition hover:brightness-110"
-              style={{ background: GOLD, color: '#000' }}>
-              Authorize Postiz Account
-            </button>
-          </div>
-        ) : (
-          <div className="overflow-y-auto flex-1 p-6 space-y-5">
-            {!integrations.find(i => i.identifier === 'tiktok') && (
-              <div className="rounded-xl border p-4 flex items-center gap-4"
-                style={{ borderColor: 'rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}>
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                  style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>
-                  {PLATFORMS.tiktok.icon}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold text-white">Connect TikTok</div>
-                  <div className="text-xs text-white/40 mt-0.5">Schedule & publish videos directly to TikTok</div>
-                </div>
-                {/* Direct TikTok OAuth — no intermediate auth needed */}
-                <button
-                  onClick={() => { window.location.href = buildTikTokConnectUrl(); }}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110 shrink-0"
-                  style={{ background: GOLD, color: '#000' }}>
-                  Connect
-                </button>
-              </div>
-            )}
-            {integrations.length > 0 && (
-              <div>
-                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Connected ({integrations.length})</div>
-                <div className="space-y-2">
-                  {integrations.map(int => (
-                    <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
-                      style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
-                      <PlatformIcon id={int.identifier} size="md" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-white truncate">{int.name}</div>
-                        <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
-                      </div>
-                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                      <button
-                        onClick={async () => {
-                          if (!confirm(`Disconnect ${int.name}?`)) return;
-                          try {
-                            // Get a fresh admin token then delete via Postiz API
-                            const authRes = await fetch('/.netlify/functions/postiz-auth', { method: 'POST' });
-                            const authData = await authRes.json();
-                            const token = authData.token;
-                            if (!token) throw new Error('Could not authenticate');
-                            await fetch('/.netlify/functions/postiz-api', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({
-                                path: `/public/v1/integrations/${int.id}`,
-                                method: 'DELETE',
-                                token,
-                              }),
-                            });
-                            onRefresh();
-                          } catch (e) { alert('Failed to disconnect. Try again.'); }
-                        }}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition shrink-0"
-                        style={{ color: 'rgba(239,68,68,0.6)' }}
-                        title="Disconnect">
-                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/>
-                        </svg>
-                      </button>
+
+        <div className="overflow-y-auto flex-1 p-6 space-y-4">
+
+          {/* Connected accounts */}
+          {integrations.length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Connected ({integrations.length})</div>
+              <div className="space-y-2">
+                {integrations.map(int => (
+                  <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
+                    style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
+                    <PlatformIcon id={int.identifier} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-white truncate">{int.name}</div>
+                      <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
                     </div>
-                  ))}
-                </div>
+                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                  </div>
+                ))}
               </div>
-            )}
-            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${GOLD}25`, background: `${GOLD}06` }}>
-              <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>How to add a channel</div>
-              {[
-                { n: '1', text: 'Click "Connect TikTok" above' },
-                { n: '2', text: 'Authorize your TikTok account on the TikTok page' },
-                { n: '3', text: 'You\'ll be redirected back here automatically' },
-                { n: '4', text: 'Click "Refresh Channels" to see your connected account' },
-              ].map(step => (
-                <div key={step.n} className="flex items-start gap-3">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 mt-0.5"
-                    style={{ background: `${GOLD}25`, color: GOLD }}>{step.n}</div>
-                  <p className="text-sm text-white/60">{step.text}</p>
-                </div>
-              ))}
             </div>
-            <div className="flex flex-col gap-2">
-              <button onClick={onRefresh} disabled={integrationsLoading}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
-                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
-                {integrationsLoading
-                  ? <><Loader className="w-4 h-4 animate-spin" /> Refreshing…</>
-                  : <><RefreshCw className="w-4 h-4" /> Refresh Channels</>}
-              </button>
-            </div>
-          </div>
-        )}
+          )}
+
+          {/* Connect button — opens Postiz in new tab */}
+          <button onClick={handleConnect}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
+            <Link2 className="w-4 h-4" />
+            {integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}
+          </button>
+
+          <p className="text-xs text-white/30 text-center">
+            Opens in a new tab → connect your account → come back and click Refresh
+          </p>
+
+          {/* Refresh */}
+          <button onClick={onRefresh} disabled={integrationsLoading}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
+            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
+            {integrationsLoading
+              ? <><Loader className="w-4 h-4 animate-spin" /> Refreshing…</>
+              : <><RefreshCw className="w-4 h-4" /> Refresh Channels</>}
+          </button>
+        </div>
       </div>
     </div>
   );
