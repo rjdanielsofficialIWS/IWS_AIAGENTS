@@ -1793,6 +1793,8 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [oauthLoading, setOauthLoading]         = useState(false);
+  const [oauthError, setOauthError]             = useState<string | null>(null);
 
   useEffect(() => {
     // Handle return from Ayrshare social account connection
