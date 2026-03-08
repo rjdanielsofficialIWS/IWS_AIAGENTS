@@ -14,7 +14,7 @@
 //     })
 //   })
 
-const POSTIZ_BACKEND_URL = 'https://api.postiz.com';
+const POSTIZ_BACKEND_URL = 'https://postiz.infinitewealthsolutionsai.com/api';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
