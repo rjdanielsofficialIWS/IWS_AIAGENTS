@@ -1,41 +1,22 @@
 // netlify/functions/postiz-connect-callback.js
 //
-// Called after a user returns from Postiz having connected a social platform.
-//
-// Because Postiz handles the entire OAuth flow internally (we just redirected
-// the user to their integrations page), there is no code/state to exchange.
-// The channel is already registered in Postiz by the time the user lands back
-// on your site.
-//
-// This function simply fetches the updated integrations list so the frontend
-// can show the newly connected channel immediately.
+// Called after user returns from Postiz having connected a social platform.
+// Postiz handles the OAuth internally — we just refresh the integrations list.
 
-const POSTIZ_API = 'https://api.postiz.com';
+const POSTIZ_API_URL = 'https://postiz.infinitewealthsolutionsai.com/api';
+const POSTIZ_API_KEY = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
-  let token;
   try {
-    const body = JSON.parse(event.body || '{}');
-    token = body.token;
-  } catch {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid JSON body' }) };
-  }
-
-  if (!token) {
-    return { statusCode: 401, body: JSON.stringify({ error: 'Missing token' }) };
-  }
-
-  try {
-    // Fetch the latest integrations list — the new channel will be in here
-    const resp = await fetch(`${POSTIZ_API}/public/v1/integrations`, {
+    const resp = await fetch(`${POSTIZ_API_URL}/public/v1/integrations`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: token,
+        'Authorization': POSTIZ_API_KEY,
       },
     });
 
