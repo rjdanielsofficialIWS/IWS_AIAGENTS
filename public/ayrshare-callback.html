@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account Connected</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'DM Sans', system-ui, sans-serif;
+      background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+    .card {
+      text-align: center;
+      padding: 40px 48px;
+      border-radius: 20px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      max-width: 360px;
+      width: 90%;
+    }
+    .icon {
+      width: 56px;
+      height: 56px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #D6B25E, #F0D27C);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 24px;
+    }
+    h1 { font-size: 18px; font-weight: 800; margin-bottom: 8px; }
+    p { font-size: 14px; color: rgba(255,255,255,0.4); line-height: 1.5; }
+    .closing { margin-top: 16px; font-size: 12px; color: rgba(255,255,255,0.25); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✓</div>
+    <h1>Account Connected!</h1>
+    <p>Your social account has been linked successfully.</p>
+    <p class="closing">This window will close automatically…</p>
+  </div>
+  <script>
+    // Notify the opener that connection is complete
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'AYRSHARE_CONNECTED' }, '*');
+      }
+    } catch (e) {
+      console.warn('Could not message opener:', e);
+    }
+
+    // Also set localStorage as a fallback for same-tab navigation
+    try {
+      localStorage.setItem('ayrshare_connected', Date.now().toString());
+    } catch (e) {}
+
+    // Auto-close after a short delay
+    setTimeout(() => {
+      window.close();
+      // If window.close() is blocked, redirect back to the app
+      setTimeout(() => {
+        window.location.href = '/media-machine';
+      }, 1000);
+    }, 1500);
+  </script>
+</body>
+</html>
