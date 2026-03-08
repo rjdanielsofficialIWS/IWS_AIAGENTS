@@ -361,6 +361,12 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 }
 
 // ─── ConnectAccountsModal ─────────────────────────────────────────────────────
+// Single-iframe approach:
+// 1. IDLE   — show connected accounts list + connect button
+// 2. ACTIVE — one iframe loads /.netlify/functions/postiz-user-login
+//             that page logs in, then window.location.replace(POSTIZ/launches)
+//             /launches detects it's in an iframe, fires POSTIZ_LOGIN_OK
+//             modal shows the live Postiz UI (already authenticated, same iframe)
 
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
@@ -370,28 +376,32 @@ function ConnectAccountsModal({
   onRefresh: () => void;
 }) {
   const { user: authUser } = useAuth();
-  const [iframePhase, setIframePhase] = useState<'idle' | 'loading' | 'ready'>('idle');
+  const [iframePhase, setIframePhase] = useState<'idle' | 'active'>('idle');
+  const [iframeReady, setIframeReady] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Listen for the silent-login iframe to fire POSTIZ_LOGIN_OK
+  // Listen for POSTIZ_LOGIN_OK fired by the /launches page once it loads
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'POSTIZ_LOGIN_OK') {
-        setIframePhase('ready');
+        setIframeReady(true);
       }
     };
     window.addEventListener('message', handler);
     return () => window.removeEventListener('message', handler);
   }, []);
 
-  // Reset phase whenever modal is closed
+  // Reset when modal closes
   useEffect(() => {
-    if (!open) setIframePhase('idle');
+    if (!open) {
+      setIframePhase('idle');
+      setIframeReady(false);
+    }
   }, [open]);
 
   const handleOpenIframe = () => {
-    if (!authUser) { onConnectPostiz(); return; } // triggers auth modal in parent
-    setIframePhase('loading');
+    if (!authUser) { onConnectPostiz(); return; }
+    setIframePhase('active');
   };
 
   const loginUrl = authUser
@@ -419,11 +429,13 @@ function ConnectAccountsModal({
             <p className="text-sm text-white/40 mt-0.5">
               {iframePhase === 'idle'
                 ? 'Link your social accounts to start scheduling'
-                : 'Connect your accounts below — changes save automatically'}
+                : iframeReady
+                  ? 'Connect your accounts below — changes save automatically'
+                  : 'Opening channel manager…'}
             </p>
           </div>
           <div className="flex items-center gap-2">
-            {iframePhase !== 'idle' && (
+            {iframePhase === 'active' && iframeReady && (
               <button
                 onClick={() => { onRefresh(); onClose(); }}
                 disabled={integrationsLoading}
@@ -444,7 +456,7 @@ function ConnectAccountsModal({
           </div>
         </div>
 
-        {/* IDLE — show connected list + connect button */}
+        {/* IDLE — connected list + connect button */}
         {iframePhase === 'idle' && (
           <div className="overflow-y-auto flex-1 p-6 space-y-4">
             {integrations.length > 0 && (
@@ -454,11 +466,8 @@ function ConnectAccountsModal({
                 </div>
                 <div className="space-y-2">
                   {integrations.map(int => (
-                    <div
-                      key={int.id}
-                      className="flex items-center gap-3 p-3 rounded-xl border"
-                      style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}
-                    >
+                    <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
+                      style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
                       <PlatformIcon id={int.identifier} size="md" />
                       <div className="flex-1 min-w-0">
                         <div className="text-sm font-bold text-white truncate">{int.name}</div>
@@ -470,7 +479,6 @@ function ConnectAccountsModal({
                 </div>
               </div>
             )}
-
             <button
               onClick={handleOpenIframe}
               className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110"
@@ -479,36 +487,28 @@ function ConnectAccountsModal({
               <Link2 className="w-4 h-4" />
               {integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}
             </button>
-
             <p className="text-xs text-white/30 text-center">
               Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
             </p>
           </div>
         )}
 
-        {/* LOADING — hidden iframe does silent login, shows spinner */}
-        {iframePhase === 'loading' && loginUrl && (
-          <div className="flex-1 flex flex-col relative">
-            <div className="flex-1 flex items-center justify-center gap-3">
-              <Loader className="w-5 h-5 animate-spin" style={{ color: GOLD }} />
-              <span className="text-sm text-white/40">Opening channel manager…</span>
-            </div>
+        {/* ACTIVE — single iframe: logs in then navigates to /launches */}
+        {iframePhase === 'active' && loginUrl && (
+          <div className="flex-1 relative overflow-hidden">
+            {/* Spinner overlay — hidden once iframe signals ready */}
+            {!iframeReady && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3"
+                style={{ background: SURFACE }}>
+                <Loader className="w-6 h-6 animate-spin" style={{ color: GOLD }} />
+                <span className="text-sm text-white/40">Opening channel manager…</span>
+              </div>
+            )}
             <iframe
               ref={iframeRef}
               src={loginUrl}
-              title="postiz-login"
-              style={{ position: 'absolute', width: 0, height: 0, border: 'none', opacity: 0, pointerEvents: 'none' }}
-            />
-          </div>
-        )}
-
-        {/* READY — full Postiz UI embedded */}
-        {iframePhase === 'ready' && (
-          <div className="flex-1 relative overflow-hidden">
-            <iframe
-              src={`${POSTIZ_FRONTEND_URL}/launches`}
-              className="w-full h-full border-0"
               title="Connect Social Accounts"
+              className="w-full h-full border-0"
               allow="popup"
               style={{ minHeight: '500px' }}
             />
