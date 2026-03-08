@@ -1,9 +1,9 @@
-// This function runs SERVER-SIDE on Netlify.
-// It calls the Postiz login API from the server (no CORS issues),
-// gets the JWT token back, then returns an HTML page that:
-//   1. Sets the auth cookie on the postiz subdomain
-//   2. Redirects the iframe to /launches (already authenticated)
-//   3. /launches fires POSTIZ_LOGIN_OK to the parent
+// Flow:
+// 1. Netlify function looks up/creates shadow account in Supabase
+// 2. Calls Postiz /api/auth/login SERVER-SIDE (no CORS) — gets JWT token
+// 3. Redirects iframe to https://postiz.domain/auth-bridge?token=JWT
+// 4. auth-bridge runs on Postiz domain, sets cookie auth=JWT, redirects to /launches
+// 5. /launches loads authenticated, injected script fires POSTIZ_LOGIN_OK to parent
 
 const POSTIZ_URL   = 'https://postiz.infinitewealthsolutionsai.com';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
@@ -85,16 +85,19 @@ async function createPrivateOrgForUser(postizUserId, displayName) {
   }
 }
 
-// SERVER-SIDE login — no CORS issues because this runs on Netlify's servers
 async function serverSideLogin(email, password) {
   const res = await fetch(`${POSTIZ_URL}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password }),
   });
-  if (!res.ok) return null;
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '');
+    console.warn(`Postiz login failed ${res.status}: ${txt}`);
+    return null;
+  }
   const data = await res.json().catch(() => null);
-  // Postiz returns { token } or { access_token } or { jwt }
+  // Postiz returns the token as { token: "..." }
   return data?.token || data?.access_token || data?.jwt || null;
 }
 
@@ -105,10 +108,7 @@ async function serverSideRegister(email, password) {
     body: JSON.stringify({ email, password, provider: 'LOCAL' }),
   });
   const data = await res.json().catch(() => ({}));
-  return {
-    ok: res.ok,
-    userId: data?.id || data?.user?.id || null,
-  };
+  return { ok: res.ok, userId: data?.id || data?.user?.id || null };
 }
 
 exports.handler = async (event) => {
@@ -117,12 +117,16 @@ exports.handler = async (event) => {
   const userId     = params.get('uid');
   const userEmail  = params.get('email');
 
-  const fallbackRedirect = { statusCode: 302, headers: { Location: `${POSTIZ_URL}/launches` }, body: '' };
+  const fallbackRedirect = {
+    statusCode: 302,
+    headers: { Location: `${POSTIZ_URL}/launches` },
+    body: '',
+  };
 
   if (!serviceKey || !userId || !userEmail) return fallbackRedirect;
 
   try {
-    let postizEmail, postizPassword, postizOrgId;
+    let postizEmail, postizPassword;
 
     // Look up existing shadow account
     const existing = await supabaseQuery(
@@ -133,19 +137,17 @@ exports.handler = async (event) => {
     if (existing.ok && Array.isArray(existing.data) && existing.data.length > 0 && existing.data[0].postiz_email) {
       postizEmail    = existing.data[0].postiz_email;
       postizPassword = existing.data[0].postiz_password;
-      postizOrgId    = existing.data[0].postiz_org_id;
     } else {
       // New user — create shadow account
       postizEmail    = `mm_${userId.slice(0, 8)}@mediamachine.app`;
       postizPassword = randomPassword();
       const displayName = userEmail.split('@')[0];
 
-      // Register via Postiz API (server-side, no CORS)
       let postizUserId = null;
       const reg = await serverSideRegister(postizEmail, postizPassword);
       if (reg.ok) postizUserId = reg.userId;
 
-      // Create private org via direct DB access
+      let postizOrgId = null;
       if (process.env.POSTIZ_DB_URL) {
         try {
           if (!postizUserId) postizUserId = await getPostizUserByEmail(postizEmail);
@@ -158,7 +160,6 @@ exports.handler = async (event) => {
         }
       }
 
-      // Save to Supabase
       await supabaseQuery('/postiz_accounts', 'POST', {
         supabase_user_id: userId,
         user_email:       userEmail,
@@ -169,102 +170,32 @@ exports.handler = async (event) => {
       }, serviceKey);
     }
 
-    // ── SERVER-SIDE LOGIN ─────────────────────────────────────────────────────
-    // Call Postiz login API from Netlify server — zero CORS issues.
-    // Get the JWT token back, pass it to the iframe page.
-    // ─────────────────────────────────────────────────────────────────────────
-
+    // SERVER-SIDE LOGIN — Netlify server calls Postiz, zero CORS
     let token = await serverSideLogin(postizEmail, postizPassword);
 
     if (!token) {
-      // Account might not exist yet in Postiz — try register then login again
+      // Account may not exist in Postiz yet — register then retry
       await serverSideRegister(postizEmail, postizPassword);
       token = await serverSideLogin(postizEmail, postizPassword);
     }
 
-    // Even without a token we can still redirect — they'll see the login page
-    // but at least there are no CORS errors
     if (!token) {
-      console.warn(`Could not get Postiz token for ${postizEmail}`);
+      console.error(`All login attempts failed for ${postizEmail}`);
       return fallbackRedirect;
     }
 
-    // ── RETURN HTML PAGE ──────────────────────────────────────────────────────
-    // This page runs on the Netlify domain (same origin as the parent).
-    // It uses a form POST trick to set the auth cookie on the Postiz subdomain,
-    // then redirects the iframe to /launches.
-    // ─────────────────────────────────────────────────────────────────────────
-
-    const jsPostiz = JSON.stringify(POSTIZ_URL);
-    const jsToken  = JSON.stringify(token);
-
-    const html = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Connecting...</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #0d0d0d;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      font-family: sans-serif;
-      gap: 12px;
-    }
-    .spinner {
-      width: 32px; height: 32px;
-      border: 3px solid rgba(214,178,94,0.2);
-      border-top-color: #D6B25E;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    .msg { font-size: 12px; color: rgba(255,255,255,0.3); }
-    @keyframes spin { to { transform: rotate(360deg); } }
-  </style>
-</head>
-<body>
-  <div class="spinner"></div>
-  <div class="msg">Opening channel manager…</div>
-  <script>
-  (async () => {
-    const POSTIZ = ${jsPostiz};
-    const token  = ${jsToken};
-
-    try {
-      // Set the auth token as a cookie on the Postiz subdomain
-      // by navigating to a Postiz endpoint that accepts a token param,
-      // OR by calling the Postiz token-exchange endpoint if available.
-      // 
-      // Most Next.js/NestJS auth stacks store the JWT in localStorage or
-      // a cookie named "auth_token", "token", "jwt", or "next-auth.session-token".
-      // We'll try the Postiz /api/auth/token endpoint first, then fallback
-      // to storing it in the iframe's localStorage via a postMessage bridge.
-
-      // Approach: redirect to a Postiz page that accepts ?token= param
-      // Postiz reads this and stores the session itself.
-      const loginRedirectUrl = POSTIZ + '/launches?token=' + encodeURIComponent(token);
-      window.location.replace(loginRedirectUrl);
-
-    } catch(e) {
-      console.error('Token handoff error:', e);
-      // Signal parent anyway so modal doesn't hang
-      if (window.parent !== window) {
-        window.parent.postMessage({ type: 'POSTIZ_LOGIN_OK' }, '*');
-      }
-    }
-  })();
-  </script>
-</body>
-</html>`;
+    // Redirect iframe to /auth-bridge on the Postiz domain.
+    // That page sets cookie auth=<token> (same domain as Postiz)
+    // then redirects to /launches which loads fully authenticated.
+    const bridgeUrl = `${POSTIZ_URL}/auth-bridge?token=${encodeURIComponent(token)}`;
 
     return {
-      statusCode: 200,
-      headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' },
-      body: html,
+      statusCode: 302,
+      headers: {
+        Location: bridgeUrl,
+        'Cache-Control': 'no-store',
+      },
+      body: '',
     };
 
   } catch (err) {
