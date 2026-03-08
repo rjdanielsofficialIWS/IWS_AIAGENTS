@@ -18,33 +18,16 @@ const BORDER  = 'rgba(255,255,255,0.08)';
 
 const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
 const POSTIZ_API_URL      = 'https://postiz.infinitewealthsolutionsai.com/api';
-const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
-const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
+const POSTIZ_API_KEY      = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
+const ORG_ID              = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
 
-// Organization API key — used for Public API calls (fetching integrations, posts, etc.)
-const POSTIZ_API_KEY = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
+const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
-// ─── FIXED: Removed buildTikTokConnectUrl() and LS_TIKTOK_STATE_KEY ───────────
-// TikTok OAuth is now handled entirely by Postiz's built-in /integrations/social/tiktok/connect endpoint
-
+// LocalStorage keys
 const LS_TOKEN_KEY         = 'postiz_access_token';
 const LS_STATE_KEY         = 'postiz_oauth_state';
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
 const LS_TIKTOK_STATE_KEY  = 'tiktok_oauth_state';
-
-function buildTikTokConnectUrl() {
-  const state = generateState();
-  localStorage.setItem(LS_TIKTOK_STATE_KEY, state);
-  return `https://www.tiktok.com/v2/auth/authorize/?${new URLSearchParams({
-    client_key: 'sbaw5rklhtaoiu7crd',
-    redirect_uri: 'https://infinitewealthsolutionsai.com/mediamachine',
-    state,
-    response_type: 'code',
-    scope: 'video.list,user.info.basic,video.upload,user.info.profile,user.info.stats',
-  })}`;
-}
-
-const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
 type PlatformId =
   | 'instagram' | 'facebook' | 'tiktok' | 'youtube'
@@ -96,6 +79,8 @@ const PLATFORMS: Record<PlatformId, {
   },
 };
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
 type UploadState =
   | { status: 'idle' }
   | { status: 'preparing' }
@@ -115,19 +100,12 @@ type ScheduledPost = {
   scheduledAt: Date; status: 'scheduled' | 'published' | 'failed';
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
 function generateState() {
   const a = new Uint8Array(16);
   window.crypto.getRandomValues(a);
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
-}
-
-function buildPostizAuthUrl(state: string) {
-  return `${POSTIZ_FRONTEND_URL}/oauth/authorize?${new URLSearchParams({
-    client_id: POSTIZ_CLIENT_ID,
-    response_type: 'code',
-    redirect_uri: POSTIZ_REDIRECT_URL,
-    state,
-  })}`;
 }
 
 async function postizProxy(path: string, token: string, method = 'GET', body?: object) {
@@ -160,7 +138,7 @@ async function uploadViaNativeXHR(
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', 'https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/postiz-upload');
+    xhr.open('POST', `${SUPABASE_URL}/functions/v1/postiz-upload`);
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
@@ -333,6 +311,8 @@ async function transcribeVideo(videoFile: File): Promise<string> {
   return transcript;
 }
 
+// ─── Small shared components ──────────────────────────────────────────────────
+
 function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'lg' }) {
   const p = PLATFORMS[id as PlatformId];
   const dim = size === 'sm' ? 'w-6 h-6' : size === 'lg' ? 'w-10 h-10' : 'w-8 h-8';
@@ -380,6 +360,8 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
   );
 }
 
+// ─── ConnectAccountsModal ─────────────────────────────────────────────────────
+
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
 }: {
@@ -387,76 +369,157 @@ function ConnectAccountsModal({
   onConnectPostiz: () => void; postizToken: string | null; integrationsLoading: boolean;
   onRefresh: () => void;
 }) {
-  if (!open) return null;
+  const { user: authUser } = useAuth();
+  const [iframePhase, setIframePhase] = useState<'idle' | 'loading' | 'ready'>('idle');
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const handleConnect = () => {
-    // No-op in modal — handled by parent's onConnectPostiz
+  // Listen for the silent-login iframe to fire POSTIZ_LOGIN_OK
+  useEffect(() => {
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === 'POSTIZ_LOGIN_OK') {
+        setIframePhase('ready');
+      }
+    };
+    window.addEventListener('message', handler);
+    return () => window.removeEventListener('message', handler);
+  }, []);
+
+  // Reset phase whenever modal is closed
+  useEffect(() => {
+    if (!open) setIframePhase('idle');
+  }, [open]);
+
+  const handleOpenIframe = () => {
+    if (!authUser) { onConnectPostiz(); return; } // triggers auth modal in parent
+    setIframePhase('loading');
   };
+
+  const loginUrl = authUser
+    ? `/.netlify/functions/postiz-user-login?uid=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`
+    : null;
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-lg rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
-        style={{ background: SURFACE, borderColor: BORDER }}>
-
+      <div
+        className="relative w-full md:max-w-3xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
+        style={{
+          background: SURFACE,
+          borderColor: BORDER,
+          height: iframePhase === 'idle' ? 'auto' : '85vh',
+          maxHeight: '90vh',
+        }}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
-            <p className="text-sm text-white/40 mt-0.5">Link your social accounts to start scheduling</p>
+            <p className="text-sm text-white/40 mt-0.5">
+              {iframePhase === 'idle'
+                ? 'Link your social accounts to start scheduling'
+                : 'Connect your accounts below — changes save automatically'}
+            </p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {iframePhase !== 'idle' && (
+              <button
+                onClick={() => { onRefresh(); onClose(); }}
+                disabled={integrationsLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition hover:bg-white/5 disabled:opacity-40"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}
+              >
+                {integrationsLoading
+                  ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Syncing…</>
+                  : <><RefreshCw className="w-3.5 h-3.5" /> Done</>}
+              </button>
+            )}
+            <button
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        <div className="overflow-y-auto flex-1 p-6 space-y-4">
-
-          {/* Connected accounts */}
-          {integrations.length > 0 && (
-            <div>
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Connected ({integrations.length})</div>
-              <div className="space-y-2">
-                {integrations.map(int => (
-                  <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
-                    style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
-                    <PlatformIcon id={int.identifier} size="md" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-white truncate">{int.name}</div>
-                      <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
+        {/* IDLE — show connected list + connect button */}
+        {iframePhase === 'idle' && (
+          <div className="overflow-y-auto flex-1 p-6 space-y-4">
+            {integrations.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
+                  Connected ({integrations.length})
+                </div>
+                <div className="space-y-2">
+                  {integrations.map(int => (
+                    <div
+                      key={int.id}
+                      className="flex items-center gap-3 p-3 rounded-xl border"
+                      style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}
+                    >
+                      <PlatformIcon id={int.identifier} size="md" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-white truncate">{int.name}</div>
+                        <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
+                      </div>
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
                     </div>
-                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
+            )}
+
+            <button
+              onClick={handleOpenIframe}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110"
+              style={{ background: GOLD, color: '#000' }}
+            >
+              <Link2 className="w-4 h-4" />
+              {integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}
+            </button>
+
+            <p className="text-xs text-white/30 text-center">
+              Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
+            </p>
+          </div>
+        )}
+
+        {/* LOADING — hidden iframe does silent login, shows spinner */}
+        {iframePhase === 'loading' && loginUrl && (
+          <div className="flex-1 flex flex-col relative">
+            <div className="flex-1 flex items-center justify-center gap-3">
+              <Loader className="w-5 h-5 animate-spin" style={{ color: GOLD }} />
+              <span className="text-sm text-white/40">Opening channel manager…</span>
             </div>
-          )}
+            <iframe
+              ref={iframeRef}
+              src={loginUrl}
+              title="postiz-login"
+              style={{ position: 'absolute', width: 0, height: 0, border: 'none', opacity: 0, pointerEvents: 'none' }}
+            />
+          </div>
+        )}
 
-          {/* Connect button — opens Postiz in new tab */}
-          <button onClick={onConnectPostiz}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110"
-            style={{ background: GOLD, color: '#000' }}>
-            <Link2 className="w-4 h-4" />
-            {integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}
-          </button>
-
-          <p className="text-xs text-white/30 text-center">
-            Opens in a new tab → connect your account → come back and click Refresh
-          </p>
-
-          {/* Refresh */}
-          <button onClick={onRefresh} disabled={integrationsLoading}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
-            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
-            {integrationsLoading
-              ? <><Loader className="w-4 h-4 animate-spin" /> Refreshing…</>
-              : <><RefreshCw className="w-4 h-4" /> Refresh Channels</>}
-          </button>
-        </div>
+        {/* READY — full Postiz UI embedded */}
+        {iframePhase === 'ready' && (
+          <div className="flex-1 relative overflow-hidden">
+            <iframe
+              src={`${POSTIZ_FRONTEND_URL}/launches`}
+              className="w-full h-full border-0"
+              title="Connect Social Accounts"
+              allow="popup"
+              style={{ minHeight: '500px' }}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
 }
+
+// ─── RepurposePostSelector ────────────────────────────────────────────────────
 
 function RepurposePostSelector({ posts, onUsePost }: {
   posts: { twitter: string[]; linkedin: string[] };
@@ -531,6 +594,8 @@ function RepurposePostSelector({ posts, onUsePost }: {
     </div>
   );
 }
+
+// ─── RepurposeIdeasModal ──────────────────────────────────────────────────────
 
 function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
@@ -684,6 +749,8 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
+// ─── VideoPreviewCard ─────────────────────────────────────────────────────────
+
 function VideoPreviewCard({
   file, objectUrl, uploadState, onRemove,
 }: { file: File; objectUrl: string; uploadState: UploadState; onRemove: () => void }) {
@@ -708,9 +775,9 @@ function VideoPreviewCard({
     else          { v.pause(); setPlaying(false); }
   };
 
-  const handleTimeUpdate = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
+  const handleTimeUpdate    = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
   const handleLoadedMetadata = () => setDuration(videoRef.current?.duration ?? 0);
-  const handleEnded = () => { setPlaying(false); };
+  const handleEnded         = () => { setPlaying(false); };
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
     const t = parseFloat(e.target.value);
@@ -856,6 +923,8 @@ function VideoPreviewCard({
   );
 }
 
+// ─── ImagePreviewCard ─────────────────────────────────────────────────────────
+
 function ImagePreviewCard({
   file, uploadState, onRemove,
 }: { file: File; uploadState: UploadState; onRemove: () => void }) {
@@ -904,6 +973,8 @@ function ImagePreviewCard({
   );
 }
 
+// ─── PostComposerModal ────────────────────────────────────────────────────────
+
 function PostComposerModal({
   open, onClose, integrations, token, defaultDate, onSuccess,
 }: {
@@ -917,16 +988,16 @@ function PostComposerModal({
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
     return d.toISOString().slice(0, 16);
   });
-  const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [videoFile, setVideoFile]           = useState<File | null>(null);
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
-  const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
-  const [imageFiles, setImageFiles]     = useState<File[]>([]);
-  const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
-  const [perPlatform, setPerPlatform]   = useState<Record<string, string>>({});
+  const [videoUpload, setVideoUpload]       = useState<UploadState>({ status: 'idle' });
+  const [imageFiles, setImageFiles]         = useState<File[]>([]);
+  const [imageUploads, setImageUploads]     = useState<UploadState[]>([]);
+  const [perPlatform, setPerPlatform]       = useState<Record<string, string>>({});
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
-  const [submitting, setSubmitting]     = useState(false);
-  const [submitOk, setSubmitOk]         = useState(false);
-  const [submitError, setSubmitError]   = useState<string | null>(null);
+  const [submitting, setSubmitting]         = useState(false);
+  const [submitOk, setSubmitOk]             = useState(false);
+  const [submitError, setSubmitError]       = useState<string | null>(null);
 
   type AiTab = 'captions' | 'repurpose';
   type CaptionMode = 'from_video' | 'from_description';
@@ -1078,6 +1149,7 @@ function PostComposerModal({
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-5">
+          {/* Channel selector */}
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
             {integrations.length === 0 ? (
@@ -1102,6 +1174,7 @@ function PostComposerModal({
             )}
           </div>
 
+          {/* Content textarea */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
             <textarea value={content} onChange={e => setContent(e.target.value)}
               placeholder="What's on your mind? Write your post content here…" rows={5}
@@ -1136,6 +1209,7 @@ function PostComposerModal({
             </div>
           </div>
 
+          {/* Media previews */}
           {(imageFiles.length > 0 || videoFile) && (
             <div className="space-y-3">
               {videoFile && videoObjectUrl && (
@@ -1174,6 +1248,7 @@ function PostComposerModal({
             </div>
           )}
 
+          {/* AI panel */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
             <button onClick={() => setShowAiPanel(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
@@ -1255,6 +1330,7 @@ function PostComposerModal({
             )}
           </div>
 
+          {/* Per-platform customisation */}
           {selectedIntegrations.length > 0 && (
             <div>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">
@@ -1290,6 +1366,7 @@ function PostComposerModal({
             </div>
           )}
 
+          {/* Schedule */}
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
             <div className="flex gap-2 mb-3">
@@ -1330,10 +1407,12 @@ function PostComposerModal({
   );
 }
 
+// ─── CalendarPanel ────────────────────────────────────────────────────────────
+
 function CalendarPanel({ token, integrations }: { token: string | null; integrations: PostizIntegration[] }) {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [posts, setPosts]             = useState<ScheduledPost[]>([]);
-  const [loading, setLoading]         = useState(false);
+  const [currentDate, setCurrentDate]   = useState(new Date());
+  const [posts, setPosts]               = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]           = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerDate, setComposerDate] = useState<Date | undefined>();
   const [repurposeOpen, setRepurposeOpen] = useState(false);
@@ -1465,6 +1544,8 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
     </div>
   );
 }
+
+// ─── ComposerPanel (posts list view) ─────────────────────────────────────────
 
 function ComposerPanel({ integrations, token }: { integrations: PostizIntegration[]; token: string | null }) {
   const [composerOpen, setComposerOpen]   = useState(false);
@@ -1607,6 +1688,8 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
   );
 }
 
+// ─── Sidebar + mobile nav ─────────────────────────────────────────────────────
+
 function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
   view: ViewMode; setView: (v: ViewMode) => void;
   integrations: PostizIntegration[]; onOpenConnect: () => void; postizToken: string | null;
@@ -1647,12 +1730,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
-          {false ? (
-            <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
-              style={{ borderColor: `${GOLD}35`, color: GOLD }}>
-              <Link2 className="w-3.5 h-3.5" /> Connect accounts
-            </button>
-          ) : integrations.length === 0 ? (
+          {integrations.length === 0 ? (
             <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
               style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
               <Plus className="w-3.5 h-3.5" /> Add channels
@@ -1696,6 +1774,8 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
     </>
   );
 }
+
+// ─── TopBar ───────────────────────────────────────────────────────────────────
 
 function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect }: {
   postizToken: string | null; integrations: PostizIntegration[]; integrationsLoading: boolean;
@@ -1758,43 +1838,45 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
   );
 }
 
+// ─── Main page ────────────────────────────────────────────────────────────────
+
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
-  const [postizToken, setPostizToken]           = useState<string | null>(() => localStorage.getItem(LS_TOKEN_KEY));
-  const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
-  const [integrationsLoading, setIntegrationsLoading] = useState(false);
-  const [oauthLoading, setOauthLoading]         = useState(false);
-  const [oauthError, setOauthError]             = useState<string | null>(null);
-  const { user: authUser } = useAuth();
+  const [postizToken, setPostizToken]           = useState<string | null>(() => {
+    try { return localStorage.getItem(LS_TOKEN_KEY); } catch { return null; }
+  });
+  const [integrations, setIntegrations]                   = useState<PostizIntegration[]>([]);
+  const [integrationsLoading, setIntegrationsLoading]     = useState(false);
+  const [oauthLoading, setOauthLoading]                   = useState(false);
+  const [oauthError, setOauthError]                       = useState<string | null>(null);
+  const { user: authUser }                                = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
-  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalOpen, setAuthModalOpen]                 = useState(false);
 
   const loadIntegrations = useCallback(async () => {
     setIntegrationsLoading(true);
     try { setIntegrations(await fetchIntegrations()); }
-    catch (e) { setIntegrations([]); }
+    catch { setIntegrations([]); }
     finally { setIntegrationsLoading(false); }
   }, []);
 
-  useEffect(() => {
-    loadIntegrations();
-  }, [loadIntegrations]);
+  useEffect(() => { loadIntegrations(); }, [loadIntegrations]);
 
+  // Handle OAuth callbacks
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const code   = params.get('code');
     const state  = params.get('state');
     const error  = params.get('error');
 
-    // ── TikTok direct OAuth return ───────────────────────────────────────────
-    const tiktokState = localStorage.getItem(LS_TIKTOK_STATE_KEY);
+    // TikTok direct OAuth return
+    const tiktokState = (() => { try { return localStorage.getItem(LS_TIKTOK_STATE_KEY); } catch { return null; } })();
     if (tiktokState && state === tiktokState) {
-      localStorage.removeItem(LS_TIKTOK_STATE_KEY);
+      try { localStorage.removeItem(LS_TIKTOK_STATE_KEY); } catch {}
       window.history.replaceState({}, '', window.location.pathname);
       if (error) { setOauthError('TikTok authorization was denied.'); return; }
       if (!code) { setOauthError('No code received from TikTok.'); return; }
-      // Send the code to our Netlify function which forwards it to Postiz
       setOauthLoading(true);
       fetch('/.netlify/functions/tiktok-callback', {
         method: 'POST',
@@ -1802,22 +1884,16 @@ export function MediaDistributionPage() {
         body: JSON.stringify({ code, state }),
       })
         .then(r => r.json())
-        .then(() => {
-          loadIntegrations();
-          setConnectModalOpen(true);
-        })
-        .catch(() => {
-          loadIntegrations();
-          setConnectModalOpen(true);
-        })
+        .then(() => { loadIntegrations(); setConnectModalOpen(true); })
+        .catch(() => { loadIntegrations(); setConnectModalOpen(true); })
         .finally(() => setOauthLoading(false));
       return;
     }
 
-    // ── Postiz social platform return ────────────────────────────────────────
-    const isSocialReturn = localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1';
+    // Postiz social platform OAuth return
+    const isSocialReturn = (() => { try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1'; } catch { return false; } })();
     if (isSocialReturn) {
-      localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
+      try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
       window.history.replaceState({}, '', window.location.pathname);
       loadIntegrations();
       setConnectModalOpen(true);
@@ -1830,9 +1906,9 @@ export function MediaDistributionPage() {
     if (error === 'access_denied') { setOauthError('Authorization denied.'); return; }
     if (!code) { setOauthError('No authorization code received.'); return; }
 
-    const savedState = localStorage.getItem(LS_STATE_KEY);
+    const savedState = (() => { try { return localStorage.getItem(LS_STATE_KEY); } catch { return null; } })();
     if (!savedState || savedState !== state) { setOauthError('Security check failed. Please try again.'); return; }
-    localStorage.removeItem(LS_STATE_KEY);
+    try { localStorage.removeItem(LS_STATE_KEY); } catch {}
 
     setOauthLoading(true);
     fetch('/.netlify/functions/postiz-token', {
@@ -1846,7 +1922,7 @@ export function MediaDistributionPage() {
       })
       .then(({ access_token }) => {
         if (!access_token) throw new Error('No access_token received');
-        localStorage.setItem(LS_TOKEN_KEY, access_token);
+        try { localStorage.setItem(LS_TOKEN_KEY, access_token); } catch {}
         setPostizToken(access_token);
         setOauthError(null);
         setConnectModalOpen(true);
@@ -1855,26 +1931,24 @@ export function MediaDistributionPage() {
       .finally(() => setOauthLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openPostizForUser = () => {
-    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-    const uid   = currentUser?.id    ?? '';
-    const email = currentUser?.email ?? '';
-    const url   = `/.netlify/functions/postiz-user-login?uid=${encodeURIComponent(uid)}&email=${encodeURIComponent(email)}`;
-    window.open(url, '_blank');
-  };
+  // Called when user is authed and wants to open Postiz — now just opens the modal
+  // which handles the iframe flow internally
+  const openConnectModal = () => setConnectModalOpen(true);
 
   const handleConnect = () => {
     if (!currentUser) {
       setAuthModalOpen(true);
     } else {
-      openPostizForUser();
+      openConnectModal();
     }
   };
 
   const handleDisconnect = () => {
-    localStorage.removeItem(LS_TOKEN_KEY);
-    localStorage.removeItem(LS_STATE_KEY);
-    localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
+    try {
+      localStorage.removeItem(LS_TOKEN_KEY);
+      localStorage.removeItem(LS_STATE_KEY);
+      localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
+    } catch {}
     setPostizToken(null);
     setIntegrations([]);
     setOauthError(null);
@@ -1936,8 +2010,8 @@ export function MediaDistributionPage() {
         onClose={() => setAuthModalOpen(false)}
         onSuccess={() => {
           setAuthModalOpen(false);
-          // Small delay to let auth state update, then open Postiz
-          setTimeout(() => openPostizForUser(), 300);
+          // Small delay to let auth state update, then open the connect modal
+          setTimeout(() => openConnectModal(), 300);
         }}
       />
     </div>
