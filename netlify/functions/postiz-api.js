@@ -1,27 +1,26 @@
 // netlify/functions/postiz-api.js
 //
-// This function proxies all Postiz Public API calls server-side,
-// bypassing the CORS restriction that blocks direct browser requests.
-//
-// Usage from frontend:
-//   fetch('/.netlify/functions/postiz-api', {
-//     method: 'POST',
-//     headers: { 'Content-Type': 'application/json' },
-//     body: JSON.stringify({
-//       path: '/public/v1/integrations',
-//       method: 'GET',
-//       token: accessToken,
-//     })
-//   })
+// Proxies Postiz Public API calls server-side to avoid CORS.
+// Supports both user tokens (OAuth) and the org API key.
 
 const POSTIZ_BACKEND_URL = 'https://postiz.infinitewealthsolutionsai.com/api';
+const POSTIZ_API_KEY     = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
 
 exports.handler = async (event) => {
-  if (event.httpMethod !== 'POST') {
+  if (event.httpMethod === 'OPTIONS') {
     return {
-      statusCode: 405,
-      body: JSON.stringify({ error: 'Method not allowed' }),
+      statusCode: 200,
+      headers: {
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type',
+      },
+      body: '',
     };
+  }
+
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
 
   let path, method, token, body;
@@ -32,32 +31,22 @@ exports.handler = async (event) => {
     token  = parsed.token;
     body   = parsed.body;
   } catch {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Invalid request body' }),
-    };
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid request body' }) };
   }
 
   if (!path) {
-    return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Missing path' }),
-    };
+    return { statusCode: 400, body: JSON.stringify({ error: 'Missing path' }) };
   }
 
-  if (!token) {
-    return {
-      statusCode: 401,
-      body: JSON.stringify({ error: 'Missing token' }),
-    };
-  }
+  // Use provided token, or fall back to the org API key
+  const authHeader = token || POSTIZ_API_KEY;
 
   try {
     const fetchOptions = {
       method,
       headers: {
         'Content-Type': 'application/json',
-        Authorization: token,
+        'Authorization': authHeader,
       },
     };
 
@@ -66,11 +55,22 @@ exports.handler = async (event) => {
     }
 
     const response = await fetch(`${POSTIZ_BACKEND_URL}${path}`, fetchOptions);
-    const data = await response.json();
+
+    let data;
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      try { data = JSON.parse(text); } catch { data = { raw: text }; }
+    }
 
     return {
       statusCode: response.status,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      },
       body: JSON.stringify(data),
     };
   } catch (err) {
