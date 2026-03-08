@@ -65,12 +65,3 @@ exports.handler = async (event) => {
     }
   }
 };
-```
-
----
-
-## ⚠️ One env var you must add in Netlify
-
-Go to **Netlify → Site Settings → Environment Variables** and add:
-```
-SUPABASE_SERVICE_ROLE_KEY = <your service role key>
