@@ -1848,10 +1848,24 @@ export function MediaDistributionPage() {
       localStorage.removeItem(LS_TIKTOK_STATE_KEY);
       window.history.replaceState({}, '', window.location.pathname);
       if (error) { setOauthError('TikTok authorization was denied.'); return; }
-      // Postiz already handled the token exchange since redirect_uri pointed here via Postiz
-      // Just refresh integrations and open the modal
-      loadIntegrations();
-      setConnectModalOpen(true);
+      if (!code) { setOauthError('No code received from TikTok.'); return; }
+      // Send the code to our Netlify function which forwards it to Postiz
+      setOauthLoading(true);
+      fetch('/.netlify/functions/tiktok-callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code, state }),
+      })
+        .then(r => r.json())
+        .then(() => {
+          loadIntegrations();
+          setConnectModalOpen(true);
+        })
+        .catch(() => {
+          loadIntegrations();
+          setConnectModalOpen(true);
+        })
+        .finally(() => setOauthLoading(false));
       return;
     }
 
