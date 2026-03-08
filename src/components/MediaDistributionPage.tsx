@@ -386,19 +386,11 @@ function ConnectAccountsModal({
   const handleConnect = async () => {
     if (!authUser) { onConnectPostiz(); return; }
     setConnecting(true); setError(null);
-    // Open window immediately (before await) to avoid popup blockers
-    const popup = window.open('', '_blank');
     try {
-      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: authUser.id, email: authUser.email }),
-      });
-      if (!res.ok) throw new Error('Failed to get connect URL');
-      const { connectUrl } = await res.json();
+      // Open the edge function URL directly as a GET — no async, no popup blocker
+      const connectUrl = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect?userId=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`;
       localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-      if (popup) popup.location.href = connectUrl;
-      else window.open(connectUrl, '_blank');
+      window.open(connectUrl, '_blank');
       setConnecting(false);
     } catch (err: any) {
       setError('Failed to open connection manager. Please try again.');
