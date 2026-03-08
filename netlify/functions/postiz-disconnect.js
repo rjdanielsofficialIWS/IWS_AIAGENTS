@@ -1,7 +1,10 @@
 // netlify/functions/postiz-disconnect.js
-// Soft-deletes a Postiz integration by setting deletedAt
+//
+// Deletes a Postiz integration via the API.
+// Falls back to direct DB update if POSTIZ_DB_URL is configured.
 
-const { Client } = require('pg');
+const POSTIZ_API_URL = 'https://postiz.infinitewealthsolutionsai.com/api';
+const POSTIZ_API_KEY = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
@@ -10,7 +13,7 @@ exports.handler = async (event) => {
 
   let integrationId;
   try {
-    const body = JSON.parse(event.body || '{}');
+    const body    = JSON.parse(event.body || '{}');
     integrationId = body.integrationId;
   } catch {
     return { statusCode: 400, body: JSON.stringify({ error: 'Invalid request body' }) };
@@ -20,25 +23,54 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: 'Missing integrationId' }) };
   }
 
-  const dbUrl = process.env.POSTIZ_DB_URL;
-  if (!dbUrl) {
-    return { statusCode: 500, body: JSON.stringify({ error: 'POSTIZ_DB_URL not configured' }) };
-  }
-
-  const client = new Client({ connectionString: dbUrl });
+  // Try API delete first
   try {
-    await client.connect();
-    const result = await client.query(
-      `UPDATE "Integration" SET "deletedAt" = NOW() WHERE id = $1 AND "deletedAt" IS NULL`,
-      [integrationId]
-    );
-    if (result.rowCount === 0) {
-      return { statusCode: 404, body: JSON.stringify({ error: 'Integration not found' }) };
+    const res = await fetch(`${POSTIZ_API_URL}/public/v1/integrations/${integrationId}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': POSTIZ_API_KEY,
+      },
+    });
+
+    if (res.ok || res.status === 404) {
+      return { statusCode: 200, body: JSON.stringify({ success: true }) };
     }
-    return { statusCode: 200, body: JSON.stringify({ success: true }) };
-  } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
-  } finally {
-    await client.end().catch(() => {});
+
+    throw new Error(`API delete failed: ${res.status}`);
+  } catch (apiErr) {
+    console.warn('API disconnect failed, trying DB:', apiErr.message);
+
+    const dbUrl = process.env.POSTIZ_DB_URL;
+    if (!dbUrl) {
+      return { statusCode: 500, body: JSON.stringify({ error: 'Could not disconnect integration' }) };
+    }
+
+    const { Client } = require('pg');
+    const client = new Client({ connectionString: dbUrl });
+    try {
+      await client.connect();
+      const result = await client.query(
+        `UPDATE "Integration" SET "deletedAt" = NOW() WHERE id = $1 AND "deletedAt" IS NULL`,
+        [integrationId]
+      );
+      if (result.rowCount === 0) {
+        return { statusCode: 404, body: JSON.stringify({ error: 'Integration not found' }) };
+      }
+      return { statusCode: 200, body: JSON.stringify({ success: true }) };
+    } catch (err) {
+      return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
+    } finally {
+      await client.end().catch(() => {});
+    }
   }
 };
+```
+
+---
+
+## ⚠️ One env var you must add in Netlify
+
+Go to **Netlify → Site Settings → Environment Variables** and add:
+```
+SUPABASE_SERVICE_ROLE_KEY = <your service role key>
