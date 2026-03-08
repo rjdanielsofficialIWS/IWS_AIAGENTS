@@ -1,54 +1,79 @@
 // netlify/functions/ayrshare-scheduled.js
-const AYRSHARE_API = 'https://app.ayrshare.com/api';
+// Returns scheduled/published posts for the calendar and composer views
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Content-Type': 'application/json',
+};
+
 exports.handler = async (event) => {
-  const apiKey     = process.env.AYRSHARE_API_KEY;
+  if (event.httpMethod === 'OPTIONS') {
+    return { statusCode: 204, headers: CORS, body: '' };
+  }
+
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const userId     = event.queryStringParameters?.userId;
+  const start      = event.queryStringParameters?.start;
+  const end        = event.queryStringParameters?.end;
 
-  if (!apiKey || !serviceKey || !userId) {
-    return { statusCode: 400, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Missing userId or env vars', posts: [] }) };
+  if (!serviceKey) {
+    return {
+      statusCode: 500, headers: CORS,
+      body: JSON.stringify({ error: 'Server misconfiguration', posts: [] }),
+    };
+  }
+
+  if (!userId) {
+    return {
+      statusCode: 400, headers: CORS,
+      body: JSON.stringify({ error: 'userId is required', posts: [] }),
+    };
   }
 
   try {
-    const lookupRes = await fetch(
-      `${SUPABASE_URL}/rest/v1/ayrshare_profiles?supabase_user_id=eq.${encodeURIComponent(userId)}&select=profile_key`,
-      { headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` } }
-    );
-    const profiles = await lookupRes.json();
+    let url = `${SUPABASE_URL}/rest/v1/scheduled_posts?supabase_user_id=eq.${encodeURIComponent(userId)}&order=scheduled_at.desc&limit=200`;
 
-    if (!Array.isArray(profiles) || profiles.length === 0) {
-      return { statusCode: 200, headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ posts: [] }) };
-    }
+    if (start) url += `&scheduled_at=gte.${encodeURIComponent(start)}`;
+    if (end)   url += `&scheduled_at=lte.${encodeURIComponent(end)}`;
 
-    const profileKey = profiles[0].profile_key;
-
-    const res = await fetch(`${AYRSHARE_API}/post?status=scheduled`, {
-      headers: { Authorization: `Bearer ${apiKey}`, 'Profile-Key': profileKey },
+    const res = await fetch(url, {
+      headers: {
+        apikey: serviceKey,
+        Authorization: `Bearer ${serviceKey}`,
+        'Content-Type': 'application/json',
+      },
     });
 
-    let posts = [];
-    if (res.ok) {
-      const data = await res.json();
-      const raw = Array.isArray(data) ? data : (data.posts || []);
-      posts = raw.map(p => ({
-        id:          p.id,
-        content:     p.post,
-        platforms:   p.platforms || [],
-        scheduledAt: p.scheduleDate || p.created,
-        status:      p.status === 'scheduled' ? 'scheduled' : p.status === 'success' ? 'published' : 'failed',
-      }));
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Supabase fetch failed (${res.status}): ${text}`);
     }
 
-    return { statusCode: 200, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ posts }) };
+    const posts = await res.json();
+
+    // Normalise to match what the frontend CalendarPanel / ComposerPanel expect
+    const normalised = (Array.isArray(posts) ? posts : []).map((p) => ({
+      id:          p.id,
+      content:     p.content || '',
+      platforms:   Array.isArray(p.platforms) ? p.platforms : [],
+      scheduledAt: p.scheduled_at,
+      status:      p.status || 'scheduled',
+      mediaUrls:   Array.isArray(p.media_urls) ? p.media_urls : [],
+    }));
+
+    return {
+      statusCode: 200, headers: CORS,
+      body: JSON.stringify({ posts: normalised }),
+    };
 
   } catch (err) {
-    console.error('ayrshare-scheduled error:', err.message);
-    return { statusCode: 500, headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: err.message, posts: [] }) };
+    console.error('[ayrshare-scheduled] Error:', err.message);
+    return {
+      statusCode: 500, headers: CORS,
+      body: JSON.stringify({ error: err.message, posts: [] }),
+    };
   }
 };
