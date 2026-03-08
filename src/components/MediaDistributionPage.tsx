@@ -120,7 +120,7 @@ async function ayrsharePost(userId: string, payload: {
 
 async function fetchChannels(userId: string): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const res = await fetch(`/.netlify/functions/ayrshare-channels?userId=${encodeURIComponent(userId)}`);
+  const res = await fetch(`https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}`);
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data?.channels) ? data.channels : [];
@@ -386,6 +386,8 @@ function ConnectAccountsModal({
   const handleConnect = async () => {
     if (!authUser) { onConnectPostiz(); return; }
     setConnecting(true); setError(null);
+    // Open window immediately (before await) to avoid popup blockers
+    const popup = window.open('', '_blank');
     try {
       const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect', {
         method: 'POST',
@@ -395,7 +397,8 @@ function ConnectAccountsModal({
       if (!res.ok) throw new Error('Failed to get connect URL');
       const { connectUrl } = await res.json();
       localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-      window.open(connectUrl, '_blank');
+      if (popup) popup.location.href = connectUrl;
+      else window.open(connectUrl, '_blank');
       setConnecting(false);
     } catch (err: any) {
       setError('Failed to open connection manager. Please try again.');
