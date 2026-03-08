@@ -7,6 +7,8 @@ import {
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
+import { useAuth } from '../contexts/AuthContext';
+import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
 
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
@@ -388,9 +390,7 @@ function ConnectAccountsModal({
   if (!open) return null;
 
   const handleConnect = () => {
-    // Set flag so when user returns from Postiz we auto-refresh
-    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-    window.open('/.netlify/functions/postiz-login-redirect', '_blank');
+    // No-op in modal — handled by parent's onConnectPostiz
   };
 
   return (
@@ -433,7 +433,7 @@ function ConnectAccountsModal({
           )}
 
           {/* Connect button — opens Postiz in new tab */}
-          <button onClick={handleConnect}
+          <button onClick={onConnectPostiz}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
             <Link2 className="w-4 h-4" />
@@ -1766,6 +1766,9 @@ export function MediaDistributionPage() {
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
+  const { user: authUser } = useAuth();
+  const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
+  const [authModalOpen, setAuthModalOpen] = useState(false);
 
   const loadIntegrations = useCallback(async () => {
     setIntegrationsLoading(true);
@@ -1852,10 +1855,20 @@ export function MediaDistributionPage() {
       .finally(() => setOauthLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const openPostizForUser = () => {
+    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+    const uid   = currentUser?.id    ?? '';
+    const email = currentUser?.email ?? '';
+    const url   = `/.netlify/functions/postiz-user-login?uid=${encodeURIComponent(uid)}&email=${encodeURIComponent(email)}`;
+    window.open(url, '_blank');
+  };
+
   const handleConnect = () => {
-    const state = generateState();
-    localStorage.setItem(LS_STATE_KEY, state);
-    window.location.href = buildPostizAuthUrl(state);
+    if (!currentUser) {
+      setAuthModalOpen(true);
+    } else {
+      openPostizForUser();
+    }
   };
 
   const handleDisconnect = () => {
@@ -1916,6 +1929,16 @@ export function MediaDistributionPage() {
         integrations={integrations} onConnectPostiz={handleConnect}
         postizToken={postizToken} integrationsLoading={integrationsLoading}
         onRefresh={() => loadIntegrations()}
+      />
+
+      <MediaMachineAuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={() => {
+          setAuthModalOpen(false);
+          // Small delay to let auth state update, then open Postiz
+          setTimeout(() => openPostizForUser(), 300);
+        }}
       />
     </div>
   );
