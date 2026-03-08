@@ -28,6 +28,19 @@ const POSTIZ_API_KEY = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b6
 const LS_TOKEN_KEY         = 'postiz_access_token';
 const LS_STATE_KEY         = 'postiz_oauth_state';
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
+const LS_TIKTOK_STATE_KEY  = 'tiktok_oauth_state';
+
+function buildTikTokConnectUrl() {
+  const state = generateState();
+  localStorage.setItem(LS_TIKTOK_STATE_KEY, state);
+  return `https://www.tiktok.com/v2/auth/authorize/?${new URLSearchParams({
+    client_key: 'sbaw5rklhtaoiu7crd',
+    redirect_uri: 'https://infinitewealthsolutionsai.com/mediamachine',
+    state,
+    response_type: 'code',
+    scope: 'video.list,user.info.basic,video.upload,user.info.profile,user.info.stats',
+  })}`;
+}
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
@@ -417,26 +430,9 @@ function ConnectAccountsModal({
                   <div className="text-sm font-bold text-white">Connect TikTok</div>
                   <div className="text-xs text-white/40 mt-0.5">Schedule & publish videos directly to TikTok</div>
                 </div>
-                {/* Fetches a Postiz token silently then redirects to TikTok connect */}
+                {/* Direct TikTok OAuth — no intermediate auth needed */}
                 <button
-                  onClick={async () => {
-                    try {
-                      let token = postizToken;
-                      if (!token) {
-                        const res = await fetch('/.netlify/functions/postiz-auth', { method: 'POST' });
-                        const data = await res.json();
-                        if (!data.token) throw new Error('Could not get auth token');
-                        token = data.token;
-                        localStorage.setItem(LS_TOKEN_KEY, token!);
-                      }
-                      localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-                      const returnUrl = encodeURIComponent('https://infinitewealthsolutionsai.com/mediamachine');
-                      window.location.href = `https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect?token=${token}&redirectUrl=${returnUrl}`;
-                    } catch (e) {
-                      console.error('TikTok connect error:', e);
-                      alert('Connection failed. Please try again.');
-                    }
-                  }}
+                  onClick={() => { window.location.href = buildTikTokConnectUrl(); }}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110 shrink-0"
                   style={{ background: GOLD, color: '#000' }}>
                   Connect
@@ -1846,7 +1842,20 @@ export function MediaDistributionPage() {
     const state  = params.get('state');
     const error  = params.get('error');
 
-    // ── Postiz social platform return (includes TikTok now) ──────────────────
+    // ── TikTok direct OAuth return ───────────────────────────────────────────
+    const tiktokState = localStorage.getItem(LS_TIKTOK_STATE_KEY);
+    if (tiktokState && state === tiktokState) {
+      localStorage.removeItem(LS_TIKTOK_STATE_KEY);
+      window.history.replaceState({}, '', window.location.pathname);
+      if (error) { setOauthError('TikTok authorization was denied.'); return; }
+      // Postiz already handled the token exchange since redirect_uri pointed here via Postiz
+      // Just refresh integrations and open the modal
+      loadIntegrations();
+      setConnectModalOpen(true);
+      return;
+    }
+
+    // ── Postiz social platform return ────────────────────────────────────────
     const isSocialReturn = localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1';
     if (isSocialReturn) {
       localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
