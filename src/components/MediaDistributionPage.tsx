@@ -118,9 +118,10 @@ async function ayrsharePost(userId: string, payload: {
   return res.json();
 }
 
-async function fetchChannels(userId: string): Promise<PostizIntegration[]> {
+async function fetchChannels(userId: string, force = false): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const res = await fetch(`/.netlify/functions/ayrshare-channels?userId=${encodeURIComponent(userId)}`);
+  const url = `/.netlify/functions/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
+  const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data?.channels) ? data.channels : [];
@@ -367,7 +368,7 @@ function ConnectAccountsModal({
 }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   onConnectPostiz: () => void; integrationsLoading: boolean;
-  onRefresh: () => void;
+  onRefresh: (force?: boolean) => void;
 }) {
   const { user: authUser } = useAuth();
   const [connecting, setConnecting] = useState(false);
@@ -418,7 +419,7 @@ function ConnectAccountsModal({
           clearInterval(pollInterval);
           popup.close();
           setConnecting(false);
-          setTimeout(() => onRefresh(), 1500);
+          setTimeout(() => onRefresh(true), 1500);
         }
       };
       window.addEventListener('message', handleMessage);
@@ -429,7 +430,7 @@ function ConnectAccountsModal({
           clearInterval(pollInterval);
           window.removeEventListener('message', handleMessage);
           setConnecting(false);
-          setTimeout(() => onRefresh(), 1000);
+          setTimeout(() => onRefresh(true), 1000);
         }
       }, 500);
 
@@ -1772,7 +1773,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
 
 function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect }: {
   integrations: PostizIntegration[]; integrationsLoading: boolean;
-  onConnect: () => void; onDisconnect: () => void; onRefresh: () => void; onOpenConnect: () => void;
+  onConnect: () => void; onDisconnect: () => void; onRefresh: (force?: boolean) => void; onOpenConnect: () => void;
 }) {
   return (
     <div className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
@@ -1844,10 +1845,10 @@ export function MediaDistributionPage() {
   const { user: authUser }                      = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
-  const loadIntegrations = useCallback(async () => {
+  const loadIntegrations = useCallback(async (force = false) => {
     if (!currentUser) return;
     setIntegrationsLoading(true);
-    try { setIntegrations(await fetchChannels(currentUser.id)); }
+    try { setIntegrations(await fetchChannels(currentUser.id, force)); }
     catch { setIntegrations([]); }
     finally { setIntegrationsLoading(false); }
   }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1926,7 +1927,7 @@ export function MediaDistributionPage() {
       <TopBar
         integrations={integrations} integrationsLoading={integrationsLoading}
         onConnect={handleConnect} onDisconnect={handleDisconnect}
-        onRefresh={() => loadIntegrations()}
+        onRefresh={(force) => loadIntegrations(force)}
         onOpenConnect={() => setConnectModalOpen(true)}
       />
 
@@ -1943,7 +1944,7 @@ export function MediaDistributionPage() {
         open={connectModalOpen} onClose={() => setConnectModalOpen(false)}
         integrations={integrations} onConnectPostiz={handleConnect}
         integrationsLoading={integrationsLoading}
-        onRefresh={() => loadIntegrations()}
+        onRefresh={(force) => loadIntegrations(force)}
       />
 
       <MediaMachineAuthModal
