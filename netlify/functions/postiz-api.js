@@ -1,24 +1,7 @@
-// netlify/functions/postiz-api.js
-//
-// Proxies Postiz Public API calls server-side to avoid CORS.
-// Supports both user tokens (OAuth) and the org API key.
-
 const POSTIZ_BACKEND_URL = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_API_KEY     = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
 
 exports.handler = async (event) => {
-  if (event.httpMethod === 'OPTIONS') {
-    return {
-      statusCode: 200,
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-      body: '',
-    };
-  }
-
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) };
   }
@@ -38,7 +21,6 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: 'Missing path' }) };
   }
 
-  // Use provided token, or fall back to the org API key
   const authHeader = token || POSTIZ_API_KEY;
 
   try {
@@ -57,8 +39,8 @@ exports.handler = async (event) => {
     const response = await fetch(`${POSTIZ_BACKEND_URL}${path}`, fetchOptions);
 
     let data;
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
+    const ct = response.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
       data = await response.json();
     } else {
       const text = await response.text();
@@ -67,10 +49,7 @@ exports.handler = async (event) => {
 
     return {
       statusCode: response.status,
-      headers: {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     };
   } catch (err) {
