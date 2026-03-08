@@ -19,6 +19,9 @@ const POSTIZ_API_URL      = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
 const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
+// Organization API key — used for Public API calls (fetching integrations, posts, etc.)
+const POSTIZ_API_KEY = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
+
 // ─── FIXED: Removed buildTikTokConnectUrl() and LS_TIKTOK_STATE_KEY ───────────
 // TikTok OAuth is now handled entirely by Postiz's built-in /integrations/social/tiktok/connect endpoint
 
@@ -125,9 +128,11 @@ async function postizProxy(path: string, token: string, method = 'GET', body?: o
   return res.json();
 }
 
-async function fetchIntegrations(token: string): Promise<PostizIntegration[]> {
-  const data = await postizProxy('/public/v1/integrations', token);
-  return Array.isArray(data?.integrations) ? data.integrations : Array.isArray(data) ? data : [];
+async function fetchIntegrations(): Promise<PostizIntegration[]> {
+  const res = await fetch('/.netlify/functions/get-postiz-integrations');
+  if (!res.ok) return [];
+  const data = await res.json();
+  return Array.isArray(data?.integrations) ? data.integrations : [];
 }
 
 async function uploadViaNativeXHR(
@@ -383,7 +388,7 @@ function ConnectAccountsModal({
             <X className="w-4 h-4" />
           </button>
         </div>
-        {!postizToken ? (
+        {false ? (
           <div className="p-8 flex flex-col items-center text-center">
             <div className="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center"
               style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
@@ -1366,7 +1371,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
     try {
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-      const data  = await postizProxy(`/public/v1/posts?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, token);
+      const data  = await postizProxy(`/public/v1/posts?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`, POSTIZ_API_KEY);
       const list  = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
       setPosts(list.map((p: any) => ({
         id: p.id || p.postId,
@@ -1494,7 +1499,7 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
     try {
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const data  = await postizProxy(`/public/v1/posts?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, token);
+      const data  = await postizProxy(`/public/v1/posts?start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, POSTIZ_API_KEY);
       const list  = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
       setPosts(list.map((p: any) => ({
         id: p.id || p.postId,
@@ -1662,7 +1667,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
-          {!postizToken ? (
+          {false ? (
             <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
               style={{ borderColor: `${GOLD}35`, color: GOLD }}>
               <Link2 className="w-3.5 h-3.5" /> Connect accounts
@@ -1701,10 +1706,10 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
         ))}
         <button onClick={onOpenConnect}
           className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
-          style={{ color: postizToken && integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
+          style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
           <Link2 className="w-5 h-5" />
           <span className="text-[10px] font-bold tracking-wide">
-            {postizToken && integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}
+            {integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}
           </span>
         </button>
       </nav>
@@ -1782,17 +1787,16 @@ export function MediaDistributionPage() {
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
 
-  const loadIntegrations = useCallback(async (token: string) => {
+  const loadIntegrations = useCallback(async () => {
     setIntegrationsLoading(true);
-    try { setIntegrations(await fetchIntegrations(token)); }
+    try { setIntegrations(await fetchIntegrations()); }
     catch (e) { setIntegrations([]); }
     finally { setIntegrationsLoading(false); }
   }, []);
 
   useEffect(() => {
-    if (postizToken) loadIntegrations(postizToken);
-    else setIntegrations([]);
-  }, [postizToken, loadIntegrations]);
+    loadIntegrations();
+  }, [loadIntegrations]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -1805,8 +1809,8 @@ export function MediaDistributionPage() {
     if (isSocialReturn) {
       localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
       window.history.replaceState({}, '', window.location.pathname);
-      const token = localStorage.getItem(LS_TOKEN_KEY);
-      if (token) { loadIntegrations(token); setConnectModalOpen(true); }
+      loadIntegrations();
+      setConnectModalOpen(true);
       return;
     }
 
@@ -1887,7 +1891,7 @@ export function MediaDistributionPage() {
       <TopBar
         postizToken={postizToken} integrations={integrations} integrationsLoading={integrationsLoading}
         onConnect={handleConnect} onDisconnect={handleDisconnect}
-        onRefresh={() => postizToken && loadIntegrations(postizToken)}
+        onRefresh={() => loadIntegrations()}
         onOpenConnect={() => setConnectModalOpen(true)}
       />
 
@@ -1904,7 +1908,7 @@ export function MediaDistributionPage() {
         open={connectModalOpen} onClose={() => setConnectModalOpen(false)}
         integrations={integrations} onConnectPostiz={handleConnect}
         postizToken={postizToken} integrationsLoading={integrationsLoading}
-        onRefresh={() => postizToken && loadIntegrations(postizToken)}
+        onRefresh={() => loadIntegrations()}
       />
     </div>
   );
