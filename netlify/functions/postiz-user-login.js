@@ -1,23 +1,19 @@
 const POSTIZ_URL   = 'https://postiz.infinitewealthsolutionsai.com';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
-const POSTIZ_DB    = process.env.POSTIZ_DB_URL; // postgresql://postiz:postizpass@your-server-ip:5432/postiz
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function randomPassword() {
-  return 'Mm1!' + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 6).toUpperCase();
+  const crypto = require('crypto');
+  return 'Mm1!' + crypto.randomBytes(8).toString('hex');
 }
 
 function randomId() {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let id = '';
-  for (let i = 0; i < 25; i++) id += chars[Math.floor(Math.random() * chars.length)];
-  return id;
+  const crypto = require('crypto');
+  return crypto.randomBytes(13).toString('hex').slice(0, 25);
 }
 
 function randomApiKey() {
-  const bytes = new Uint8Array(32);
-  // Node crypto fallback
   const crypto = require('crypto');
   return crypto.randomBytes(32).toString('hex');
 }
@@ -38,44 +34,20 @@ async function supabaseQuery(path, method, body, serviceKey) {
   catch { return { ok: res.ok, status: res.status, data: text }; }
 }
 
-// ─── Create user + org directly in Postiz DB ─────────────────────────────────
+// ─── Create private org + link user directly in Postiz DB ────────────────────
+// Called AFTER Postiz API registers the user (so bcrypt is handled by Postiz).
 
-async function createPostizUserAndOrg(email, password, displayName) {
+async function createPrivateOrgForUser(postizUserId, displayName) {
   const { Client } = require('pg');
-  const client = new Client({ connectionString: POSTIZ_DB });
+  const client = new Client({ connectionString: process.env.POSTIZ_DB_URL });
   await client.connect();
 
   try {
-    const bcrypt = require('bcryptjs');
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const userId = randomId();
     const orgId  = randomId();
     const uoId   = randomId();
     const apiKey = randomApiKey();
     const now    = new Date().toISOString();
 
-    // 1. Create the User
-    await client.query(
-      `INSERT INTO "User" (
-        id, email, password, "providerName", name,
-        timezone, "activated", "connectedAccount",
-        "isSuperAdmin", audience,
-        "createdAt", "updatedAt",
-        "lastReadNotifications", "lastOnline",
-        "sendSuccessEmails", "sendFailureEmails", "sendStreakEmails"
-      ) VALUES (
-        $1, $2, $3, 'LOCAL', $4,
-        0, true, false,
-        false, 0,
-        $5, $5,
-        $5, $5,
-        true, true, true
-      )`,
-      [userId, email, hashedPassword, displayName, now]
-    );
-
-    // 2. Create the Organization
     await client.query(
       `INSERT INTO "Organization" (
         id, name, "apiKey", "allowTrial", "isTrailing",
@@ -87,7 +59,6 @@ async function createPostizUserAndOrg(email, password, displayName) {
       [orgId, `${displayName}'s Workspace`, apiKey, now]
     );
 
-    // 3. Link User → Org as SUPERADMIN
     await client.query(
       `INSERT INTO "UserOrganization" (
         id, "userId", "organizationId", disabled, role,
@@ -96,11 +67,26 @@ async function createPostizUserAndOrg(email, password, displayName) {
         $1, $2, $3, false, 'SUPERADMIN'::"Role",
         $4, $4
       )`,
-      [uoId, userId, orgId, now]
+      [uoId, postizUserId, orgId, now]
     );
 
-    return { userId, orgId, apiKey };
+    return { orgId, apiKey };
 
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
+async function getPostizUserByEmail(email) {
+  const { Client } = require('pg');
+  const client = new Client({ connectionString: process.env.POSTIZ_DB_URL });
+  await client.connect();
+  try {
+    const result = await client.query(
+      `SELECT id FROM "User" WHERE email = $1 AND "providerName" = 'LOCAL' LIMIT 1`,
+      [email]
+    );
+    return result.rows[0]?.id || null;
   } finally {
     await client.end().catch(() => {});
   }
@@ -128,57 +114,56 @@ exports.handler = async (event) => {
     );
 
     if (existing.ok && Array.isArray(existing.data) && existing.data.length > 0 && existing.data[0].postiz_email) {
-      // Returning user — use stored credentials
       postizEmail    = existing.data[0].postiz_email;
       postizPassword = existing.data[0].postiz_password;
       postizOrgId    = existing.data[0].postiz_org_id;
 
     } else {
-      // ── New user — create shadow account + private org ────────────────────
+      // ── New user ──────────────────────────────────────────────────────────
       postizEmail    = `mm_${userId.slice(0, 8)}@mediamachine.app`;
       postizPassword = randomPassword();
       const displayName = userEmail.split('@')[0];
 
+      // Step 1: Register via Postiz API (Postiz handles bcrypt internally)
       let postizUserId = null;
+      const regRes = await fetch(`${POSTIZ_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: postizEmail, password: postizPassword, provider: 'LOCAL' }),
+      });
 
-      if (POSTIZ_DB) {
-        // Preferred path: write directly to Postiz DB
+      if (regRes.ok) {
+        const regData = await regRes.json().catch(() => ({}));
+        postizUserId  = regData?.id || regData?.user?.id || null;
+      }
+
+      // Step 2: Create a private org for this user via direct DB access
+      if (process.env.POSTIZ_DB_URL) {
         try {
-          const result = await createPostizUserAndOrg(postizEmail, postizPassword, displayName);
-          postizUserId = result.userId;
-          postizOrgId  = result.orgId;
+          if (!postizUserId) {
+            postizUserId = await getPostizUserByEmail(postizEmail);
+          }
+          if (postizUserId) {
+            const orgResult = await createPrivateOrgForUser(postizUserId, displayName);
+            postizOrgId = orgResult.orgId;
+          }
         } catch (dbErr) {
-          console.warn('Direct DB creation failed, falling back to API register:', dbErr.message);
+          console.warn('Private org creation failed, using default org:', dbErr.message);
         }
       }
 
-      if (!postizOrgId) {
-        // Fallback: use Postiz auth API (org will be auto-created by Postiz)
-        const regRes = await fetch(`${POSTIZ_URL}/api/auth/register`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email: postizEmail, password: postizPassword, provider: 'LOCAL' }),
-        });
-        if (regRes.ok) {
-          const regData = await regRes.json().catch(() => ({}));
-          postizUserId  = regData?.id || regData?.user?.id || null;
-          postizOrgId   = regData?.orgId || regData?.organizationId || null;
-        }
-      }
-
-      // ── Save to Supabase ──────────────────────────────────────────────────
+      // Step 3: Save shadow account to Supabase
       await supabaseQuery('/postiz_accounts', 'POST', {
         supabase_user_id: userId,
         user_email:       userEmail,
         postiz_email:     postizEmail,
         postiz_password:  postizPassword,
-        postiz_user_id:   postizUserId,
-        postiz_org_id:    postizOrgId,
+        postiz_org_id:    postizOrgId || null,
         created_at:       new Date().toISOString(),
       }, serviceKey);
     }
 
-    // ── Build the login HTML page ─────────────────────────────────────────────
+    // ── Build the silent login HTML page ──────────────────────────────────────
     const jsPostiz = JSON.stringify(POSTIZ_URL);
     const jsEmail  = JSON.stringify(postizEmail);
     const jsPw     = JSON.stringify(postizPassword);
@@ -219,7 +204,6 @@ exports.handler = async (event) => {
       let res = await doLogin();
 
       if (!res.ok) {
-        // Account might not exist yet via API path — try register then login
         await fetch(POSTIZ + '/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -235,7 +219,6 @@ exports.handler = async (event) => {
         window.location.replace(POSTIZ + '/launches');
       }
     } catch(e) {
-      // Even on error, signal OK so the iframe doesn't hang forever
       if (window.parent !== window) {
         window.parent.postMessage({ type: 'POSTIZ_LOGIN_OK' }, '*');
       } else {
