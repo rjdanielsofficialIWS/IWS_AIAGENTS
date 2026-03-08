@@ -1,9 +1,11 @@
 // Flow:
-// 1. Netlify function looks up/creates shadow account in Supabase
-// 2. Calls Postiz /api/auth/login SERVER-SIDE (no CORS) — gets JWT token
-// 3. Redirects iframe to https://postiz.domain/auth-bridge?token=JWT
-// 4. auth-bridge runs on Postiz domain, sets cookie auth=JWT, redirects to /launches
-// 5. /launches loads authenticated, injected script fires POSTIZ_LOGIN_OK to parent
+// 1. Look up / create shadow account in Supabase (server-side, no CORS)
+// 2. Redirect iframe to https://postiz.domain/mm-login?e=EMAIL&w=PASSWORD
+// 3. /mm-login is served by Nginx on the Postiz domain
+// 4. Fetch to /api/auth/login happens FROM the Postiz domain — no CORS
+// 5. Postiz sets HttpOnly session cookie on its own domain
+// 6. Redirect to /launches — already authenticated
+// 7. Injected script fires POSTIZ_LOGIN_OK to parent modal
 
 const POSTIZ_URL   = 'https://postiz.infinitewealthsolutionsai.com';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
@@ -85,29 +87,16 @@ async function createPrivateOrgForUser(postizUserId, displayName) {
   }
 }
 
-async function serverSideLogin(email, password) {
-  const res = await fetch(`${POSTIZ_URL}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(() => '');
-    console.warn(`Postiz login failed ${res.status}: ${txt}`);
-    return null;
-  }
-  const data = await res.json().catch(() => null);
-  // Postiz returns the token as { token: "..." }
-  return data?.token || data?.access_token || data?.jwt || null;
-}
-
 async function serverSideRegister(email, password) {
   const res = await fetch(`${POSTIZ_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, provider: 'LOCAL' }),
+    body: JSON.stringify({ email, password, provider: 'LOCAL', company: 'MediaMachine' }),
   });
-  const data = await res.json().catch(() => ({}));
+  const text = await res.text();
+  console.log(`Register response ${res.status}: ${text}`);
+  let data = {};
+  try { data = JSON.parse(text); } catch {}
   return { ok: res.ok, userId: data?.id || data?.user?.id || null };
 }
 
@@ -119,7 +108,7 @@ exports.handler = async (event) => {
 
   const fallbackRedirect = {
     statusCode: 302,
-    headers: { Location: `${POSTIZ_URL}/launches` },
+    headers: { Location: `${POSTIZ_URL}/launches`, 'Cache-Control': 'no-store' },
     body: '',
   };
 
@@ -130,7 +119,7 @@ exports.handler = async (event) => {
 
     // Look up existing shadow account
     const existing = await supabaseQuery(
-      `/postiz_accounts?supabase_user_id=eq.${encodeURIComponent(userId)}&select=postiz_email,postiz_password,postiz_org_id&limit=1`,
+      `/postiz_accounts?supabase_user_id=eq.${encodeURIComponent(userId)}&select=postiz_email,postiz_password&limit=1`,
       'GET', null, serviceKey
     );
 
@@ -138,7 +127,7 @@ exports.handler = async (event) => {
       postizEmail    = existing.data[0].postiz_email;
       postizPassword = existing.data[0].postiz_password;
     } else {
-      // New user — create shadow account
+      // New user — register server-side then save
       postizEmail    = `mm_${userId.slice(0, 8)}@mediamachine.app`;
       postizPassword = randomPassword();
       const displayName = userEmail.split('@')[0];
@@ -170,31 +159,14 @@ exports.handler = async (event) => {
       }, serviceKey);
     }
 
-    // SERVER-SIDE LOGIN — Netlify server calls Postiz, zero CORS
-    let token = await serverSideLogin(postizEmail, postizPassword);
-
-    if (!token) {
-      // Account may not exist in Postiz yet — register then retry
-      await serverSideRegister(postizEmail, postizPassword);
-      token = await serverSideLogin(postizEmail, postizPassword);
-    }
-
-    if (!token) {
-      console.error(`All login attempts failed for ${postizEmail}`);
-      return fallbackRedirect;
-    }
-
-    // Redirect iframe to /auth-bridge on the Postiz domain.
-    // That page sets cookie auth=<token> (same domain as Postiz)
-    // then redirects to /launches which loads fully authenticated.
-    const bridgeUrl = `${POSTIZ_URL}/auth-bridge?token=${encodeURIComponent(token)}`;
+    // Redirect iframe to /mm-login on the Postiz domain.
+    // That page is served by Nginx, makes the login fetch from same origin,
+    // Postiz sets the session cookie, then redirects to /launches.
+    const mmLoginUrl = `${POSTIZ_URL}/mm-login?e=${encodeURIComponent(postizEmail)}&w=${encodeURIComponent(postizPassword)}`;
 
     return {
       statusCode: 302,
-      headers: {
-        Location: bridgeUrl,
-        'Cache-Control': 'no-store',
-      },
+      headers: { Location: mmLoginUrl, 'Cache-Control': 'no-store' },
       body: '',
     };
 
