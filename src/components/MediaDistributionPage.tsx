@@ -5,7 +5,6 @@ import {
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2,
-  ExternalLink,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -362,16 +361,8 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 }
 
 // ─── ConnectAccountsModal ─────────────────────────────────────────────────────
-// Popup approach — no iframe needed:
-// 1. User clicks "Connect a Social Account"
-// 2. A popup opens to /.netlify/functions/postiz-user-login
-// 3. That function logs the user in server-side, redirects to /mm-login on Postiz domain
-// 4. /mm-login sets the session cookie then redirects to /launches in the popup
-// 5. User connects their social accounts in the popup (OAuth opens in the same popup)
-// 6. User clicks Done — popup closes, modal refreshes channels
-//
-// This completely bypasses iframe embedding restrictions.
-// OAuth flows work naturally in popups — TikTok, Instagram etc. all allow this.
+// Nango-powered OAuth — no developer apps needed from you.
+// Nango's pre-approved OAuth apps handle Instagram, TikTok, LinkedIn, YouTube, X, Facebook.
 
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
@@ -381,68 +372,89 @@ function ConnectAccountsModal({
   onRefresh: () => void;
 }) {
   const { user: authUser } = useAuth();
-  const [popupOpen, setPopupOpen] = useState(false);
-  const popupRef = useRef<Window | null>(null);
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const nangoRef = useRef<any>(null);
 
-  // Poll to detect when popup closes so we can refresh channels
-  const startPolling = () => {
-    if (pollRef.current) clearInterval(pollRef.current);
-    pollRef.current = setInterval(() => {
-      if (popupRef.current?.closed) {
-        clearInterval(pollRef.current!);
-        pollRef.current = null;
-        setPopupOpen(false);
-        onRefresh();
-      }
-    }, 600);
-  };
-
-  // Cleanup on unmount
+  // Lazy-load the Nango frontend SDK
   useEffect(() => {
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
+    if (typeof window === 'undefined') return;
+    if ((window as any).Nango) {
+      nangoRef.current = new (window as any).Nango();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://cdn.jsdelivr.net/npm/@nangohq/frontend/dist/index.js';
+    script.onload = () => {
+      nangoRef.current = new (window as any).Nango();
     };
+    document.head.appendChild(script);
   }, []);
 
   // Reset when modal closes
   useEffect(() => {
     if (!open) {
-      setPopupOpen(false);
-      if (pollRef.current) clearInterval(pollRef.current);
+      setConnecting(false);
+      setError(null);
     }
   }, [open]);
 
-  const handleConnect = () => {
+  const handleConnect = async () => {
     if (!authUser) { onConnectPostiz(); return; }
+    setConnecting(true);
+    setError(null);
 
-    const loginUrl = `/.netlify/functions/postiz-user-login?uid=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`;
+    try {
+      // 1. Get a scoped session token from our Netlify function
+      const res = await fetch('/.netlify/functions/nango-session-token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: authUser.id, email: authUser.email }),
+      });
 
-    // Open popup centered on screen
-    const w = 1100, h = 700;
-    const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
-    const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
-    const popup = window.open(
-      loginUrl,
-      'postiz-connect',
-      `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
-    );
+      if (!res.ok) throw new Error('Failed to get session token');
+      const { sessionToken } = await res.json();
 
-    if (popup) {
-      popupRef.current = popup;
-      setPopupOpen(true);
-      startPolling();
-    } else {
-      // Popup was blocked — fall back to new tab
-      window.open(loginUrl, '_blank');
-    }
-  };
+      // 2. Open Nango Connect UI with the session token
+      // This uses Nango's pre-approved OAuth apps — no developer accounts needed
+      const nango = nangoRef.current || new (window as any).Nango();
+      const connectInstance = nango.openConnectUI({
+        onEvent: async (event: any) => {
+          if (event.type === 'connect') {
+            // User successfully connected a platform
+            const { connectionId, providerConfigKey } = event;
+            // Save connection to Supabase
+            await fetch(`https://wcbkzebgcsfvrugibsjr.supabase.co/rest/v1/nango_connections`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
+                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
+                'Prefer': 'return=representation,resolution=merge-duplicates',
+              },
+              body: JSON.stringify({
+                supabase_user_id: authUser.id,
+                connection_id: connectionId,
+                provider_config_key: providerConfigKey,
+                platform: providerConfigKey,
+                updated_at: new Date().toISOString(),
+              }),
+            }).catch(console.error);
+            onRefresh();
+            setConnecting(false);
+          } else if (event.type === 'close') {
+            setConnecting(false);
+            onRefresh();
+          }
+        },
+      });
 
-  const handleFocusPopup = () => {
-    if (popupRef.current && !popupRef.current.closed) {
-      popupRef.current.focus();
-    } else {
-      handleConnect();
+      connectInstance.setSessionToken(sessionToken);
+
+    } catch (err: any) {
+      console.error('Nango connect error:', err);
+      setError('Failed to open connection manager. Please try again.');
+      setConnecting(false);
     }
   };
 
@@ -459,9 +471,7 @@ function ConnectAccountsModal({
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
-            <p className="text-sm text-white/40 mt-0.5">
-              {popupOpen ? 'Complete setup in the popup window' : 'Link your social accounts to start scheduling'}
-            </p>
+            <p className="text-sm text-white/40 mt-0.5">Link your social accounts to start scheduling</p>
           </div>
           <button
             onClick={onClose}
@@ -495,51 +505,26 @@ function ConnectAccountsModal({
             </div>
           )}
 
-          {/* Popup open state */}
-          {popupOpen ? (
-            <div className="rounded-xl border p-5 flex flex-col items-center gap-4 text-center"
-              style={{ borderColor: `${GOLD}30`, background: `${GOLD}08` }}>
-              <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                style={{ background: `${GOLD}20` }}>
-                <ExternalLink className="w-5 h-5" style={{ color: GOLD }} />
-              </div>
-              <div>
-                <div className="text-sm font-bold text-white mb-1">Channel Manager is Open</div>
-                <div className="text-xs text-white/40">Connect your accounts in the popup window, then close it when done.</div>
-              </div>
-              <button
-                onClick={handleFocusPopup}
-                className="text-xs font-bold px-4 py-2 rounded-lg border transition hover:bg-white/5"
-                style={{ borderColor: `${GOLD}40`, color: GOLD }}
-              >
-                Bring Window to Front
-              </button>
-              <button
-                onClick={() => { onRefresh(); onClose(); }}
-                disabled={integrationsLoading}
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition hover:brightness-110 disabled:opacity-50"
-                style={{ background: GOLD, color: '#000' }}
-              >
-                {integrationsLoading
-                  ? <><Loader className="w-4 h-4 animate-spin" /> Syncing channels…</>
-                  : <><RefreshCw className="w-4 h-4" /> Done — Refresh My Channels</>}
-              </button>
+          {error && (
+            <div className="p-3 rounded-xl text-xs text-red-400 border border-red-400/20 bg-red-400/5">
+              {error}
             </div>
-          ) : (
-            <>
-              <button
-                onClick={handleConnect}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110"
-                style={{ background: GOLD, color: '#000' }}
-              >
-                <Link2 className="w-4 h-4" />
-                {integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}
-              </button>
-              <p className="text-xs text-white/30 text-center">
-                Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
-              </p>
-            </>
           )}
+
+          <button
+            onClick={handleConnect}
+            disabled={connecting}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110 disabled:opacity-50"
+            style={{ background: GOLD, color: '#000' }}
+          >
+            {connecting
+              ? <><Loader className="w-4 h-4 animate-spin" /> Opening…</>
+              : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
+          </button>
+
+          <p className="text-xs text-white/30 text-center">
+            Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
+          </p>
         </div>
       </div>
     </div>
