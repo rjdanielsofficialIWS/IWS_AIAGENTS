@@ -1,9 +1,3 @@
-// netlify/functions/get-postiz-integrations.js
-//
-// Fetches connected social integrations from Postiz.
-// Uses the org API key via Postiz's Public API.
-// Falls back to direct DB query if POSTIZ_DB_URL is available.
-
 const POSTIZ_API_URL = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_API_KEY = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
 const ORG_ID         = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
@@ -33,7 +27,7 @@ async function fetchViaAPI() {
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`Postiz API error ${res.status}: ${text}`);
+    throw new Error(`Postiz API ${res.status}: ${text}`);
   }
 
   const data = await res.json();
@@ -66,40 +60,31 @@ async function fetchViaDB() {
        ORDER BY "createdAt" ASC`,
       [ORG_ID]
     );
-    return result.rows.map(r => ({
-      ...r,
-      identifier: normalizeIdentifier(r.identifier),
-    }));
+    return result.rows.map(r => ({ ...r, identifier: normalizeIdentifier(r.identifier) }));
   } finally {
     await client.end().catch(() => {});
   }
 }
 
 exports.handler = async () => {
-  const headers = {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-  };
-
   try {
     let integrations;
     try {
       integrations = await fetchViaAPI();
     } catch (apiErr) {
-      console.warn('Postiz API fetch failed, trying DB:', apiErr.message);
+      console.warn('Postiz API failed, trying DB:', apiErr.message);
       integrations = await fetchViaDB();
     }
-
     return {
       statusCode: 200,
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ integrations }),
     };
   } catch (err) {
     console.error('get-postiz-integrations error:', err);
     return {
       statusCode: 500,
-      headers,
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ error: err.message, integrations: [] }),
     };
   }
