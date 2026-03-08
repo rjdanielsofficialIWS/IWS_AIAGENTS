@@ -430,7 +430,8 @@ function ConnectAccountsModal({
                         localStorage.setItem(LS_TOKEN_KEY, token!);
                       }
                       localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-                      window.location.href = `https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect?token=${token}`;
+                      const returnUrl = encodeURIComponent('https://infinitewealthsolutionsai.com/mediamachine');
+                      window.location.href = `https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect?token=${token}&redirectUrl=${returnUrl}`;
                     } catch (e) {
                       console.error('TikTok connect error:', e);
                       alert('Connection failed. Please try again.');
@@ -459,10 +460,19 @@ function ConnectAccountsModal({
                         onClick={async () => {
                           if (!confirm(`Disconnect ${int.name}?`)) return;
                           try {
-                            await fetch('/.netlify/functions/postiz-disconnect', {
+                            // Get a fresh admin token then delete via Postiz API
+                            const authRes = await fetch('/.netlify/functions/postiz-auth', { method: 'POST' });
+                            const authData = await authRes.json();
+                            const token = authData.token;
+                            if (!token) throw new Error('Could not authenticate');
+                            await fetch('/.netlify/functions/postiz-api', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ integrationId: int.id }),
+                              body: JSON.stringify({
+                                path: `/public/v1/integrations/${int.id}`,
+                                method: 'DELETE',
+                                token,
+                              }),
                             });
                             onRefresh();
                           } catch (e) { alert('Failed to disconnect. Try again.'); }
