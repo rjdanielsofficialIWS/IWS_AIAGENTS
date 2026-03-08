@@ -120,7 +120,7 @@ async function ayrsharePost(userId: string, payload: {
 
 async function fetchChannels(userId: string): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const res = await fetch(`https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}`);
+  const res = await fetch(`/.netlify/functions/ayrshare-channels?userId=${encodeURIComponent(userId)}`);
   if (!res.ok) return [];
   const data = await res.json();
   return Array.isArray(data?.channels) ? data.channels : [];
@@ -387,13 +387,55 @@ function ConnectAccountsModal({
     if (!authUser) { onConnectPostiz(); return; }
     setConnecting(true); setError(null);
     try {
-      // Open the edge function URL directly as a GET — no async, no popup blocker
-      const connectUrl = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect?userId=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`;
-      localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-      window.open(connectUrl, '_blank');
-      setConnecting(false);
+      // Fetch the Ayrshare connect URL from our Netlify function
+      const res = await fetch(
+        `/.netlify/functions/ayrshare-connect?userId=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`
+      );
+      const data = await res.json();
+      if (!res.ok || !data.connectUrl) {
+        throw new Error(data.error || 'Failed to get connection URL');
+      }
+
+      // Open Ayrshare social connector in a popup window
+      const popup = window.open(
+        data.connectUrl,
+        'ayrshare-connect',
+        'width=600,height=700,scrollbars=yes,resizable=yes'
+      );
+
+      if (!popup) {
+        // Popup blocked -- fall back to new tab
+        localStorage.setItem('postiz_social_return', '1');
+        window.open(data.connectUrl, '_blank');
+        setConnecting(false);
+        return;
+      }
+
+      // Listen for postMessage from the callback page
+      const handleMessage = (event: MessageEvent) => {
+        if (event.data?.type === 'AYRSHARE_CONNECTED') {
+          window.removeEventListener('message', handleMessage);
+          clearInterval(pollInterval);
+          popup.close();
+          setConnecting(false);
+          setTimeout(() => onRefresh(), 1500);
+        }
+      };
+      window.addEventListener('message', handleMessage);
+
+      // Poll for popup close as a fallback
+      const pollInterval = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(pollInterval);
+          window.removeEventListener('message', handleMessage);
+          setConnecting(false);
+          setTimeout(() => onRefresh(), 1000);
+        }
+      }, 500);
+
+      return; // don't set connecting=false here; the popup listener will do it
     } catch (err: any) {
-      setError('Failed to open connection manager. Please try again.');
+      setError(err instanceof Error ? err.message : 'Failed to open connection manager. Please try again.');
       setConnecting(false);
     }
   };
@@ -1813,10 +1855,20 @@ export function MediaDistributionPage() {
   useEffect(() => { if (currentUser) loadIntegrations(); }, [currentUser, loadIntegrations]);
 
   useEffect(() => {
-    // Handle return from Ayrshare social account connection
-    const isSocialReturn = (() => { try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1'; } catch { return false; } })();
+    // Handle return from Ayrshare social account connection (fallback for new-tab flow)
+    const isSocialReturn = (() => {
+      try {
+        return (
+          localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1' ||
+          !!localStorage.getItem('ayrshare_connected')
+        );
+      } catch { return false; }
+    })();
     if (isSocialReturn) {
-      try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+      try {
+        localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
+        localStorage.removeItem('ayrshare_connected');
+      } catch {}
       window.history.replaceState({}, '', window.location.pathname);
       loadIntegrations();
       setConnectModalOpen(true);
