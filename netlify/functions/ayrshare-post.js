@@ -1,11 +1,11 @@
-// netlify/functions/ayrshare-channels.js
-const AYRSHARE_API = 'https://app.ayrshare.com/api';
+// netlify/functions/ayrshare-post.js
+const AYRSHARE_API = 'https://api.ayrshare.com/api';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Content-Type',
-  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Content-Type': 'application/json',
 };
 
@@ -14,22 +14,34 @@ exports.handler = async (event) => {
     return { statusCode: 204, headers: CORS, body: '' };
   }
 
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, headers: CORS, body: JSON.stringify({ error: 'Method Not Allowed' }) };
+  }
+
   const apiKey     = process.env.AYRSHARE_API_KEY;
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const userId     = event.queryStringParameters?.userId;
 
   if (!apiKey || !serviceKey) {
-    console.error('[ayrshare-channels] Missing env vars');
+    console.error('[ayrshare-post] Missing env vars');
     return {
       statusCode: 500, headers: CORS,
-      body: JSON.stringify({ error: 'Server misconfiguration', channels: [] }),
+      body: JSON.stringify({ error: 'Server misconfiguration' }),
     };
   }
 
-  if (!userId) {
+  let body;
+  try {
+    body = JSON.parse(event.body || '{}');
+  } catch {
+    return { statusCode: 400, headers: CORS, body: JSON.stringify({ error: 'Invalid JSON body' }) };
+  }
+
+  const { userId, platforms, post, mediaUrls, scheduleDate } = body;
+
+  if (!userId || !platforms?.length || !post) {
     return {
       statusCode: 400, headers: CORS,
-      body: JSON.stringify({ error: 'userId is required', channels: [] }),
+      body: JSON.stringify({ error: 'userId, platforms, and post are required' }),
     };
   }
 
@@ -53,55 +65,81 @@ exports.handler = async (event) => {
 
     const profiles = await lookupRes.json();
 
-    if (!Array.isArray(profiles) || profiles.length === 0 || !profiles[0].profile_key) {
+    if (!Array.isArray(profiles) || profiles.length === 0) {
       return {
-        statusCode: 200, headers: CORS,
-        body: JSON.stringify({ channels: [] }),
+        statusCode: 400, headers: CORS,
+        body: JSON.stringify({ error: 'No Ayrshare profile found. Connect your accounts first.' }),
       };
     }
 
     const profileKey = profiles[0].profile_key;
 
-    // Fetch connected social accounts from Ayrshare
-    const res = await fetch(`${AYRSHARE_API}/user`, {
+    // Build the post payload
+    const payload = {
+      post,
+      platforms,
+      ...(mediaUrls?.length ? { mediaUrls } : {}),
+      ...(scheduleDate ? { scheduleDate: new Date(scheduleDate).toISOString() } : {}),
+      shortenLinks: false,
+    };
+
+    console.log('[ayrshare-post] Sending to Ayrshare:', JSON.stringify({ ...payload, post: payload.post?.slice(0, 80) }));
+
+    const res = await fetch(`${AYRSHARE_API}/post`, {
+      method: 'POST',
       headers: {
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${apiKey}`,
         'Profile-Key': profileKey,
       },
+      body: JSON.stringify(payload),
     });
 
+    const data = await res.json();
+
     if (!res.ok) {
-      const text = await res.text();
-      console.error('[ayrshare-channels] Ayrshare user fetch error:', res.status, text);
+      console.error('[ayrshare-post] Ayrshare error:', JSON.stringify(data));
       return {
-        statusCode: 200, headers: CORS,
-        body: JSON.stringify({ channels: [] }),
+        statusCode: 400, headers: CORS,
+        body: JSON.stringify({ error: data.message || data.error || 'Failed to post', details: data }),
       };
     }
 
-    const data = await res.json();
-    const accounts = data.activeSocialAccounts || [];
-
-    // Normalise to a consistent shape the frontend expects
-    const channels = accounts.map((platform) => ({
-      id:         platform,
-      identifier: platform.toLowerCase(),
-      name:       platform.charAt(0).toUpperCase() + platform.slice(1).toLowerCase(),
-      platform:   platform.toLowerCase(),
-      picture:    null,
-      profile:    null,
-    }));
+    // Log post to Supabase (non-fatal if it fails)
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/scheduled_posts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          supabase_user_id: userId,
+          profile_key:      profileKey,
+          ayrshare_post_id: data.id,
+          platforms,
+          content:          post,
+          media_urls:       mediaUrls || [],
+          scheduled_at:     scheduleDate ? new Date(scheduleDate).toISOString() : new Date().toISOString(),
+          status:           scheduleDate ? 'scheduled' : 'published',
+        }),
+      });
+    } catch (logErr) {
+      console.error('[ayrshare-post] Failed to log post to Supabase:', logErr.message);
+    }
 
     return {
       statusCode: 200, headers: CORS,
-      body: JSON.stringify({ channels, profileKey }),
+      body: JSON.stringify({ success: true, postId: data.id, data }),
     };
 
   } catch (err) {
-    console.error('[ayrshare-channels] Error:', err.message);
+    console.error('[ayrshare-post] Error:', err.message);
     return {
       statusCode: 500, headers: CORS,
-      body: JSON.stringify({ error: err.message, channels: [] }),
+      body: JSON.stringify({ error: err.message }),
     };
   }
 };
