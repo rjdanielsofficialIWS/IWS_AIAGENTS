@@ -1,8 +1,6 @@
 const POSTIZ_URL   = 'https://postiz.infinitewealthsolutionsai.com';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
 function randomPassword() {
   const crypto = require('crypto');
   return 'Mm1!' + crypto.randomBytes(8).toString('hex');
@@ -34,49 +32,6 @@ async function supabaseQuery(path, method, body, serviceKey) {
   catch { return { ok: res.ok, status: res.status, data: text }; }
 }
 
-// ─── Create private org + link user directly in Postiz DB ────────────────────
-// Called AFTER Postiz API registers the user (so bcrypt is handled by Postiz).
-
-async function createPrivateOrgForUser(postizUserId, displayName) {
-  const { Client } = require('pg');
-  const client = new Client({ connectionString: process.env.POSTIZ_DB_URL });
-  await client.connect();
-
-  try {
-    const orgId  = randomId();
-    const uoId   = randomId();
-    const apiKey = randomApiKey();
-    const now    = new Date().toISOString();
-
-    await client.query(
-      `INSERT INTO "Organization" (
-        id, name, "apiKey", "allowTrial", "isTrailing",
-        shortlink, "createdAt", "updatedAt"
-      ) VALUES (
-        $1, $2, $3, true, false,
-        'ASK'::"ShortLinkPreference", $4, $4
-      )`,
-      [orgId, `${displayName}'s Workspace`, apiKey, now]
-    );
-
-    await client.query(
-      `INSERT INTO "UserOrganization" (
-        id, "userId", "organizationId", disabled, role,
-        "createdAt", "updatedAt"
-      ) VALUES (
-        $1, $2, $3, false, 'SUPERADMIN'::"Role",
-        $4, $4
-      )`,
-      [uoId, postizUserId, orgId, now]
-    );
-
-    return { orgId, apiKey };
-
-  } finally {
-    await client.end().catch(() => {});
-  }
-}
-
 async function getPostizUserByEmail(email) {
   const { Client } = require('pg');
   const client = new Client({ connectionString: process.env.POSTIZ_DB_URL });
@@ -92,7 +47,36 @@ async function getPostizUserByEmail(email) {
   }
 }
 
-// ─── Main handler ─────────────────────────────────────────────────────────────
+async function createPrivateOrgForUser(postizUserId, displayName) {
+  const { Client } = require('pg');
+  const client = new Client({ connectionString: process.env.POSTIZ_DB_URL });
+  await client.connect();
+  try {
+    const orgId  = randomId();
+    const uoId   = randomId();
+    const apiKey = randomApiKey();
+    const now    = new Date().toISOString();
+
+    await client.query(
+      `INSERT INTO "Organization" (
+        id, name, "apiKey", "allowTrial", "isTrailing",
+        shortlink, "createdAt", "updatedAt"
+      ) VALUES ($1, $2, $3, true, false, 'ASK'::"ShortLinkPreference", $4, $4)`,
+      [orgId, `${displayName}'s Workspace`, apiKey, now]
+    );
+
+    await client.query(
+      `INSERT INTO "UserOrganization" (
+        id, "userId", "organizationId", disabled, role, "createdAt", "updatedAt"
+      ) VALUES ($1, $2, $3, false, 'SUPERADMIN'::"Role", $4, $4)`,
+      [uoId, postizUserId, orgId, now]
+    );
+
+    return { orgId, apiKey };
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
 
 exports.handler = async (event) => {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -105,9 +89,9 @@ exports.handler = async (event) => {
   }
 
   try {
-    let postizEmail, postizPassword, postizOrgId;
+    let postizEmail, postizPassword;
 
-    // ── Look up existing shadow account ──────────────────────────────────────
+    // Look up existing shadow account
     const existing = await supabaseQuery(
       `/postiz_accounts?supabase_user_id=eq.${encodeURIComponent(userId)}&select=postiz_email,postiz_password,postiz_org_id&limit=1`,
       'GET', null, serviceKey
@@ -116,15 +100,12 @@ exports.handler = async (event) => {
     if (existing.ok && Array.isArray(existing.data) && existing.data.length > 0 && existing.data[0].postiz_email) {
       postizEmail    = existing.data[0].postiz_email;
       postizPassword = existing.data[0].postiz_password;
-      postizOrgId    = existing.data[0].postiz_org_id;
-
     } else {
-      // ── New user ──────────────────────────────────────────────────────────
+      // New user — create shadow account
       postizEmail    = `mm_${userId.slice(0, 8)}@mediamachine.app`;
       postizPassword = randomPassword();
       const displayName = userEmail.split('@')[0];
 
-      // Step 1: Register via Postiz API (Postiz handles bcrypt internally)
       let postizUserId = null;
       const regRes = await fetch(`${POSTIZ_URL}/api/auth/register`, {
         method: 'POST',
@@ -137,22 +118,19 @@ exports.handler = async (event) => {
         postizUserId  = regData?.id || regData?.user?.id || null;
       }
 
-      // Step 2: Create a private org for this user via direct DB access
+      let postizOrgId = null;
       if (process.env.POSTIZ_DB_URL) {
         try {
-          if (!postizUserId) {
-            postizUserId = await getPostizUserByEmail(postizEmail);
-          }
+          if (!postizUserId) postizUserId = await getPostizUserByEmail(postizEmail);
           if (postizUserId) {
             const orgResult = await createPrivateOrgForUser(postizUserId, displayName);
             postizOrgId = orgResult.orgId;
           }
         } catch (dbErr) {
-          console.warn('Private org creation failed, using default org:', dbErr.message);
+          console.warn('Private org creation failed:', dbErr.message);
         }
       }
 
-      // Step 3: Save shadow account to Supabase
       await supabaseQuery('/postiz_accounts', 'POST', {
         supabase_user_id: userId,
         user_email:       userEmail,
@@ -163,7 +141,17 @@ exports.handler = async (event) => {
       }, serviceKey);
     }
 
-    // ── Build the silent login HTML page ──────────────────────────────────────
+    // ── THE KEY FIX ──────────────────────────────────────────────────────────
+    // This page:
+    // 1. Calls /api/auth/login — Postiz sets the session cookie in THIS iframe
+    // 2. Waits 800ms for the cookie to fully propagate
+    // 3. Redirects THIS iframe to /launches (already authenticated)
+    // 4. /launches detects it's in an iframe and fires POSTIZ_LOGIN_OK
+    //
+    // This is one continuous iframe navigation — no swap, no second iframe.
+    // The cookie is valid because login and /launches are the same origin.
+    // ─────────────────────────────────────────────────────────────────────────
+
     const jsPostiz = JSON.stringify(POSTIZ_URL);
     const jsEmail  = JSON.stringify(postizEmail);
     const jsPw     = JSON.stringify(postizPassword);
@@ -175,54 +163,82 @@ exports.handler = async (event) => {
   <title>Connecting...</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: #0d0d0d; display: flex; align-items: center;
-           justify-content: center; height: 100vh; font-family: sans-serif; }
-    .spinner { width: 36px; height: 36px; border: 3px solid rgba(214,178,94,0.2);
-               border-top-color: #D6B25E; border-radius: 50%;
-               animation: spin 0.8s linear infinite; }
+    body {
+      background: #0d0d0d;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: sans-serif;
+      gap: 12px;
+    }
+    .spinner {
+      width: 32px; height: 32px;
+      border: 3px solid rgba(214,178,94,0.2);
+      border-top-color: #D6B25E;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    .msg { font-size: 12px; color: rgba(255,255,255,0.3); }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
   <div class="spinner"></div>
+  <div class="msg" id="msg">Signing in...</div>
   <script>
   (async () => {
     const POSTIZ = ${jsPostiz};
     const email  = ${jsEmail};
     const pw     = ${jsPw};
+    const msg    = document.getElementById('msg');
 
-    async function doLogin() {
-      return fetch(POSTIZ + '/api/auth/login', {
+    async function tryLogin() {
+      const res = await fetch(POSTIZ + '/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password: pw }),
       });
+      return res.ok;
+    }
+
+    async function tryRegisterThenLogin() {
+      await fetch(POSTIZ + '/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password: pw, provider: 'LOCAL' }),
+      }).catch(() => {});
+      return tryLogin();
     }
 
     try {
-      let res = await doLogin();
+      msg.textContent = 'Signing in...';
+      let ok = await tryLogin();
 
-      if (!res.ok) {
-        await fetch(POSTIZ + '/api/auth/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email, password: pw, provider: 'LOCAL' }),
-        }).catch(() => {});
-        res = await doLogin();
+      if (!ok) {
+        msg.textContent = 'Setting up your account...';
+        ok = await tryRegisterThenLogin();
       }
 
-      if (window.parent !== window) {
-        window.parent.postMessage({ type: 'POSTIZ_LOGIN_OK' }, '*');
-      } else {
+      if (ok) {
+        msg.textContent = 'Loading channels...';
+        // Small delay to ensure cookie is fully set before navigation
+        await new Promise(r => setTimeout(r, 600));
+        // Navigate THIS iframe to /launches — already authenticated
         window.location.replace(POSTIZ + '/launches');
+      } else {
+        // Login truly failed — still signal parent so modal doesn't hang
+        if (window.parent !== window) {
+          window.parent.postMessage({ type: 'POSTIZ_LOGIN_OK' }, '*');
+        }
       }
     } catch(e) {
+      console.error('Login error:', e);
       if (window.parent !== window) {
         window.parent.postMessage({ type: 'POSTIZ_LOGIN_OK' }, '*');
-      } else {
-        window.location.replace(POSTIZ + '/launches');
       }
     }
   })();
