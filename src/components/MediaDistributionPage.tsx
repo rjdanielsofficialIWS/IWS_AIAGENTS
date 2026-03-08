@@ -292,7 +292,7 @@ async function transcribeVideo(videoFile: File): Promise<string> {
       const uploadedPath = await uploadViaNativeXHR(audioBlob, 'video');
       const videoUrl = uploadedPath.startsWith('http')
         ? uploadedPath
-        : `${POSTIZ_API_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
+        : `${SUPABASE_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
