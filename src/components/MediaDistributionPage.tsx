@@ -17,24 +17,14 @@ const BORDER  = 'rgba(255,255,255,0.08)';
 const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
 const POSTIZ_API_URL      = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
-const POSTIZ_REDIRECT_URL = 'https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect';
+const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
-function buildTikTokConnectUrl() {
-  const state = generateState();
-  localStorage.setItem(LS_TIKTOK_STATE_KEY, state);
-  return `https://www.tiktok.com/v2/auth/authorize/?${new URLSearchParams({
-    client_key: 'sbaw5rklhtaoiu7crd',
-    redirect_uri: 'https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect',
-    state,
-    response_type: 'code',
-    scope: 'video.list,user.info.basic,video.upload,user.info.profile,user.info.stats',
-  })}`;
-}
+// ─── FIXED: Removed buildTikTokConnectUrl() and LS_TIKTOK_STATE_KEY ───────────
+// TikTok OAuth is now handled entirely by Postiz's built-in /integrations/social/tiktok/connect endpoint
 
 const LS_TOKEN_KEY         = 'postiz_access_token';
 const LS_STATE_KEY         = 'postiz_oauth_state';
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
-const LS_TIKTOK_STATE_KEY  = 'tiktok_oauth_state';
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
@@ -176,55 +166,31 @@ async function uploadViaNativeXHR(
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// pcmToWav — encode a Float32Array of mono 16 kHz samples as a WAV blob
-// ─────────────────────────────────────────────────────────────────────────────
 function pcmToWav(samples: Float32Array, sampleRate = 16000): Blob {
   const buf  = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buf);
   const str  = (off: number, s: string) => { for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i)); };
   str(0,  'RIFF'); view.setUint32(4,  36 + samples.length * 2, true);
   str(8,  'WAVE'); str(12, 'fmt ');
-  view.setUint32(16, 16,           true); // chunk size
-  view.setUint16(20, 1,            true); // PCM
-  view.setUint16(22, 1,            true); // mono
+  view.setUint32(16, 16,           true);
+  view.setUint16(20, 1,            true);
+  view.setUint16(22, 1,            true);
   view.setUint32(24, sampleRate,   true);
-  view.setUint32(28, sampleRate*2, true); // byte rate
-  view.setUint16(32, 2,            true); // block align
-  view.setUint16(34, 16,           true); // bits
+  view.setUint32(28, sampleRate*2, true);
+  view.setUint16(32, 2,            true);
+  view.setUint16(34, 16,           true);
   str(36, 'data'); view.setUint32(40, samples.length * 2, true);
   for (let i = 0; i < samples.length; i++)
     view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, samples[i])) * 0x7fff, true);
   return new Blob([buf], { type: 'audio/wav' });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// extractAudioFromVideo — works on desktop Chrome/Firefox AND iOS Safari
-//
-// The challenge:
-//   • OfflineAudioContext.createMediaElementSource() does NOT exist (any browser)
-//   • decodeAudioData(file.arrayBuffer()) fails on iOS Safari for MP4/MOV
-//     because Safari won't demux a video container through that API
-//   • ScriptProcessor + live playback produces garbled/repeated output
-//
-// Solution — two-path approach:
-//   PATH A (desktop / Android Chrome): try decodeAudioData on the raw bytes.
-//           Fast, no playback needed, clean output.
-//   PATH B (iOS Safari fallback): play the video through a live AudioContext
-//           and capture using ScriptProcessor — BUT at a reduced playback rate
-//           and with careful buffer accumulation so every sample is captured
-//           exactly once. We set playbackRate=1 and wait for 'ended' reliably.
-//           This is the only API path iOS Safari exposes for video→audio.
-// ─────────────────────────────────────────────────────────────────────────────
 async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
   const SAMPLE_RATE = 16000;
-  // Create a SEPARATE object URL just for audio extraction — independent of any preview URL
   const objectUrl = URL.createObjectURL(videoFile);
 
-  // ── PATH A: decodeAudioData (desktop + Android) ──────────────────────────
   try {
     const arrayBuffer = await videoFile.arrayBuffer();
-    // Use the native sample rate first so Safari doesn't have to resample
     const tmpCtx = new AudioContext();
     let decoded: AudioBuffer;
     try {
@@ -233,7 +199,6 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
       await tmpCtx.close();
     }
 
-    // Resample to 16 kHz via OfflineAudioContext if needed
     let audioBuffer: AudioBuffer;
     if (decoded.sampleRate === SAMPLE_RATE) {
       audioBuffer = decoded;
@@ -247,7 +212,6 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
       audioBuffer = await offline.startRendering();
     }
 
-    // Mix all channels to mono
     const samples = new Float32Array(audioBuffer.length);
     for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
       const data = audioBuffer.getChannelData(ch);
@@ -258,18 +222,13 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
     return pcmToWav(samples, SAMPLE_RATE);
 
   } catch (decodeErr) {
-    // PATH A failed (likely iOS Safari can't demux the video container)
-    // Fall through to PATH B
     console.warn('decodeAudioData failed, falling back to live capture:', decodeErr);
   }
 
-  // ── PATH B: live AudioContext capture (iOS Safari) ────────────────────────
-  // We use a ScriptProcessor but accumulate ALL samples before resolving,
-  // driving playback synchronously so nothing is skipped or doubled.
   return new Promise<Blob>((resolve, reject) => {
     const vid = document.createElement('video');
     vid.src         = objectUrl;
-    vid.muted       = false; // must NOT be muted for AudioContext to capture on iOS
+    vid.muted       = false;
     vid.playsInline = true;
     vid.preload     = 'auto';
 
@@ -280,9 +239,6 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
 
     vid.addEventListener('canplaythrough', async () => {
       try {
-        // iOS requires AudioContext to be created inside a user-gesture callback;
-        // by the time we get here we are inside the async chain started by the
-        // user tapping "Generate", so it's allowed.
         const audioCtx   = new AudioContext({ sampleRate: SAMPLE_RATE });
         const source     = audioCtx.createMediaElementSource(vid);
         const bufferSize = 4096;
@@ -293,7 +249,6 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
         processor.connect(audioCtx.destination);
 
         processor.onaudioprocess = (e) => {
-          // Copy — the buffer is reused by the browser after this callback
           chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
         };
 
@@ -324,27 +279,20 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// transcribeVideo — send video/audio to the Supabase transcribe-video function.
-// Small files go directly; large files have audio extracted first.
-// ─────────────────────────────────────────────────────────────────────────────
 async function transcribeVideo(videoFile: File): Promise<string> {
   let transcribeRes: Response;
 
   if (videoFile.size <= 5 * 1024 * 1024) {
-    // Small file — send directly, no extraction needed
     const form = new FormData();
     form.append('file', videoFile, videoFile.name);
     transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
   } else {
-    // Large file — extract audio to a compact WAV first
     const audioBlob = await extractAudioFromVideo(videoFile);
     if (audioBlob.size <= 5 * 1024 * 1024) {
       const form = new FormData();
       form.append('file', audioBlob, 'audio.wav');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
     } else {
-      // Audio WAV still large — upload and send URL
       const uploadedPath = await uploadViaNativeXHR(audioBlob, 'video');
       const videoUrl = uploadedPath.startsWith('http')
         ? uploadedPath
@@ -381,9 +329,6 @@ function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'l
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// TranscriptViewer — shows a preview with an expand/collapse toggle
-// ─────────────────────────────────────────────────────────────────────────────
 function TranscriptViewer({ transcript }: { transcript: string }) {
   const [expanded, setExpanded] = useState(false);
   const PREVIEW_LENGTH = 160;
@@ -415,6 +360,7 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
   );
 }
 
+// ─── FIXED: ConnectAccountsModal now accepts postizToken prop for TikTok connect ─
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
 }: {
@@ -466,7 +412,12 @@ function ConnectAccountsModal({
                   <div className="text-sm font-bold text-white">Connect TikTok</div>
                   <div className="text-xs text-white/40 mt-0.5">Schedule & publish videos directly to TikTok</div>
                 </div>
-                <button onClick={() => { window.location.href = buildTikTokConnectUrl(); }}
+                {/* ─── FIXED: Now uses Postiz's built-in TikTok connect endpoint ─── */}
+                <button
+                  onClick={() => {
+                    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+                    window.location.href = `https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect?token=${postizToken}`;
+                  }}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110 shrink-0"
                   style={{ background: GOLD, color: '#000' }}>
                   Connect
@@ -748,35 +699,22 @@ function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => 
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MediaPreviewCard — rich preview for an uploaded image or video.
-//
-// • Images: full-width preview with remove button
-// • Videos: native <video> player with custom controls overlay:
-//   autoplay (muted), unmute button, scrubber, time display, fullscreen
-//   Works on desktop and mobile (playsInline).
-//
-// IMPORTANT: objectUrl is passed in from the parent — NOT created inside
-// the component. This prevents a double-revoke bug where extractAudioFromVideo
-// revokes its own objectUrl and accidentally kills the preview src.
-// ─────────────────────────────────────────────────────────────────────────────
 function VideoPreviewCard({
   file, objectUrl, uploadState, onRemove,
 }: { file: File; objectUrl: string; uploadState: UploadState; onRemove: () => void }) {
   const videoRef   = useRef<HTMLVideoElement>(null);
-  const [playing, setPlaying]         = useState(true);   // starts playing (autoplay)
-  const [muted, setMuted]             = useState(true);   // starts muted (browser autoplay policy)
+  const [playing, setPlaying]         = useState(true);
+  const [muted, setMuted]             = useState(true);
   const [volume, setVolume]           = useState(1);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration]       = useState(0);
   const [showVolume, setShowVolume]   = useState(false);
 
-  // Autoplay as soon as the video element is ready
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
-    v.muted = true; // must be muted for autoplay policy
-    v.play().catch(() => setPlaying(false)); // gracefully handle blocked autoplay
+    v.muted = true;
+    v.play().catch(() => setPlaying(false));
   }, []);
 
   const togglePlay = () => {
@@ -800,7 +738,6 @@ function VideoPreviewCard({
     const newMuted = !v.muted;
     v.muted = newMuted;
     setMuted(newMuted);
-    // If unmuting and volume was 0, restore to 1
     if (!newMuted && v.volume === 0) { v.volume = 1; setVolume(1); }
   };
 
@@ -817,7 +754,7 @@ function VideoPreviewCard({
   const handleFullscreen = () => {
     const v = videoRef.current; if (!v) return;
     if (v.requestFullscreen) v.requestFullscreen();
-    else if ((v as any).webkitEnterFullscreen) (v as any).webkitEnterFullscreen(); // iOS Safari
+    else if ((v as any).webkitEnterFullscreen) (v as any).webkitEnterFullscreen();
   };
 
   const fmt = (s: number) => {
@@ -829,7 +766,6 @@ function VideoPreviewCard({
 
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: '#000' }}>
-      {/* Video element */}
       <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
         <video
           ref={videoRef}
@@ -846,12 +782,8 @@ function VideoPreviewCard({
           onClick={togglePlay}
           style={{ cursor: 'pointer' }}
         />
-
-        {/* Play overlay when paused */}
         {!playing && (
-          <button
-            onClick={togglePlay}
-            className="absolute inset-0 flex items-center justify-center group"
+          <button onClick={togglePlay} className="absolute inset-0 flex items-center justify-center group"
             style={{ background: 'rgba(0,0,0,0.4)' }}>
             <div className="w-14 h-14 rounded-full flex items-center justify-center transition group-hover:scale-105"
               style={{ background: 'rgba(0,0,0,0.75)', border: `2px solid ${GOLD}` }}>
@@ -859,52 +791,35 @@ function VideoPreviewCard({
             </div>
           </button>
         )}
-
-        {/* Muted badge — tap to unmute */}
         {muted && playing && (
-          <button
-            onClick={toggleMute}
+          <button onClick={toggleMute}
             className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold transition hover:scale-105"
             style={{ background: 'rgba(0,0,0,0.75)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
             <VolumeX className="w-3.5 h-3.5" />
             <span>Tap to unmute</span>
           </button>
         )}
-
-        {/* Remove button */}
         <button onClick={onRemove}
           className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
           style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
           <X className="w-3.5 h-3.5 text-white/70" />
         </button>
       </div>
-
-      {/* Controls bar */}
       <div className="px-3 py-2 space-y-1.5" style={{ background: 'rgba(0,0,0,0.7)' }}>
-        {/* Scrubber */}
-        <input
-          type="range" min={0} max={duration || 1} step={0.1} value={currentTime}
+        <input type="range" min={0} max={duration || 1} step={0.1} value={currentTime}
           onChange={handleScrub}
           className="w-full h-1 rounded-full appearance-none cursor-pointer"
-          style={{ accentColor: GOLD }}
-        />
-        {/* Controls row */}
+          style={{ accentColor: GOLD }} />
         <div className="flex items-center gap-2">
-          {/* Play/Pause */}
           <button onClick={togglePlay}
             className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition shrink-0"
             style={{ color: GOLD }}>
             {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
           </button>
-
-          {/* Time */}
           <span className="text-[10px] font-mono text-white/40 shrink-0 tabular-nums">
             {fmt(currentTime)} / {fmt(duration)}
           </span>
-
           <div className="flex-1" />
-
-          {/* Volume */}
           <div className="flex items-center gap-1"
             onMouseEnter={() => setShowVolume(true)}
             onMouseLeave={() => setShowVolume(false)}>
@@ -913,24 +828,18 @@ function VideoPreviewCard({
               {muted || volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
             </button>
             <div className={`overflow-hidden transition-all duration-200 ${showVolume ? 'w-16 opacity-100' : 'w-0 opacity-0 pointer-events-none'}`}>
-              <input
-                type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
+              <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
                 onChange={handleVolume}
                 className="w-16 h-1 rounded-full appearance-none cursor-pointer"
-                style={{ accentColor: GOLD }}
-              />
+                style={{ accentColor: GOLD }} />
             </div>
           </div>
-
-          {/* Fullscreen */}
           <button onClick={handleFullscreen}
             className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/40 hover:text-white shrink-0">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
-
-      {/* Upload status */}
       {(uploadState.status === 'preparing' || uploadState.status === 'uploading') && (
         <div className="px-3 py-2 border-t" style={{ borderColor: BORDER }}>
           {uploadState.status === 'preparing' && (
@@ -971,18 +880,12 @@ function ImagePreviewCard({
   return (
     <div className="relative rounded-xl border overflow-hidden group" style={{ borderColor: BORDER }}>
       <img src={objectUrl} className="w-full object-cover max-h-64" alt={file.name} />
-
-      {/* Gradient overlay */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition" />
-
-      {/* Remove */}
       <button onClick={onRemove}
         className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
         style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
         <X className="w-3.5 h-3.5 text-white/70" />
       </button>
-
-      {/* Status */}
       {uploadState.status === 'uploading' && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2" style={{ background: 'rgba(0,0,0,0.55)' }}>
           <Loader className="w-5 h-5 animate-spin text-white" />
@@ -1008,8 +911,6 @@ function ImagePreviewCard({
           </div>
         </div>
       )}
-
-      {/* Filename bar */}
       <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 text-[10px] text-white/40 truncate opacity-0 group-hover:opacity-100 transition"
         style={{ background: 'rgba(0,0,0,0.6)' }}>
         {file.name}
@@ -1186,15 +1087,12 @@ function PostComposerModal({
         style={{ background: SURFACE, borderColor: BORDER }}>
 
         <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-          {/* Mobile drag handle */}
           <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/20 md:hidden" />
           <h2 className="text-base font-bold text-white">Create Post</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-5">
-
-          {/* Channel selector */}
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
             {integrations.length === 0 ? (
@@ -1219,7 +1117,6 @@ function PostComposerModal({
             )}
           </div>
 
-          {/* Content */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
             <textarea value={content} onChange={e => setContent(e.target.value)}
               placeholder="What's on your mind? Write your post content here…" rows={5}
@@ -1241,9 +1138,7 @@ function PostComposerModal({
                   onChange={e => {
                     const f = e.target.files?.[0];
                     if (f) {
-                      // Revoke any previous object URL
                       if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-                      // Create ONE object URL here — shared with VideoPreviewCard and extractAudioFromVideo
                       const url = URL.createObjectURL(f);
                       setVideoFile(f);
                       setVideoObjectUrl(url);
@@ -1256,10 +1151,8 @@ function PostComposerModal({
             </div>
           </div>
 
-          {/* Media previews */}
           {(imageFiles.length > 0 || videoFile) && (
             <div className="space-y-3">
-              {/* Video preview */}
               {videoFile && videoObjectUrl && (
                 <VideoPreviewCard
                   file={videoFile}
@@ -1273,7 +1166,6 @@ function PostComposerModal({
                   }}
                 />
               )}
-              {/* Image previews — single image full-width, multiple in a 2-col grid */}
               {imageFiles.length === 1 && (
                 <ImagePreviewCard
                   file={imageFiles[0]}
@@ -1284,9 +1176,7 @@ function PostComposerModal({
               {imageFiles.length > 1 && (
                 <div className="grid grid-cols-2 gap-2">
                   {imageFiles.map((f, i) => (
-                    <ImagePreviewCard
-                      key={i}
-                      file={f}
+                    <ImagePreviewCard key={i} file={f}
                       uploadState={imageUploads[i] ?? { status: 'idle' }}
                       onRemove={() => {
                         setImageFiles(prev => prev.filter((_, xi) => xi !== i));
@@ -1299,7 +1189,6 @@ function PostComposerModal({
             </div>
           )}
 
-          {/* AI PANEL */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
             <button onClick={() => setShowAiPanel(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
@@ -1329,8 +1218,6 @@ function PostComposerModal({
                     </button>
                   ))}
                 </div>
-
-                {/* Contextual upload-state hints */}
                 {captionMode === 'from_video' && !videoFile && (
                   <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video using the Video button above first</div>
                 )}
@@ -1342,7 +1229,6 @@ function PostComposerModal({
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && (
                   <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate to transcribe and write captions.</div>
                 )}
-
                 {captionMode === 'from_description' && (
                   <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
                     placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…" rows={3}
@@ -1359,10 +1245,7 @@ function PostComposerModal({
                     : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
-
-                {/* ── Transcript with expand/collapse ── */}
                 {transcript && <TranscriptViewer transcript={transcript} />}
-
                 {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                   <div className="space-y-2">
                     <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
@@ -1387,7 +1270,6 @@ function PostComposerModal({
             )}
           </div>
 
-          {/* Per-platform customization */}
           {selectedIntegrations.length > 0 && (
             <div>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">
@@ -1423,7 +1305,6 @@ function PostComposerModal({
             </div>
           )}
 
-          {/* Schedule */}
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
             <div className="flex gap-2 mb-3">
@@ -1752,7 +1633,6 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
 
   return (
     <>
-      {/* ── Desktop sidebar (hidden on mobile) ── */}
       <aside className="hidden md:flex w-52 shrink-0 flex-col border-r h-full overflow-hidden" style={{ background: SURFACE, borderColor: BORDER }}>
         <div className="px-5 py-5 border-b" style={{ borderColor: BORDER }}>
           <div className="flex items-center gap-2.5">
@@ -1806,7 +1686,6 @@ function Sidebar({ view, setView, integrations, onOpenConnect, postizToken }: {
         </div>
       </aside>
 
-      {/* ── Mobile bottom tab bar ── */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t"
         style={{ background: SURFACE, borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {navItems.map(item => (
@@ -1839,13 +1718,11 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
 }) {
   return (
     <div className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
-      {/* Left: back + logo on mobile */}
       <div className="flex items-center gap-3">
         <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-white transition">
           <ArrowLeft className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Back</span>
         </Link>
-        {/* Logo — only visible on mobile (sidebar hides it) */}
         <div className="flex md:hidden items-center gap-2">
           <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
             style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
@@ -1854,8 +1731,6 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
           <span className="text-xs font-black tracking-widest text-white">MEDIA <span style={{ color: GOLD }}>MACHINE</span></span>
         </div>
       </div>
-
-      {/* Right: connection status */}
       <div className="flex items-center gap-1.5">
         {postizToken ? (
           <>
@@ -1868,7 +1743,6 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
               className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition disabled:opacity-30">
               <RefreshCw className={`w-3.5 h-3.5 ${integrationsLoading ? 'animate-spin' : ''}`} />
             </button>
-            {/* Desktop-only extra buttons */}
             <button onClick={onOpenConnect}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
               style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
@@ -1879,7 +1753,6 @@ function TopBar({ postizToken, integrations, integrationsLoading, onConnect, onD
               style={{ borderColor: 'rgba(239,68,68,0.25)', color: '#fca5a5' }}>
               <Link2Off className="w-3 h-3" /> Disconnect
             </button>
-            {/* Mobile: single icon for disconnect */}
             <button onClick={onDisconnect}
               className="sm:hidden w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition"
               style={{ color: '#fca5a5' }}>
@@ -1927,40 +1800,7 @@ export function MediaDistributionPage() {
     const state  = params.get('state');
     const error  = params.get('error');
 
-    // ── TikTok OAuth return ──────────────────────────────────────────────────
-    const tiktokState = localStorage.getItem(LS_TIKTOK_STATE_KEY);
-    if (tiktokState && state === tiktokState) {
-      localStorage.removeItem(LS_TIKTOK_STATE_KEY);
-      window.history.replaceState({}, '', window.location.pathname);
-      if (error) { setOauthError('TikTok authorization denied.'); return; }
-      if (!code) { setOauthError('No code received from TikTok.'); return; }
-      // Send the code to Postiz — it handles the token exchange internally
-      const token = localStorage.getItem(LS_TOKEN_KEY);
-      setOauthLoading(true);
-      fetch('/.netlify/functions/postiz-api', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          path: `/integrations/social/tiktok?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state ?? '')}`,
-          token,
-          method: 'GET',
-        }),
-      })
-        .then(() => {
-          if (token) loadIntegrations(token);
-          setConnectModalOpen(true);
-          setOauthLoading(false);
-        })
-        .catch(() => {
-          // Even if the proxy call fails, refresh integrations — Postiz may have already saved it
-          if (token) loadIntegrations(token);
-          setConnectModalOpen(true);
-          setOauthLoading(false);
-        });
-      return;
-    }
-
-    // ── Postiz social platform return (non-TikTok) ───────────────────────────
+    // ── Postiz social platform return (includes TikTok now) ──────────────────
     const isSocialReturn = localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1';
     if (isSocialReturn) {
       localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
