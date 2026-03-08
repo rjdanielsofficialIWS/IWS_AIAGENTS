@@ -19,14 +19,12 @@ const POSTIZ_API_URL      = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_CLIENT_ID    = 'pca_vu9LtBtHReFqeuA465OI8tOqONvva7gS';
 const POSTIZ_REDIRECT_URL = 'https://infinitewealthsolutionsai.com/mediamachine';
 
-// TikTok direct OAuth — sends user straight to TikTok's authorization screen.
-// The redirect_uri points back to Postiz which handles the token exchange,
-// then the user returns here and clicks Refresh Channels.
 function buildTikTokConnectUrl() {
   const state = generateState();
+  localStorage.setItem(LS_TIKTOK_STATE_KEY, state);
   return `https://www.tiktok.com/v2/auth/authorize/?${new URLSearchParams({
     client_key: 'sbaw5rklhtaoiu7crd',
-    redirect_uri: 'https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok',
+    redirect_uri: 'https://infinitewealthsolutionsai.com/mediamachine',
     state,
     response_type: 'code',
     scope: 'video.list,user.info.basic,video.upload,user.info.profile,user.info.stats',
@@ -36,6 +34,7 @@ function buildTikTokConnectUrl() {
 const LS_TOKEN_KEY         = 'postiz_access_token';
 const LS_STATE_KEY         = 'postiz_oauth_state';
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
+const LS_TIKTOK_STATE_KEY  = 'tiktok_oauth_state';
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
@@ -424,20 +423,11 @@ function ConnectAccountsModal({
   onRefresh: () => void;
 }) {
   if (!open) return null;
-
-  const handleConnectTikTok = () => {
-    // Store a flag so when Postiz redirects back we auto-refresh channels
-    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-    window.location.href = buildTikTokConnectUrl();
-  };
-
   return (
     <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full md:max-w-lg rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[85vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
-
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
@@ -447,65 +437,86 @@ function ConnectAccountsModal({
             <X className="w-4 h-4" />
           </button>
         </div>
-
-        <div className="overflow-y-auto flex-1 p-6 space-y-4">
-
-          {/* Already connected accounts */}
-          {integrations.length > 0 && (
-            <div>
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Connected ({integrations.length})</div>
-              <div className="space-y-2">
-                {integrations.map(int => (
-                  <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
-                    style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
-                    <PlatformIcon id={int.identifier} size="md" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-bold text-white truncate">{int.name}</div>
-                      <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
-                    </div>
-                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                  </div>
-                ))}
-              </div>
+        {!postizToken ? (
+          <div className="p-8 flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-2xl mb-4 flex items-center justify-center"
+              style={{ background: `${GOLD}15`, border: `1px solid ${GOLD}30` }}>
+              <Link2 className="w-7 h-7" style={{ color: GOLD }} />
             </div>
-          )}
-
-          {/* Connect TikTok — direct OAuth */}
-          <div className="rounded-xl border p-5 flex items-center gap-4"
-            style={{ borderColor: 'rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.03)' }}>
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>
-              {PLATFORMS.tiktok.icon}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-bold text-white">TikTok</div>
-              <div className="text-xs text-white/40 mt-0.5">Schedule & publish videos directly</div>
-            </div>
-            {integrations.find(i => i.identifier === 'tiktok') ? (
-              <CheckCircle2 className="w-5 h-5 text-green-400 shrink-0" />
-            ) : (
-              <button onClick={handleConnectTikTok}
-                className="px-4 py-2 rounded-lg text-xs font-bold transition hover:brightness-110 shrink-0"
-                style={{ background: GOLD, color: '#000' }}>
-                Connect
-              </button>
-            )}
+            <h3 className="text-base font-bold text-white mb-2">Connect your Postiz account first</h3>
+            <p className="text-sm text-white/40 mb-6 max-w-xs">
+              Authorize once with Postiz, then connect any social platform directly from this page.
+            </p>
+            <button onClick={onConnectPostiz}
+              className="px-6 py-3 rounded-xl text-sm font-bold transition hover:brightness-110"
+              style={{ background: GOLD, color: '#000' }}>
+              Authorize Postiz Account
+            </button>
           </div>
-
-          {/* Note about redirect */}
-          <p className="text-xs text-white/25 text-center px-2">
-            You'll be taken to TikTok to authorize, then redirected back here automatically.
-          </p>
-
-          {/* Refresh */}
-          <button onClick={onRefresh} disabled={integrationsLoading}
-            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
-            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
-            {integrationsLoading
-              ? <><Loader className="w-4 h-4 animate-spin" /> Refreshing…</>
-              : <><RefreshCw className="w-4 h-4" /> Refresh Channels</>}
-          </button>
-        </div>
+        ) : (
+          <div className="overflow-y-auto flex-1 p-6 space-y-5">
+            {!integrations.find(i => i.identifier === 'tiktok') && (
+              <div className="rounded-xl border p-4 flex items-center gap-4"
+                style={{ borderColor: 'rgba(255,255,255,0.15)', background: 'rgba(255,255,255,0.04)' }}>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{ background: 'rgba(255,255,255,0.08)', color: '#fff' }}>
+                  {PLATFORMS.tiktok.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-bold text-white">Connect TikTok</div>
+                  <div className="text-xs text-white/40 mt-0.5">Schedule & publish videos directly to TikTok</div>
+                </div>
+                <button onClick={() => { window.location.href = buildTikTokConnectUrl(); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110 shrink-0"
+                  style={{ background: GOLD, color: '#000' }}>
+                  Connect
+                </button>
+              </div>
+            )}
+            {integrations.length > 0 && (
+              <div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Connected ({integrations.length})</div>
+                <div className="space-y-2">
+                  {integrations.map(int => (
+                    <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
+                      style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
+                      <PlatformIcon id={int.identifier} size="md" />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-bold text-white truncate">{int.name}</div>
+                        <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
+                      </div>
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: `${GOLD}25`, background: `${GOLD}06` }}>
+              <div className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>How to add a channel</div>
+              {[
+                { n: '1', text: 'Click "Connect TikTok" above' },
+                { n: '2', text: 'Authorize your TikTok account on the TikTok page' },
+                { n: '3', text: 'You\'ll be redirected back here automatically' },
+                { n: '4', text: 'Click "Refresh Channels" to see your connected account' },
+              ].map(step => (
+                <div key={step.n} className="flex items-start gap-3">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-black shrink-0 mt-0.5"
+                    style={{ background: `${GOLD}25`, color: GOLD }}>{step.n}</div>
+                  <p className="text-sm text-white/60">{step.text}</p>
+                </div>
+              ))}
+            </div>
+            <div className="flex flex-col gap-2">
+              <button onClick={onRefresh} disabled={integrationsLoading}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border text-sm font-bold transition hover:bg-white/5 disabled:opacity-40"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
+                {integrationsLoading
+                  ? <><Loader className="w-4 h-4 animate-spin" /> Refreshing…</>
+                  : <><RefreshCw className="w-4 h-4" /> Refresh Channels</>}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1916,6 +1927,40 @@ export function MediaDistributionPage() {
     const state  = params.get('state');
     const error  = params.get('error');
 
+    // ── TikTok OAuth return ──────────────────────────────────────────────────
+    const tiktokState = localStorage.getItem(LS_TIKTOK_STATE_KEY);
+    if (tiktokState && state === tiktokState) {
+      localStorage.removeItem(LS_TIKTOK_STATE_KEY);
+      window.history.replaceState({}, '', window.location.pathname);
+      if (error) { setOauthError('TikTok authorization denied.'); return; }
+      if (!code) { setOauthError('No code received from TikTok.'); return; }
+      // Send the code to Postiz — it handles the token exchange internally
+      const token = localStorage.getItem(LS_TOKEN_KEY);
+      setOauthLoading(true);
+      fetch('/.netlify/functions/postiz-api', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: `/integrations/social/tiktok?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state ?? '')}`,
+          token,
+          method: 'GET',
+        }),
+      })
+        .then(() => {
+          if (token) loadIntegrations(token);
+          setConnectModalOpen(true);
+          setOauthLoading(false);
+        })
+        .catch(() => {
+          // Even if the proxy call fails, refresh integrations — Postiz may have already saved it
+          if (token) loadIntegrations(token);
+          setConnectModalOpen(true);
+          setOauthLoading(false);
+        });
+      return;
+    }
+
+    // ── Postiz social platform return (non-TikTok) ───────────────────────────
     const isSocialReturn = localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1';
     if (isSocialReturn) {
       localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
