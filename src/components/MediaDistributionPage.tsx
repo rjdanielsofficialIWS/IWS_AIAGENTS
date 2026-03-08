@@ -24,7 +24,7 @@ function buildTikTokConnectUrl() {
   localStorage.setItem(LS_TIKTOK_STATE_KEY, state);
   return `https://www.tiktok.com/v2/auth/authorize/?${new URLSearchParams({
     client_key: 'sbaw5rklhtaoiu7crd',
-    redirect_uri: 'https://infinitewealthsolutionsai.com/mediamachine',
+    redirect_uri: 'https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect',
     state,
     response_type: 'code',
     scope: 'video.list,user.info.basic,video.upload,user.info.profile,user.info.stats',
