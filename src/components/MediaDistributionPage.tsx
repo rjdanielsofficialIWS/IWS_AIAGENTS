@@ -390,7 +390,7 @@ function ConnectAccountsModal({
   const handleConnect = () => {
     // Set flag so when user returns from Postiz we auto-refresh
     localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-    window.open(`${POSTIZ_FRONTEND_URL}/integrations`, '_blank');
+    window.open('/.netlify/functions/postiz-login-redirect', '_blank');
   };
 
   return (
