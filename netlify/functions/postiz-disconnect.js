@@ -1,8 +1,3 @@
-// netlify/functions/postiz-disconnect.js
-//
-// Deletes a Postiz integration via the API.
-// Falls back to direct DB update if POSTIZ_DB_URL is configured.
-
 const POSTIZ_API_URL = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_API_KEY = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
 
@@ -23,7 +18,6 @@ exports.handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: 'Missing integrationId' }) };
   }
 
-  // Try API delete first
   try {
     const res = await fetch(`${POSTIZ_API_URL}/public/v1/integrations/${integrationId}`, {
       method: 'DELETE',
