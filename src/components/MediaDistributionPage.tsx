@@ -16,9 +16,7 @@ const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)'
 const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
-const POSTIZ_FRONTEND_URL = 'https://postiz.infinitewealthsolutionsai.com';
-const POSTIZ_API_URL      = 'https://postiz.infinitewealthsolutionsai.com/api';
-const POSTIZ_API_KEY      = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
+// Social media posting via Ayrshare — no direct platform OAuth needed.
 const ORG_ID              = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
@@ -108,24 +106,27 @@ function generateState() {
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function postizProxy(path: string, token: string, method = 'GET', body?: object) {
-  const res = await fetch('/.netlify/functions/postiz-api', {
+async function ayrsharePost(userId: string, payload: {
+  platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
+}) {
+  const res = await fetch('/.netlify/functions/ayrshare-post', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, token, method, body }),
+    body: JSON.stringify({ userId, ...payload }),
   });
   if (!res.ok) {
-    const e = await res.json().catch(() => ({}));
-    throw new Error(e?.error || `Postiz API error (${res.status})`);
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `Post failed (${res.status})`);
   }
   return res.json();
 }
 
-async function fetchIntegrations(): Promise<PostizIntegration[]> {
-  const res = await fetch('/.netlify/functions/get-postiz-integrations');
+async function fetchChannels(userId: string): Promise<PostizIntegration[]> {
+  if (!userId) return [];
+  const res = await fetch(`/.netlify/functions/ayrshare-channels?userId=${encodeURIComponent(userId)}`);
   if (!res.ok) return [];
   const data = await res.json();
-  return Array.isArray(data?.integrations) ? data.integrations : [];
+  return Array.isArray(data?.channels) ? data.channels : [];
 }
 
 async function uploadViaNativeXHR(
@@ -403,56 +404,18 @@ function ConnectAccountsModal({
     if (!authUser) { onConnectPostiz(); return; }
     setConnecting(true);
     setError(null);
-
     try {
-      // 1. Get a scoped session token from our Netlify function
-      const res = await fetch('/.netlify/functions/nango-session-token', {
+      const res = await fetch('/.netlify/functions/ayrshare-connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: authUser.id, email: authUser.email }),
       });
-
-      if (!res.ok) throw new Error('Failed to get session token');
-      const { sessionToken } = await res.json();
-
-      // 2. Open Nango Connect UI with the session token
-      // This uses Nango's pre-approved OAuth apps — no developer accounts needed
-      const nango = nangoRef.current || new (window as any).Nango();
-      const connectInstance = nango.openConnectUI({
-        onEvent: async (event: any) => {
-          if (event.type === 'connect') {
-            // User successfully connected a platform
-            const { connectionId, providerConfigKey } = event;
-            // Save connection to Supabase
-            await fetch(`https://wcbkzebgcsfvrugibsjr.supabase.co/rest/v1/nango_connections`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'apikey': import.meta.env.VITE_SUPABASE_ANON_KEY || '',
-                'Authorization': `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY || ''}`,
-                'Prefer': 'return=representation,resolution=merge-duplicates',
-              },
-              body: JSON.stringify({
-                supabase_user_id: authUser.id,
-                connection_id: connectionId,
-                provider_config_key: providerConfigKey,
-                platform: providerConfigKey,
-                updated_at: new Date().toISOString(),
-              }),
-            }).catch(console.error);
-            onRefresh();
-            setConnecting(false);
-          } else if (event.type === 'close') {
-            setConnecting(false);
-            onRefresh();
-          }
-        },
-      });
-
-      connectInstance.setSessionToken(sessionToken);
-
+      if (!res.ok) throw new Error('Failed to get connect URL');
+      const { connectUrl } = await res.json();
+      localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+      window.open(connectUrl, '_blank');
+      setConnecting(false);
     } catch (err: any) {
-      console.error('Nango connect error:', err);
       setError('Failed to open connection manager. Please try again.');
       setConnecting(false);
     }
@@ -991,12 +954,12 @@ function PostComposerModal({
   open, onClose, integrations, token, defaultDate, onSuccess,
 }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
-  token: string | null; defaultDate?: Date; onSuccess?: () => void;
+  userId: string | null; defaultDate?: Date; onSuccess?: () => void;
 }) {
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
   const [content, setContent]           = useState('');
   const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('schedule');
-  const [scheduleDate, setScheduleDate] = useState(() => {
+  const [scheduleDate_str, setScheduleDate] = useState(() => {
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
     return d.toISOString().slice(0, 16);
   });
@@ -1116,7 +1079,7 @@ function PostComposerModal({
   };
 
   const handleSubmit = async () => {
-    if (!token)                       { setSubmitError('Not connected. Connect your accounts first.'); return; }
+    if (!userId)                      { setSubmitError('Sign in to post.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
     if (!content.trim())              { setSubmitError('Write some content first.'); return; }
     if (videoUpload.status === 'uploading' || imageUploads.some(u => u.status === 'uploading')) {
@@ -1124,21 +1087,14 @@ function PostComposerModal({
     }
     setSubmitting(true); setSubmitError(null);
     try {
-      const mediaImages: { id: string; path: string }[] = [];
-      imageUploads.forEach((u, i) => { if (u.status === 'done') mediaImages.push({ id: `img-${i}`, path: (u as any).url }); });
-      const videoArr = videoUpload.status === 'done' ? [{ id: 'video-0', path: (videoUpload as any).url }] : [];
-      const dateUTC  = scheduleType === 'now' ? new Date().toISOString() : new Date(scheduleDate).toISOString();
-      const posts    = selectedIntegrations.map(integId => {
-        const int         = integrations.find(i => i.id === integId);
-        const identifier  = int?.identifier || '';
-        const postContent = perPlatform[integId]?.trim() || content;
-        return {
-          integration: { id: integId },
-          value:       [{ content: postContent, image: [...mediaImages, ...videoArr] }],
-          settings:    buildSettings(identifier, postContent),
-        };
-      });
-      await postizProxy('/public/v1/posts', token, 'POST', { type: scheduleType, date: dateUTC, shortLink: false, tags: [], posts });
+      const mediaUrls: string[] = [];
+      imageUploads.forEach(u => { if (u.status === 'done' && (u as any).url) mediaUrls.push((u as any).url); });
+      if (videoUpload.status === 'done' && (videoUpload as any).url) mediaUrls.push((videoUpload as any).url);
+      const platforms = selectedIntegrations
+        .map(id => integrations.find(i => i.id === id)?.identifier)
+        .filter(Boolean) as string[];
+      const scheduleDate = scheduleType === 'schedule' ? new Date(scheduleDate_str).toISOString() : undefined;
+      await ayrsharePost(userId, { platforms, post: content, mediaUrls, scheduleDate });
       setSubmitOk(true);
       setTimeout(() => { onClose(); onSuccess?.(); }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to schedule'); }
@@ -1390,7 +1346,7 @@ function PostComposerModal({
               ))}
             </div>
             {scheduleType === 'schedule' && (
-              <input type="datetime-local" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)}
+              <input type="datetime-local" value={scheduleDate_str} onChange={e => setScheduleDate(e.target.value)}
                 className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER }} />
             )}
           </div>
@@ -1551,7 +1507,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
         })}
       </div>
       <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
-        integrations={integrations} token={token} defaultDate={composerDate} onSuccess={loadPosts} />
+        integrations={integrations} userId={userId} defaultDate={composerDate} onSuccess={loadPosts} />
       <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
     </div>
   );
@@ -1559,7 +1515,7 @@ function CalendarPanel({ token, integrations }: { token: string | null; integrat
 
 // ─── ComposerPanel (posts list view) ─────────────────────────────────────────
 
-function ComposerPanel({ integrations, token }: { integrations: PostizIntegration[]; token: string | null }) {
+function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
   const [composerOpen, setComposerOpen]   = useState(false);
   const [repurposeOpen, setRepurposeOpen] = useState(false);
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
@@ -1694,7 +1650,7 @@ function ComposerPanel({ integrations, token }: { integrations: PostizIntegratio
           </div>
         )}
       </div>
-      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)} integrations={integrations} token={token} onSuccess={loadPosts} />
+      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)} integrations={integrations} userId={userId} onSuccess={loadPosts} />
       <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
     </div>
   );
@@ -1867,13 +1823,14 @@ export function MediaDistributionPage() {
   const [authModalOpen, setAuthModalOpen]                 = useState(false);
 
   const loadIntegrations = useCallback(async () => {
+    if (!currentUser) return;
     setIntegrationsLoading(true);
-    try { setIntegrations(await fetchIntegrations()); }
+    try { setIntegrations(await fetchChannels(currentUser.id)); }
     catch { setIntegrations([]); }
     finally { setIntegrationsLoading(false); }
-  }, []);
+  }, [currentUser]);
 
-  useEffect(() => { loadIntegrations(); }, [loadIntegrations]);
+  useEffect(() => { if (currentUser) loadIntegrations(); }, [currentUser, loadIntegrations]);
 
   // Handle OAuth callbacks
   useEffect(() => {
@@ -2005,8 +1962,8 @@ export function MediaDistributionPage() {
         <Sidebar view={view} setView={setView} integrations={integrations}
           onOpenConnect={() => setConnectModalOpen(true)} postizToken={postizToken} />
         <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
-          {view === 'composer' && <ComposerPanel integrations={integrations} token={postizToken} />}
-          {view === 'calendar' && <CalendarPanel integrations={integrations} token={postizToken} />}
+          {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
+          {view === 'calendar' && <CalendarPanel integrations={integrations} userId={currentUser?.id ?? null} />}
         </main>
       </div>
 
