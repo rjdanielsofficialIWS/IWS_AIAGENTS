@@ -1795,6 +1795,21 @@ export function MediaDistributionPage() {
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
+  const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
+  const [integrationsLoading, setIntegrationsLoading] = useState(false);
+  const [authModalOpen, setAuthModalOpen]       = useState(false);
+  const { user: authUser }                      = useAuth();
+  const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
+
+  const loadIntegrations = useCallback(async () => {
+    if (!currentUser) return;
+    setIntegrationsLoading(true);
+    try { setIntegrations(await fetchChannels(currentUser.id)); }
+    catch { setIntegrations([]); }
+    finally { setIntegrationsLoading(false); }
+  }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (currentUser) loadIntegrations(); }, [currentUser, loadIntegrations]);
 
   useEffect(() => {
     // Handle return from Ayrshare social account connection
