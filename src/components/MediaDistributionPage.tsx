@@ -417,11 +417,24 @@ function ConnectAccountsModal({
                   <div className="text-sm font-bold text-white">Connect TikTok</div>
                   <div className="text-xs text-white/40 mt-0.5">Schedule & publish videos directly to TikTok</div>
                 </div>
-                {/* ─── FIXED: Now uses Postiz's built-in TikTok connect endpoint ─── */}
+                {/* Fetches a Postiz token silently then redirects to TikTok connect */}
                 <button
-                  onClick={() => {
-                    localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
-                    window.location.href = `https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect?token=${postizToken}`;
+                  onClick={async () => {
+                    try {
+                      let token = postizToken;
+                      if (!token) {
+                        const res = await fetch('/.netlify/functions/postiz-auth', { method: 'POST' });
+                        const data = await res.json();
+                        if (!data.token) throw new Error('Could not get auth token');
+                        token = data.token;
+                        localStorage.setItem(LS_TOKEN_KEY, token!);
+                      }
+                      localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+                      window.location.href = `https://postiz.infinitewealthsolutionsai.com/integrations/social/tiktok/connect?token=${token}`;
+                    } catch (e) {
+                      console.error('TikTok connect error:', e);
+                      alert('Connection failed. Please try again.');
+                    }
                   }}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110 shrink-0"
                   style={{ background: GOLD, color: '#000' }}>
@@ -442,6 +455,25 @@ function ConnectAccountsModal({
                         <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
                       </div>
                       <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                      <button
+                        onClick={async () => {
+                          if (!confirm(`Disconnect ${int.name}?`)) return;
+                          try {
+                            await fetch('/.netlify/functions/postiz-disconnect', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ integrationId: int.id }),
+                            });
+                            onRefresh();
+                          } catch (e) { alert('Failed to disconnect. Try again.'); }
+                        }}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition shrink-0"
+                        style={{ color: 'rgba(239,68,68,0.6)' }}
+                        title="Disconnect">
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/>
+                        </svg>
+                      </button>
                     </div>
                   ))}
                 </div>
