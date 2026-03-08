@@ -1,5 +1,5 @@
 // netlify/functions/ayrshare-channels.js
-const AYRSHARE_API = 'https://app.ayrshare.com/api';
+const AYRSHARE_API = 'https://api.ayrshare.com/api';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
 const CORS = {
