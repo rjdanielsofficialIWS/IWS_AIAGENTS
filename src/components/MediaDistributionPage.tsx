@@ -5,6 +5,7 @@ import {
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2,
+  ExternalLink,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -361,12 +362,16 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 }
 
 // ─── ConnectAccountsModal ─────────────────────────────────────────────────────
-// Single-iframe approach:
-// 1. IDLE   — show connected accounts list + connect button
-// 2. ACTIVE — one iframe loads /.netlify/functions/postiz-user-login
-//             that page logs in, then window.location.replace(POSTIZ/launches)
-//             /launches detects it's in an iframe, fires POSTIZ_LOGIN_OK
-//             modal shows the live Postiz UI (already authenticated, same iframe)
+// Popup approach — no iframe needed:
+// 1. User clicks "Connect a Social Account"
+// 2. A popup opens to /.netlify/functions/postiz-user-login
+// 3. That function logs the user in server-side, redirects to /mm-login on Postiz domain
+// 4. /mm-login sets the session cookie then redirects to /launches in the popup
+// 5. User connects their social accounts in the popup (OAuth opens in the same popup)
+// 6. User clicks Done — popup closes, modal refreshes channels
+//
+// This completely bypasses iframe embedding restrictions.
+// OAuth flows work naturally in popups — TikTok, Instagram etc. all allow this.
 
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, postizToken, integrationsLoading, onRefresh,
@@ -376,37 +381,70 @@ function ConnectAccountsModal({
   onRefresh: () => void;
 }) {
   const { user: authUser } = useAuth();
-  const [iframePhase, setIframePhase] = useState<'idle' | 'active'>('idle');
-  const [iframeReady, setIframeReady] = useState(false);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [popupOpen, setPopupOpen] = useState(false);
+  const popupRef = useRef<Window | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Listen for POSTIZ_LOGIN_OK fired by the /launches page once it loads
-  useEffect(() => {
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === 'POSTIZ_LOGIN_OK') {
-        setIframeReady(true);
+  // Poll to detect when popup closes so we can refresh channels
+  const startPolling = () => {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(() => {
+      if (popupRef.current?.closed) {
+        clearInterval(pollRef.current!);
+        pollRef.current = null;
+        setPopupOpen(false);
+        onRefresh();
       }
+    }, 600);
+  };
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
     };
-    window.addEventListener('message', handler);
-    return () => window.removeEventListener('message', handler);
   }, []);
 
   // Reset when modal closes
   useEffect(() => {
     if (!open) {
-      setIframePhase('idle');
-      setIframeReady(false);
+      setPopupOpen(false);
+      if (pollRef.current) clearInterval(pollRef.current);
     }
   }, [open]);
 
-  const handleOpenIframe = () => {
+  const handleConnect = () => {
     if (!authUser) { onConnectPostiz(); return; }
-    setIframePhase('active');
+
+    const loginUrl = `/.netlify/functions/postiz-user-login?uid=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`;
+
+    // Open popup centered on screen
+    const w = 1100, h = 700;
+    const left = Math.round(window.screenX + (window.outerWidth - w) / 2);
+    const top  = Math.round(window.screenY + (window.outerHeight - h) / 2);
+    const popup = window.open(
+      loginUrl,
+      'postiz-connect',
+      `width=${w},height=${h},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+    );
+
+    if (popup) {
+      popupRef.current = popup;
+      setPopupOpen(true);
+      startPolling();
+    } else {
+      // Popup was blocked — fall back to new tab
+      window.open(loginUrl, '_blank');
+    }
   };
 
-  const loginUrl = authUser
-    ? `/.netlify/functions/postiz-user-login?uid=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`
-    : null;
+  const handleFocusPopup = () => {
+    if (popupRef.current && !popupRef.current.closed) {
+      popupRef.current.focus();
+    } else {
+      handleConnect();
+    }
+  };
 
   if (!open) return null;
 
@@ -414,106 +452,95 @@ function ConnectAccountsModal({
     <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div
-        className="relative w-full md:max-w-3xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
-        style={{
-          background: SURFACE,
-          borderColor: BORDER,
-          height: iframePhase === 'idle' ? 'auto' : '85vh',
-          maxHeight: '90vh',
-        }}
+        className="relative w-full md:max-w-lg rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
+        style={{ background: SURFACE, borderColor: BORDER, maxHeight: '90vh' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
             <p className="text-sm text-white/40 mt-0.5">
-              {iframePhase === 'idle'
-                ? 'Link your social accounts to start scheduling'
-                : iframeReady
-                  ? 'Connect your accounts below — changes save automatically'
-                  : 'Opening channel manager…'}
+              {popupOpen ? 'Complete setup in the popup window' : 'Link your social accounts to start scheduling'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            {iframePhase === 'active' && iframeReady && (
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 p-6 space-y-4">
+
+          {/* Connected accounts list */}
+          {integrations.length > 0 && (
+            <div>
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
+                Connected ({integrations.length})
+              </div>
+              <div className="space-y-2">
+                {integrations.map(int => (
+                  <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
+                    style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
+                    <PlatformIcon id={int.identifier} size="md" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold text-white truncate">{int.name}</div>
+                      <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
+                    </div>
+                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Popup open state */}
+          {popupOpen ? (
+            <div className="rounded-xl border p-5 flex flex-col items-center gap-4 text-center"
+              style={{ borderColor: `${GOLD}30`, background: `${GOLD}08` }}>
+              <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                style={{ background: `${GOLD}20` }}>
+                <ExternalLink className="w-5 h-5" style={{ color: GOLD }} />
+              </div>
+              <div>
+                <div className="text-sm font-bold text-white mb-1">Channel Manager is Open</div>
+                <div className="text-xs text-white/40">Connect your accounts in the popup window, then close it when done.</div>
+              </div>
+              <button
+                onClick={handleFocusPopup}
+                className="text-xs font-bold px-4 py-2 rounded-lg border transition hover:bg-white/5"
+                style={{ borderColor: `${GOLD}40`, color: GOLD }}
+              >
+                Bring Window to Front
+              </button>
               <button
                 onClick={() => { onRefresh(); onClose(); }}
                 disabled={integrationsLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition hover:bg-white/5 disabled:opacity-40"
-                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-xl text-sm font-bold transition hover:brightness-110 disabled:opacity-50"
+                style={{ background: GOLD, color: '#000' }}
               >
                 {integrationsLoading
-                  ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Syncing…</>
-                  : <><RefreshCw className="w-3.5 h-3.5" /> Done</>}
+                  ? <><Loader className="w-4 h-4 animate-spin" /> Syncing channels…</>
+                  : <><RefreshCw className="w-4 h-4" /> Done — Refresh My Channels</>}
               </button>
-            )}
-            <button
-              onClick={onClose}
-              className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
+            </div>
+          ) : (
+            <>
+              <button
+                onClick={handleConnect}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110"
+                style={{ background: GOLD, color: '#000' }}
+              >
+                <Link2 className="w-4 h-4" />
+                {integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}
+              </button>
+              <p className="text-xs text-white/30 text-center">
+                Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
+              </p>
+            </>
+          )}
         </div>
-
-        {/* IDLE — connected list + connect button */}
-        {iframePhase === 'idle' && (
-          <div className="overflow-y-auto flex-1 p-6 space-y-4">
-            {integrations.length > 0 && (
-              <div>
-                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
-                  Connected ({integrations.length})
-                </div>
-                <div className="space-y-2">
-                  {integrations.map(int => (
-                    <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
-                      style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
-                      <PlatformIcon id={int.identifier} size="md" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-bold text-white truncate">{int.name}</div>
-                        <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
-                      </div>
-                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            <button
-              onClick={handleOpenIframe}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110"
-              style={{ background: GOLD, color: '#000' }}
-            >
-              <Link2 className="w-4 h-4" />
-              {integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}
-            </button>
-            <p className="text-xs text-white/30 text-center">
-              Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
-            </p>
-          </div>
-        )}
-
-        {/* ACTIVE — single iframe: logs in then navigates to /launches */}
-        {iframePhase === 'active' && loginUrl && (
-          <div className="flex-1 relative overflow-hidden">
-            {/* Spinner overlay — hidden once iframe signals ready */}
-            {!iframeReady && (
-              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3"
-                style={{ background: SURFACE }}>
-                <Loader className="w-6 h-6 animate-spin" style={{ color: GOLD }} />
-                <span className="text-sm text-white/40">Opening channel manager…</span>
-              </div>
-            )}
-            <iframe
-              ref={iframeRef}
-              src={loginUrl}
-              title="Connect Social Accounts"
-              className="w-full h-full border-0"
-              allow="popup"
-              style={{ minHeight: '500px' }}
-            />
-          </div>
-        )}
       </div>
     </div>
   );
