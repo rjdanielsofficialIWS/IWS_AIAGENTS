@@ -1,8 +1,3 @@
-// netlify/functions/postiz-connect-callback.js
-//
-// Called after user returns from Postiz having connected a social platform.
-// Postiz handles the OAuth internally — we just refresh the integrations list.
-
 const POSTIZ_API_URL = 'https://postiz.infinitewealthsolutionsai.com/api';
 const POSTIZ_API_KEY = '55d30501b8cd0af1946a2f1f335205afd5a499a3cc60047f102044b67cb6d9ff';
 
