@@ -1,8 +1,8 @@
 // netlify/functions/postiz-user-login.js
 //
-// Returns an HTML page that lives on infinitewealthsolutionsai.com but
-// makes a same-origin fetch to Postiz to log in, letting Postiz set its
-// own cookie directly. No cross-domain cookie issues.
+// Creates/retrieves a Postiz shadow account for the user,
+// then returns an HTML page that auto-logs them in to Postiz
+// and redirects to the integrations page.
 
 const POSTIZ_URL   = 'https://postiz.infinitewealthsolutionsai.com';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
@@ -27,15 +27,6 @@ async function supabaseQuery(path, method, body, serviceKey) {
   catch { return { ok: res.ok, status: res.status, data: text }; }
 }
 
-async function createPostizAccount(email, password) {
-  const res = await fetch(`${POSTIZ_URL}/api/auth/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, provider: 'LOCAL' }),
-  });
-  return { ok: res.ok };
-}
-
 exports.handler = async (event) => {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const params     = new URLSearchParams(event.queryStringParameters || {});
@@ -49,21 +40,28 @@ exports.handler = async (event) => {
   try {
     let postizEmail, postizPassword;
 
-    // Check for existing account
+    // Check for existing shadow account
     const existing = await supabaseQuery(
-      `/postiz_accounts?supabase_user_id=eq.${encodeURIComponent(userId)}&select=postiz_email,postiz_password`,
+      `/postiz_accounts?supabase_user_id=eq.${encodeURIComponent(userId)}&select=postiz_email,postiz_password&limit=1`,
       'GET', null, serviceKey
     );
 
-    if (existing.ok && Array.isArray(existing.data) && existing.data.length > 0) {
+    if (existing.ok && Array.isArray(existing.data) && existing.data.length > 0 && existing.data[0].postiz_email) {
       postizEmail    = existing.data[0].postiz_email;
       postizPassword = existing.data[0].postiz_password;
     } else {
+      // Create new shadow account
       postizEmail    = `mm_${userId.slice(0, 8)}@mediamachine.app`;
       postizPassword = randomPassword();
 
-      await createPostizAccount(postizEmail, postizPassword);
+      // Register with Postiz (ignore error if already exists)
+      await fetch(`${POSTIZ_URL}/api/auth/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: postizEmail, password: postizPassword, provider: 'LOCAL' }),
+      }).catch(() => {});
 
+      // Save to Supabase
       await supabaseQuery('/postiz_accounts', 'POST', {
         supabase_user_id: userId,
         user_email:       userEmail,
@@ -73,19 +71,77 @@ exports.handler = async (event) => {
       }, serviceKey);
     }
 
-    // Return an HTML page that runs ON the Postiz domain via redirect
-    // We pass credentials as a one-time token via the relay page on Postiz
-    // Encode password safely for URL
-    const encodedEmail = encodeURIComponent(postizEmail);
-    const encodedPw    = encodeURIComponent(postizPassword);
+    // Safely escape credentials for inline JS
+    const jsEmail = JSON.stringify(postizEmail);
+    const jsPw    = JSON.stringify(postizPassword);
 
-    // Redirect to our relay page on the Postiz domain
+    const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Connecting your account...</title>
+  <style>
+    body { background: #0d0d0d; color: rgba(255,255,255,0.5); font-family: sans-serif;
+           display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
+    .box { text-align: center; }
+    .spinner { width: 36px; height: 36px; border: 3px solid rgba(214,178,94,0.2);
+               border-top-color: #D6B25E; border-radius: 50%;
+               animation: spin 0.8s linear infinite; margin: 0 auto 20px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    p { font-size: 14px; margin: 0; }
+    .sub { font-size: 12px; opacity: 0.4; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="spinner"></div>
+    <p>Signing in to connect your social accounts...</p>
+    <p class="sub">You'll be redirected automatically</p>
+  </div>
+  <script>
+  (async function() {
+    const POSTIZ = ${JSON.stringify(POSTIZ_URL)};
+    const email  = ${jsEmail};
+    const pw     = ${jsPw};
+
+    async function tryLogin() {
+      const res = await fetch(POSTIZ + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password: pw }),
+      });
+      return res.ok;
+    }
+
+    async function tryRegister() {
+      await fetch(POSTIZ + '/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password: pw, provider: 'LOCAL' }),
+      }).catch(() => {});
+    }
+
+    try {
+      let ok = await tryLogin();
+      if (!ok) {
+        await tryRegister();
+        ok = await tryLogin();
+      }
+      window.location.replace(POSTIZ + '/integrations');
+    } catch(e) {
+      window.location.replace(POSTIZ + '/integrations');
+    }
+  })();
+  </script>
+</body>
+</html>`;
+
     return {
-      statusCode: 302,
-      headers: {
-        Location: `${POSTIZ_URL}/relay?e=${encodedEmail}&p=${encodedPw}`,
-      },
-      body: '',
+      statusCode: 200,
+      headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' },
+      body: html,
     };
 
   } catch (err) {
