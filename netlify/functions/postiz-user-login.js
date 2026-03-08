@@ -1,11 +1,8 @@
 // netlify/functions/postiz-user-login.js
 //
-// Per-user Postiz account flow:
-// 1. Receive supabase_user_id + email from MediaMachine
-// 2. Check Supabase postiz_accounts table for existing account
-// 3. If none → create a new Postiz account, save to Supabase
-// 4. Log into their Postiz account silently
-// 5. Set auth cookie + redirect to /integrations
+// Returns an HTML page that lives on infinitewealthsolutionsai.com but
+// makes a same-origin fetch to Postiz to log in, letting Postiz set its
+// own cookie directly. No cross-domain cookie issues.
 
 const POSTIZ_URL   = 'https://postiz.infinitewealthsolutionsai.com';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
@@ -31,71 +28,42 @@ async function supabaseQuery(path, method, body, serviceKey) {
 }
 
 async function createPostizAccount(email, password) {
-  // Use Postiz admin API to create a new user
   const res = await fetch(`${POSTIZ_URL}/api/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, password, provider: 'LOCAL' }),
   });
-  const text = await res.text();
-  try { return { ok: res.ok, data: JSON.parse(text) }; }
-  catch { return { ok: res.ok, data: text }; }
-}
-
-async function loginPostiz(email, password) {
-  const res = await fetch(`${POSTIZ_URL}/api/auth/login`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password, provider: 'LOCAL' }),
-  });
-  const cookie = res.headers.get('set-cookie');
-  return { ok: res.ok, cookie };
+  return { ok: res.ok };
 }
 
 exports.handler = async (event) => {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!serviceKey) {
-    console.error('Missing SUPABASE_SERVICE_ROLE_KEY');
-    return { statusCode: 302, headers: { Location: `${POSTIZ_URL}/auth/login` }, body: '' };
-  }
-
-  // Get user info from query params (passed by MediaMachine)
   const params     = new URLSearchParams(event.queryStringParameters || {});
   const userId     = params.get('uid');
   const userEmail  = params.get('email');
 
-  if (!userId || !userEmail) {
+  if (!serviceKey || !userId || !userEmail) {
     return { statusCode: 302, headers: { Location: `${POSTIZ_URL}/auth/login` }, body: '' };
   }
 
   try {
-    // 1. Check if user already has a Postiz account
+    let postizEmail, postizPassword;
+
+    // Check for existing account
     const existing = await supabaseQuery(
       `/postiz_accounts?supabase_user_id=eq.${encodeURIComponent(userId)}&select=postiz_email,postiz_password`,
       'GET', null, serviceKey
     );
 
-    let postizEmail, postizPassword;
-
     if (existing.ok && Array.isArray(existing.data) && existing.data.length > 0) {
-      // Existing account — use saved credentials
       postizEmail    = existing.data[0].postiz_email;
       postizPassword = existing.data[0].postiz_password;
     } else {
-      // New user — create a Postiz account
-      // Use a subdomain-namespaced email so it doesn't conflict with their real email
       postizEmail    = `mm_${userId.slice(0, 8)}@mediamachine.app`;
       postizPassword = randomPassword();
 
-      const created = await createPostizAccount(postizEmail, postizPassword);
+      await createPostizAccount(postizEmail, postizPassword);
 
-      if (!created.ok) {
-        // Account might already exist from a previous attempt — try logging in anyway
-        console.log('Create account response:', JSON.stringify(created.data));
-      }
-
-      // Save to Supabase regardless (upsert)
       await supabaseQuery('/postiz_accounts', 'POST', {
         supabase_user_id: userId,
         user_email:       userEmail,
@@ -105,22 +73,17 @@ exports.handler = async (event) => {
       }, serviceKey);
     }
 
-    // 2. Log into their Postiz account
-    const { ok, cookie } = await loginPostiz(postizEmail, postizPassword);
+    // Return an HTML page that runs ON the Postiz domain via redirect
+    // We pass credentials as a one-time token via the relay page on Postiz
+    // Encode password safely for URL
+    const encodedEmail = encodeURIComponent(postizEmail);
+    const encodedPw    = encodeURIComponent(postizPassword);
 
-    if (!ok || !cookie || !cookie.includes('auth=')) {
-      console.error('Postiz login failed for', postizEmail);
-      return { statusCode: 302, headers: { Location: `${POSTIZ_URL}/auth/login` }, body: '' };
-    }
-
-    // 3. Extract the auth token and set cookie on the Postiz domain
-    const authCookie = cookie.match(/auth=[^;]+/)?.[0];
-
+    // Redirect to our relay page on the Postiz domain
     return {
       statusCode: 302,
       headers: {
-        Location: `${POSTIZ_URL}/integrations`,
-        'Set-Cookie': `${authCookie}; Domain=.infinitewealthsolutionsai.com; Path=/; Expires=Mon, 08 Mar 2027 00:00:00 GMT; HttpOnly; Secure; SameSite=None`,
+        Location: `${POSTIZ_URL}/relay?e=${encodedEmail}&p=${encodedPw}`,
       },
       body: '',
     };
