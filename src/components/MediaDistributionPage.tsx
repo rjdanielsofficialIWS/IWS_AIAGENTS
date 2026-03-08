@@ -387,7 +387,7 @@ function ConnectAccountsModal({
     if (!authUser) { onConnectPostiz(); return; }
     setConnecting(true); setError(null);
     try {
-      const res = await fetch('/.netlify/functions/ayrshare-connect', {
+      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId: authUser.id, email: authUser.email }),
