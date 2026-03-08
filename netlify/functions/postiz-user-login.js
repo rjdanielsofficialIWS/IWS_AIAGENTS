@@ -1,7 +1,3 @@
-// netlify/functions/postiz-user-login.js
-// Logs the user into their Postiz shadow account, then redirects
-// to the /launches page (the channels management page in Postiz).
-
 const POSTIZ_URL   = 'https://postiz.infinitewealthsolutionsai.com';
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
@@ -65,12 +61,10 @@ exports.handler = async (event) => {
       }, serviceKey);
     }
 
-    const jsEmail = JSON.stringify(postizEmail);
-    const jsPw    = JSON.stringify(postizPassword);
     const jsPostiz = JSON.stringify(POSTIZ_URL);
+    const jsEmail  = JSON.stringify(postizEmail);
+    const jsPw     = JSON.stringify(postizPassword);
 
-    // This page lives on YOUR domain, auto-logs into Postiz,
-    // then tells the parent window it's ready so the iframe can navigate.
     const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -94,43 +88,39 @@ exports.handler = async (event) => {
     const email  = ${jsEmail};
     const pw     = ${jsPw};
 
-    try {
-      let res = await fetch(POSTIZ + '/api/auth/login', {
+    async function doLogin() {
+      return fetch(POSTIZ + '/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ email, password: pw }),
       });
+    }
+
+    try {
+      let res = await doLogin();
 
       if (!res.ok) {
-        // Account may not exist yet on this Postiz instance — register then login
         await fetch(POSTIZ + '/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
           body: JSON.stringify({ email, password: pw, provider: 'LOCAL' }),
         }).catch(() => {});
-
-        res = await fetch(POSTIZ + '/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({ email, password: pw }),
-        });
+        res = await doLogin();
       }
 
-      // Notify parent that login succeeded so it can show the iframe
       if (window.parent !== window) {
         window.parent.postMessage({ type: 'POSTIZ_LOGIN_OK' }, '*');
+      } else {
+        window.location.replace(POSTIZ + '/launches');
       }
-
-      // Also navigate the iframe to the channels page
-      window.location.replace(POSTIZ + '/launches');
     } catch(e) {
       if (window.parent !== window) {
         window.parent.postMessage({ type: 'POSTIZ_LOGIN_OK' }, '*');
+      } else {
+        window.location.replace(POSTIZ + '/launches');
       }
-      window.location.replace(POSTIZ + '/launches');
     }
   })();
   </script>
@@ -139,13 +129,7 @@ exports.handler = async (event) => {
 
     return {
       statusCode: 200,
-      headers: {
-        'Content-Type': 'text/html',
-        'Cache-Control': 'no-store',
-        // Allow this page to be loaded in an iframe from your domain
-        'X-Frame-Options': 'SAMEORIGIN',
-        'Content-Security-Policy': "frame-ancestors 'self' https://infinitewealthsolutionsai.com",
-      },
+      headers: { 'Content-Type': 'text/html', 'Cache-Control': 'no-store' },
       body: html,
     };
 
