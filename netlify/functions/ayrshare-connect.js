@@ -32,7 +32,33 @@ exports.handler = async (event) => {
   if (!SERVICE_KEY) return respond(500, { error: 'Missing SUPABASE_SERVICE_ROLE_KEY' });
   if (!RAW_KEY)     return respond(500, { error: 'Missing AYRSHARE_PRIVATE_KEY' });
 
-  const PRIVATE_KEY_B64 = Buffer.from(RAW_KEY.replace(/\\n/g, '\n')).toString('base64');
+  // Normalize the private key — Netlify env vars can mangle newlines in several ways:
+  // 1. Literal \n (two chars) when pasted as a single-line string
+  // 2. Actual newlines preserved
+  // 3. Spaces instead of newlines
+  // We reconstruct the proper PEM format regardless of how it was stored.
+  const normalizePrivateKey = (raw) => {
+    // Step 1: replace any literal \n sequences with real newlines
+    let key = raw.replace(/\\n/g, '\n');
+
+    // Step 2: if it still has no newlines, it's all on one line — reconstruct PEM blocks
+    if (!key.includes('\n')) {
+      // Remove the header/footer, split the base64 body into 64-char lines, reassemble
+      const header = '-----BEGIN RSA PRIVATE KEY-----';
+      const footer = '-----END RSA PRIVATE KEY-----';
+      const stripped = key
+        .replace('-----BEGIN RSA PRIVATE KEY-----', '')
+        .replace('-----END RSA PRIVATE KEY-----', '')
+        .replace(/\s+/g, '');
+      const lines = stripped.match(/.{1,64}/g) || [];
+      key = `${header}\n${lines.join('\n')}\n${footer}`;
+    }
+
+    return key.trim();
+  };
+
+  const PRIVATE_KEY = normalizePrivateKey(RAW_KEY);
+  const PRIVATE_KEY_B64 = Buffer.from(PRIVATE_KEY).toString('base64');
 
   // Parse userId and email from either query params (GET) or JSON body (POST)
   let userId, email;
