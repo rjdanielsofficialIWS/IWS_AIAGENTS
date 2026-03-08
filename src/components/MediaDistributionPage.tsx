@@ -1380,14 +1380,17 @@ function CalendarPanel({ userId, integrations }: { userId: string | null; integr
     try {
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-      const data: any = { posts: [] }; // Fetch from ayrshare-scheduled
-      const list  = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
+      const res  = await fetch(
+        `/.netlify/functions/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+      );
+      const data = res.ok ? await res.json() : { posts: [] };
+      const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => ({
-        id: p.id || p.postId,
-        content: p.value?.[0]?.content || p.content || '',
-        platforms: p.integrations?.map((i: any) => i.identifier || i.type) || [],
-        scheduledAt: new Date(p.publishDate || p.scheduledAt || p.date),
-        status: p.state === 'PUBLISHED' ? 'published' : p.state === 'ERROR' ? 'failed' : 'scheduled',
+        id:          p.id,
+        content:     p.content || '',
+        platforms:   Array.isArray(p.platforms) ? p.platforms : [],
+        scheduledAt: new Date(p.scheduledAt),
+        status:      p.status || 'scheduled',
       })));
     } catch (e) {}
     finally { setLoading(false); }
@@ -1510,14 +1513,17 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
     try {
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const data: any = { posts: [] }; // Fetch from ayrshare-scheduled
-      const list  = Array.isArray(data?.posts) ? data.posts : Array.isArray(data) ? data : [];
+      const res  = await fetch(
+        `/.netlify/functions/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+      );
+      const data = res.ok ? await res.json() : { posts: [] };
+      const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => ({
-        id: p.id || p.postId,
-        content: p.value?.[0]?.content || p.content || '',
-        platforms: p.integrations?.map((i: any) => i.identifier || i.type) || [],
-        scheduledAt: new Date(p.publishDate || p.scheduledAt || p.date),
-        status: p.state === 'PUBLISHED' ? 'published' : p.state === 'ERROR' ? 'failed' : 'scheduled',
+        id:          p.id,
+        content:     p.content || '',
+        platforms:   Array.isArray(p.platforms) ? p.platforms : [],
+        scheduledAt: new Date(p.scheduledAt),
+        status:      p.status || 'scheduled',
       })).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
     } catch (e) {}
     finally { setLoading(false); }
