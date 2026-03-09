@@ -1849,6 +1849,17 @@ export function MediaDistributionPage() {
   const { user: authUser, signOut }             = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
+  // On mount: clear any stale session that wasn't intentionally set on this page.
+  // We track whether the user explicitly signed in via Media Machine using a sessionStorage flag.
+  // sessionStorage is cleared automatically when the tab/browser closes, preventing stale logins.
+  useEffect(() => {
+    const intentionalSession = sessionStorage.getItem('mm_signed_in');
+    if (authUser && !intentionalSession) {
+      // There's a Supabase session but the user didn't sign in through this page — clear it.
+      signOut();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const loadIntegrations = useCallback(async (force = false) => {
     if (!currentUser) return;
     setIntegrationsLoading(true);
@@ -1901,6 +1912,7 @@ export function MediaDistributionPage() {
   };
 
   const handleSignOut = async () => {
+    sessionStorage.removeItem('mm_signed_in');
     handleDisconnect();
     await signOut();
   };
@@ -2002,8 +2014,9 @@ export function MediaDistributionPage() {
         open={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         onSuccess={() => {
+          // Mark that this user intentionally signed in on this page
+          sessionStorage.setItem('mm_signed_in', '1');
           setAuthModalOpen(false);
-          // Small delay to let auth state update, then open the connect modal
           setTimeout(() => openConnectModal(), 300);
         }}
       />
