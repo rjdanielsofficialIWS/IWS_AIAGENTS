@@ -128,17 +128,24 @@ async function fetchChannels(userId: string, force = false): Promise<PostizInteg
   return Array.isArray(data?.channels) ? data.channels : [];
 }
 
+// Uploads a file to Supabase Storage via the upload-media edge function.
+// Returns the full public URL of the uploaded file.
 async function uploadViaNativeXHR(
   file: File | Blob,
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
-  const formData = new FormData();
-  formData.append('file', file, file instanceof File ? file.name : `audio.wav`);
+  const ext = file instanceof File
+    ? file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg')
+    : kind === 'video' ? 'mp4' : 'wav';
+  const filePath = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
 
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${SUPABASE_URL}/functions/v1/postiz-upload`);
+    xhr.open('POST', `${SUPABASE_URL}/functions/v1/upload-media`);
+    xhr.setRequestHeader('x-file-path', filePath);
+    xhr.setRequestHeader('content-type', contentType);
 
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
@@ -150,17 +157,17 @@ async function uploadViaNativeXHR(
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
-          if (!data.path) throw new Error('No path in response');
-          resolve(data.path);
+          if (!data.url) throw new Error('No URL in response');
+          resolve(data.url); // returns full public URL
         } catch {
-          reject(new Error('Invalid response from upload proxy'));
+          reject(new Error('Invalid response from upload function'));
         }
       } else {
         reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`));
       }
     };
     xhr.onerror = () => reject(new Error('Network error during upload'));
-    xhr.send(formData);
+    xhr.send(file); // send raw binary, not FormData
   });
 }
 
@@ -291,10 +298,8 @@ async function transcribeVideo(videoFile: File): Promise<string> {
       form.append('file', audioBlob, 'audio.wav');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
     } else {
-      const uploadedPath = await uploadViaNativeXHR(audioBlob, 'video');
-      const videoUrl = uploadedPath.startsWith('http')
-        ? uploadedPath
-        : `${SUPABASE_URL}/uploads/${uploadedPath.replace(/^\/+/, '')}`;
+      // uploadViaNativeXHR now returns a full public URL from Supabase Storage
+      const videoUrl = await uploadViaNativeXHR(audioBlob, 'video');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
