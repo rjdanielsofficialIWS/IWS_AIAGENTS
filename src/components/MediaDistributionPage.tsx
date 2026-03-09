@@ -485,7 +485,8 @@ function ConnectAccountsModal({
       localStorage.setItem('postiz_social_return', '1');
       window.open(connectUrl, '_blank');
       setConnecting(false);
-      setTimeout(() => onRefresh(true), 3000);
+      // Note: channel refresh happens in the page-return useEffect (with force=true + 1.5s delay)
+      // when the user comes back to this tab. No need to poll here.
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to open connection manager. Please try again.');
       setConnecting(false);
@@ -1944,18 +1945,46 @@ export function MediaDistributionPage() {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const loadIntegrations = useCallback(async (force = false) => {
-    if (!currentUser) return;
-    setIntegrationsLoading(true);
-    try { setIntegrations(await fetchChannels(currentUser.id, force)); }
-    catch { setIntegrations([]); }
-    finally { setIntegrationsLoading(false); }
-  }, [currentUser]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Use userId string (not the currentUser object) as the dep to avoid
+  // re-creating loadIntegrations on every render due to object identity changes.
+  const currentUserId = currentUser?.id ?? null;
 
-  useEffect(() => { if (currentUser) loadIntegrations(); }, [currentUser, loadIntegrations]);
+  const loadIntegrations = useCallback(async (force = false) => {
+    if (!currentUserId) return;
+    setIntegrationsLoading(true);
+    // Safety net: clear the loading spinner after 10s no matter what
+    const safetyTimer = setTimeout(() => setIntegrationsLoading(false), 10000);
+    try { setIntegrations(await fetchChannels(currentUserId, force)); }
+    catch { setIntegrations([]); }
+    finally { clearTimeout(safetyTimer); setIntegrationsLoading(false); }
+  }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { if (currentUserId) loadIntegrations(); }, [currentUserId, loadIntegrations]);
+
+  // When the user returns to this tab after connecting accounts in the Ayrshare popup,
+  // force-refresh channels so newly connected platforms appear immediately.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        const isSocialReturn = (() => {
+          try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1'; }
+          catch { return false; }
+        })();
+        if (isSocialReturn) {
+          try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+          // Delay slightly to allow Ayrshare's backend to register the connection
+          setTimeout(() => loadIntegrations(true), 1500);
+          setConnectModalOpen(false);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [loadIntegrations]);
 
   useEffect(() => {
-    // Handle return from Ayrshare social account connection (fallback for new-tab flow)
+    // Handle return from Ayrshare OAuth tab. We force=true to bypass the 5-min
+    // cache and fetch fresh channel data (otherwise new connections may not show).
     const isSocialReturn = (() => {
       try {
         return (
@@ -1970,8 +1999,10 @@ export function MediaDistributionPage() {
         localStorage.removeItem('ayrshare_connected');
       } catch {}
       window.history.replaceState({}, '', window.location.pathname);
-      loadIntegrations();
-      setConnectModalOpen(true);
+      // Small delay to let Ayrshare's backend register the new connection
+      // before we query for channels, then force-refresh the cache.
+      setTimeout(() => loadIntegrations(true), 1500);
+      setConnectModalOpen(false);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
