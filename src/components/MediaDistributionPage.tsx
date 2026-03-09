@@ -134,13 +134,15 @@ async function fetchChannels(userId: string, force = false): Promise<PostizInteg
 }
 
 /**
- * Upload a file to Supabase Storage via the upload-media edge function.
+ * Upload a file via Ayrshare's /api/media/upload endpoint.
  *
- * Large files (>4MB): requests a signed URL from the edge function, then
- *   PUTs the file directly to Supabase Storage (no size limit, no proxy).
- * Small files (<=4MB): binary POST through the edge function.
+ * All files are sent as a direct binary POST to the upload-media edge function,
+ * which proxies them to Ayrshare and returns the hosted URL.
  *
- * Returns the public URL of the uploaded file.
+ * Ayrshare supports files up to 30MB. For files larger than 30MB, we use the
+ * two-step signed URL path (sign → PUT to upload-media-large).
+ *
+ * Returns the public Ayrshare-hosted URL of the uploaded file.
  */
 async function uploadViaNativeXHR(
   file: File | Blob,
@@ -153,13 +155,13 @@ async function uploadViaNativeXHR(
   const filePath = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
   const fileSize = file instanceof File ? file.size : (file as Blob).size;
-  const DIRECT_LIMIT = 4 * 1024 * 1024; // 4 MB
 
-  // ── Large file: signed URL → PUT directly to Storage ─────────────────────
+  // Ayrshare supports up to 30MB directly. For larger files use the signed PUT path.
+  const DIRECT_LIMIT = 30 * 1024 * 1024; // 30 MB
+
+  // ── Large file (>30MB): sign → PUT to upload-media-large ──────────────────
   if (fileSize > DIRECT_LIMIT) {
-    // Step 1: get signed upload URL from our edge function
     let signedUrl: string;
-    let publicUrl: string;
 
     try {
       const signRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
@@ -173,40 +175,26 @@ async function uploadViaNativeXHR(
       console.log('[uploadViaNativeXHR] Sign response body:', signText.slice(0, 300));
 
       if (!signRes.ok) {
-        throw new Error(`Edge function sign request failed (${signRes.status}): ${signText}`);
+        throw new Error(`Sign request failed (${signRes.status}): ${signText}`);
       }
 
       let signData: any;
       try { signData = JSON.parse(signText); }
-      catch { throw new Error('Edge function returned invalid JSON: ' + signText.slice(0, 200)); }
+      catch { throw new Error('Invalid JSON from sign: ' + signText.slice(0, 200)); }
 
-      // Defensive: handle all possible key names
       signedUrl = signData.signedUrl ?? signData.signedURL ?? signData.signed_url ?? signData.url ?? '';
-      publicUrl = signData.publicUrl ?? signData.public_url ?? '';
-
       console.log('[uploadViaNativeXHR] signedUrl:', signedUrl ? signedUrl.slice(0, 100) : '(empty!)');
-      console.log('[uploadViaNativeXHR] publicUrl:', publicUrl);
 
       if (!signedUrl) {
         throw new Error(
-          `No signed URL returned from edge function. Response keys: ${Object.keys(signData || {}).join(', ')}. Body: ${signText.slice(0, 300)}`
+          `No signedUrl returned. Response keys: ${Object.keys(signData || {}).join(', ')}. Body: ${signText.slice(0, 300)}`
         );
-      }
-
-      // Ensure the URL is absolute
-      if (!signedUrl.startsWith('http')) {
-        signedUrl = `${SUPABASE_URL}/storage/v1${signedUrl.startsWith('/') ? '' : '/'}${signedUrl}`;
-        console.log('[uploadViaNativeXHR] signedUrl rebuilt to:', signedUrl.slice(0, 100));
-      }
-
-      if (!publicUrl) {
-        publicUrl = `${SUPABASE_URL}/storage/v1/object/public/media/${filePath}`;
       }
     } catch (err: any) {
       throw new Error(`Failed to get upload URL: ${err.message}`);
     }
 
-    // Step 2: PUT file directly to Supabase Storage signed URL
+    // PUT file to upload-media-large; read response body for real Ayrshare URL
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', signedUrl);
@@ -219,17 +207,24 @@ async function uploadViaNativeXHR(
       xhr.onload = () => {
         console.log('[uploadViaNativeXHR] PUT response status:', xhr.status);
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(publicUrl);
+          try {
+            const data = JSON.parse(xhr.responseText);
+            const url = data.url ?? data.mediaUrl ?? '';
+            if (!url) throw new Error('No URL in response: ' + xhr.responseText);
+            resolve(url);
+          } catch (e: any) {
+            reject(new Error('Could not parse upload response: ' + xhr.responseText.slice(0, 200)));
+          }
         } else {
-          reject(new Error(`Upload to storage failed: HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
+          reject(new Error(`Upload failed: HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
         }
       };
-      xhr.onerror = () => reject(new Error('Network error during upload to Supabase Storage'));
+      xhr.onerror = () => reject(new Error('Network error during large file upload'));
       xhr.send(file);
     });
   }
 
-  // ── Small file: direct binary POST through edge function ──────────────────
+  // ── Direct binary POST through upload-media (≤30MB) ───────────────────────
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${SUPABASE_URL}/functions/v1/upload-media`);
