@@ -478,14 +478,12 @@ function ConnectAccountsModal({
       if (!connectUrl) throw new Error('No connect URL returned');
 
       // Step 3: Open the Ayrshare connect URL.
-      // IMPORTANT: Ayrshare's profile.ayrshare.com site has its own persistent login cookie.
-      // If a user previously logged into Ayrshare directly (e.g. as the primary account owner),
-      // that cookie overrides the JWT profileKey SSO. We work around this by routing through
-      // Ayrshare's logout endpoint first, which clears their session, then redirects to the JWT URL.
-      // The logout URL accepts a `redirect` param for exactly this purpose.
+      // The edge function appends logout=true to the JWT URL, which forces Ayrshare to
+      // clear any existing session before logging in as this profile's JWT.
+      // This handles the case where a user (or the account owner) was previously logged
+      // into profile.ayrshare.com — without logout=true, the existing cookie overrides the JWT.
       localStorage.setItem('postiz_social_return', '1');
-      const logoutThenConnect = `https://profile.ayrshare.com/logout?redirect=${encodeURIComponent(connectUrl)}`;
-      window.open(logoutThenConnect, '_blank');
+      window.open(connectUrl, '_blank');
       setConnecting(false);
       setTimeout(() => onRefresh(true), 3000);
     } catch (err: any) {
