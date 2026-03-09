@@ -12,6 +12,7 @@ import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
 
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
+const GOLD_D  = '#8F6B1E';
 const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)';
 const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
