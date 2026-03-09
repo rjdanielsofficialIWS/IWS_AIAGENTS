@@ -390,10 +390,8 @@ function ConnectAccountsModal({
     if (!authUser) { onConnectPostiz(); return; }
     setConnecting(true); setError(null);
     try {
-      // Open Supabase edge function directly as a GET request in a new tab.
-      // The function handles JWT generation server-side and redirects to Ayrshare.
-      // Using window.open synchronously (no await) avoids popup blockers in all browsers.
       const connectUrl = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect?userId=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`;
+      console.log('[ConnectModal] Opening connect URL for:', authUser.email, 'userId:', authUser.id);
       localStorage.setItem('postiz_social_return', '1');
       window.open(connectUrl, '_blank');
       setConnecting(false);
@@ -419,7 +417,9 @@ function ConnectAccountsModal({
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
-            <p className="text-sm text-white/40 mt-0.5">Link your social accounts to start scheduling</p>
+            <p className="text-sm text-white/40 mt-0.5">
+              {authUser?.email ? `Account: ${authUser.email}` : 'Link your social accounts to start scheduling'}
+            </p>
           </div>
           <button
             onClick={onClose}
