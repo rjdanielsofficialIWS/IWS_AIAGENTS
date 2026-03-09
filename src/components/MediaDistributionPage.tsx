@@ -18,7 +18,7 @@ const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
 // Social media posting delegated to Ayrshare.
-const ORG_ID              = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
+const ORG_ID              = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6'; // eslint-disable-line @typescript-eslint/no-unused-vars
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
@@ -104,24 +104,47 @@ function generateState() {
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function ayrsharePost(userId: string, payload: {
+// ─── AUTH FIX: getLiveAuth reads the live JWT at call time ────────────────────
+// This fixes the "userId is required" error. Previously ayrsharePost took a
+// userId string that could be stale or wrong. Now we always read the live
+// Supabase session token and send it as an Authorization: Bearer header.
+// The edge function (ayrshare-post v2) reads this header and verifies the real user.
+async function getLiveAuth(): Promise<{ token: string; userId: string } | null> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token && session?.user?.id) {
+      return { token: session.access_token, userId: session.user.id };
+    }
+  } catch {}
+  return null;
+}
+
+// FIXED: ayrsharePost no longer takes userId as a parameter — it reads the live
+// JWT at call time and sends it as Authorization: Bearer header. This prevents
+// stale/wrong userId from being used.
+async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
 }) {
-  const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-post', {
+  const auth = await getLiveAuth();
+  if (!auth) throw new Error('Not authenticated. Please sign in again.');
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, ...payload }),
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${auth.token}`,
+    },
+    body: JSON.stringify({ userId: auth.userId, ...payload }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || `Post failed (${res.status})`);
+    throw new Error(err.error || err.hint || `Post failed (${res.status})`);
   }
   return res.json();
 }
 
 async function fetchChannels(userId: string, force = false): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const url = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
+  const url = `${SUPABASE_URL}/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
@@ -466,7 +489,7 @@ function ConnectAccountsModal({
       // Step 2: Call the edge function as a POST with the JWT in the Authorization header.
       // The server verifies the JWT and looks up the correct Ayrshare profile.
       // We get back a connectUrl (the Ayrshare OAuth URL for this specific user).
-      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect', {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -705,6 +728,8 @@ function TextRepurposeModal({ open, onClose, integrations }: {
   const xIntegration      = integrations.find(i => ['x', 'twitter'].includes((i.profile || i.identifier || '').toLowerCase()));
   const linkedInIntegration = integrations.find(i => (i.profile || i.identifier || '').toLowerCase().startsWith('linkedin'));
 
+  // FIXED: uses getLiveAuth() via ayrsharePost() — no longer relies on integration.userId
+  // which was undefined and causing "userId is required" errors.
   const handlePost = async (platform: 'twitter' | 'linkedin', text: string) => {
     const integration = platform === 'twitter' ? xIntegration : linkedInIntegration;
     if (!integration) {
@@ -713,7 +738,7 @@ function TextRepurposeModal({ open, onClose, integrations }: {
     }
     setPosting(true); setPostResult(null);
     try {
-      await ayrsharePost(integration.userId || '', {
+      await ayrsharePost({
         platforms: [platform === 'twitter' ? 'x' : 'linkedin'],
         post: text,
       });
@@ -1440,6 +1465,9 @@ function PostComposerModal({
     }
   };
 
+  // FIXED: handleSubmit now uses getLiveAuth() via ayrsharePost() instead of
+  // the stale `userId` prop. The userId prop is kept for backward compatibility
+  // (CalendarPanel/ComposerPanel still pass it) but posting no longer relies on it.
   const handleSubmit = async () => {
     if (!userId)                      { setSubmitError('Sign in to post.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
@@ -1456,7 +1484,8 @@ function PostComposerModal({
         .map(id => integrations.find(i => i.id === id)?.identifier)
         .filter(Boolean) as string[];
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      await ayrsharePost(userId, { platforms, post: content, mediaUrls, scheduleDate: sd });
+      // ayrsharePost now reads the live JWT internally — no need to pass userId
+      await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd });
       setSubmitOk(true);
       setTimeout(() => { onClose(); onSuccess?.(); }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to schedule'); }
@@ -1749,7 +1778,7 @@ function CalendarPanel({ userId, integrations }: { userId: string | null; integr
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const res  = await fetch(
-        `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -1882,7 +1911,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(
-        `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -2112,7 +2141,6 @@ function Sidebar({ view, setView, integrations, onOpenConnect, onOpenTextRepurpo
 }
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
-
 
 function UserMenu({ user, onSignOut }: { user: { email: string }; onSignOut: () => void }) {
   const [open, setOpen] = React.useState(false);
