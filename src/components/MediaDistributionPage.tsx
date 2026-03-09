@@ -428,29 +428,40 @@ function ConnectAccountsModal({
   const authUser = currentUser;
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [liveEmail, setLiveEmail] = useState<string>('');
 
-  // Lazy-load the Nango frontend SDK
-
-  // Reset when modal closes
+  // Fetch live user email when modal opens — always reflects actual session
   useEffect(() => {
-    if (!open) {
+    if (open) {
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        setLiveEmail(user?.email ?? '');
+      });
+    } else {
       setConnecting(false);
       setError(null);
     }
   }, [open]);
 
-  const handleConnect = () => {
-    if (!authUser) { onConnectPostiz(); return; }
+  const handleConnect = async () => {
     setConnecting(true); setError(null);
     try {
-      const connectUrl = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect?userId=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`;
-      console.log('[ConnectModal] Opening connect URL for:', authUser.email, 'userId:', authUser.id);
+      // Always do a live Supabase auth check — never trust cached React state.
+      // This guarantees we use whoever is actually signed in right now, regardless
+      // of browser history, cached sessions, or stale component state.
+      const { data: { user: liveUser }, error: authErr } = await supabase.auth.getUser();
+
+      if (authErr || !liveUser) {
+        setConnecting(false);
+        onConnectPostiz();
+        return;
+      }
+
+      const connectUrl = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect?userId=${encodeURIComponent(liveUser.id)}&email=${encodeURIComponent(liveUser.email ?? '')}`;
+      console.log('[ConnectModal] Live auth check → connecting for:', liveUser.email, 'userId:', liveUser.id);
       localStorage.setItem('postiz_social_return', '1');
       window.open(connectUrl, '_blank');
       setConnecting(false);
-      // Refresh channels after a short delay to pick up newly connected accounts
       setTimeout(() => onRefresh(true), 3000);
-      return;
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to open connection manager. Please try again.');
       setConnecting(false);
@@ -471,7 +482,7 @@ function ConnectAccountsModal({
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
             <p className="text-sm text-white/40 mt-0.5">
-              {authUser?.email ? `Account: ${authUser.email}` : 'Link your social accounts to start scheduling'}
+              {liveEmail ? `Account: ${liveEmail}` : 'Link your social accounts to start scheduling'}
             </p>
           </div>
           <button
@@ -1902,26 +1913,10 @@ export function MediaDistributionPage() {
   const { user: authUser, signOut }             = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
-  // On mount: set mm_signed_in if this is an OAuth return (URL contains #access_token),
-  // then clear any stale session that wasn't intentionally set on this page.
+  // Clean up OAuth hash from URL if present (cosmetic only)
   useEffect(() => {
-    // Detect OAuth callback — Supabase puts the token in the URL hash after Google sign-in
-    const isOAuthReturn = window.location.hash.includes('access_token') ||
-                          window.location.hash.includes('type=recovery') ||
-                          new URLSearchParams(window.location.search).get('code') !== null;
-
-    if (isOAuthReturn) {
-      // User just came back from Google OAuth — mark this as intentional
-      sessionStorage.setItem('mm_signed_in', '1');
-      // Clean the hash from the URL without triggering a reload
+    if (window.location.hash.includes('access_token')) {
       window.history.replaceState(null, '', window.location.pathname);
-      return;
-    }
-
-    const intentionalSession = sessionStorage.getItem('mm_signed_in');
-    if (authUser && !intentionalSession) {
-      // There's a stale Supabase session from elsewhere — clear it
-      signOut();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1977,7 +1972,6 @@ export function MediaDistributionPage() {
   };
 
   const handleSignOut = async () => {
-    sessionStorage.removeItem('mm_signed_in');
     handleDisconnect();
     await signOut();
   };
@@ -2082,8 +2076,6 @@ export function MediaDistributionPage() {
         open={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         onSuccess={() => {
-          // Mark that this user intentionally signed in on this page
-          sessionStorage.setItem('mm_signed_in', '1');
           setAuthModalOpen(false);
           setTimeout(() => openConnectModal(), 300);
         }}
