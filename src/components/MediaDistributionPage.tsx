@@ -121,7 +121,7 @@ async function ayrsharePost(userId: string, payload: {
 
 async function fetchChannels(userId: string, force = false): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const url = `/.netlify/functions/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
+  const url = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
@@ -385,57 +385,20 @@ function ConnectAccountsModal({
     }
   }, [open]);
 
-  const handleConnect = async () => {
+  const handleConnect = () => {
     if (!authUser) { onConnectPostiz(); return; }
     setConnecting(true); setError(null);
     try {
-      // Fetch the Ayrshare connect URL from our Netlify function
-      const res = await fetch(
-        `/.netlify/functions/ayrshare-connect?userId=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`
-      );
-      const data = await res.json();
-      if (!res.ok || !data.connectUrl) {
-        throw new Error(data.error || 'Failed to get connection URL');
-      }
-
-      // Open Ayrshare social connector in a popup window
-      const popup = window.open(
-        data.connectUrl,
-        'ayrshare-connect',
-        'width=600,height=700,scrollbars=yes,resizable=yes'
-      );
-
-      if (!popup) {
-        // Popup blocked -- fall back to new tab
-        localStorage.setItem('postiz_social_return', '1');
-        window.open(data.connectUrl, '_blank');
-        setConnecting(false);
-        return;
-      }
-
-      // Listen for postMessage from the callback page
-      const handleMessage = (event: MessageEvent) => {
-        if (event.data?.type === 'AYRSHARE_CONNECTED') {
-          window.removeEventListener('message', handleMessage);
-          clearInterval(pollInterval);
-          popup.close();
-          setConnecting(false);
-          setTimeout(() => onRefresh(true), 1500);
-        }
-      };
-      window.addEventListener('message', handleMessage);
-
-      // Poll for popup close as a fallback
-      const pollInterval = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(pollInterval);
-          window.removeEventListener('message', handleMessage);
-          setConnecting(false);
-          setTimeout(() => onRefresh(true), 1000);
-        }
-      }, 500);
-
-      return; // don't set connecting=false here; the popup listener will do it
+      // Open Supabase edge function directly as a GET request in a new tab.
+      // The function handles JWT generation server-side and redirects to Ayrshare.
+      // Using window.open synchronously (no await) avoids popup blockers in all browsers.
+      const connectUrl = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect?userId=${encodeURIComponent(authUser.id)}&email=${encodeURIComponent(authUser.email ?? '')}`;
+      localStorage.setItem('postiz_social_return', '1');
+      window.open(connectUrl, '_blank');
+      setConnecting(false);
+      // Refresh channels after a short delay to pick up newly connected accounts
+      setTimeout(() => onRefresh(true), 3000);
+      return;
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to open connection manager. Please try again.');
       setConnecting(false);
@@ -1420,7 +1383,7 @@ function CalendarPanel({ userId, integrations }: { userId: string | null; integr
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const res  = await fetch(
-        `/.netlify/functions/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+        `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -1553,7 +1516,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(
-        `/.netlify/functions/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+        `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
