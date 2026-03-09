@@ -48,7 +48,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
       setLoading(true);
       try {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-          redirectTo: `${window.location.origin}/media-machine`,
+          redirectTo: `${window.location.origin}/MediaMachine`,
         });
         if (error) throw error;
         setSuccess('Password reset link sent — check your inbox.');
@@ -83,7 +83,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${window.location.origin}/media-machine` },
+        options: { redirectTo: `${window.location.origin}/MediaMachine` },
       });
       if (error) throw error;
     } catch (err: any) {
