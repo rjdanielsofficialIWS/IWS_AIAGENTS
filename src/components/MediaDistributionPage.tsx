@@ -17,11 +17,12 @@ const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)'
 const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const ORG_ID = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
+// Social media posting delegated to Ayrshare.
+const ORG_ID              = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
+// LocalStorage keys
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
 
 type PlatformId =
@@ -106,9 +107,10 @@ function generateState() {
 async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
 }) {
+  // Get live session JWT so the edge function can identify the user server-side
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token ?? '';
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+  const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-post', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -125,76 +127,47 @@ async function ayrsharePost(payload: {
 
 async function fetchChannels(userId: string, force = false): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const url = `${SUPABASE_URL}/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
+  const url = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
   const channels: PostizIntegration[] = Array.isArray(data?.channels) ? data.channels : [];
+  // Normalise: if identifier is empty/missing, fall back to id (the platform slug)
   return channels.map(ch => ({ ...ch, identifier: ch.identifier || ch.id || '' }));
 }
 
-/**
- * Upload a file via Ayrshare's /api/media/upload endpoint.
- *
- * All files are sent as a direct binary POST to the upload-media edge function,
- * which proxies them to Ayrshare and returns the hosted URL.
- *
- * Ayrshare supports files up to 30MB. For files larger than 30MB, we use the
- * two-step signed URL path (sign → PUT to upload-media-large).
- *
- * Returns the public Ayrshare-hosted URL of the uploaded file.
- */
+// Uploads a file to Supabase Storage via the upload-media edge function.
+// Returns the full public URL of the uploaded file.
+// For files >5MB: uses a signed upload URL (browser → Storage directly, no size limit).
+// For files <5MB: direct binary POST through the edge function (legacy path).
 async function uploadViaNativeXHR(
   file: File | Blob,
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
   const ext = file instanceof File
-    ? (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg'))
-    : (kind === 'video' ? 'mp4' : 'wav');
+    ? file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg')
+    : kind === 'video' ? 'mp4' : 'wav';
   const filePath = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
   const fileSize = file instanceof File ? file.size : (file as Blob).size;
+  const DIRECT_LIMIT = 4 * 1024 * 1024; // 4MB — stay safely under the 6MB edge fn limit
 
-  // Ayrshare supports up to 30MB directly. For larger files use the signed PUT path.
-  const DIRECT_LIMIT = 30 * 1024 * 1024; // 30 MB
-
-  // ── Large file (>30MB): sign → PUT to upload-media-large ──────────────────
+  // ── Large file: get signed URL, upload directly to Storage ────────────────
   if (fileSize > DIRECT_LIMIT) {
-    let signedUrl: string;
-
-    try {
-      const signRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sign', filePath, contentType }),
-      });
-
-      const signText = await signRes.text();
-      console.log('[uploadViaNativeXHR] Sign response status:', signRes.status);
-      console.log('[uploadViaNativeXHR] Sign response body:', signText.slice(0, 300));
-
-      if (!signRes.ok) {
-        throw new Error(`Sign request failed (${signRes.status}): ${signText}`);
-      }
-
-      let signData: any;
-      try { signData = JSON.parse(signText); }
-      catch { throw new Error('Invalid JSON from sign: ' + signText.slice(0, 200)); }
-
-      signedUrl = signData.signedUrl ?? signData.signedURL ?? signData.signed_url ?? signData.url ?? '';
-      console.log('[uploadViaNativeXHR] signedUrl:', signedUrl ? signedUrl.slice(0, 100) : '(empty!)');
-
-      if (!signedUrl) {
-        throw new Error(
-          `No signedUrl returned. Response keys: ${Object.keys(signData || {}).join(', ')}. Body: ${signText.slice(0, 300)}`
-        );
-      }
-    } catch (err: any) {
-      throw new Error(`Failed to get upload URL: ${err.message}`);
+    // Step 1: ask edge function for a signed upload URL
+    const signRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sign', filePath, contentType }),
+    });
+    if (!signRes.ok) {
+      const err = await signRes.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to get upload URL (${signRes.status})`);
     }
+    const { signedUrl, publicUrl } = await signRes.json();
 
-    // PUT file to upload-media-large; read response body for real Ayrshare URL
+    // Step 2: PUT file directly to Storage via the signed URL (no size limit)
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', signedUrl);
@@ -205,26 +178,18 @@ async function uploadViaNativeXHR(
         };
       }
       xhr.onload = () => {
-        console.log('[uploadViaNativeXHR] PUT response status:', xhr.status);
         if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const data = JSON.parse(xhr.responseText);
-            const url = data.url ?? data.mediaUrl ?? '';
-            if (!url) throw new Error('No URL in response: ' + xhr.responseText);
-            resolve(url);
-          } catch (e: any) {
-            reject(new Error('Could not parse upload response: ' + xhr.responseText.slice(0, 200)));
-          }
+          resolve(publicUrl);
         } else {
-          reject(new Error(`Upload failed: HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
+          reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`));
         }
       };
-      xhr.onerror = () => reject(new Error('Network error during large file upload'));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
       xhr.send(file);
     });
   }
 
-  // ── Direct binary POST through upload-media (≤30MB) ───────────────────────
+  // ── Small file: direct binary POST through edge function ─────────────────
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${SUPABASE_URL}/functions/v1/upload-media`);
@@ -380,6 +345,7 @@ async function transcribeVideo(videoFile: File): Promise<string> {
       form.append('file', audioBlob, 'audio.wav');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
     } else {
+      // uploadViaNativeXHR now returns a full public URL from Supabase Storage
       const videoUrl = await uploadViaNativeXHR(audioBlob, 'video');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
         method: 'POST',
@@ -500,6 +466,8 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 }
 
 // ─── ConnectAccountsModal ─────────────────────────────────────────────────────
+// Nango-powered OAuth — no developer apps needed from you.
+// Nango's pre-approved OAuth apps handle Instagram, TikTok, LinkedIn, YouTube, X, Facebook.
 
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser,
@@ -509,10 +477,12 @@ function ConnectAccountsModal({
   onRefresh: (force?: boolean) => void;
   currentUser: { id: string; email: string } | null;
 }) {
+  const authUser = currentUser;
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [liveEmail, setLiveEmail] = useState<string>('');
 
+  // Fetch live user email when modal opens — always reflects actual session
   useEffect(() => {
     if (open) {
       supabase.auth.getUser().then(({ data: { user } }) => {
@@ -527,6 +497,9 @@ function ConnectAccountsModal({
   const handleConnect = async () => {
     setConnecting(true); setError(null);
     try {
+      // Step 1: Get the live session token — this is the JWT Supabase issued for whoever
+      // is actually signed in right now. We send it to the edge function so the SERVER
+      // can verify the real user, making it impossible to use a wrong/cached userId.
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
 
       if (sessionErr || !session) {
@@ -535,7 +508,12 @@ function ConnectAccountsModal({
         return;
       }
 
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
+      console.log('[ConnectModal] Calling edge function as:', session.user.email, 'id:', session.user.id);
+
+      // Step 2: Call the edge function as a POST with the JWT in the Authorization header.
+      // The server verifies the JWT and looks up the correct Ayrshare profile.
+      // We get back a connectUrl (the Ayrshare OAuth URL for this specific user).
+      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -551,9 +529,16 @@ function ConnectAccountsModal({
       const { connectUrl } = await res.json();
       if (!connectUrl) throw new Error('No connect URL returned');
 
+      // Step 3: Open the Ayrshare connect URL.
+      // The edge function appends logout=true to the JWT URL, which forces Ayrshare to
+      // clear any existing session before logging in as this profile's JWT.
+      // This handles the case where a user (or the account owner) was previously logged
+      // into profile.ayrshare.com — without logout=true, the existing cookie overrides the JWT.
       localStorage.setItem('postiz_social_return', '1');
       window.open(connectUrl, '_blank');
       setConnecting(false);
+      // Note: channel refresh happens in the page-return useEffect (with force=true + 1.5s delay)
+      // when the user comes back to this tab. No need to poll here.
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to open connection manager. Please try again.');
       setConnecting(false);
@@ -569,6 +554,7 @@ function ConnectAccountsModal({
         className="relative w-full md:max-w-lg rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
         style={{ background: SURFACE, borderColor: BORDER, maxHeight: '90vh' }}
       >
+        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
@@ -576,12 +562,17 @@ function ConnectAccountsModal({
               {liveEmail ? `Account: ${liveEmail}` : 'Link your social accounts to start scheduling'}
             </p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="overflow-y-auto flex-1 p-6 space-y-4">
+
+          {/* Connected accounts list */}
           {integrations.length > 0 && (
             <div>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
@@ -705,7 +696,7 @@ function RepurposePostSelector({ posts, onUsePost }: {
   );
 }
 
-// ─── RepurposeIdeasModal ──────────────────────────────────────────────────────
+// ─── RepurposeIdeasModal (Content Ideas) ─────────────────────────────────────
 
 function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
@@ -885,9 +876,9 @@ function VideoPreviewCard({
     else          { v.pause(); setPlaying(false); }
   };
 
-  const handleTimeUpdate     = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
+  const handleTimeUpdate    = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
   const handleLoadedMetadata = () => setDuration(videoRef.current?.duration ?? 0);
-  const handleEnded          = () => { setPlaying(false); };
+  const handleEnded         = () => { setPlaying(false); };
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
     const t = parseFloat(e.target.value);
@@ -1084,6 +1075,9 @@ function ImagePreviewCard({
 }
 
 // ─── PostComposerModal ────────────────────────────────────────────────────────
+// Unified modal with a Post Type selector at the top:
+//   📎 Media Post  → video/image + caption + AI captions (for all platforms)
+//   ✍️ Text Post   → X & LinkedIn tabs, manual textarea + AI generator, schedule
 
 function PostComposerModal({
   open, onClose, integrations, userId, defaultDate, onSuccess,
@@ -1091,6 +1085,7 @@ function PostComposerModal({
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   userId: string | null; defaultDate?: Date; onSuccess?: () => void;
 }) {
+  // ── Shared ────────────────────────────────────────────────────────────────
   type PostType = 'media' | 'text';
   const [postType, setPostType]         = useState<PostType>('media');
   const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now');
@@ -1102,6 +1097,7 @@ function PostComposerModal({
   const [submitError, setSubmitError]   = useState<string | null>(null);
   const [submitting, setSubmitting]     = useState(false);
 
+  // ── Media Post state ──────────────────────────────────────────────────────
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
   const [content, setContent]           = useState('');
   const [videoFile, setVideoFile]       = useState<File | null>(null);
@@ -1109,8 +1105,10 @@ function PostComposerModal({
   const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
+  // Caption mode: 'manual' = single textarea, 'ai' = per-platform AI captions
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
+  // AI caption state
   type CaptionMode = 'from_video' | 'from_description';
   const [captionMode, setCaptionMode]   = useState<CaptionMode>('from_video');
   const [aiTone, setAiTone]             = useState('');
@@ -1118,11 +1116,14 @@ function PostComposerModal({
   const [aiLoading, setAiLoading]       = useState(false);
   const [aiError, setAiError]           = useState<string | null>(null);
   const [transcript, setTranscript]     = useState<string | null>(null);
+  // generatedCaptions: platform → caption text (editable)
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
 
+  // ── Text Post state ───────────────────────────────────────────────────────
   const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
   const [xText, setXText]               = useState('');
   const [linkedinText, setLinkedinText] = useState('');
+  // AI text-post state
   const [showTextAi, setShowTextAi]     = useState(false);
   const [textAiMode, setTextAiMode]     = useState<'from_video' | 'from_description'>('from_description');
   const [textAiDesc, setTextAiDesc]     = useState('');
@@ -1133,15 +1134,18 @@ function PostComposerModal({
   const [textAiPosts, setTextAiPosts]   = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
   const [textAiSelected, setTextAiSelected] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
 
+  // ── Derived ───────────────────────────────────────────────────────────────
   const xInteg    = integrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
   const liInteg   = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
   const textCurrent = textTab === 'twitter' ? xText : linkedinText;
   const setTextCurrent = (v: string) => { if (textTab === 'twitter') setXText(v); else setLinkedinText(v); };
   const textHasConn   = textTab === 'twitter' ? !!xInteg : !!liInteg;
 
+  // Only return the platforms actually selected — no fallback to all platforms
   const getSelectedPlatforms = () =>
     selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
 
+  // ── Reset ──────────────────────────────────────────────────────────────────
   const fullReset = () => {
     setPostType('media');
     setSelectedIntegrations([]); setContent('');
@@ -1168,6 +1172,7 @@ function PostComposerModal({
     }
   }, [defaultDate]);
 
+  // ── Media upload ───────────────────────────────────────────────────────────
   const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
     setU({ status: 'uploading', progress: 0 });
     try {
@@ -1178,6 +1183,7 @@ function PostComposerModal({
     }
   };
 
+  // ── AI caption generation (Media mode) ────────────────────────────────────
   const handleAiGenerate = async () => {
     setAiLoading(true); setAiError(null); setGeneratedCaptions(null); setTranscript(null);
     try {
@@ -1197,11 +1203,14 @@ function PostComposerModal({
       });
       if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
-      if (data.captions) setGeneratedCaptions(data.captions);
+      if (data.captions) {
+        setGeneratedCaptions(data.captions);
+      }
     } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
     finally { setAiLoading(false); }
   };
 
+  // ── AI text-post generation (Text mode) ───────────────────────────────────
   const handleTextAiGenerate = async () => {
     setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null);
     setTextAiSelected({ twitter: null, linkedin: null });
@@ -1233,6 +1242,7 @@ function PostComposerModal({
     setTextTab(platform);
   };
 
+  // ── Submit (Media mode) ───────────────────────────────────────────────────
   const handleMediaSubmit = async () => {
     if (!userId)                      { setSubmitError('Sign in to post.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
@@ -1249,15 +1259,18 @@ function PostComposerModal({
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
 
       if (captionType === 'manual') {
+        // Single post to all selected platforms with one caption
         const platforms = selectedIntegrations
           .map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; })
           .filter(Boolean);
         await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd });
       } else {
+        // Per-platform posts — each selected platform gets its own caption
         const postPromises = selectedIntegrations.map(async (integId) => {
           const integ = integrations.find(i => i.id === integId);
           if (!integ) return;
           const platformId = integ.identifier || integ.id || '';
+          // Find caption: try exact match, then case-insensitive, fall back to first available
           const caption = generatedCaptions![platformId]
             ?? generatedCaptions![platformId.toLowerCase()]
             ?? Object.values(generatedCaptions!)[0]
@@ -1274,6 +1287,7 @@ function PostComposerModal({
     finally { setSubmitting(false); }
   };
 
+  // ── Submit (Text mode) ────────────────────────────────────────────────────
   const handleTextSubmit = async () => {
     const text = textTab === 'twitter' ? xText : linkedinText;
     if (!text.trim())    { setSubmitError('Write something first.'); return; }
@@ -1291,6 +1305,7 @@ function PostComposerModal({
 
   if (!open) return null;
 
+  // ── Shared schedule UI ─────────────────────────────────────────────────────
   const ScheduleSection = () => (
     <div>
       <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
@@ -1315,12 +1330,14 @@ function PostComposerModal({
       <div className="relative w-full md:max-w-2xl flex flex-col border overflow-hidden shadow-2xl rounded-t-2xl md:rounded-2xl max-h-[92vh] md:max-h-[90vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
 
+        {/* Header */}
         <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/20 md:hidden" />
           <h2 className="text-base font-bold text-white">Create Post</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
 
+        {/* Post Type selector */}
         <div className="px-4 md:px-6 pt-4 pb-1 shrink-0">
           <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
             {([
@@ -1342,8 +1359,10 @@ function PostComposerModal({
 
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-5">
 
+          {/* ════════════════ MEDIA POST ════════════════ */}
           {postType === 'media' && (
             <>
+              {/* Channel selector */}
               <div>
                 <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
                 {integrations.length === 0 ? (
@@ -1357,6 +1376,7 @@ function PostComposerModal({
                         <button key={int.id}
                           onClick={() => {
                             setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]);
+                            // Reset captions when channel selection changes
                             setGeneratedCaptions(null);
                           }}
                           className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
@@ -1371,6 +1391,7 @@ function PostComposerModal({
                 )}
               </div>
 
+              {/* Media upload buttons */}
               <div className="flex items-center gap-2 px-1">
                 <span className="text-xs font-bold text-white/25 uppercase tracking-wider mr-1">Add media</span>
                 <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
@@ -1399,6 +1420,7 @@ function PostComposerModal({
                 </label>
               </div>
 
+              {/* Media previews */}
               {(imageFiles.length > 0 || videoFile) && (
                 <div className="space-y-3">
                   {videoFile && videoObjectUrl && (
@@ -1420,6 +1442,7 @@ function PostComposerModal({
                 </div>
               )}
 
+              {/* Caption mode toggle */}
               <div>
                 <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
                 <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
@@ -1433,6 +1456,7 @@ function PostComposerModal({
                 </div>
               </div>
 
+              {/* Manual caption */}
               {captionType === 'manual' && (
                 <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
                   <textarea value={content} onChange={e => setContent(e.target.value)}
@@ -1444,9 +1468,11 @@ function PostComposerModal({
                 </div>
               )}
 
+              {/* AI per-platform captions */}
               {captionType === 'ai' && (
                 <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
                   <div className="px-4 pt-4 pb-3 space-y-3">
+                    {/* Source toggle */}
                     <div className="flex gap-2">
                       {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                         <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
@@ -1476,6 +1502,7 @@ function PostComposerModal({
                     {transcript && <TranscriptViewer transcript={transcript} />}
                   </div>
 
+                  {/* Per-platform caption cards — editable */}
                   {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                     <div className="border-t px-4 pb-4 pt-3 space-y-3" style={{ borderColor: BORDER }}>
                       <div className="flex items-center gap-2">
@@ -1511,8 +1538,10 @@ function PostComposerModal({
             </>
           )}
 
+          {/* ════════════════ TEXT POST ════════════════ */}
           {postType === 'text' && (
             <>
+              {/* Platform tabs */}
               <div className="flex gap-2">
                 {(['twitter', 'linkedin'] as const).map(p => {
                   const connected = p === 'twitter' ? !!xInteg : !!liInteg;
@@ -1527,6 +1556,7 @@ function PostComposerModal({
                 })}
               </div>
 
+              {/* Text composer */}
               <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
                 <textarea
                   value={textCurrent}
@@ -1548,6 +1578,7 @@ function PostComposerModal({
                 </div>
               )}
 
+              {/* AI Generate (collapsible) */}
               <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
                 <button onClick={() => setShowTextAi(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
                   <div className="flex items-center gap-2">
@@ -1642,6 +1673,7 @@ function PostComposerModal({
           )}
         </div>
 
+        {/* Footer */}
         <div className="px-4 md:px-6 py-3 md:py-4 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: BORDER }}>
           <span className="text-xs text-white/25">
             {postType === 'media'
@@ -1693,7 +1725,7 @@ function CalendarPanel({ userId, integrations }: { userId: string | null; integr
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const res  = await fetch(
-        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+        `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -1810,7 +1842,7 @@ function CalendarPanel({ userId, integrations }: { userId: string | null; integr
   );
 }
 
-// ─── ComposerPanel ────────────────────────────────────────────────────────────
+// ─── ComposerPanel (posts list view) ─────────────────────────────────────────
 
 function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
   const [composerOpen, setComposerOpen]   = useState(false);
@@ -1826,7 +1858,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(
-        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+        `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -1956,7 +1988,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
   );
 }
 
-// ─── Sidebar ──────────────────────────────────────────────────────────────────
+// ─── Sidebar + mobile nav ─────────────────────────────────────────────────────
 
 function Sidebar({ view, setView, integrations, onOpenConnect }: {
   view: ViewMode; setView: (v: ViewMode) => void;
@@ -1990,6 +2022,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
               {item.icon} {item.label}
             </button>
           ))}
+
         </nav>
         <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: BORDER }}>
           <div className="flex items-center justify-between px-1 mb-2">
@@ -2044,7 +2077,8 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
   );
 }
 
-// ─── UserMenu ─────────────────────────────────────────────────────────────────
+// ─── TopBar ───────────────────────────────────────────────────────────────────
+
 
 function UserMenu({ user, onSignOut }: { user: { email: string }; onSignOut: () => void }) {
   const [open, setOpen] = React.useState(false);
@@ -2059,7 +2093,10 @@ function UserMenu({ user, onSignOut }: { user: { email: string }; onSignOut: () 
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button onClick={() => setOpen(v => !v)}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 4px 4px', borderRadius: 10, background: open ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${open ? 'rgba(214,178,94,0.3)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer', transition: 'all 0.15s' }}>
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 4px 4px', borderRadius: 10, background: open ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${open ? 'rgba(214,178,94,0.3)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer', transition: 'all 0.15s' }}
+        onMouseEnter={e => { if (!open) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; } }}
+        onMouseLeave={e => { if (!open) { e.currentTarget.style.background = 'transparent'; } }}
+      >
         <div style={{ width: 26, height: 26, borderRadius: 7, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#0d0d0d', flexShrink: 0 }}>
           {initials}
         </div>
@@ -2087,8 +2124,6 @@ function UserMenu({ user, onSignOut }: { user: { email: string }; onSignOut: () 
     </div>
   );
 }
-
-// ─── TopBar ───────────────────────────────────────────────────────────────────
 
 function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect, user, onSignOut, onSignIn }: {
   integrations: PostizIntegration[]; integrationsLoading: boolean;
@@ -2157,17 +2192,21 @@ export function MediaDistributionPage() {
   const { user: authUser, signOut }             = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
+  // Clean up OAuth hash from URL if present (cosmetic only)
   useEffect(() => {
     if (window.location.hash.includes('access_token')) {
       window.history.replaceState(null, '', window.location.pathname);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Use userId string (not the currentUser object) as the dep to avoid
+  // re-creating loadIntegrations on every render due to object identity changes.
   const currentUserId = currentUser?.id ?? null;
 
   const loadIntegrations = useCallback(async (force = false) => {
     if (!currentUserId) return;
     setIntegrationsLoading(true);
+    // Safety net: clear the loading spinner after 10s no matter what
     const safetyTimer = setTimeout(() => setIntegrationsLoading(false), 10000);
     try { setIntegrations(await fetchChannels(currentUserId, force)); }
     catch { setIntegrations([]); }
@@ -2176,6 +2215,8 @@ export function MediaDistributionPage() {
 
   useEffect(() => { if (currentUserId) loadIntegrations(); }, [currentUserId, loadIntegrations]);
 
+  // When the user returns to this tab after connecting accounts in the Ayrshare popup,
+  // force-refresh channels so newly connected platforms appear immediately.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
@@ -2185,6 +2226,7 @@ export function MediaDistributionPage() {
         })();
         if (isSocialReturn) {
           try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+          // Delay slightly to allow Ayrshare's backend to register the connection
           setTimeout(() => loadIntegrations(true), 1500);
           setConnectModalOpen(false);
         }
@@ -2195,6 +2237,8 @@ export function MediaDistributionPage() {
   }, [loadIntegrations]);
 
   useEffect(() => {
+    // Handle return from Ayrshare OAuth tab. We force=true to bypass the 5-min
+    // cache and fetch fresh channel data (otherwise new connections may not show).
     const isSocialReturn = (() => {
       try {
         return (
@@ -2209,11 +2253,15 @@ export function MediaDistributionPage() {
         localStorage.removeItem('ayrshare_connected');
       } catch {}
       window.history.replaceState({}, '', window.location.pathname);
+      // Small delay to let Ayrshare's backend register the new connection
+      // before we query for channels, then force-refresh the cache.
       setTimeout(() => loadIntegrations(true), 1500);
       setConnectModalOpen(false);
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Called when user is authed and wants to open Postiz — now just opens the modal
+  // which handles the iframe flow internally
   const openConnectModal = () => setConnectModalOpen(true);
 
   const handleConnect = () => {
@@ -2225,7 +2273,9 @@ export function MediaDistributionPage() {
   };
 
   const handleDisconnect = () => {
-    try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+    try {
+      localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
+    } catch {}
     setIntegrations([]);
     setOauthError(null);
   };
@@ -2315,7 +2365,8 @@ export function MediaDistributionPage() {
       ) : (
         <div className="flex flex-1 overflow-hidden">
           <Sidebar view={view} setView={setView} integrations={integrations}
-            onOpenConnect={() => setConnectModalOpen(true)} />
+            onOpenConnect={() => setConnectModalOpen(true)}
+/>
           <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarPanel integrations={integrations} userId={currentUser?.id ?? null} />}
@@ -2330,6 +2381,7 @@ export function MediaDistributionPage() {
         onRefresh={(force) => loadIntegrations(force)}
         currentUser={currentUser}
       />
+
 
       <MediaMachineAuthModal
         open={authModalOpen}
