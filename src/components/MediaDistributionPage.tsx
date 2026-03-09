@@ -104,13 +104,19 @@ function generateState() {
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function ayrsharePost(userId: string, payload: {
+async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
 }) {
+  // Get live session JWT so the edge function can identify the user server-side
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token ?? '';
   const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-post', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ userId, ...payload }),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -1058,19 +1064,19 @@ function PostComposerModal({
   const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
-  const [perPlatform, setPerPlatform]   = useState<Record<string, string>>({});
-  const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
+  // Caption mode: 'manual' = single textarea, 'ai' = per-platform AI captions
+  type CaptionType = 'manual' | 'ai';
+  const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   // AI caption state
   type CaptionMode = 'from_video' | 'from_description';
-  const [showAiPanel, setShowAiPanel]   = useState(false);
   const [captionMode, setCaptionMode]   = useState<CaptionMode>('from_video');
   const [aiTone, setAiTone]             = useState('');
   const [aiDescription, setAiDescription] = useState('');
   const [aiLoading, setAiLoading]       = useState(false);
   const [aiError, setAiError]           = useState<string | null>(null);
   const [transcript, setTranscript]     = useState<string | null>(null);
+  // generatedCaptions: platform → caption text (editable)
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
-  const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
 
   // ── Text Post state ───────────────────────────────────────────────────────
   const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
@@ -1102,15 +1108,15 @@ function PostComposerModal({
   // ── Reset ──────────────────────────────────────────────────────────────────
   const fullReset = () => {
     setPostType('media');
-    setSelectedIntegrations([]); setContent(''); setPerPlatform({});
+    setSelectedIntegrations([]); setContent('');
     setVideoFile(null);
     setVideoObjectUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
     setVideoUpload({ status: 'idle' });
     setImageFiles([]); setImageUploads([]);
-    setSubmitOk(false); setSubmitError(null); setExpandedPlatform(null);
+    setSubmitOk(false); setSubmitError(null);
     setTranscript(null); setGeneratedCaptions(null);
-    setAiError(null); setActiveCaptionPlatform(null);
-    setShowAiPanel(false); setAiDescription(''); setAiTone('');
+    setAiError(null);
+    setCaptionType('manual'); setAiDescription(''); setAiTone('');
     setXText(''); setLinkedinText(''); setTextTab('twitter');
     setShowTextAi(false); setTextAiDesc(''); setTextAiTone('');
     setTextAiVideo(null); setTextAiPosts(null); setTextAiError(null);
@@ -1159,8 +1165,6 @@ function PostComposerModal({
       const data = await res.json();
       if (data.captions) {
         setGeneratedCaptions(data.captions);
-        const first = Object.keys(data.captions)[0];
-        if (first) { setContent(data.captions[first]); setActiveCaptionPlatform(first); }
       }
     } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
     finally { setAiLoading(false); }
@@ -1202,7 +1206,8 @@ function PostComposerModal({
   const handleMediaSubmit = async () => {
     if (!userId)                      { setSubmitError('Sign in to post.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
-    if (!content.trim())              { setSubmitError('Write some content first.'); return; }
+    if (captionType === 'manual' && !content.trim()) { setSubmitError('Write a caption first.'); return; }
+    if (captionType === 'ai' && !generatedCaptions)  { setSubmitError('Generate AI captions first.'); return; }
     if (videoUpload.status === 'uploading' || imageUploads.some(u => u.status === 'uploading')) {
       setSubmitError('Wait for media to finish uploading.'); return;
     }
@@ -1211,9 +1216,29 @@ function PostComposerModal({
       const mediaUrls: string[] = [];
       imageUploads.forEach(u => { if (u.status === 'done' && (u as any).url) mediaUrls.push((u as any).url); });
       if (videoUpload.status === 'done' && (videoUpload as any).url) mediaUrls.push((videoUpload as any).url);
-      const platforms = selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd });
+
+      if (captionType === 'manual') {
+        // Single post to all selected platforms with one caption
+        const platforms = selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
+        await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd });
+      } else {
+        // Per-platform posts — each selected platform gets its own caption
+        const postPromises = selectedIntegrations.map(async (integId) => {
+          const integ = integrations.find(i => i.id === integId);
+          if (!integ) return;
+          const platformId = integ.identifier;
+          // Find caption: try exact match, then case-insensitive, fall back to first available
+          const caption = generatedCaptions![platformId]
+            ?? generatedCaptions![platformId.toLowerCase()]
+            ?? Object.values(generatedCaptions!)[0]
+            ?? '';
+          if (!caption) return;
+          await ayrsharePost({ platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd });
+        });
+        await Promise.all(postPromises);
+      }
+
       setSubmitOk(true);
       setTimeout(() => { onClose(); onSuccess?.(); }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
@@ -1307,7 +1332,11 @@ function PostComposerModal({
                       const p = PLATFORMS[int.identifier as PlatformId];
                       return (
                         <button key={int.id}
-                          onClick={() => setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id])}
+                          onClick={() => {
+                            setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]);
+                            // Reset captions when channel selection changes
+                            setGeneratedCaptions(null);
+                          }}
                           className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
                           style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
                           <PlatformIcon id={int.profile || int.identifier} size="sm" />
@@ -1320,38 +1349,33 @@ function PostComposerModal({
                 )}
               </div>
 
-              {/* Caption textarea + media buttons */}
-              <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-                <textarea value={content} onChange={e => setContent(e.target.value)}
-                  placeholder="Write your caption here… or use the AI writer below to generate one." rows={5}
-                  className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
-                <div className="flex items-center gap-1 px-3 py-2.5 border-t" style={{ borderColor: BORDER }}>
-                  <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
-                    <Image className="w-3.5 h-3.5" /> Image
-                    <input type="file" accept="image/*" multiple className="hidden"
-                      onChange={e => {
-                        const files = Array.from(e.target.files || []);
-                        setImageFiles(files);
-                        setImageUploads(files.map(() => ({ status: 'idle' })));
-                        files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
-                      }} />
-                  </label>
-                  <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
-                    <Video className="w-3.5 h-3.5" /> Video
-                    <input type="file" accept="video/*" className="hidden"
-                      onChange={e => {
-                        const f = e.target.files?.[0];
-                        if (f) {
-                          if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-                          const url = URL.createObjectURL(f);
-                          setVideoFile(f); setVideoObjectUrl(url);
-                          setVideoUpload({ status: 'preparing' });
-                          setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
-                        }
-                      }} />
-                  </label>
-                  <div className="ml-auto text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length}</div>
-                </div>
+              {/* Media upload buttons */}
+              <div className="flex items-center gap-2 px-1">
+                <span className="text-xs font-bold text-white/25 uppercase tracking-wider mr-1">Add media</span>
+                <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
+                  <Image className="w-3.5 h-3.5" /> Image
+                  <input type="file" accept="image/*" multiple className="hidden"
+                    onChange={e => {
+                      const files = Array.from(e.target.files || []);
+                      setImageFiles(files);
+                      setImageUploads(files.map(() => ({ status: 'idle' })));
+                      files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
+                    }} />
+                </label>
+                <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
+                  <Video className="w-3.5 h-3.5" /> Video
+                  <input type="file" accept="video/*" className="hidden"
+                    onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+                        const url = URL.createObjectURL(f);
+                        setVideoFile(f); setVideoObjectUrl(url);
+                        setVideoUpload({ status: 'preparing' });
+                        setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
+                      }
+                    }} />
+                </label>
               </div>
 
               {/* Media previews */}
@@ -1376,18 +1400,38 @@ function PostComposerModal({
                 </div>
               )}
 
-              {/* AI Caption Writer (collapsible) */}
-              <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-                <button onClick={() => setShowAiPanel(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
-                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Caption Writer</span>
+              {/* Caption mode toggle */}
+              <div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
+                <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
+                  {([['manual', '✏️ Write Manually'], ['ai', '✨ AI per Platform']] as const).map(([t, label]) => (
+                    <button key={t} onClick={() => { setCaptionType(t); setGeneratedCaptions(null); }}
+                      className="flex-1 py-2 rounded-lg text-xs font-bold transition"
+                      style={{ background: captionType === t ? `${GOLD}18` : 'transparent', border: `1px solid ${captionType === t ? GOLD : 'transparent'}`, color: captionType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Manual caption */}
+              {captionType === 'manual' && (
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                  <textarea value={content} onChange={e => setContent(e.target.value)}
+                    placeholder="Write your caption here…" rows={5}
+                    className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                  <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+                    <span className="text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length} chars</span>
                   </div>
-                  <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showAiPanel ? 'rotate-90' : ''}`} />
-                </button>
-                {showAiPanel && (
-                  <div className="border-t px-4 pb-4 space-y-4" style={{ borderColor: BORDER }}>
-                    <div className="flex gap-2 mt-3">
+                </div>
+              )}
+
+              {/* AI per-platform captions */}
+              {captionType === 'ai' && (
+                <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+                  <div className="px-4 pt-4 pb-3 space-y-3">
+                    {/* Source toggle */}
+                    <div className="flex gap-2">
                       {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                         <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
                           style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
@@ -1395,73 +1439,56 @@ function PostComposerModal({
                         </button>
                       ))}
                     </div>
-                    {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video using the Video button above first</div>}
-                    {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)… audio extracted locally for captions.</div>}
-                    {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate.</div>}
+                    {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first — AI will transcribe it to write captions</div>}
+                    {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
+                    {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate below</div>}
                     {captionMode === 'from_description' && (
                       <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
-                        placeholder="Describe your video — what you talked about, key takeaways…" rows={3}
+                        placeholder="Describe your video or content — topic, key points, your offer…" rows={3}
                         className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
                     )}
                     <input value={aiTone} onChange={e => setAiTone(e.target.value)}
                       placeholder="Tone (optional): casual, alex hormozi, luxury, funny…"
                       className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-                    <button onClick={handleAiGenerate} disabled={aiLoading}
+                    {selectedIntegrations.length === 0 && <div className="text-xs text-amber-400/70 px-1">⚠️ Select at least one channel above to generate captions for those platforms</div>}
+                    <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
                       className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                       style={{ background: GOLD, color: '#000' }}>
-                      {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions</>}
+                      {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
                     </button>
                     {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
                     {transcript && <TranscriptViewer transcript={transcript} />}
-                    {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
-                      <div className="space-y-2">
-                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
-                        {Object.entries(generatedCaptions).map(([platform, caption]) => (
-                          <button key={platform} onClick={() => { setContent(caption as string); setActiveCaptionPlatform(platform); }}
-                            className="w-full text-left p-3 rounded-xl border transition"
-                            style={{ borderColor: activeCaptionPlatform === platform ? GOLD : BORDER, background: activeCaptionPlatform === platform ? `${GOLD}10` : 'rgba(0,0,0,0.2)' }}>
-                            <div className="flex items-center gap-2 mb-1">
-                              <PlatformIcon id={platform} size="sm" />
-                              <span className="text-xs font-bold capitalize" style={{ color: activeCaptionPlatform === platform ? GOLD : 'rgba(255,255,255,0.4)' }}>{PLATFORMS[platform as PlatformId]?.label || platform}</span>
-                              {activeCaptionPlatform === platform && <CheckCircle2 className="w-3 h-3 ml-auto" style={{ color: GOLD }} />}
-                            </div>
-                            <div className="text-xs text-white/60 leading-relaxed line-clamp-4">{caption as string}</div>
-                          </button>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                )}
-              </div>
 
-              {/* Per-platform customisation */}
-              {selectedIntegrations.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Customize per channel <span className="text-white/20 normal-case">(optional)</span></div>
-                  <div className="space-y-1.5">
-                    {selectedIntegrations.map(integId => {
-                      const int = integrations.find(i => i.id === integId);
-                      if (!int) return null;
-                      const expanded = expandedPlatform === integId;
-                      return (
-                        <div key={integId} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-                          <button onClick={() => setExpandedPlatform(expanded ? null : integId)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/4 transition">
-                            <PlatformIcon id={int.profile || int.identifier} size="sm" />
-                            <span className="text-sm font-semibold text-white flex-1 text-left">{int.name}</span>
-                            {perPlatform[integId] && <span className="text-xs font-bold text-green-400">Custom</span>}
-                            <ChevronRight className={`w-4 h-4 text-white/25 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-                          </button>
-                          {expanded && (
-                            <div className="px-4 pb-4 border-t" style={{ borderColor: BORDER }}>
-                              <textarea value={perPlatform[integId] || ''} onChange={e => setPerPlatform(prev => ({ ...prev, [integId]: e.target.value }))}
-                                placeholder={`Custom caption for ${int.name}…`} rows={3}
-                                className="w-full mt-3 bg-black/25 rounded-lg border px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none resize-none" style={{ borderColor: BORDER }} />
+                  {/* Per-platform caption cards — editable */}
+                  {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
+                    <div className="border-t px-4 pb-4 pt-3 space-y-3" style={{ borderColor: BORDER }}>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                        <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Captions generated — edit if needed, then post</span>
+                      </div>
+                      {Object.entries(generatedCaptions).map(([platform, caption]) => {
+                        const integ = integrations.find(i => i.identifier === platform || i.identifier === platform.toLowerCase());
+                        const p = PLATFORMS[platform as PlatformId];
+                        return (
+                          <div key={platform} className="rounded-xl border overflow-hidden" style={{ borderColor: p?.color ? `${p.color}30` : BORDER }}>
+                            <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: p?.color ? `${p.color}20` : BORDER, background: p?.bg || 'rgba(0,0,0,0.2)' }}>
+                              <PlatformIcon id={platform} size="sm" />
+                              <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{p?.label || integ?.name || platform}</span>
+                              <span className="ml-auto text-[10px] text-white/25">{(caption as string).length} chars</span>
                             </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                            <textarea
+                              value={caption as string}
+                              onChange={e => setGeneratedCaptions(prev => prev ? { ...prev, [platform]: e.target.value } : prev)}
+                              rows={4}
+                              className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none resize-none placeholder-white/20"
+                              style={{ background: 'rgba(0,0,0,0.15)' }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1608,7 +1635,11 @@ function PostComposerModal({
         <div className="px-4 md:px-6 py-3 md:py-4 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: BORDER }}>
           <span className="text-xs text-white/25">
             {postType === 'media'
-              ? selectedIntegrations.length > 0 ? `${selectedIntegrations.length} channel${selectedIntegrations.length !== 1 ? 's' : ''} selected` : 'No channels selected'
+              ? selectedIntegrations.length > 0
+                  ? captionType === 'ai' && generatedCaptions
+                    ? `${Object.keys(generatedCaptions).length} captions ready`
+                    : `${selectedIntegrations.length} channel${selectedIntegrations.length !== 1 ? 's' : ''} selected`
+                  : 'No channels selected'
               : textCurrent.length > 0 ? `${textCurrent.length} chars` : 'Nothing written yet'}
           </span>
           <button
