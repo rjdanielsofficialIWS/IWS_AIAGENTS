@@ -151,90 +151,121 @@ async function deleteMediaFromStorage(url: string | null | undefined): Promise<v
   }
 }
 
-// Uploads a file to Supabase Storage via the upload-media edge function.
-// Returns the full public URL of the uploaded file.
-// For files >5MB: uses a signed upload URL (browser → Storage directly, no size limit).
-// For files <5MB: direct binary POST through the edge function (legacy path).
+// Uploads a file via the upload-media edge function.
+// Small files (<=4MB): single direct POST.
+// Large files (>4MB): chunked upload through edge function → R2 multipart (>50MB) or Supabase (<50MB).
+// All data flows server-side so no browser CORS issues with R2.
 async function uploadViaNativeXHR(
   file: File | Blob,
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
+  const EDGE = `${SUPABASE_URL}/functions/v1/upload-media`;
   const ext = file instanceof File
     ? file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg')
     : kind === 'video' ? 'mp4' : 'wav';
-  const filePath = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const filePath    = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
-  const fileSize = file instanceof File ? file.size : (file as Blob).size;
-  const DIRECT_LIMIT = 4 * 1024 * 1024; // 4MB — stay safely under the 6MB edge fn limit
+  const fileSize    = file instanceof File ? file.size : (file as Blob).size;
+  const DIRECT_MAX  = 4 * 1024 * 1024;   // 4MB direct
+  const CHUNK_SIZE  = 5 * 1024 * 1024;   // 5MB chunks (under 6MB edge limit)
 
-  // ── Large file: get signed URL, upload directly to Storage ────────────────
-  if (fileSize > DIRECT_LIMIT) {
-    // Step 1: ask edge function for a signed upload URL
-    const signRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'sign', filePath, contentType, fileSize }),
-    });
-    if (!signRes.ok) {
-      const err = await signRes.json().catch(() => ({}));
-      throw new Error(err.error || `Failed to get upload URL (${signRes.status})`);
-    }
-    const { signedUrl, publicUrl, provider } = await signRes.json();
-
-    // Step 2: PUT file directly to storage via the signed URL (no size limit)
+  // ── Small file: single direct POST ───────────────────────────────────────
+  if (fileSize <= DIRECT_MAX) {
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', signedUrl);
-      xhr.setRequestHeader('Content-Type', contentType);
-      // R2 presigned URLs require x-amz-content-sha256 set to UNSIGNED-PAYLOAD
-      if (provider === 'r2') {
-        xhr.setRequestHeader('x-amz-content-sha256', 'UNSIGNED-PAYLOAD');
-      }
-      if (onProgress) {
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-        };
-      }
+      xhr.open('POST', EDGE);
+      xhr.setRequestHeader('x-file-path', filePath);
+      xhr.setRequestHeader('content-type', contentType);
+      if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
       xhr.onload = () => {
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(publicUrl);
-        } else {
-          reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`));
-        }
+          try { const d = JSON.parse(xhr.responseText); resolve(d.url || d.publicUrl); }
+          catch { reject(new Error('Invalid response')); }
+        } else { reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`)); }
       };
       xhr.onerror = () => reject(new Error('Network error during upload'));
       xhr.send(file);
     });
   }
 
-  // ── Small file: direct binary POST through edge function ─────────────────
-  return new Promise<string>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${SUPABASE_URL}/functions/v1/upload-media`);
-    xhr.setRequestHeader('x-file-path', filePath);
-    xhr.setRequestHeader('content-type', contentType);
-    if (onProgress) {
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-      };
-    }
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          if (!data.url) throw new Error('No URL in response');
-          resolve(data.url);
-        } catch {
-          reject(new Error('Invalid response from upload function'));
-        }
-      } else {
-        reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`));
-      }
-    };
-    xhr.onerror = () => reject(new Error('Network error during upload'));
-    xhr.send(file);
+  // ── Large file: chunked upload ────────────────────────────────────────────
+  // Step 1: init
+  const initRes = await fetch(EDGE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'init', filePath, contentType, fileSize }),
   });
+  if (!initRes.ok) {
+    const e = await initRes.json().catch(() => ({}));
+    throw new Error(e.error || `Init failed (${initRes.status})`);
+  }
+  const { uploadId, provider } = await initRes.json();
+
+  // Step 2: upload chunks
+  const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+  const parts: { partNumber: number; etag: string }[] = [];
+  let uploadedBytes = 0;
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start  = i * CHUNK_SIZE;
+    const end    = Math.min(start + CHUNK_SIZE, fileSize);
+    const chunk  = file.slice(start, end);
+    const partNo = i + 1;
+
+    const chunkRes = await new Promise<Response>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', EDGE);
+      xhr.setRequestHeader('x-action', 'chunk');
+      xhr.setRequestHeader('x-file-path', filePath);
+      xhr.setRequestHeader('x-provider', provider || 'supabase');
+      xhr.setRequestHeader('content-type', contentType);
+      if (uploadId) {
+        xhr.setRequestHeader('x-upload-id', uploadId);
+        xhr.setRequestHeader('x-part-number', String(partNo));
+      }
+      xhr.onload = () => resolve(new Response(xhr.responseText, { status: xhr.status, headers: { 'Content-Type': 'application/json' } }));
+      xhr.onerror = () => reject(new Error('Network error on chunk'));
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((uploadedBytes + e.loaded) / fileSize * 100));
+        }
+      };
+      xhr.send(chunk);
+    });
+
+    if (!chunkRes.ok) {
+      const e = await chunkRes.json().catch(() => ({}));
+      // Abort R2 multipart if we have an uploadId
+      if (uploadId) {
+        fetch(EDGE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'abort', filePath, uploadId }) }).catch(() => {});
+      }
+      throw new Error(e.error || `Chunk ${partNo} failed (${chunkRes.status})`);
+    }
+
+    const chunkData = await chunkRes.json();
+    uploadedBytes += (end - start);
+    if (onProgress) onProgress(Math.round(uploadedBytes / fileSize * 100));
+
+    // For Supabase provider, single chunk = done (whole file fits in one chunk for <50MB)
+    if (provider === 'supabase') return chunkData.url;
+
+    // For R2, collect part ETags
+    if (chunkData.etag) parts.push({ partNumber: partNo, etag: chunkData.etag });
+  }
+
+  // Step 3: complete R2 multipart
+  const completeRes = await fetch(EDGE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'complete', filePath, uploadId, parts }),
+  });
+  if (!completeRes.ok) {
+    const e = await completeRes.json().catch(() => ({}));
+    throw new Error(e.error || `Complete failed (${completeRes.status})`);
+  }
+  const { url } = await completeRes.json();
+  return url;
 }
 
 function pcmToWav(samples: Float32Array, sampleRate = 16000): Blob {
