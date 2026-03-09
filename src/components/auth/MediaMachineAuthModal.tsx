@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, Sparkles } from 'lucide-react';
 import { supabase } from '../../services/vapiAI';
 
 const GOLD   = '#D6B25E';
@@ -9,10 +9,10 @@ const GOLD_D = '#8F6B1E';
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void; // called after successful sign-in/up
+  onSuccess: () => void;
 }
 
-type Mode = 'signin' | 'signup';
+type Mode = 'signin' | 'signup' | 'forgot';
 
 export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
   const [mode, setMode]           = useState<Mode>('signin');
@@ -24,6 +24,12 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError]         = useState<string | null>(null);
   const [success, setSuccess]     = useState<string | null>(null);
+  const [mounted, setMounted]     = useState(false);
+
+  useEffect(() => {
+    if (open) { setMounted(false); requestAnimationFrame(() => setMounted(true)); }
+    else { setMounted(false); }
+  }, [open]);
 
   if (!open) return null;
 
@@ -36,15 +42,24 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
+    setError(null); setSuccess(null);
 
-    if (mode === 'signup' && password !== confirm) {
-      setError('Passwords do not match.'); return;
+    if (mode === 'forgot') {
+      setLoading(true);
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/media-machine`,
+        });
+        if (error) throw error;
+        setSuccess('Password reset link sent — check your inbox.');
+      } catch (err: any) {
+        setError(err.message || 'Something went wrong.');
+      } finally { setLoading(false); }
+      return;
     }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters.'); return;
-    }
+
+    if (mode === 'signup' && password !== confirm) { setError('Passwords do not match.'); return; }
+    if (mode !== 'forgot' && password.length < 6) { setError('Password must be at least 6 characters.'); return; }
 
     setLoading(true);
     try {
@@ -60,232 +75,306 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
       }
     } catch (err: any) {
       setError(err.message || 'Something went wrong.');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
   };
 
   const handleGoogle = async () => {
-    setGoogleLoading(true);
-    setError(null);
+    setGoogleLoading(true); setError(null);
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/mediamachine`,
-        },
+        options: { redirectTo: `${window.location.origin}/media-machine` },
       });
       if (error) throw error;
-      // Page will redirect — onSuccess fires via auth state change after return
     } catch (err: any) {
       setError(err.message || 'Google sign-in failed.');
       setGoogleLoading(false);
     }
   };
 
+  const titles: Record<Mode, { h: string; sub: string }> = {
+    signin:  { h: 'Welcome back',        sub: 'Sign in to your Media Machine account' },
+    signup:  { h: 'Create an account',   sub: 'Start managing your social channels today' },
+    forgot:  { h: 'Reset password',      sub: "We'll send a link to your inbox" },
+  };
+
   return (
     <div
       className="fixed inset-0 z-[1100] flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)' }}
+      style={{
+        background: 'rgba(0,0,0,0.88)',
+        backdropFilter: 'blur(16px)',
+        opacity: mounted ? 1 : 0,
+        transition: 'opacity 0.2s ease',
+      }}
     >
-      {/* Card */}
+      {/* Animated glow blob */}
+      <div style={{
+        position: 'absolute',
+        width: 400, height: 400,
+        borderRadius: '50%',
+        background: `radial-gradient(circle, ${GOLD}18 0%, transparent 70%)`,
+        top: '50%', left: '50%',
+        transform: `translate(-50%, -50%) scale(${mounted ? 1 : 0.8})`,
+        transition: 'transform 0.5s cubic-bezier(0.34,1.56,0.64,1)',
+        pointerEvents: 'none',
+      }} />
+
       <div
-        className="relative w-full max-w-sm rounded-2xl overflow-hidden shadow-2xl"
         style={{
-          background: 'linear-gradient(160deg, #161616 0%, #1c1c1c 100%)',
-          border: '1px solid rgba(214,178,94,0.15)',
+          position: 'relative',
+          width: '100%',
+          maxWidth: 400,
+          borderRadius: 20,
+          background: 'linear-gradient(160deg, #161616 0%, #1a1a1a 100%)',
+          border: `1px solid rgba(214,178,94,0.18)`,
+          boxShadow: `0 0 0 1px rgba(0,0,0,0.5), 0 32px 64px rgba(0,0,0,0.6), 0 0 80px ${GOLD}10`,
+          transform: mounted ? 'translateY(0) scale(1)' : 'translateY(24px) scale(0.97)',
+          transition: 'transform 0.3s cubic-bezier(0.34,1.56,0.64,1)',
+          overflow: 'hidden',
         }}
       >
-        {/* Gold top accent line */}
-        <div style={{ height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />
+        {/* Top shimmer line */}
+        <div style={{
+          height: 1,
+          background: `linear-gradient(90deg, transparent 0%, ${GOLD}90 40%, ${GOLD_L} 50%, ${GOLD}90 60%, transparent 100%)`,
+        }} />
 
-        {/* Close */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 rounded-lg p-1.5 transition-colors"
-          style={{ color: 'rgba(255,255,255,0.3)' }}
-          onMouseEnter={e => (e.currentTarget.style.color = GOLD)}
-          onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.3)')}
-        >
-          <X className="w-4 h-4" />
-        </button>
+        {/* Header strip */}
+        <div style={{
+          padding: '20px 24px 0',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          {/* Brand mark */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{
+              width: 28, height: 28,
+              borderRadius: 8,
+              background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Sparkles size={14} color="#000" />
+            </div>
+            <span style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase' }}>
+              Media Machine
+            </span>
+          </div>
+          <button
+            onClick={onClose}
+            style={{
+              width: 28, height: 28, borderRadius: 8,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: 'rgba(255,255,255,0.3)',
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              transition: 'color 0.15s, background 0.15s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.color = 'white'; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.3)'; e.currentTarget.style.background = 'transparent'; }}
+          >
+            <X size={14} />
+          </button>
+        </div>
 
-        <div className="px-7 pt-8 pb-7">
-          {/* Logo mark */}
-          <div className="flex flex-col items-center mb-7">
-            <svg width="36" height="42" viewBox="0 0 240 280" className="mb-3">
-              <defs>
-                <linearGradient id="amg" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor={GOLD_D}/>
-                  <stop offset="50%" stopColor={GOLD}/>
-                  <stop offset="100%" stopColor={GOLD_D}/>
-                </linearGradient>
-              </defs>
-              <path d="M120 8 C165 32 205 38 238 48 V145 C238 198 180 238 120 278 C60 238 2 198 2 145 V48 C35 38 75 32 120 8Z"
-                fill="#0d0d0d" stroke="url(#amg)" strokeWidth="10"/>
-              <text x="120" y="158" textAnchor="middle"
-                fontFamily="ui-sans-serif,system-ui,sans-serif"
-                fontSize="68" fontWeight="900" letterSpacing="3" fill="url(#amg)">IWS</text>
-            </svg>
-            <h2 className="text-lg font-bold text-white tracking-tight">
-              {mode === 'signin' ? 'Sign in to MediaMachine' : 'Create your account'}
+        <div style={{ padding: '24px 24px 28px' }}>
+          {/* Title */}
+          <div style={{ marginBottom: 24 }}>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: 'white', margin: 0, letterSpacing: '-0.02em' }}>
+              {titles[mode].h}
             </h2>
-            <p className="text-xs mt-1" style={{ color: 'rgba(255,255,255,0.35)' }}>
-              {mode === 'signin' ? 'Connect and manage your social channels' : 'Get started — it only takes a moment'}
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', marginTop: 4, margin: '4px 0 0' }}>
+              {titles[mode].sub}
             </p>
           </div>
 
           {/* Alerts */}
           {error && (
-            <div className="mb-4 px-3 py-2.5 rounded-xl text-sm"
-              style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+            <div style={{
+              marginBottom: 16, padding: '10px 14px', borderRadius: 10, fontSize: 13,
+              background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5',
+            }}>
               {error}
             </div>
           )}
           {success && (
-            <div className="mb-4 px-3 py-2.5 rounded-xl text-sm"
-              style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', color: '#86efac' }}>
+            <div style={{
+              marginBottom: 16, padding: '10px 14px', borderRadius: 10, fontSize: 13,
+              background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.25)', color: '#86efac',
+            }}>
               {success}
             </div>
           )}
 
-          {/* Google */}
-          <button
-            onClick={handleGoogle}
-            disabled={googleLoading || loading}
-            className="w-full flex items-center justify-center gap-3 rounded-xl py-2.5 text-sm font-600 transition-all mb-4"
-            style={{
-              background: 'rgba(255,255,255,0.05)',
-              border: '1px solid rgba(255,255,255,0.1)',
-              color: 'rgba(255,255,255,0.85)',
-              fontWeight: 600,
-            }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `rgba(214,178,94,0.3)`; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; }}
-          >
-            {googleLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <svg width="18" height="18" viewBox="0 0 18 18">
-                <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
-                <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
-                <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
-                <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
-              </svg>
-            )}
-            Continue with Google
-          </button>
+          {/* Google button (not on forgot) */}
+          {mode !== 'forgot' && (
+            <>
+              <button
+                onClick={handleGoogle}
+                disabled={googleLoading || loading}
+                style={{
+                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  gap: 10, padding: '11px 16px', borderRadius: 12, fontSize: 13, fontWeight: 600,
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  color: 'rgba(255,255,255,0.85)', cursor: 'pointer',
+                  transition: 'border-color 0.15s, background 0.15s',
+                  marginBottom: 16, opacity: googleLoading || loading ? 0.6 : 1,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = `rgba(214,178,94,0.35)`; e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+              >
+                {googleLoading ? (
+                  <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 18 18">
+                    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z"/>
+                    <path fill="#34A853" d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332C2.438 15.983 5.482 18 9 18z"/>
+                    <path fill="#FBBC05" d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707s.102-1.167.282-1.707V4.961H.957C.347 6.175 0 7.55 0 9s.348 2.825.957 4.039l3.007-2.332z"/>
+                    <path fill="#EA4335" d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0 5.482 0 2.438 2.017.957 4.961L3.964 7.293C4.672 5.166 6.656 3.58 9 3.58z"/>
+                  </svg>
+                )}
+                Continue with Google
+              </button>
 
-          {/* Divider */}
-          <div className="flex items-center gap-3 mb-4">
-            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
-            <span className="text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>or</span>
-            <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />
-          </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.22)', fontWeight: 600, letterSpacing: '0.05em' }}>OR</span>
+                <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.07)' }} />
+              </div>
+            </>
+          )}
 
           {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-3">
-            {/* Email */}
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                style={{ color: 'rgba(255,255,255,0.25)' }} />
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="Email address"
-                required
-                className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm text-white placeholder-white/25 outline-none transition-all"
-                style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                }}
-                onFocus={e => (e.target.style.borderColor = `rgba(214,178,94,0.5)`)}
-                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
-              />
-            </div>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <InputField
+              type="email" value={email} onChange={setEmail}
+              placeholder="Email address" icon={<Mail size={14} />}
+            />
 
-            {/* Password */}
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                style={{ color: 'rgba(255,255,255,0.25)' }} />
-              <input
-                type={showPw ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="Password"
-                required
-                className="w-full pl-9 pr-10 py-2.5 rounded-xl text-sm text-white placeholder-white/25 outline-none transition-all"
-                style={{
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                }}
-                onFocus={e => (e.target.style.borderColor = `rgba(214,178,94,0.5)`)}
-                onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
+            {mode !== 'forgot' && (
+              <InputField
+                type={showPw ? 'text' : 'password'} value={password} onChange={setPassword}
+                placeholder="Password" icon={<Lock size={14} />}
+                suffix={
+                  <button type="button" onClick={() => setShowPw(v => !v)}
+                    style={{ color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, display: 'flex', transition: 'color 0.15s' }}
+                    onMouseEnter={e => (e.currentTarget.style.color = GOLD)}
+                    onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.3)')}
+                  >
+                    {showPw ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                }
               />
-              <button type="button" onClick={() => setShowPw(v => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors"
-                style={{ color: 'rgba(255,255,255,0.25)' }}
-                onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = GOLD)}
-                onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.25)')}
-              >
-                {showPw ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-
-            {/* Confirm password (signup only) */}
-            {mode === 'signup' && (
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                  style={{ color: 'rgba(255,255,255,0.25)' }} />
-                <input
-                  type={showPw ? 'text' : 'password'}
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value)}
-                  placeholder="Confirm password"
-                  required
-                  className="w-full pl-9 pr-4 py-2.5 rounded-xl text-sm text-white placeholder-white/25 outline-none transition-all"
-                  style={{
-                    background: 'rgba(255,255,255,0.05)',
-                    border: '1px solid rgba(255,255,255,0.1)',
-                  }}
-                  onFocus={e => (e.target.style.borderColor = `rgba(214,178,94,0.5)`)}
-                  onBlur={e => (e.target.style.borderColor = 'rgba(255,255,255,0.1)')}
-                />
-              </div>
             )}
 
-            {/* Submit */}
+            {mode === 'signup' && (
+              <InputField
+                type={showPw ? 'text' : 'password'} value={confirm} onChange={setConfirm}
+                placeholder="Confirm password" icon={<Lock size={14} />}
+              />
+            )}
+
+            {/* Forgot password link */}
+            {mode === 'signin' && (
+              <button type="button" onClick={() => switchMode('forgot')}
+                style={{ alignSelf: 'flex-end', fontSize: 12, color: 'rgba(255,255,255,0.35)', background: 'none', border: 'none', cursor: 'pointer', padding: 0, transition: 'color 0.15s', marginTop: -2 }}
+                onMouseEnter={e => (e.currentTarget.style.color = GOLD)}
+                onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.35)')}
+              >
+                Forgot password?
+              </button>
+            )}
+
             <button
               type="submit"
               disabled={loading || googleLoading}
-              className="w-full py-2.5 rounded-xl text-sm font-bold transition-all mt-1 flex items-center justify-center gap-2"
               style={{
-                background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`,
-                color: '#0d0d0d',
-                opacity: loading || googleLoading ? 0.7 : 1,
+                marginTop: 6, width: '100%', padding: '12px 16px',
+                borderRadius: 12, fontSize: 13, fontWeight: 700,
+                background: `linear-gradient(135deg, ${GOLD_D} 0%, ${GOLD} 50%, ${GOLD_L} 100%)`,
+                color: '#0d0d0d', border: 'none', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                opacity: loading || googleLoading ? 0.65 : 1,
+                transition: 'opacity 0.15s, transform 0.15s, box-shadow 0.15s',
+                boxShadow: `0 4px 20px ${GOLD}30`,
               }}
+              onMouseEnter={e => { if (!loading) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = `0 8px 24px ${GOLD}45`; } }}
+              onMouseLeave={e => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = `0 4px 20px ${GOLD}30`; }}
             >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {mode === 'signin' ? 'Sign In' : 'Create Account'}
+              {loading
+                ? <Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} />
+                : <ArrowRight size={15} />
+              }
+              {mode === 'signin' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
             </button>
           </form>
 
           {/* Switch mode */}
-          <p className="mt-5 text-center text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
-            {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
-            <button
-              onClick={() => switchMode(mode === 'signin' ? 'signup' : 'signin')}
-              className="font-semibold transition-colors"
-              style={{ color: GOLD }}
-              onMouseEnter={e => ((e.currentTarget as HTMLElement).style.color = GOLD_L)}
-              onMouseLeave={e => ((e.currentTarget as HTMLElement).style.color = GOLD)}
-            >
-              {mode === 'signin' ? 'Sign up' : 'Sign in'}
-            </button>
+          <p style={{ marginTop: 20, textAlign: 'center', fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>
+            {mode === 'signin' ? (
+              <>Don't have an account?{' '}
+                <SwitchBtn onClick={() => switchMode('signup')}>Sign up free</SwitchBtn>
+              </>
+            ) : mode === 'signup' ? (
+              <>Already have an account?{' '}
+                <SwitchBtn onClick={() => switchMode('signin')}>Sign in</SwitchBtn>
+              </>
+            ) : (
+              <SwitchBtn onClick={() => switchMode('signin')}>← Back to sign in</SwitchBtn>
+            )}
           </p>
         </div>
       </div>
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
+  );
+}
+
+function InputField({ type, value, onChange, placeholder, icon, suffix }: {
+  type: string; value: string; onChange: (v: string) => void;
+  placeholder: string; icon: React.ReactNode; suffix?: React.ReactNode;
+}) {
+  const [focused, setFocused] = useState(false);
+  return (
+    <div style={{
+      position: 'relative', display: 'flex', alignItems: 'center',
+      background: focused ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)',
+      border: `1px solid ${focused ? 'rgba(214,178,94,0.45)' : 'rgba(255,255,255,0.09)'}`,
+      borderRadius: 12, transition: 'border-color 0.15s, background 0.15s',
+    }}>
+      <span style={{ position: 'absolute', left: 12, color: focused ? '#D6B25E' : 'rgba(255,255,255,0.25)', transition: 'color 0.15s', display: 'flex', pointerEvents: 'none' }}>
+        {icon}
+      </span>
+      <input
+        type={type} value={value} onChange={e => onChange(e.target.value)}
+        placeholder={placeholder} required
+        onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
+        style={{
+          flex: 1, paddingLeft: 36, paddingRight: suffix ? 36 : 14,
+          paddingTop: 11, paddingBottom: 11,
+          fontSize: 13, color: 'white', background: 'transparent',
+          border: 'none', outline: 'none',
+        }}
+      />
+      {suffix && (
+        <span style={{ position: 'absolute', right: 12, display: 'flex', alignItems: 'center' }}>
+          {suffix}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function SwitchBtn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      style={{ color: '#D6B25E', fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, padding: 0, transition: 'color 0.15s' }}
+      onMouseEnter={e => (e.currentTarget.style.color = '#F0D27C')}
+      onMouseLeave={e => (e.currentTarget.style.color = '#D6B25E')}
+    >
+      {children}
+    </button>
   );
 }
