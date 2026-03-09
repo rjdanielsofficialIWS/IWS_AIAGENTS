@@ -649,6 +649,295 @@ function RepurposePostSelector({ posts, onUsePost }: {
   );
 }
 
+// ─── TextRepurposeModal ───────────────────────────────────────────────────────
+// Dedicated modal for generating Twitter/X + LinkedIn text posts from a video
+// or description. Users post directly from here — no media, text only.
+
+function TextRepurposeModal({ open, onClose, integrations }: {
+  open: boolean; onClose: () => void; integrations: PostizIntegration[];
+}) {
+  const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
+  const [description, setDescription] = useState('');
+  const [tone, setTone]               = useState('');
+  const [videoFile, setVideoFile]     = useState<File | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [posts, setPosts]             = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
+  const [posting, setPosting]         = useState(false);
+  const [postResult, setPostResult]   = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const reset = () => {
+    setDescription(''); setTone(''); setVideoFile(null);
+    setPosts(null); setError(null); setPostResult(null);
+  };
+
+  useEffect(() => { if (!open) reset(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleGenerate = async () => {
+    setLoading(true); setError(null); setPosts(null); setPostResult(null);
+    try {
+      let source = '';
+      if (captionMode === 'from_video') {
+        if (!videoFile) throw new Error('Select a video first');
+        source = await transcribeVideo(videoFile);
+      } else {
+        if (!description.trim()) throw new Error('Enter a description of your video');
+        source = description;
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'repurpose_posts',
+          transcript: captionMode === 'from_video' ? source : undefined,
+          description: captionMode !== 'from_video' ? source : undefined,
+          tone,
+        }),
+      });
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json();
+      if (!data.posts) throw new Error('No posts returned');
+      setPosts(data.posts);
+    } catch (e: any) { setError(e.message || 'Something went wrong'); }
+    finally { setLoading(false); }
+  };
+
+  // Find the X and LinkedIn integrations
+  const xIntegration      = integrations.find(i => ['x', 'twitter'].includes((i.profile || i.identifier || '').toLowerCase()));
+  const linkedInIntegration = integrations.find(i => (i.profile || i.identifier || '').toLowerCase().startsWith('linkedin'));
+
+  const handlePost = async (platform: 'twitter' | 'linkedin', text: string) => {
+    const integration = platform === 'twitter' ? xIntegration : linkedInIntegration;
+    if (!integration) {
+      setPostResult({ ok: false, msg: `No ${platform === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected` });
+      return;
+    }
+    setPosting(true); setPostResult(null);
+    try {
+      await ayrsharePost(integration.userId || '', {
+        platforms: [platform === 'twitter' ? 'x' : 'linkedin'],
+        post: text,
+      });
+      setPostResult({ ok: true, msg: `Posted to ${platform === 'twitter' ? 'Twitter/X' : 'LinkedIn'}!` });
+    } catch (e: any) {
+      setPostResult({ ok: false, msg: e.message || 'Post failed' });
+    } finally { setPosting(false); }
+  };
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[92vh]"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              <span>🐦</span> Repurpose for Twitter/X & LinkedIn
+            </h2>
+            <p className="text-xs text-white/40 mt-0.5">Generate 10 text posts per platform · edit · post directly</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          {!posts ? (
+            <>
+              {/* Source toggle */}
+              <div className="flex gap-2">
+                {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                  <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-xl text-xs font-bold border transition"
+                    style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {captionMode === 'from_video' && (
+                !videoFile ? (
+                  <label className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                    <Video className="w-7 h-7 text-white/25" />
+                    <span className="text-sm text-white/40">Click to select your talking video</span>
+                    <span className="text-xs text-white/25">Audio is extracted locally — no full upload needed</span>
+                    <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
+                  </label>
+                ) : (
+                  <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                    <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
+                    <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                )
+              )}
+
+              {captionMode === 'from_description' && (
+                <textarea value={description} onChange={e => setDescription(e.target.value)}
+                  placeholder="Describe your video — what you talked about, main points, key takeaways, your offer…" rows={4}
+                  className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+              )}
+
+              <input value={tone} onChange={e => setTone(e.target.value)}
+                placeholder="Tone (optional): casual, alex hormozi, luxury, professional, funny…"
+                className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+
+              {error && <div className="text-xs text-red-300 px-1">{error}</div>}
+
+              <button onClick={handleGenerate} disabled={loading}
+                className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+                style={{ background: GOLD, color: '#000' }}>
+                {loading
+                  ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing Posts…'}</span>
+                  : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate 10 Posts Each</span>}
+              </button>
+
+              {/* Platform availability notice */}
+              <div className="flex gap-2">
+                {(['twitter', 'linkedin'] as const).map(p => {
+                  const connected = p === 'twitter' ? !!xIntegration : !!linkedInIntegration;
+                  return (
+                    <div key={p} className="flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs"
+                      style={{ borderColor: BORDER, color: connected ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)' }}>
+                      <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-400' : 'bg-white/20'}`} />
+                      {p === 'twitter' ? '𝕏 Twitter/X' : 'in LinkedIn'}
+                      <span className="ml-auto text-white/25">{connected ? 'connected' : 'not connected'}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Generated posts */}
+              <TextRepurposeResults
+                posts={posts}
+                xIntegration={xIntegration}
+                linkedInIntegration={linkedInIntegration}
+                onPost={handlePost}
+                posting={posting}
+                postResult={postResult}
+              />
+              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+                ↺ Generate New Posts
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TextRepurposeResults ─────────────────────────────────────────────────────
+
+function TextRepurposeResults({ posts, xIntegration, linkedInIntegration, onPost, posting, postResult }: {
+  posts: { twitter: string[]; linkedin: string[] };
+  xIntegration: PostizIntegration | undefined;
+  linkedInIntegration: PostizIntegration | undefined;
+  onPost: (platform: 'twitter' | 'linkedin', text: string) => void;
+  posting: boolean;
+  postResult: { ok: boolean; msg: string } | null;
+}) {
+  const [tab, setTab] = useState<'twitter' | 'linkedin'>('twitter');
+  const [editedPosts, setEditedPosts] = useState({
+    twitter: [...(posts.twitter || [])],
+    linkedin: [...(posts.linkedin || [])],
+  });
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [editingIdx, setEditingIdx]   = useState<number | null>(null);
+  const currentList = editedPosts[tab];
+  const hasConnection = tab === 'twitter' ? !!xIntegration : !!linkedInIntegration;
+
+  const handleEdit = (idx: number, val: string) => {
+    setEditedPosts(prev => ({ ...prev, [tab]: prev[tab].map((p, i) => i === idx ? val : p) }));
+  };
+
+  return (
+    <div className="space-y-3">
+      {/* Platform tabs */}
+      <div className="flex gap-2">
+        {(['twitter', 'linkedin'] as const).map(t => (
+          <button key={t} onClick={() => { setTab(t); setSelectedIdx(null); setEditingIdx(null); }}
+            className="flex-1 py-2 rounded-xl text-xs font-bold border transition"
+            style={{ borderColor: tab === t ? GOLD : BORDER, background: tab === t ? `${GOLD}18` : 'transparent', color: tab === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+            {t === 'twitter' ? `𝕏 Twitter/X (${editedPosts.twitter.length})` : `in LinkedIn (${editedPosts.linkedin.length})`}
+          </button>
+        ))}
+      </div>
+
+      <div className="text-xs text-white/25 px-0.5">Tap to select · tap again to edit · then post directly</div>
+
+      {/* Post list */}
+      <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+        {currentList.map((post, idx) => {
+          const isSelected = selectedIdx === idx;
+          const isEditing  = editingIdx === idx;
+          return (
+            <div key={idx} className="rounded-xl border overflow-hidden transition-all"
+              style={{ borderColor: isSelected ? GOLD : BORDER, background: isSelected ? `${GOLD}08` : 'rgba(0,0,0,0.2)' }}>
+              <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
+                <button onClick={() => { setSelectedIdx(idx === selectedIdx ? null : idx); setEditingIdx(null); }}
+                  className="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
+                  style={{ borderColor: isSelected ? GOLD : 'rgba(255,255,255,0.2)', background: isSelected ? GOLD : 'transparent' }}>
+                  {isSelected && <CheckCircle2 className="w-3 h-3 text-black" />}
+                </button>
+                <span className="text-xs text-white/25 font-bold">#{idx + 1}</span>
+                <span className="text-xs text-white/20 ml-1">{post.length} chars</span>
+                <div className="flex-1" />
+                <button onClick={() => setEditingIdx(isEditing ? null : idx)}
+                  className="text-xs px-2 py-0.5 rounded-md transition hover:bg-white/10"
+                  style={{ color: isEditing ? GOLD : 'rgba(255,255,255,0.25)' }}>
+                  {isEditing ? 'Done' : 'Edit'}
+                </button>
+              </div>
+              {isEditing ? (
+                <textarea value={post} onChange={e => handleEdit(idx, e.target.value)}
+                  rows={tab === 'linkedin' ? 6 : 3}
+                  className="w-full px-3 pb-3 bg-transparent text-xs text-white leading-relaxed outline-none resize-none" autoFocus />
+              ) : (
+                <button onClick={() => { setSelectedIdx(idx === selectedIdx ? null : idx); setEditingIdx(null); }}
+                  className="w-full text-left px-3 pb-3 text-xs leading-relaxed"
+                  style={{ color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' }}>
+                  {post}
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Post action */}
+      {selectedIdx !== null && (
+        <div className="space-y-2 pt-1">
+          {!hasConnection && (
+            <div className="text-xs text-amber-400/70 px-1">
+              ⚠️ No {tab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected. Connect one in the Channels section.
+            </div>
+          )}
+          <button
+            onClick={() => onPost(tab, currentList[selectedIdx!])}
+            disabled={posting || !hasConnection}
+            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40 transition hover:brightness-110 flex items-center justify-center gap-2"
+            style={{ background: GOLD, color: '#000' }}>
+            {posting
+              ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
+              : <><Send className="w-4 h-4" /> Post Now to {tab === 'twitter' ? 'Twitter/X' : 'LinkedIn'}</>}
+          </button>
+          {postResult && (
+            <div className={`text-xs px-2 py-2 rounded-lg ${postResult.ok ? 'text-green-400' : 'text-red-300'}`}>
+              {postResult.ok ? '✓ ' : '✗ '}{postResult.msg}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── RepurposeIdeasModal ──────────────────────────────────────────────────────
 
 function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -1053,10 +1342,8 @@ function PostComposerModal({
   const [submitOk, setSubmitOk]             = useState(false);
   const [submitError, setSubmitError]       = useState<string | null>(null);
 
-  type AiTab = 'captions' | 'repurpose';
   type CaptionMode = 'from_video' | 'from_description';
 
-  const [aiTab, setAiTab]             = useState<AiTab>('captions');
   const [captionMode, setCaptionMode] = useState<CaptionMode>('from_video');
   const [aiTone, setAiTone]           = useState('');
   const [aiDescription, setAiDescription] = useState('');
@@ -1065,7 +1352,6 @@ function PostComposerModal({
   const [transcript, setTranscript]   = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
   const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
-  const [repurposePosts, setRepurposePosts] = useState<any | null>(null);
   const [showAiPanel, setShowAiPanel] = useState(false);
 
   const getSelectedPlatforms = () =>
@@ -1074,7 +1360,7 @@ function PostComposerModal({
       : ['tiktok', 'instagram', 'linkedin', 'x'];
 
   const handleAiGenerate = async () => {
-    setAiLoading(true); setAiError(null); setGeneratedCaptions(null); setRepurposePosts(null);
+    setAiLoading(true); setAiError(null); setGeneratedCaptions(null);
     setTranscript(null);
     try {
       let sourceText = '';
@@ -1090,9 +1376,7 @@ function PostComposerModal({
         if (!aiDescription.trim()) throw new Error('Enter a description of your video');
         sourceText = aiDescription;
       }
-      const mode = aiTab === 'captions'
-        ? (captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description')
-        : 'repurpose_posts';
+      const mode = captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description';
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
@@ -1104,7 +1388,6 @@ function PostComposerModal({
         const first = Object.keys(data.captions)[0];
         if (first) { setContent(data.captions[first]); setActiveCaptionPlatform(first); }
       }
-      if (data.posts) setRepurposePosts(data.posts);
     } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
     finally { setAiLoading(false); }
   };
@@ -1119,7 +1402,7 @@ function PostComposerModal({
       setSubmitOk(false); setSubmitError(null); setExpandedPlatform(null);
       setTranscript(null); setGeneratedCaptions(null);
       setAiError(null); setActiveCaptionPlatform(null);
-      setRepurposePosts(null); setShowAiPanel(false); setAiDescription('');
+      setShowAiPanel(false); setAiDescription('');
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1307,18 +1590,7 @@ function PostComposerModal({
             {showAiPanel && (
               <div className="border-t px-4 pb-4 space-y-4" style={{ borderColor: BORDER }}>
                 <div className="flex gap-2 mt-3">
-                  {(['captions', 'repurpose'] as const).map(tab => (
-                    <button key={tab} onClick={() => setAiTab(tab)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
-                      style={{ borderColor: aiTab === tab ? GOLD : BORDER, background: aiTab === tab ? `${GOLD}18` : 'transparent', color: aiTab === tab ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                      {tab === 'captions' ? '✍️ Caption Generator' : '🐦 Twitter & LinkedIn'}
-                    </button>
-                  ))}
-                </div>
-                {aiTab === 'repurpose' && (
-                  <div className="text-xs text-white/40 px-1">Generates 10 Twitter/X posts + 10 LinkedIn posts. Edit and pick one at a time.</div>
-                )}
-                <div className="flex gap-2">
-                  {([['from_video', aiTab === 'captions' ? '🎙 From Video (talking)' : '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                  {([['from_video', '🎙 From Video (talking)'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                     <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
                       style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
                       {label}
@@ -1372,7 +1644,6 @@ function PostComposerModal({
                     ))}
                   </div>
                 )}
-                {repurposePosts && <RepurposePostSelector posts={repurposePosts} onUsePost={(text) => setContent(text)} />}
               </div>
             )}
           </div>
@@ -1743,9 +2014,9 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
 
 // ─── Sidebar + mobile nav ─────────────────────────────────────────────────────
 
-function Sidebar({ view, setView, integrations, onOpenConnect }: {
+function Sidebar({ view, setView, integrations, onOpenConnect, onOpenTextRepurpose }: {
   view: ViewMode; setView: (v: ViewMode) => void;
-  integrations: PostizIntegration[]; onOpenConnect: () => void;
+  integrations: PostizIntegration[]; onOpenConnect: () => void; onOpenTextRepurpose: () => void;
 }) {
   const navItems = [
     { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
@@ -1775,6 +2046,12 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
               {item.icon} {item.label}
             </button>
           ))}
+          {/* Repurpose button — opens dedicated Twitter/LinkedIn text modal */}
+          <button onClick={onOpenTextRepurpose}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-white/5"
+            style={{ color: 'rgba(255,255,255,0.4)', borderLeft: '2px solid transparent' }}>
+            <RefreshCw className="w-5 h-5" /> Repurpose
+          </button>
         </nav>
         <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: BORDER }}>
           <div className="flex items-center justify-between px-1 mb-2">
@@ -1815,6 +2092,12 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
             <span className="text-[10px] font-bold tracking-wide">{item.label}</span>
           </button>
         ))}
+        <button onClick={onOpenTextRepurpose}
+          className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
+          style={{ color: 'rgba(255,255,255,0.35)' }}>
+          <RefreshCw className="w-5 h-5" />
+          <span className="text-[10px] font-bold tracking-wide">Repurpose</span>
+        </button>
         <button onClick={onOpenConnect}
           className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
           style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
@@ -1935,6 +2218,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [textRepurposeOpen, setTextRepurposeOpen] = useState(false);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
@@ -2116,7 +2400,8 @@ export function MediaDistributionPage() {
       ) : (
         <div className="flex flex-1 overflow-hidden">
           <Sidebar view={view} setView={setView} integrations={integrations}
-            onOpenConnect={() => setConnectModalOpen(true)} />
+            onOpenConnect={() => setConnectModalOpen(true)}
+            onOpenTextRepurpose={() => setTextRepurposeOpen(true)} />
           <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarPanel integrations={integrations} userId={currentUser?.id ?? null} />}
@@ -2130,6 +2415,11 @@ export function MediaDistributionPage() {
         integrationsLoading={integrationsLoading}
         onRefresh={(force) => loadIntegrations(force)}
         currentUser={currentUser}
+      />
+
+      <TextRepurposeModal
+        open={textRepurposeOpen} onClose={() => setTextRepurposeOpen(false)}
+        integrations={integrations}
       />
 
       <MediaMachineAuthModal
