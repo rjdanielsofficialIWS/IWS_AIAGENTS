@@ -136,6 +136,21 @@ async function fetchChannels(userId: string, force = false): Promise<PostizInteg
   return channels.map(ch => ({ ...ch, identifier: ch.identifier || ch.id || '' }));
 }
 
+// Deletes a file from storage (Supabase or R2) by its public URL.
+// Fire-and-forget — errors are logged but never surfaced to the user.
+async function deleteMediaFromStorage(url: string | null | undefined): Promise<void> {
+  if (!url) return;
+  try {
+    await fetch(`${SUPABASE_URL}/functions/v1/delete-media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url }),
+    });
+  } catch (e) {
+    console.warn('[deleteMediaFromStorage] failed silently:', e);
+  }
+}
+
 // Uploads a file to Supabase Storage via the upload-media edge function.
 // Returns the full public URL of the uploaded file.
 // For files >5MB: uses a signed upload URL (browser → Storage directly, no size limit).
@@ -159,19 +174,23 @@ async function uploadViaNativeXHR(
     const signRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'sign', filePath, contentType }),
+      body: JSON.stringify({ action: 'sign', filePath, contentType, fileSize }),
     });
     if (!signRes.ok) {
       const err = await signRes.json().catch(() => ({}));
       throw new Error(err.error || `Failed to get upload URL (${signRes.status})`);
     }
-    const { signedUrl, publicUrl } = await signRes.json();
+    const { signedUrl, publicUrl, provider } = await signRes.json();
 
-    // Step 2: PUT file directly to Storage via the signed URL (no size limit)
+    // Step 2: PUT file directly to storage via the signed URL (no size limit)
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('PUT', signedUrl);
       xhr.setRequestHeader('Content-Type', contentType);
+      // R2 presigned URLs require x-amz-content-sha256 set to UNSIGNED-PAYLOAD
+      if (provider === 'r2') {
+        xhr.setRequestHeader('x-amz-content-sha256', 'UNSIGNED-PAYLOAD');
+      }
       if (onProgress) {
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
@@ -1146,13 +1165,27 @@ function PostComposerModal({
     selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
 
   // ── Reset ──────────────────────────────────────────────────────────────────
-  const fullReset = () => {
+  const fullReset = (skipDelete = false) => {
+    // Delete any uploaded media from storage before wiping state
+    if (!skipDelete) {
+      setVideoUpload(prev => {
+        const url = (prev as any).url;
+        if (url) deleteMediaFromStorage(url);
+        return { status: 'idle' };
+      });
+      setImageUploads(prev => {
+        prev.forEach(u => { const url = (u as any).url; if (url) deleteMediaFromStorage(url); });
+        return [];
+      });
+    } else {
+      setVideoUpload({ status: 'idle' });
+      setImageUploads([]);
+    }
     setPostType('media');
     setSelectedIntegrations([]); setContent('');
     setVideoFile(null);
     setVideoObjectUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
-    setVideoUpload({ status: 'idle' });
-    setImageFiles([]); setImageUploads([]);
+    setImageFiles([]);
     setSubmitOk(false); setSubmitError(null);
     setTranscript(null); setGeneratedCaptions(null);
     setAiError(null);
@@ -1280,6 +1313,13 @@ function PostComposerModal({
         });
         await Promise.all(postPromises);
       }
+
+      // Delete uploaded media from storage now that it's been posted
+      const uploadedMediaUrls: string[] = [];
+      imageUploads.forEach(u => { const url = (u as any).url; if (url) uploadedMediaUrls.push(url); });
+      const videoUrl = (videoUpload as any).url;
+      if (videoUrl) uploadedMediaUrls.push(videoUrl);
+      uploadedMediaUrls.forEach(url => deleteMediaFromStorage(url));
 
       setSubmitOk(true);
       setTimeout(() => { onClose(); onSuccess?.(); }, 1600);
@@ -1425,17 +1465,32 @@ function PostComposerModal({
                 <div className="space-y-3">
                   {videoFile && videoObjectUrl && (
                     <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl} uploadState={videoUpload}
-                      onRemove={() => { URL.revokeObjectURL(videoObjectUrl); setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' }); }} />
+                      onRemove={() => {
+                        URL.revokeObjectURL(videoObjectUrl);
+                        // Delete from storage if already uploaded
+                        const url = (videoUpload as any).url;
+                        if (url) deleteMediaFromStorage(url);
+                        setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' });
+                      }} />
                   )}
                   {imageFiles.length === 1 && (
                     <ImagePreviewCard file={imageFiles[0]} uploadState={imageUploads[0] ?? { status: 'idle' }}
-                      onRemove={() => { setImageFiles([]); setImageUploads([]); }} />
+                      onRemove={() => {
+                        const url = (imageUploads[0] as any)?.url;
+                        if (url) deleteMediaFromStorage(url);
+                        setImageFiles([]); setImageUploads([]);
+                      }} />
                   )}
                   {imageFiles.length > 1 && (
                     <div className="grid grid-cols-2 gap-2">
                       {imageFiles.map((f, i) => (
                         <ImagePreviewCard key={i} file={f} uploadState={imageUploads[i] ?? { status: 'idle' }}
-                          onRemove={() => { setImageFiles(prev => prev.filter((_, xi) => xi !== i)); setImageUploads(prev => prev.filter((_, xi) => xi !== i)); }} />
+                          onRemove={() => {
+                            const url = (imageUploads[i] as any)?.url;
+                            if (url) deleteMediaFromStorage(url);
+                            setImageFiles(prev => prev.filter((_, xi) => xi !== i));
+                            setImageUploads(prev => prev.filter((_, xi) => xi !== i));
+                          }} />
                       ))}
                     </div>
                   )}
