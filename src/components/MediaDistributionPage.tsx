@@ -131,11 +131,15 @@ async function fetchChannels(userId: string, force = false): Promise<PostizInteg
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
-  return Array.isArray(data?.channels) ? data.channels : [];
+  const channels: PostizIntegration[] = Array.isArray(data?.channels) ? data.channels : [];
+  // Normalise: if identifier is empty/missing, fall back to id (the platform slug)
+  return channels.map(ch => ({ ...ch, identifier: ch.identifier || ch.id || '' }));
 }
 
 // Uploads a file to Supabase Storage via the upload-media edge function.
 // Returns the full public URL of the uploaded file.
+// For files >5MB: uses a signed upload URL (browser → Storage directly, no size limit).
+// For files <5MB: direct binary POST through the edge function (legacy path).
 async function uploadViaNativeXHR(
   file: File | Blob,
   kind: 'video' | 'image',
@@ -146,25 +150,62 @@ async function uploadViaNativeXHR(
     : kind === 'video' ? 'mp4' : 'wav';
   const filePath = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
+  const fileSize = file instanceof File ? file.size : (file as Blob).size;
+  const DIRECT_LIMIT = 4 * 1024 * 1024; // 4MB — stay safely under the 6MB edge fn limit
 
+  // ── Large file: get signed URL, upload directly to Storage ────────────────
+  if (fileSize > DIRECT_LIMIT) {
+    // Step 1: ask edge function for a signed upload URL
+    const signRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'sign', filePath, contentType }),
+    });
+    if (!signRes.ok) {
+      const err = await signRes.json().catch(() => ({}));
+      throw new Error(err.error || `Failed to get upload URL (${signRes.status})`);
+    }
+    const { signedUrl, publicUrl } = await signRes.json();
+
+    // Step 2: PUT file directly to Storage via the signed URL (no size limit)
+    return new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', signedUrl);
+      xhr.setRequestHeader('Content-Type', contentType);
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
+        };
+      }
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve(publicUrl);
+        } else {
+          reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`));
+        }
+      };
+      xhr.onerror = () => reject(new Error('Network error during upload'));
+      xhr.send(file);
+    });
+  }
+
+  // ── Small file: direct binary POST through edge function ─────────────────
   return new Promise<string>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open('POST', `${SUPABASE_URL}/functions/v1/upload-media`);
     xhr.setRequestHeader('x-file-path', filePath);
     xhr.setRequestHeader('content-type', contentType);
-
     if (onProgress) {
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
       };
     }
-
     xhr.onload = () => {
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
           if (!data.url) throw new Error('No URL in response');
-          resolve(data.url); // returns full public URL
+          resolve(data.url);
         } catch {
           reject(new Error('Invalid response from upload function'));
         }
@@ -173,7 +214,7 @@ async function uploadViaNativeXHR(
       }
     };
     xhr.onerror = () => reject(new Error('Network error during upload'));
-    xhr.send(file); // send raw binary, not FormData
+    xhr.send(file);
   });
 }
 
@@ -1100,10 +1141,9 @@ function PostComposerModal({
   const setTextCurrent = (v: string) => { if (textTab === 'twitter') setXText(v); else setLinkedinText(v); };
   const textHasConn   = textTab === 'twitter' ? !!xInteg : !!liInteg;
 
+  // Only return the platforms actually selected — no fallback to all platforms
   const getSelectedPlatforms = () =>
-    selectedIntegrations.length > 0
-      ? selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[]
-      : ['tiktok', 'instagram', 'linkedin', 'x'];
+    selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
 
   // ── Reset ──────────────────────────────────────────────────────────────────
   const fullReset = () => {
@@ -1220,14 +1260,16 @@ function PostComposerModal({
 
       if (captionType === 'manual') {
         // Single post to all selected platforms with one caption
-        const platforms = selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
+        const platforms = selectedIntegrations
+          .map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; })
+          .filter(Boolean);
         await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd });
       } else {
         // Per-platform posts — each selected platform gets its own caption
         const postPromises = selectedIntegrations.map(async (integId) => {
           const integ = integrations.find(i => i.id === integId);
           if (!integ) return;
-          const platformId = integ.identifier;
+          const platformId = integ.identifier || integ.id || '';
           // Find caption: try exact match, then case-insensitive, fall back to first available
           const caption = generatedCaptions![platformId]
             ?? generatedCaptions![platformId.toLowerCase()]
