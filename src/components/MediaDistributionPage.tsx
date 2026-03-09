@@ -18,7 +18,7 @@ const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
 // Social media posting delegated to Ayrshare.
-const ORG_ID              = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6'; // eslint-disable-line @typescript-eslint/no-unused-vars
+const ORG_ID              = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
@@ -104,47 +104,24 @@ function generateState() {
   return Array.from(a, b => b.toString(16).padStart(2, '0')).join('');
 }
 
-// ─── AUTH FIX: getLiveAuth reads the live JWT at call time ────────────────────
-// This fixes the "userId is required" error. Previously ayrsharePost took a
-// userId string that could be stale or wrong. Now we always read the live
-// Supabase session token and send it as an Authorization: Bearer header.
-// The edge function (ayrshare-post v2) reads this header and verifies the real user.
-async function getLiveAuth(): Promise<{ token: string; userId: string } | null> {
-  try {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (session?.access_token && session?.user?.id) {
-      return { token: session.access_token, userId: session.user.id };
-    }
-  } catch {}
-  return null;
-}
-
-// FIXED: ayrsharePost no longer takes userId as a parameter — it reads the live
-// JWT at call time and sends it as Authorization: Bearer header. This prevents
-// stale/wrong userId from being used.
-async function ayrsharePost(payload: {
+async function ayrsharePost(userId: string, payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
 }) {
-  const auth = await getLiveAuth();
-  if (!auth) throw new Error('Not authenticated. Please sign in again.');
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+  const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-post', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${auth.token}`,
-    },
-    body: JSON.stringify({ userId: auth.userId, ...payload }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ userId, ...payload }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || err.hint || `Post failed (${res.status})`);
+    throw new Error(err.error || `Post failed (${res.status})`);
   }
   return res.json();
 }
 
 async function fetchChannels(userId: string, force = false): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const url = `${SUPABASE_URL}/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
+  const url = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
@@ -489,7 +466,7 @@ function ConnectAccountsModal({
       // Step 2: Call the edge function as a POST with the JWT in the Authorization header.
       // The server verifies the JWT and looks up the correct Ayrshare profile.
       // We get back a connectUrl (the Ayrshare OAuth URL for this specific user).
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
+      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -673,78 +650,106 @@ function RepurposePostSelector({ posts, onUsePost }: {
 }
 
 // ─── TextRepurposeModal ───────────────────────────────────────────────────────
-// Dedicated modal for generating Twitter/X + LinkedIn text posts from a video
-// or description. Users post directly from here — no media, text only.
+// Modal for composing and posting X (Twitter) + LinkedIn text-only posts.
+// Users type manually by default; AI generation is a collapsible option.
+// Supports both "Post Now" and scheduled posting.
 
 function TextRepurposeModal({ open, onClose, integrations }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
 }) {
-  const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
-  const [description, setDescription] = useState('');
-  const [tone, setTone]               = useState('');
-  const [videoFile, setVideoFile]     = useState<File | null>(null);
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState<string | null>(null);
-  const [posts, setPosts]             = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
-  const [posting, setPosting]         = useState(false);
-  const [postResult, setPostResult]   = useState<{ ok: boolean; msg: string } | null>(null);
+  // Manual compose state
+  const [tab, setTab]                   = useState<'twitter' | 'linkedin'>('twitter');
+  const [xText, setXText]               = useState('');
+  const [linkedinText, setLinkedinText] = useState('');
+  const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now');
+  const [scheduleDateStr, setScheduleDate] = useState(() => {
+    const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  });
+  const [posting, setPosting]           = useState(false);
+  const [postOk, setPostOk]             = useState(false);
+  const [postError, setPostError]       = useState<string | null>(null);
+
+  // AI generation state (collapsible)
+  const [showAi, setShowAi]             = useState(false);
+  const [aiMode, setAiMode]             = useState<'from_video' | 'from_description'>('from_description');
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiTone, setAiTone]             = useState('');
+  const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [aiLoading, setAiLoading]       = useState(false);
+  const [aiError, setAiError]           = useState<string | null>(null);
+  const [aiPosts, setAiPosts]           = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
+  const [aiSelectedIdx, setAiSelectedIdx] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
 
   const reset = () => {
-    setDescription(''); setTone(''); setVideoFile(null);
-    setPosts(null); setError(null); setPostResult(null);
+    setXText(''); setLinkedinText(''); setPostOk(false); setPostError(null);
+    setAiDescription(''); setAiTone(''); setVideoFile(null); setAiPosts(null);
+    setAiError(null); setAiSelectedIdx({ twitter: null, linkedin: null }); setShowAi(false);
   };
 
   useEffect(() => { if (!open) reset(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleGenerate = async () => {
-    setLoading(true); setError(null); setPosts(null); setPostResult(null);
+  const xIntegration        = integrations.find(i => ['x', 'twitter'].includes((i.profile || i.identifier || '').toLowerCase()));
+  const linkedInIntegration = integrations.find(i => (i.profile || i.identifier || '').toLowerCase().startsWith('linkedin'));
+  const currentText    = tab === 'twitter' ? xText : linkedinText;
+  const setCurrentText = (v: string) => { if (tab === 'twitter') setXText(v); else setLinkedinText(v); };
+  const hasConnection  = tab === 'twitter' ? !!xIntegration : !!linkedInIntegration;
+
+  // ── AI generation ──────────────────────────────────────────────────────────
+  const handleAiGenerate = async () => {
+    setAiLoading(true); setAiError(null); setAiPosts(null);
+    setAiSelectedIdx({ twitter: null, linkedin: null });
     try {
       let source = '';
-      if (captionMode === 'from_video') {
+      if (aiMode === 'from_video') {
         if (!videoFile) throw new Error('Select a video first');
         source = await transcribeVideo(videoFile);
       } else {
-        if (!description.trim()) throw new Error('Enter a description of your video');
-        source = description;
+        if (!aiDescription.trim()) throw new Error('Enter a description');
+        source = aiDescription;
       }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           mode: 'repurpose_posts',
-          transcript: captionMode === 'from_video' ? source : undefined,
-          description: captionMode !== 'from_video' ? source : undefined,
-          tone,
+          transcript: aiMode === 'from_video' ? source : undefined,
+          description: aiMode !== 'from_video' ? source : undefined,
+          tone: aiTone,
         }),
       });
       if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
       if (!data.posts) throw new Error('No posts returned');
-      setPosts(data.posts);
-    } catch (e: any) { setError(e.message || 'Something went wrong'); }
-    finally { setLoading(false); }
+      setAiPosts(data.posts);
+    } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
+    finally { setAiLoading(false); }
   };
 
-  // Find the X and LinkedIn integrations
-  const xIntegration      = integrations.find(i => ['x', 'twitter'].includes((i.profile || i.identifier || '').toLowerCase()));
-  const linkedInIntegration = integrations.find(i => (i.profile || i.identifier || '').toLowerCase().startsWith('linkedin'));
+  const useAiPost = (platform: 'twitter' | 'linkedin', idx: number) => {
+    const text = aiPosts?.[platform]?.[idx] ?? '';
+    if (platform === 'twitter') setXText(text); else setLinkedinText(text);
+    setAiSelectedIdx(prev => ({ ...prev, [platform]: idx }));
+    setTab(platform); // switch composer tab to match
+  };
 
-  // FIXED: uses getLiveAuth() via ayrsharePost() — no longer relies on integration.userId
-  // which was undefined and causing "userId is required" errors.
-  const handlePost = async (platform: 'twitter' | 'linkedin', text: string) => {
-    const integration = platform === 'twitter' ? xIntegration : linkedInIntegration;
-    if (!integration) {
-      setPostResult({ ok: false, msg: `No ${platform === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected` });
-      return;
-    }
-    setPosting(true); setPostResult(null);
+  // ── Posting ────────────────────────────────────────────────────────────────
+  const handlePost = async () => {
+    const text = tab === 'twitter' ? xText : linkedinText;
+    if (!text.trim())    { setPostError('Write something first.'); return; }
+    if (!hasConnection)  { setPostError(`No ${tab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected.`); return; }
+    setPosting(true); setPostError(null); setPostOk(false);
     try {
+      const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
       await ayrsharePost({
-        platforms: [platform === 'twitter' ? 'x' : 'linkedin'],
+        platforms: [tab === 'twitter' ? 'x' : 'linkedin'],
         post: text,
+        scheduleDate: sd,
       });
-      setPostResult({ ok: true, msg: `Posted to ${platform === 'twitter' ? 'Twitter/X' : 'LinkedIn'}!` });
+      setPostOk(true);
+      if (tab === 'twitter') setXText(''); else setLinkedinText('');
+      setTimeout(() => setPostOk(false), 3000);
     } catch (e: any) {
-      setPostResult({ ok: false, msg: e.message || 'Post failed' });
+      setPostError(e.message || 'Post failed');
     } finally { setPosting(false); }
   };
 
@@ -760,9 +765,9 @@ function TextRepurposeModal({ open, onClose, integrations }: {
         <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <span>🐦</span> Repurpose for Twitter/X & LinkedIn
+              <span>✍️</span> Post to X & LinkedIn
             </h2>
-            <p className="text-xs text-white/40 mt-0.5">Generate 10 text posts per platform · edit · post directly</p>
+            <p className="text-xs text-white/40 mt-0.5">Write or AI-generate text posts for X (Twitter) and LinkedIn</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <X className="w-4 h-4" />
@@ -770,195 +775,182 @@ function TextRepurposeModal({ open, onClose, integrations }: {
         </div>
 
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          {!posts ? (
-            <>
-              {/* Source toggle */}
-              <div className="flex gap-2">
-                {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-                  <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-xl text-xs font-bold border transition"
-                    style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                    {label}
-                  </button>
-                ))}
+
+          {/* Platform tabs */}
+          <div className="flex gap-2">
+            {(['twitter', 'linkedin'] as const).map(p => {
+              const connected = p === 'twitter' ? !!xIntegration : !!linkedInIntegration;
+              return (
+                <button key={p} onClick={() => { setTab(p); setPostOk(false); setPostError(null); }}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2"
+                  style={{ borderColor: tab === p ? GOLD : BORDER, background: tab === p ? `${GOLD}18` : 'transparent', color: tab === p ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                  {p === 'twitter' ? '𝕏 Twitter/X' : 'in LinkedIn'}
+                  <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-400' : 'bg-white/15'}`} />
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Manual compose — primary, always visible */}
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+            <textarea
+              value={currentText}
+              onChange={e => setCurrentText(e.target.value)}
+              placeholder={tab === 'twitter'
+                ? 'Write your X (Twitter) post here…'
+                : 'Write your LinkedIn post here…'}
+              rows={tab === 'linkedin' ? 7 : 4}
+              className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+            />
+            <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+              <span className="text-xs text-white/20">{currentText.length} chars</span>
+              {tab === 'twitter' && currentText.length > 280 && (
+                <span className="text-xs text-red-400 font-bold">Over X character limit</span>
+              )}
+            </div>
+          </div>
+
+          {/* AI Generate (collapsible) */}
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+            <button onClick={() => setShowAi(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Generate Posts</span>
               </div>
+              <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showAi ? 'rotate-90' : ''}`} />
+            </button>
+            {showAi && (
+              <div className="border-t px-4 pb-4 space-y-3" style={{ borderColor: BORDER }}>
+                <p className="text-xs text-white/35 pt-3">Generates 10 post ideas per platform. Click any post to drop it into the composer above.</p>
 
-              {captionMode === 'from_video' && (
-                !videoFile ? (
-                  <label className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
-                    <Video className="w-7 h-7 text-white/25" />
-                    <span className="text-sm text-white/40">Click to select your talking video</span>
-                    <span className="text-xs text-white/25">Audio is extracted locally — no full upload needed</span>
-                    <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
-                  </label>
-                ) : (
-                  <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                    <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
-                    <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
-                  </div>
-                )
-              )}
+                <div className="flex gap-2">
+                  {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => setAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                      style={{ borderColor: aiMode === m ? GOLD : BORDER, background: aiMode === m ? `${GOLD}12` : 'transparent', color: aiMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
 
-              {captionMode === 'from_description' && (
-                <textarea value={description} onChange={e => setDescription(e.target.value)}
-                  placeholder="Describe your video — what you talked about, main points, key takeaways, your offer…" rows={4}
-                  className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-              )}
-
-              <input value={tone} onChange={e => setTone(e.target.value)}
-                placeholder="Tone (optional): casual, alex hormozi, luxury, professional, funny…"
-                className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-
-              {error && <div className="text-xs text-red-300 px-1">{error}</div>}
-
-              <button onClick={handleGenerate} disabled={loading}
-                className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-                style={{ background: GOLD, color: '#000' }}>
-                {loading
-                  ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing Posts…'}</span>
-                  : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate 10 Posts Each</span>}
-              </button>
-
-              {/* Platform availability notice */}
-              <div className="flex gap-2">
-                {(['twitter', 'linkedin'] as const).map(p => {
-                  const connected = p === 'twitter' ? !!xIntegration : !!linkedInIntegration;
-                  return (
-                    <div key={p} className="flex-1 flex items-center gap-1.5 px-3 py-2 rounded-lg border text-xs"
-                      style={{ borderColor: BORDER, color: connected ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)' }}>
-                      <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-400' : 'bg-white/20'}`} />
-                      {p === 'twitter' ? '𝕏 Twitter/X' : 'in LinkedIn'}
-                      <span className="ml-auto text-white/25">{connected ? 'connected' : 'not connected'}</span>
+                {aiMode === 'from_video' && (
+                  !videoFile ? (
+                    <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                      <Video className="w-6 h-6 text-white/25" />
+                      <span className="text-xs text-white/40">Click to select your talking video</span>
+                      <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                      <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
+                      <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
                     </div>
-                  );
-                })}
+                  )
+                )}
+
+                {aiMode === 'from_description' && (
+                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
+                    placeholder="Describe what you want to post about — topic, key points, your offer…" rows={3}
+                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+                )}
+
+                <input value={aiTone} onChange={e => setAiTone(e.target.value)}
+                  placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
+                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+
+                {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
+
+                <button onClick={handleAiGenerate} disabled={aiLoading}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                  style={{ background: GOLD, color: '#000' }}>
+                  {aiLoading
+                    ? <><Loader className="w-3.5 h-3.5 animate-spin" />{aiMode === 'from_video' ? 'Transcribing & Writing…' : 'Generating…'}</>
+                    : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
+                </button>
+
+                {aiPosts && (
+                  <div className="space-y-2 pt-1">
+                    <div className="flex gap-2">
+                      {(['twitter', 'linkedin'] as const).map(p => (
+                        <button key={p} onClick={() => setTab(p)}
+                          className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
+                          style={{ borderColor: tab === p ? GOLD : BORDER, background: tab === p ? `${GOLD}15` : 'transparent', color: tab === p ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                          {p === 'twitter' ? `𝕏 (${aiPosts.twitter.length})` : `LinkedIn (${aiPosts.linkedin.length})`}
+                        </button>
+                      ))}
+                    </div>
+                    <div className="text-xs text-white/25">Click a post to load it into the composer above ↑</div>
+                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                      {(aiPosts[tab] || []).map((post, idx) => {
+                        const isSelected = aiSelectedIdx[tab] === idx;
+                        return (
+                          <button key={idx} onClick={() => useAiPost(tab, idx)}
+                            className="w-full text-left px-3 py-2.5 rounded-xl border text-xs leading-relaxed transition"
+                            style={{ borderColor: isSelected ? GOLD : BORDER, background: isSelected ? `${GOLD}10` : 'rgba(0,0,0,0.2)', color: isSelected ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-white/20 font-bold">#{idx + 1}</span>
+                              <span className="text-white/15">{post.length} chars</span>
+                              {isSelected && <span className="ml-auto text-xs font-bold" style={{ color: GOLD }}>✓ In use</span>}
+                            </div>
+                            {post}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
-            </>
-          ) : (
-            <>
-              {/* Generated posts */}
-              <TextRepurposeResults
-                posts={posts}
-                xIntegration={xIntegration}
-                linkedInIntegration={linkedInIntegration}
-                onPost={handlePost}
-                posting={posting}
-                postResult={postResult}
-              />
-              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
-                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-                ↺ Generate New Posts
-              </button>
-            </>
+            )}
+          </div>
+
+          {/* Schedule / Post Now */}
+          <div>
+            <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
+            <div className="flex gap-2 mb-3">
+              {(['now', 'schedule'] as const).map(t => (
+                <button key={t} onClick={() => setScheduleType(t)} className="px-4 py-2 rounded-xl text-sm font-bold border transition"
+                  style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                  {t === 'now' ? '⚡ Post Now' : '🗓 Schedule'}
+                </button>
+              ))}
+            </div>
+            {scheduleType === 'schedule' && (
+              <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
+                className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER }} />
+            )}
+          </div>
+
+          {postError && (
+            <div className="flex items-start gap-2 p-3 rounded-xl border text-xs text-red-200"
+              style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
+              <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {postError}
+            </div>
+          )}
+
+          {!hasConnection && (
+            <div className="text-xs text-amber-400/70 flex items-center gap-1.5 px-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              No {tab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected — add one in Channels.
+            </div>
           )}
         </div>
-      </div>
-    </div>
-  );
-}
 
-// ─── TextRepurposeResults ─────────────────────────────────────────────────────
-
-function TextRepurposeResults({ posts, xIntegration, linkedInIntegration, onPost, posting, postResult }: {
-  posts: { twitter: string[]; linkedin: string[] };
-  xIntegration: PostizIntegration | undefined;
-  linkedInIntegration: PostizIntegration | undefined;
-  onPost: (platform: 'twitter' | 'linkedin', text: string) => void;
-  posting: boolean;
-  postResult: { ok: boolean; msg: string } | null;
-}) {
-  const [tab, setTab] = useState<'twitter' | 'linkedin'>('twitter');
-  const [editedPosts, setEditedPosts] = useState({
-    twitter: [...(posts.twitter || [])],
-    linkedin: [...(posts.linkedin || [])],
-  });
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [editingIdx, setEditingIdx]   = useState<number | null>(null);
-  const currentList = editedPosts[tab];
-  const hasConnection = tab === 'twitter' ? !!xIntegration : !!linkedInIntegration;
-
-  const handleEdit = (idx: number, val: string) => {
-    setEditedPosts(prev => ({ ...prev, [tab]: prev[tab].map((p, i) => i === idx ? val : p) }));
-  };
-
-  return (
-    <div className="space-y-3">
-      {/* Platform tabs */}
-      <div className="flex gap-2">
-        {(['twitter', 'linkedin'] as const).map(t => (
-          <button key={t} onClick={() => { setTab(t); setSelectedIdx(null); setEditingIdx(null); }}
-            className="flex-1 py-2 rounded-xl text-xs font-bold border transition"
-            style={{ borderColor: tab === t ? GOLD : BORDER, background: tab === t ? `${GOLD}18` : 'transparent', color: tab === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-            {t === 'twitter' ? `𝕏 Twitter/X (${editedPosts.twitter.length})` : `in LinkedIn (${editedPosts.linkedin.length})`}
-          </button>
-        ))}
-      </div>
-
-      <div className="text-xs text-white/25 px-0.5">Tap to select · tap again to edit · then post directly</div>
-
-      {/* Post list */}
-      <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-        {currentList.map((post, idx) => {
-          const isSelected = selectedIdx === idx;
-          const isEditing  = editingIdx === idx;
-          return (
-            <div key={idx} className="rounded-xl border overflow-hidden transition-all"
-              style={{ borderColor: isSelected ? GOLD : BORDER, background: isSelected ? `${GOLD}08` : 'rgba(0,0,0,0.2)' }}>
-              <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
-                <button onClick={() => { setSelectedIdx(idx === selectedIdx ? null : idx); setEditingIdx(null); }}
-                  className="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
-                  style={{ borderColor: isSelected ? GOLD : 'rgba(255,255,255,0.2)', background: isSelected ? GOLD : 'transparent' }}>
-                  {isSelected && <CheckCircle2 className="w-3 h-3 text-black" />}
-                </button>
-                <span className="text-xs text-white/25 font-bold">#{idx + 1}</span>
-                <span className="text-xs text-white/20 ml-1">{post.length} chars</span>
-                <div className="flex-1" />
-                <button onClick={() => setEditingIdx(isEditing ? null : idx)}
-                  className="text-xs px-2 py-0.5 rounded-md transition hover:bg-white/10"
-                  style={{ color: isEditing ? GOLD : 'rgba(255,255,255,0.25)' }}>
-                  {isEditing ? 'Done' : 'Edit'}
-                </button>
-              </div>
-              {isEditing ? (
-                <textarea value={post} onChange={e => handleEdit(idx, e.target.value)}
-                  rows={tab === 'linkedin' ? 6 : 3}
-                  className="w-full px-3 pb-3 bg-transparent text-xs text-white leading-relaxed outline-none resize-none" autoFocus />
-              ) : (
-                <button onClick={() => { setSelectedIdx(idx === selectedIdx ? null : idx); setEditingIdx(null); }}
-                  className="w-full text-left px-3 pb-3 text-xs leading-relaxed"
-                  style={{ color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' }}>
-                  {post}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Post action */}
-      {selectedIdx !== null && (
-        <div className="space-y-2 pt-1">
-          {!hasConnection && (
-            <div className="text-xs text-amber-400/70 px-1">
-              ⚠️ No {tab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected. Connect one in the Channels section.
-            </div>
-          )}
-          <button
-            onClick={() => onPost(tab, currentList[selectedIdx!])}
-            disabled={posting || !hasConnection}
-            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-40 transition hover:brightness-110 flex items-center justify-center gap-2"
-            style={{ background: GOLD, color: '#000' }}>
+        {/* Footer post button */}
+        <div className="px-6 py-4 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: BORDER }}>
+          <span className="text-xs text-white/25">
+            {currentText.length > 0 ? `${currentText.length} chars` : 'Nothing written yet'}
+          </span>
+          <button onClick={handlePost} disabled={posting || postOk || !hasConnection || !currentText.trim()}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-40 transition hover:brightness-110"
+            style={{ background: postOk ? '#22c55e' : GOLD, color: '#000' }}>
             {posting
               ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
-              : <><Send className="w-4 h-4" /> Post Now to {tab === 'twitter' ? 'Twitter/X' : 'LinkedIn'}</>}
+              : postOk
+                ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
+                : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${tab === 'twitter' ? 'X' : 'LinkedIn'}` : `Post to ${tab === 'twitter' ? 'X' : 'LinkedIn'}`}</>}
           </button>
-          {postResult && (
-            <div className={`text-xs px-2 py-2 rounded-lg ${postResult.ok ? 'text-green-400' : 'text-red-300'}`}>
-              {postResult.ok ? '✓ ' : '✗ '}{postResult.msg}
-            </div>
-          )}
         </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -1465,9 +1457,6 @@ function PostComposerModal({
     }
   };
 
-  // FIXED: handleSubmit now uses getLiveAuth() via ayrsharePost() instead of
-  // the stale `userId` prop. The userId prop is kept for backward compatibility
-  // (CalendarPanel/ComposerPanel still pass it) but posting no longer relies on it.
   const handleSubmit = async () => {
     if (!userId)                      { setSubmitError('Sign in to post.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
@@ -1484,8 +1473,7 @@ function PostComposerModal({
         .map(id => integrations.find(i => i.id === id)?.identifier)
         .filter(Boolean) as string[];
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      // ayrsharePost now reads the live JWT internally — no need to pass userId
-      await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd });
+      await ayrsharePost(userId, { platforms, post: content, mediaUrls, scheduleDate: sd });
       setSubmitOk(true);
       setTimeout(() => { onClose(); onSuccess?.(); }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to schedule'); }
@@ -1612,7 +1600,7 @@ function PostComposerModal({
             <button onClick={() => setShowAiPanel(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
-                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Write & Repurpose</span>
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Caption Writer</span>
               </div>
               <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showAiPanel ? 'rotate-90' : ''}`} />
             </button>
@@ -1778,7 +1766,7 @@ function CalendarPanel({ userId, integrations }: { userId: string | null; integr
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const res  = await fetch(
-        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
+        `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -1911,7 +1899,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(
-        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+        `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -2141,6 +2129,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, onOpenTextRepurpo
 }
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
+
 
 function UserMenu({ user, onSignOut }: { user: { email: string }; onSignOut: () => void }) {
   const [open, setOpen] = React.useState(false);
