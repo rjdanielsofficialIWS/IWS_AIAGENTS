@@ -1902,13 +1902,25 @@ export function MediaDistributionPage() {
   const { user: authUser, signOut }             = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
-  // On mount: clear any stale session that wasn't intentionally set on this page.
-  // We track whether the user explicitly signed in via Media Machine using a sessionStorage flag.
-  // sessionStorage is cleared automatically when the tab/browser closes, preventing stale logins.
+  // On mount: set mm_signed_in if this is an OAuth return (URL contains #access_token),
+  // then clear any stale session that wasn't intentionally set on this page.
   useEffect(() => {
+    // Detect OAuth callback — Supabase puts the token in the URL hash after Google sign-in
+    const isOAuthReturn = window.location.hash.includes('access_token') ||
+                          window.location.hash.includes('type=recovery') ||
+                          new URLSearchParams(window.location.search).get('code') !== null;
+
+    if (isOAuthReturn) {
+      // User just came back from Google OAuth — mark this as intentional
+      sessionStorage.setItem('mm_signed_in', '1');
+      // Clean the hash from the URL without triggering a reload
+      window.history.replaceState(null, '', window.location.pathname);
+      return;
+    }
+
     const intentionalSession = sessionStorage.getItem('mm_signed_in');
     if (authUser && !intentionalSession) {
-      // There's a Supabase session but the user didn't sign in through this page — clear it.
+      // There's a stale Supabase session from elsewhere — clear it
       signOut();
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
