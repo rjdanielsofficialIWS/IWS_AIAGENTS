@@ -649,313 +649,7 @@ function RepurposePostSelector({ posts, onUsePost }: {
   );
 }
 
-// ─── TextRepurposeModal ───────────────────────────────────────────────────────
-// Modal for composing and posting X (Twitter) + LinkedIn text-only posts.
-// Users type manually by default; AI generation is a collapsible option.
-// Supports both "Post Now" and scheduled posting.
-
-function TextRepurposeModal({ open, onClose, integrations }: {
-  open: boolean; onClose: () => void; integrations: PostizIntegration[];
-}) {
-  // Manual compose state
-  const [tab, setTab]                   = useState<'twitter' | 'linkedin'>('twitter');
-  const [xText, setXText]               = useState('');
-  const [linkedinText, setLinkedinText] = useState('');
-  const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now');
-  const [scheduleDateStr, setScheduleDate] = useState(() => {
-    const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
-    return d.toISOString().slice(0, 16);
-  });
-  const [posting, setPosting]           = useState(false);
-  const [postOk, setPostOk]             = useState(false);
-  const [postError, setPostError]       = useState<string | null>(null);
-
-  // AI generation state (collapsible)
-  const [showAi, setShowAi]             = useState(false);
-  const [aiMode, setAiMode]             = useState<'from_video' | 'from_description'>('from_description');
-  const [aiDescription, setAiDescription] = useState('');
-  const [aiTone, setAiTone]             = useState('');
-  const [videoFile, setVideoFile]       = useState<File | null>(null);
-  const [aiLoading, setAiLoading]       = useState(false);
-  const [aiError, setAiError]           = useState<string | null>(null);
-  const [aiPosts, setAiPosts]           = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
-  const [aiSelectedIdx, setAiSelectedIdx] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
-
-  const reset = () => {
-    setXText(''); setLinkedinText(''); setPostOk(false); setPostError(null);
-    setAiDescription(''); setAiTone(''); setVideoFile(null); setAiPosts(null);
-    setAiError(null); setAiSelectedIdx({ twitter: null, linkedin: null }); setShowAi(false);
-  };
-
-  useEffect(() => { if (!open) reset(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const xIntegration        = integrations.find(i => ['x', 'twitter'].includes((i.profile || i.identifier || '').toLowerCase()));
-  const linkedInIntegration = integrations.find(i => (i.profile || i.identifier || '').toLowerCase().startsWith('linkedin'));
-  const currentText    = tab === 'twitter' ? xText : linkedinText;
-  const setCurrentText = (v: string) => { if (tab === 'twitter') setXText(v); else setLinkedinText(v); };
-  const hasConnection  = tab === 'twitter' ? !!xIntegration : !!linkedInIntegration;
-
-  // ── AI generation ──────────────────────────────────────────────────────────
-  const handleAiGenerate = async () => {
-    setAiLoading(true); setAiError(null); setAiPosts(null);
-    setAiSelectedIdx({ twitter: null, linkedin: null });
-    try {
-      let source = '';
-      if (aiMode === 'from_video') {
-        if (!videoFile) throw new Error('Select a video first');
-        source = await transcribeVideo(videoFile);
-      } else {
-        if (!aiDescription.trim()) throw new Error('Enter a description');
-        source = aiDescription;
-      }
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode: 'repurpose_posts',
-          transcript: aiMode === 'from_video' ? source : undefined,
-          description: aiMode !== 'from_video' ? source : undefined,
-          tone: aiTone,
-        }),
-      });
-      if (!res.ok) throw new Error('Generation failed');
-      const data = await res.json();
-      if (!data.posts) throw new Error('No posts returned');
-      setAiPosts(data.posts);
-    } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
-    finally { setAiLoading(false); }
-  };
-
-  const useAiPost = (platform: 'twitter' | 'linkedin', idx: number) => {
-    const text = aiPosts?.[platform]?.[idx] ?? '';
-    if (platform === 'twitter') setXText(text); else setLinkedinText(text);
-    setAiSelectedIdx(prev => ({ ...prev, [platform]: idx }));
-    setTab(platform); // switch composer tab to match
-  };
-
-  // ── Posting ────────────────────────────────────────────────────────────────
-  const handlePost = async () => {
-    const text = tab === 'twitter' ? xText : linkedinText;
-    if (!text.trim())    { setPostError('Write something first.'); return; }
-    if (!hasConnection)  { setPostError(`No ${tab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected.`); return; }
-    setPosting(true); setPostError(null); setPostOk(false);
-    try {
-      const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      await ayrsharePost({
-        platforms: [tab === 'twitter' ? 'x' : 'linkedin'],
-        post: text,
-        scheduleDate: sd,
-      });
-      setPostOk(true);
-      if (tab === 'twitter') setXText(''); else setLinkedinText('');
-      setTimeout(() => setPostOk(false), 3000);
-    } catch (e: any) {
-      setPostError(e.message || 'Post failed');
-    } finally { setPosting(false); }
-  };
-
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[92vh]"
-        style={{ background: SURFACE, borderColor: BORDER }}>
-
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div>
-            <h2 className="text-base font-bold text-white flex items-center gap-2">
-              <span>✍️</span> Post to X & LinkedIn
-            </h2>
-            <p className="text-xs text-white/40 mt-0.5">Write or AI-generate text posts for X (Twitter) and LinkedIn</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-
-          {/* Platform tabs */}
-          <div className="flex gap-2">
-            {(['twitter', 'linkedin'] as const).map(p => {
-              const connected = p === 'twitter' ? !!xIntegration : !!linkedInIntegration;
-              return (
-                <button key={p} onClick={() => { setTab(p); setPostOk(false); setPostError(null); }}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2"
-                  style={{ borderColor: tab === p ? GOLD : BORDER, background: tab === p ? `${GOLD}18` : 'transparent', color: tab === p ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                  {p === 'twitter' ? '𝕏 Twitter/X' : 'in LinkedIn'}
-                  <div className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-green-400' : 'bg-white/15'}`} />
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Manual compose — primary, always visible */}
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-            <textarea
-              value={currentText}
-              onChange={e => setCurrentText(e.target.value)}
-              placeholder={tab === 'twitter'
-                ? 'Write your X (Twitter) post here…'
-                : 'Write your LinkedIn post here…'}
-              rows={tab === 'linkedin' ? 7 : 4}
-              className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
-            />
-            <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
-              <span className="text-xs text-white/20">{currentText.length} chars</span>
-              {tab === 'twitter' && currentText.length > 280 && (
-                <span className="text-xs text-red-400 font-bold">Over X character limit</span>
-              )}
-            </div>
-          </div>
-
-          {/* AI Generate (collapsible) */}
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-            <button onClick={() => setShowAi(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
-                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Generate Posts</span>
-              </div>
-              <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showAi ? 'rotate-90' : ''}`} />
-            </button>
-            {showAi && (
-              <div className="border-t px-4 pb-4 space-y-3" style={{ borderColor: BORDER }}>
-                <p className="text-xs text-white/35 pt-3">Generates 10 post ideas per platform. Click any post to drop it into the composer above.</p>
-
-                <div className="flex gap-2">
-                  {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-                    <button key={m} onClick={() => setAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
-                      style={{ borderColor: aiMode === m ? GOLD : BORDER, background: aiMode === m ? `${GOLD}12` : 'transparent', color: aiMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                {aiMode === 'from_video' && (
-                  !videoFile ? (
-                    <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
-                      <Video className="w-6 h-6 text-white/25" />
-                      <span className="text-xs text-white/40">Click to select your talking video</span>
-                      <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
-                    </label>
-                  ) : (
-                    <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                      <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
-                      <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
-                    </div>
-                  )
-                )}
-
-                {aiMode === 'from_description' && (
-                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
-                    placeholder="Describe what you want to post about — topic, key points, your offer…" rows={3}
-                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-                )}
-
-                <input value={aiTone} onChange={e => setAiTone(e.target.value)}
-                  placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
-                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-
-                {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
-
-                <button onClick={handleAiGenerate} disabled={aiLoading}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
-                  style={{ background: GOLD, color: '#000' }}>
-                  {aiLoading
-                    ? <><Loader className="w-3.5 h-3.5 animate-spin" />{aiMode === 'from_video' ? 'Transcribing & Writing…' : 'Generating…'}</>
-                    : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
-                </button>
-
-                {aiPosts && (
-                  <div className="space-y-2 pt-1">
-                    <div className="flex gap-2">
-                      {(['twitter', 'linkedin'] as const).map(p => (
-                        <button key={p} onClick={() => setTab(p)}
-                          className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
-                          style={{ borderColor: tab === p ? GOLD : BORDER, background: tab === p ? `${GOLD}15` : 'transparent', color: tab === p ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                          {p === 'twitter' ? `𝕏 (${aiPosts.twitter.length})` : `LinkedIn (${aiPosts.linkedin.length})`}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="text-xs text-white/25">Click a post to load it into the composer above ↑</div>
-                    <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-                      {(aiPosts[tab] || []).map((post, idx) => {
-                        const isSelected = aiSelectedIdx[tab] === idx;
-                        return (
-                          <button key={idx} onClick={() => useAiPost(tab, idx)}
-                            className="w-full text-left px-3 py-2.5 rounded-xl border text-xs leading-relaxed transition"
-                            style={{ borderColor: isSelected ? GOLD : BORDER, background: isSelected ? `${GOLD}10` : 'rgba(0,0,0,0.2)', color: isSelected ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span className="text-white/20 font-bold">#{idx + 1}</span>
-                              <span className="text-white/15">{post.length} chars</span>
-                              {isSelected && <span className="ml-auto text-xs font-bold" style={{ color: GOLD }}>✓ In use</span>}
-                            </div>
-                            {post}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Schedule / Post Now */}
-          <div>
-            <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
-            <div className="flex gap-2 mb-3">
-              {(['now', 'schedule'] as const).map(t => (
-                <button key={t} onClick={() => setScheduleType(t)} className="px-4 py-2 rounded-xl text-sm font-bold border transition"
-                  style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                  {t === 'now' ? '⚡ Post Now' : '🗓 Schedule'}
-                </button>
-              ))}
-            </div>
-            {scheduleType === 'schedule' && (
-              <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
-                className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER }} />
-            )}
-          </div>
-
-          {postError && (
-            <div className="flex items-start gap-2 p-3 rounded-xl border text-xs text-red-200"
-              style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
-              <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" /> {postError}
-            </div>
-          )}
-
-          {!hasConnection && (
-            <div className="text-xs text-amber-400/70 flex items-center gap-1.5 px-1">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              No {tab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected — add one in Channels.
-            </div>
-          )}
-        </div>
-
-        {/* Footer post button */}
-        <div className="px-6 py-4 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: BORDER }}>
-          <span className="text-xs text-white/25">
-            {currentText.length > 0 ? `${currentText.length} chars` : 'Nothing written yet'}
-          </span>
-          <button onClick={handlePost} disabled={posting || postOk || !hasConnection || !currentText.trim()}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-40 transition hover:brightness-110"
-            style={{ background: postOk ? '#22c55e' : GOLD, color: '#000' }}>
-            {posting
-              ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
-              : postOk
-                ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
-                : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${tab === 'twitter' ? 'X' : 'LinkedIn'}` : `Post to ${tab === 'twitter' ? 'X' : 'LinkedIn'}`}</>}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── RepurposeIdeasModal ──────────────────────────────────────────────────────
+// ─── RepurposeIdeasModal (Content Ideas) ─────────────────────────────────────
 
 function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
@@ -1334,6 +1028,9 @@ function ImagePreviewCard({
 }
 
 // ─── PostComposerModal ────────────────────────────────────────────────────────
+// Unified modal with a Post Type selector at the top:
+//   📎 Media Post  → video/image + caption + AI captions (for all platforms)
+//   ✍️ Text Post   → X & LinkedIn tabs, manual textarea + AI generator, schedule
 
 function PostComposerModal({
   open, onClose, integrations, userId, defaultDate, onSuccess,
@@ -1341,52 +1038,112 @@ function PostComposerModal({
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   userId: string | null; defaultDate?: Date; onSuccess?: () => void;
 }) {
-  const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
-  const [content, setContent]           = useState('');
-  const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('schedule');
+  // ── Shared ────────────────────────────────────────────────────────────────
+  type PostType = 'media' | 'text';
+  const [postType, setPostType]         = useState<PostType>('media');
+  const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now');
   const [scheduleDateStr, setScheduleDate] = useState(() => {
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
     return d.toISOString().slice(0, 16);
   });
-  const [videoFile, setVideoFile]           = useState<File | null>(null);
+  const [submitOk, setSubmitOk]         = useState(false);
+  const [submitError, setSubmitError]   = useState<string | null>(null);
+  const [submitting, setSubmitting]     = useState(false);
+
+  // ── Media Post state ──────────────────────────────────────────────────────
+  const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
+  const [content, setContent]           = useState('');
+  const [videoFile, setVideoFile]       = useState<File | null>(null);
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
-  const [videoUpload, setVideoUpload]       = useState<UploadState>({ status: 'idle' });
-  const [imageFiles, setImageFiles]         = useState<File[]>([]);
-  const [imageUploads, setImageUploads]     = useState<UploadState[]>([]);
-  const [perPlatform, setPerPlatform]       = useState<Record<string, string>>({});
+  const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
+  const [imageFiles, setImageFiles]     = useState<File[]>([]);
+  const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
+  const [perPlatform, setPerPlatform]   = useState<Record<string, string>>({});
   const [expandedPlatform, setExpandedPlatform] = useState<string | null>(null);
-  const [submitting, setSubmitting]         = useState(false);
-  const [submitOk, setSubmitOk]             = useState(false);
-  const [submitError, setSubmitError]       = useState<string | null>(null);
-
+  // AI caption state
   type CaptionMode = 'from_video' | 'from_description';
-
-  const [captionMode, setCaptionMode] = useState<CaptionMode>('from_video');
-  const [aiTone, setAiTone]           = useState('');
+  const [showAiPanel, setShowAiPanel]   = useState(false);
+  const [captionMode, setCaptionMode]   = useState<CaptionMode>('from_video');
+  const [aiTone, setAiTone]             = useState('');
   const [aiDescription, setAiDescription] = useState('');
-  const [aiLoading, setAiLoading]     = useState(false);
-  const [aiError, setAiError]         = useState<string | null>(null);
-  const [transcript, setTranscript]   = useState<string | null>(null);
+  const [aiLoading, setAiLoading]       = useState(false);
+  const [aiError, setAiError]           = useState<string | null>(null);
+  const [transcript, setTranscript]     = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
   const [activeCaptionPlatform, setActiveCaptionPlatform] = useState<string | null>(null);
-  const [showAiPanel, setShowAiPanel] = useState(false);
+
+  // ── Text Post state ───────────────────────────────────────────────────────
+  const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
+  const [xText, setXText]               = useState('');
+  const [linkedinText, setLinkedinText] = useState('');
+  // AI text-post state
+  const [showTextAi, setShowTextAi]     = useState(false);
+  const [textAiMode, setTextAiMode]     = useState<'from_video' | 'from_description'>('from_description');
+  const [textAiDesc, setTextAiDesc]     = useState('');
+  const [textAiTone, setTextAiTone]     = useState('');
+  const [textAiVideo, setTextAiVideo]   = useState<File | null>(null);
+  const [textAiLoading, setTextAiLoading] = useState(false);
+  const [textAiError, setTextAiError]   = useState<string | null>(null);
+  const [textAiPosts, setTextAiPosts]   = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
+  const [textAiSelected, setTextAiSelected] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
+
+  // ── Derived ───────────────────────────────────────────────────────────────
+  const xInteg    = integrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
+  const liInteg   = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
+  const textCurrent = textTab === 'twitter' ? xText : linkedinText;
+  const setTextCurrent = (v: string) => { if (textTab === 'twitter') setXText(v); else setLinkedinText(v); };
+  const textHasConn   = textTab === 'twitter' ? !!xInteg : !!liInteg;
 
   const getSelectedPlatforms = () =>
     selectedIntegrations.length > 0
       ? selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[]
       : ['tiktok', 'instagram', 'linkedin', 'x'];
 
+  // ── Reset ──────────────────────────────────────────────────────────────────
+  const fullReset = () => {
+    setPostType('media');
+    setSelectedIntegrations([]); setContent(''); setPerPlatform({});
+    setVideoFile(null);
+    setVideoObjectUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
+    setVideoUpload({ status: 'idle' });
+    setImageFiles([]); setImageUploads([]);
+    setSubmitOk(false); setSubmitError(null); setExpandedPlatform(null);
+    setTranscript(null); setGeneratedCaptions(null);
+    setAiError(null); setActiveCaptionPlatform(null);
+    setShowAiPanel(false); setAiDescription(''); setAiTone('');
+    setXText(''); setLinkedinText(''); setTextTab('twitter');
+    setShowTextAi(false); setTextAiDesc(''); setTextAiTone('');
+    setTextAiVideo(null); setTextAiPosts(null); setTextAiError(null);
+    setTextAiSelected({ twitter: null, linkedin: null });
+  };
+
+  useEffect(() => { if (!open) fullReset(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (defaultDate) {
+      const d = new Date(defaultDate); d.setHours(10, 0, 0, 0);
+      setScheduleDate(d.toISOString().slice(0, 16));
+    }
+  }, [defaultDate]);
+
+  // ── Media upload ───────────────────────────────────────────────────────────
+  const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
+    setU({ status: 'uploading', progress: 0 });
+    try {
+      const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct }));
+      setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
+    } catch (e: any) {
+      setU({ status: 'error', message: e.message || 'Upload failed' });
+    }
+  };
+
+  // ── AI caption generation (Media mode) ────────────────────────────────────
   const handleAiGenerate = async () => {
-    setAiLoading(true); setAiError(null); setGeneratedCaptions(null);
-    setTranscript(null);
+    setAiLoading(true); setAiError(null); setGeneratedCaptions(null); setTranscript(null);
     try {
       let sourceText = '';
-      const usingVideo = captionMode === 'from_video';
-      if (usingVideo) {
-        if (!videoFile) throw new Error('Upload a talking video first using the Video button above');
-        if (videoUpload.status === 'uploading') {
-          throw new Error(`Video is still uploading (${(videoUpload as any).progress ?? 0}%). Wait for the green checkmark, then click Generate again.`);
-        }
+      if (captionMode === 'from_video') {
+        if (!videoFile) throw new Error('Add a video using the Video button above first');
         sourceText = await transcribeVideo(videoFile);
         setTranscript(sourceText);
       } else {
@@ -1409,332 +1166,461 @@ function PostComposerModal({
     finally { setAiLoading(false); }
   };
 
-  useEffect(() => {
-    if (!open) {
-      setSelectedIntegrations([]); setContent(''); setPerPlatform({});
-      setVideoFile(null);
-      if (videoObjectUrl) { URL.revokeObjectURL(videoObjectUrl); setVideoObjectUrl(null); }
-      setVideoUpload({ status: 'idle' });
-      setImageFiles([]); setImageUploads([]);
-      setSubmitOk(false); setSubmitError(null); setExpandedPlatform(null);
-      setTranscript(null); setGeneratedCaptions(null);
-      setAiError(null); setActiveCaptionPlatform(null);
-      setShowAiPanel(false); setAiDescription('');
-    }
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (defaultDate) {
-      const d = new Date(defaultDate); d.setHours(10, 0, 0, 0);
-      setScheduleDate(d.toISOString().slice(0, 16));
-    }
-  }, [defaultDate]);
-
-  const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
-    setU({ status: 'uploading', progress: 0 });
+  // ── AI text-post generation (Text mode) ───────────────────────────────────
+  const handleTextAiGenerate = async () => {
+    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null);
+    setTextAiSelected({ twitter: null, linkedin: null });
     try {
-      const url = await uploadViaNativeXHR(file, kind, (pct) => setU({ status: 'uploading', progress: pct }));
-      setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
-    } catch (e: any) {
-      console.error('Upload failed:', e);
-      setU({ status: 'error', message: e.message || 'Upload failed' });
-    }
+      let source = '';
+      if (textAiMode === 'from_video') {
+        if (!textAiVideo) throw new Error('Select a video first');
+        source = await transcribeVideo(textAiVideo);
+      } else {
+        if (!textAiDesc.trim()) throw new Error('Enter a description');
+        source = textAiDesc;
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone }),
+      });
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json();
+      if (!data.posts) throw new Error('No posts returned');
+      setTextAiPosts(data.posts);
+    } catch (e: any) { setTextAiError(e.message || 'Something went wrong'); }
+    finally { setTextAiLoading(false); }
   };
 
-  const buildSettings = (identifier: string, postContent: string) => {
-    switch (identifier) {
-      case 'x':                    return { __type: 'x', who_can_reply_post: 'everyone' };
-      case 'instagram':
-      case 'instagram-standalone': return { __type: identifier, post_type: 'post' };
-      case 'youtube':              return { __type: 'youtube', title: postContent.slice(0, 100) || 'Video', type: 'public', selfDeclaredMadeForKids: 'no' };
-      case 'tiktok':               return { __type: 'tiktok', privacy_level: 'PUBLIC_TO_EVERYONE', duet: true, stitch: true, comment: true, autoAddMusic: 'no', brand_content_toggle: false, brand_organic_toggle: false, content_posting_method: 'DIRECT_POST' };
-      case 'linkedin':             return { __type: 'linkedin' };
-      case 'linkedin-page':        return { __type: 'linkedin-page' };
-      case 'facebook':             return { __type: 'facebook' };
-      case 'threads':              return { __type: 'threads' };
-      case 'bluesky':              return { __type: 'bluesky' };
-      default:                     return { __type: identifier };
-    }
+  const useTextAiPost = (platform: 'twitter' | 'linkedin', idx: number) => {
+    const text = textAiPosts?.[platform]?.[idx] ?? '';
+    if (platform === 'twitter') setXText(text); else setLinkedinText(text);
+    setTextAiSelected(prev => ({ ...prev, [platform]: idx }));
+    setTextTab(platform);
   };
 
-  const handleSubmit = async () => {
+  // ── Submit (Media mode) ───────────────────────────────────────────────────
+  const handleMediaSubmit = async () => {
     if (!userId)                      { setSubmitError('Sign in to post.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
     if (!content.trim())              { setSubmitError('Write some content first.'); return; }
     if (videoUpload.status === 'uploading' || imageUploads.some(u => u.status === 'uploading')) {
-      setSubmitError('Please wait for media to finish uploading.'); return;
+      setSubmitError('Wait for media to finish uploading.'); return;
     }
     setSubmitting(true); setSubmitError(null);
     try {
       const mediaUrls: string[] = [];
       imageUploads.forEach(u => { if (u.status === 'done' && (u as any).url) mediaUrls.push((u as any).url); });
       if (videoUpload.status === 'done' && (videoUpload as any).url) mediaUrls.push((videoUpload as any).url);
-      const platforms = selectedIntegrations
-        .map(id => integrations.find(i => i.id === id)?.identifier)
-        .filter(Boolean) as string[];
+      const platforms = selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      await ayrsharePost(userId, { platforms, post: content, mediaUrls, scheduleDate: sd });
+      await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd });
       setSubmitOk(true);
       setTimeout(() => { onClose(); onSuccess?.(); }, 1600);
-    } catch (e: any) { setSubmitError(e.message || 'Failed to schedule'); }
+    } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
+    finally { setSubmitting(false); }
+  };
+
+  // ── Submit (Text mode) ────────────────────────────────────────────────────
+  const handleTextSubmit = async () => {
+    const text = textTab === 'twitter' ? xText : linkedinText;
+    if (!text.trim())    { setSubmitError('Write something first.'); return; }
+    if (!textHasConn)    { setSubmitError(`No ${textTab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected.`); return; }
+    setSubmitting(true); setSubmitError(null);
+    try {
+      const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
+      await ayrsharePost({ platforms: [textTab === 'twitter' ? 'x' : 'linkedin'], post: text, scheduleDate: sd });
+      setSubmitOk(true);
+      if (textTab === 'twitter') setXText(''); else setLinkedinText('');
+      setTimeout(() => setSubmitOk(false), 3000);
+    } catch (e: any) { setSubmitError(e.message || 'Post failed'); }
     finally { setSubmitting(false); }
   };
 
   if (!open) return null;
 
+  // ── Shared schedule UI ─────────────────────────────────────────────────────
+  const ScheduleSection = () => (
+    <div>
+      <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
+      <div className="flex gap-2 mb-3">
+        {(['now', 'schedule'] as const).map(t => (
+          <button key={t} onClick={() => setScheduleType(t)} className="px-4 py-2 rounded-xl text-sm font-bold border transition"
+            style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+            {t === 'now' ? '⚡ Post Now' : '🗓 Schedule'}
+          </button>
+        ))}
+      </div>
+      {scheduleType === 'schedule' && (
+        <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
+          className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER }} />
+      )}
+    </div>
+  );
+
   return (
     <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-2xl flex flex-col border overflow-hidden shadow-2xl
-                      rounded-t-2xl md:rounded-2xl max-h-[92vh] md:max-h-[90vh]"
+      <div className="relative w-full md:max-w-2xl flex flex-col border overflow-hidden shadow-2xl rounded-t-2xl md:rounded-2xl max-h-[92vh] md:max-h-[90vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
 
+        {/* Header */}
         <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/20 md:hidden" />
           <h2 className="text-base font-bold text-white">Create Post</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
 
+        {/* Post Type selector */}
+        <div className="px-4 md:px-6 pt-4 pb-1 shrink-0">
+          <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
+            {([
+              ['media', '📎', 'Media Post', 'Video, image & captions'],
+              ['text',  '✍️', 'Text Post',  'X (Twitter) & LinkedIn'],
+            ] as const).map(([type, emoji, label, sub]) => (
+              <button key={type} onClick={() => { setPostType(type); setSubmitOk(false); setSubmitError(null); }}
+                className="flex flex-col items-start px-4 py-3 rounded-xl transition"
+                style={{ background: postType === type ? `${GOLD}18` : 'transparent', border: `1px solid ${postType === type ? GOLD : 'transparent'}` }}>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-base">{emoji}</span>
+                  <span className="text-sm font-bold" style={{ color: postType === type ? GOLD_L : 'rgba(255,255,255,0.5)' }}>{label}</span>
+                </div>
+                <span className="text-xs pl-7" style={{ color: postType === type ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)' }}>{sub}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-5">
-          {/* Channel selector */}
-          <div>
-            <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
-            {integrations.length === 0 ? (
-              <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>No channels connected yet.</div>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {integrations.map(int => {
-                  const selected = selectedIntegrations.includes(int.id);
-                  const p = PLATFORMS[int.identifier as PlatformId];
-                  return (
-                    <button key={int.id}
-                      onClick={() => setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id])}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
-                      style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                      <PlatformIcon id={int.profile || int.identifier} size="sm" />
-                      <span className="max-w-[90px] truncate text-xs">{int.name}</span>
-                      {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
 
-          {/* Content textarea */}
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-            <textarea value={content} onChange={e => setContent(e.target.value)}
-              placeholder="What's on your mind? Write your post content here…" rows={5}
-              className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
-            <div className="flex items-center gap-1 px-3 py-2.5 border-t" style={{ borderColor: BORDER }}>
-              <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
-                <Image className="w-3.5 h-3.5" /> Image
-                <input type="file" accept="image/*" multiple className="hidden"
-                  onChange={e => {
-                    const files = Array.from(e.target.files || []);
-                    setImageFiles(files);
-                    setImageUploads(files.map(() => ({ status: 'idle' })));
-                    files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
-                  }} />
-              </label>
-              <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
-                <Video className="w-3.5 h-3.5" /> Video
-                <input type="file" accept="video/*" className="hidden"
-                  onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f) {
-                      if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-                      const url = URL.createObjectURL(f);
-                      setVideoFile(f);
-                      setVideoObjectUrl(url);
-                      setVideoUpload({ status: 'preparing' });
-                      setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
-                    }
-                  }} />
-              </label>
-              <div className="ml-auto text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length}</div>
-            </div>
-          </div>
-
-          {/* Media previews */}
-          {(imageFiles.length > 0 || videoFile) && (
-            <div className="space-y-3">
-              {videoFile && videoObjectUrl && (
-                <VideoPreviewCard
-                  file={videoFile}
-                  objectUrl={videoObjectUrl}
-                  uploadState={videoUpload}
-                  onRemove={() => {
-                    URL.revokeObjectURL(videoObjectUrl);
-                    setVideoFile(null);
-                    setVideoObjectUrl(null);
-                    setVideoUpload({ status: 'idle' });
-                  }}
-                />
-              )}
-              {imageFiles.length === 1 && (
-                <ImagePreviewCard
-                  file={imageFiles[0]}
-                  uploadState={imageUploads[0] ?? { status: 'idle' }}
-                  onRemove={() => { setImageFiles([]); setImageUploads([]); }}
-                />
-              )}
-              {imageFiles.length > 1 && (
-                <div className="grid grid-cols-2 gap-2">
-                  {imageFiles.map((f, i) => (
-                    <ImagePreviewCard key={i} file={f}
-                      uploadState={imageUploads[i] ?? { status: 'idle' }}
-                      onRemove={() => {
-                        setImageFiles(prev => prev.filter((_, xi) => xi !== i));
-                        setImageUploads(prev => prev.filter((_, xi) => xi !== i));
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* AI panel */}
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-            <button onClick={() => setShowAiPanel(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
-                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Caption Writer</span>
-              </div>
-              <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showAiPanel ? 'rotate-90' : ''}`} />
-            </button>
-            {showAiPanel && (
-              <div className="border-t px-4 pb-4 space-y-4" style={{ borderColor: BORDER }}>
-                <div className="flex gap-2 mt-3">
-                  {([['from_video', '🎙 From Video (talking)'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-                    <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
-                      style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-                {captionMode === 'from_video' && !videoFile && (
-                  <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video using the Video button above first</div>
-                )}
-                {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && (
-                  <div className="text-xs px-1" style={{ color: GOLD }}>
-                    ⏳ Video uploading ({(videoUpload as any).progress ?? 0}%)… you can still generate captions, the audio will be extracted locally.
-                  </div>
-                )}
-                {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && (
-                  <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate to transcribe and write captions.</div>
-                )}
-                {captionMode === 'from_description' && (
-                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
-                    placeholder="Briefly describe your video — what you talked about, the main point, key takeaways…" rows={3}
-                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-                )}
-                <input value={aiTone} onChange={e => setAiTone(e.target.value)}
-                  placeholder="Tone (optional): casual, alex hormozi, luxury, funny, professional…"
-                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-                <button onClick={handleAiGenerate} disabled={aiLoading}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
-                  style={{ background: GOLD, color: '#000' }}>
-                  {aiLoading
-                    ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Processing & Transcribing…' : 'Writing…'}</>
-                    : <><Sparkles className="w-3.5 h-3.5" /> Generate</>}
-                </button>
-                {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
-                {transcript && <TranscriptViewer transcript={transcript} />}
-                {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
-                  <div className="space-y-2">
-                    <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
-                    {Object.entries(generatedCaptions).map(([platform, caption]) => (
-                      <button key={platform} onClick={() => { setContent(caption as string); setActiveCaptionPlatform(platform); }}
-                        className="w-full text-left p-3 rounded-xl border transition"
-                        style={{ borderColor: activeCaptionPlatform === platform ? GOLD : BORDER, background: activeCaptionPlatform === platform ? `${GOLD}10` : 'rgba(0,0,0,0.2)' }}>
-                        <div className="flex items-center gap-2 mb-1">
-                          <PlatformIcon id={platform} size="sm" />
-                          <span className="text-xs font-bold capitalize" style={{ color: activeCaptionPlatform === platform ? GOLD : 'rgba(255,255,255,0.4)' }}>
-                            {PLATFORMS[platform as PlatformId]?.label || platform}
-                          </span>
-                          {activeCaptionPlatform === platform && <CheckCircle2 className="w-3 h-3 ml-auto" style={{ color: GOLD }} />}
-                        </div>
-                        <div className="text-xs text-white/60 leading-relaxed line-clamp-4">{caption as string}</div>
-                      </button>
-                    ))}
+          {/* ════════════════ MEDIA POST ════════════════ */}
+          {postType === 'media' && (
+            <>
+              {/* Channel selector */}
+              <div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
+                {integrations.length === 0 ? (
+                  <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>No channels connected yet.</div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {integrations.map(int => {
+                      const selected = selectedIntegrations.includes(int.id);
+                      const p = PLATFORMS[int.identifier as PlatformId];
+                      return (
+                        <button key={int.id}
+                          onClick={() => setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id])}
+                          className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
+                          style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
+                          <PlatformIcon id={int.profile || int.identifier} size="sm" />
+                          <span className="max-w-[90px] truncate text-xs">{int.name}</span>
+                          {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
-            )}
-          </div>
 
-          {/* Per-platform customisation */}
-          {selectedIntegrations.length > 0 && (
-            <div>
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">
-                Customize per channel <span className="text-white/20 normal-case">(optional)</span>
+              {/* Caption textarea + media buttons */}
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                <textarea value={content} onChange={e => setContent(e.target.value)}
+                  placeholder="Write your caption here… or use the AI writer below to generate one." rows={5}
+                  className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                <div className="flex items-center gap-1 px-3 py-2.5 border-t" style={{ borderColor: BORDER }}>
+                  <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
+                    <Image className="w-3.5 h-3.5" /> Image
+                    <input type="file" accept="image/*" multiple className="hidden"
+                      onChange={e => {
+                        const files = Array.from(e.target.files || []);
+                        setImageFiles(files);
+                        setImageUploads(files.map(() => ({ status: 'idle' })));
+                        files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
+                      }} />
+                  </label>
+                  <label className="cursor-pointer flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition">
+                    <Video className="w-3.5 h-3.5" /> Video
+                    <input type="file" accept="video/*" className="hidden"
+                      onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+                          const url = URL.createObjectURL(f);
+                          setVideoFile(f); setVideoObjectUrl(url);
+                          setVideoUpload({ status: 'preparing' });
+                          setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
+                        }
+                      }} />
+                  </label>
+                  <div className="ml-auto text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length}</div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                {selectedIntegrations.map(integId => {
-                  const int = integrations.find(i => i.id === integId);
-                  if (!int) return null;
-                  const expanded = expandedPlatform === integId;
-                  return (
-                    <div key={integId} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-                      <button onClick={() => setExpandedPlatform(expanded ? null : integId)}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/4 transition">
-                        <PlatformIcon id={int.profile || int.identifier} size="sm" />
-                        <span className="text-sm font-semibold text-white flex-1 text-left">{int.name}</span>
-                        {perPlatform[integId] && <span className="text-xs font-bold text-green-400">Custom</span>}
-                        <ChevronRight className={`w-4 h-4 text-white/25 transition-transform ${expanded ? 'rotate-90' : ''}`} />
-                      </button>
-                      {expanded && (
-                        <div className="px-4 pb-4 border-t" style={{ borderColor: BORDER }}>
-                          <textarea value={perPlatform[integId] || ''}
-                            onChange={e => setPerPlatform(prev => ({ ...prev, [integId]: e.target.value }))}
-                            placeholder={`Custom caption for ${int.name}…`} rows={3}
-                            className="w-full mt-3 bg-black/25 rounded-lg border px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none resize-none"
-                            style={{ borderColor: BORDER }} />
-                        </div>
-                      )}
+
+              {/* Media previews */}
+              {(imageFiles.length > 0 || videoFile) && (
+                <div className="space-y-3">
+                  {videoFile && videoObjectUrl && (
+                    <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl} uploadState={videoUpload}
+                      onRemove={() => { URL.revokeObjectURL(videoObjectUrl); setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' }); }} />
+                  )}
+                  {imageFiles.length === 1 && (
+                    <ImagePreviewCard file={imageFiles[0]} uploadState={imageUploads[0] ?? { status: 'idle' }}
+                      onRemove={() => { setImageFiles([]); setImageUploads([]); }} />
+                  )}
+                  {imageFiles.length > 1 && (
+                    <div className="grid grid-cols-2 gap-2">
+                      {imageFiles.map((f, i) => (
+                        <ImagePreviewCard key={i} file={f} uploadState={imageUploads[i] ?? { status: 'idle' }}
+                          onRemove={() => { setImageFiles(prev => prev.filter((_, xi) => xi !== i)); setImageUploads(prev => prev.filter((_, xi) => xi !== i)); }} />
+                      ))}
                     </div>
+                  )}
+                </div>
+              )}
+
+              {/* AI Caption Writer (collapsible) */}
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+                <button onClick={() => setShowAiPanel(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
+                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Caption Writer</span>
+                  </div>
+                  <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showAiPanel ? 'rotate-90' : ''}`} />
+                </button>
+                {showAiPanel && (
+                  <div className="border-t px-4 pb-4 space-y-4" style={{ borderColor: BORDER }}>
+                    <div className="flex gap-2 mt-3">
+                      {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                        <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                          style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video using the Video button above first</div>}
+                    {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)… audio extracted locally for captions.</div>}
+                    {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate.</div>}
+                    {captionMode === 'from_description' && (
+                      <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
+                        placeholder="Describe your video — what you talked about, key takeaways…" rows={3}
+                        className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+                    )}
+                    <input value={aiTone} onChange={e => setAiTone(e.target.value)}
+                      placeholder="Tone (optional): casual, alex hormozi, luxury, funny…"
+                      className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+                    <button onClick={handleAiGenerate} disabled={aiLoading}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                      style={{ background: GOLD, color: '#000' }}>
+                      {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions</>}
+                    </button>
+                    {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
+                    {transcript && <TranscriptViewer transcript={transcript} />}
+                    {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
+                      <div className="space-y-2">
+                        <div className="text-xs font-bold text-white/25 uppercase tracking-wider">Click a caption to use it</div>
+                        {Object.entries(generatedCaptions).map(([platform, caption]) => (
+                          <button key={platform} onClick={() => { setContent(caption as string); setActiveCaptionPlatform(platform); }}
+                            className="w-full text-left p-3 rounded-xl border transition"
+                            style={{ borderColor: activeCaptionPlatform === platform ? GOLD : BORDER, background: activeCaptionPlatform === platform ? `${GOLD}10` : 'rgba(0,0,0,0.2)' }}>
+                            <div className="flex items-center gap-2 mb-1">
+                              <PlatformIcon id={platform} size="sm" />
+                              <span className="text-xs font-bold capitalize" style={{ color: activeCaptionPlatform === platform ? GOLD : 'rgba(255,255,255,0.4)' }}>{PLATFORMS[platform as PlatformId]?.label || platform}</span>
+                              {activeCaptionPlatform === platform && <CheckCircle2 className="w-3 h-3 ml-auto" style={{ color: GOLD }} />}
+                            </div>
+                            <div className="text-xs text-white/60 leading-relaxed line-clamp-4">{caption as string}</div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Per-platform customisation */}
+              {selectedIntegrations.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Customize per channel <span className="text-white/20 normal-case">(optional)</span></div>
+                  <div className="space-y-1.5">
+                    {selectedIntegrations.map(integId => {
+                      const int = integrations.find(i => i.id === integId);
+                      if (!int) return null;
+                      const expanded = expandedPlatform === integId;
+                      return (
+                        <div key={integId} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                          <button onClick={() => setExpandedPlatform(expanded ? null : integId)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/4 transition">
+                            <PlatformIcon id={int.profile || int.identifier} size="sm" />
+                            <span className="text-sm font-semibold text-white flex-1 text-left">{int.name}</span>
+                            {perPlatform[integId] && <span className="text-xs font-bold text-green-400">Custom</span>}
+                            <ChevronRight className={`w-4 h-4 text-white/25 transition-transform ${expanded ? 'rotate-90' : ''}`} />
+                          </button>
+                          {expanded && (
+                            <div className="px-4 pb-4 border-t" style={{ borderColor: BORDER }}>
+                              <textarea value={perPlatform[integId] || ''} onChange={e => setPerPlatform(prev => ({ ...prev, [integId]: e.target.value }))}
+                                placeholder={`Custom caption for ${int.name}…`} rows={3}
+                                className="w-full mt-3 bg-black/25 rounded-lg border px-3 py-2.5 text-sm text-white placeholder-white/20 outline-none resize-none" style={{ borderColor: BORDER }} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <ScheduleSection />
+            </>
+          )}
+
+          {/* ════════════════ TEXT POST ════════════════ */}
+          {postType === 'text' && (
+            <>
+              {/* Platform tabs */}
+              <div className="flex gap-2">
+                {(['twitter', 'linkedin'] as const).map(p => {
+                  const connected = p === 'twitter' ? !!xInteg : !!liInteg;
+                  return (
+                    <button key={p} onClick={() => { setTextTab(p); setSubmitError(null); setSubmitOk(false); }}
+                      className="flex-1 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2"
+                      style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}18` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                      {p === 'twitter' ? '𝕏 Twitter/X' : 'in LinkedIn'}
+                      <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${connected ? 'bg-green-400' : 'bg-white/15'}`} />
+                    </button>
                   );
                 })}
               </div>
-            </div>
-          )}
 
-          {/* Schedule */}
-          <div>
-            <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
-            <div className="flex gap-2 mb-3">
-              {(['schedule', 'now'] as const).map(t => (
-                <button key={t} onClick={() => setScheduleType(t)} className="px-4 py-2 rounded-xl text-sm font-bold border transition"
-                  style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                  {t === 'schedule' ? '🗓 Schedule' : '⚡ Post Now'}
+              {/* Text composer */}
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                <textarea
+                  value={textCurrent}
+                  onChange={e => setTextCurrent(e.target.value)}
+                  placeholder={textTab === 'twitter' ? 'Write your X (Twitter) post here…' : 'Write your LinkedIn post here…'}
+                  rows={textTab === 'linkedin' ? 7 : 5}
+                  className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                />
+                <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+                  <span className="text-xs text-white/20">{textCurrent.length} chars</span>
+                  {textTab === 'twitter' && textCurrent.length > 280 && <span className="text-xs text-red-400 font-bold">Over 280 char limit</span>}
+                </div>
+              </div>
+
+              {!textHasConn && (
+                <div className="text-xs text-amber-400/70 flex items-center gap-1.5 px-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  No {textTab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected — add one in Channels.
+                </div>
+              )}
+
+              {/* AI Generate (collapsible) */}
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+                <button onClick={() => setShowTextAi(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
+                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Generate Posts</span>
+                  </div>
+                  <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showTextAi ? 'rotate-90' : ''}`} />
                 </button>
-              ))}
-            </div>
-            {scheduleType === 'schedule' && (
-              <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
-                className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER }} />
-            )}
-          </div>
+                {showTextAi && (
+                  <div className="border-t px-4 pb-4 space-y-3" style={{ borderColor: BORDER }}>
+                    <p className="text-xs text-white/35 pt-3">Generates 10 post ideas per platform. Click any to load it into the composer above.</p>
+                    <div className="flex gap-2">
+                      {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                        <button key={m} onClick={() => setTextAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                          style={{ borderColor: textAiMode === m ? GOLD : BORDER, background: textAiMode === m ? `${GOLD}12` : 'transparent', color: textAiMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {textAiMode === 'from_video' && (
+                      !textAiVideo ? (
+                        <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                          <Video className="w-6 h-6 text-white/25" />
+                          <span className="text-xs text-white/40">Click to select your talking video</span>
+                          <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setTextAiVideo(f); }} />
+                        </label>
+                      ) : (
+                        <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                          <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                          <span className="text-white/60 truncate flex-1">{textAiVideo.name}</span>
+                          <button onClick={() => setTextAiVideo(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+                        </div>
+                      )
+                    )}
+                    {textAiMode === 'from_description' && (
+                      <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
+                        placeholder="Describe what you want to post about — topic, key points, your offer…" rows={3}
+                        className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+                    )}
+                    <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
+                      placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
+                      className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+                    {textAiError && <div className="text-xs text-red-300 px-1">{textAiError}</div>}
+                    <button onClick={handleTextAiGenerate} disabled={textAiLoading}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                      style={{ background: GOLD, color: '#000' }}>
+                      {textAiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Transcribing…' : 'Generating…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
+                    </button>
+                    {textAiPosts && (
+                      <div className="space-y-2 pt-1">
+                        <div className="flex gap-2">
+                          {(['twitter', 'linkedin'] as const).map(p => (
+                            <button key={p} onClick={() => setTextTab(p)}
+                              className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
+                              style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}15` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                              {p === 'twitter' ? `𝕏 (${textAiPosts.twitter.length})` : `LinkedIn (${textAiPosts.linkedin.length})`}
+                            </button>
+                          ))}
+                        </div>
+                        <div className="text-xs text-white/25">Click any post to load it into the composer above ↑</div>
+                        <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                          {(textAiPosts[textTab] || []).map((post, idx) => {
+                            const isSel = textAiSelected[textTab] === idx;
+                            return (
+                              <button key={idx} onClick={() => useTextAiPost(textTab, idx)}
+                                className="w-full text-left px-3 py-2.5 rounded-xl border text-xs leading-relaxed transition"
+                                style={{ borderColor: isSel ? GOLD : BORDER, background: isSel ? `${GOLD}10` : 'rgba(0,0,0,0.2)', color: isSel ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
+                                <div className="flex items-center gap-1.5 mb-1">
+                                  <span className="text-white/20 font-bold">#{idx + 1}</span>
+                                  <span className="text-white/15">{post.length}c</span>
+                                  {isSel && <span className="ml-auto font-bold text-xs" style={{ color: GOLD }}>✓ In use</span>}
+                                </div>
+                                {post}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              <ScheduleSection />
+            </>
+          )}
 
           {submitError && (
-            <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200"
-              style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
+            <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {submitError}
             </div>
           )}
         </div>
 
+        {/* Footer */}
         <div className="px-4 md:px-6 py-3 md:py-4 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: BORDER }}>
           <span className="text-xs text-white/25">
-            {selectedIntegrations.length > 0 ? `${selectedIntegrations.length} channel${selectedIntegrations.length !== 1 ? 's' : ''} selected` : 'No channels selected'}
+            {postType === 'media'
+              ? selectedIntegrations.length > 0 ? `${selectedIntegrations.length} channel${selectedIntegrations.length !== 1 ? 's' : ''} selected` : 'No channels selected'
+              : textCurrent.length > 0 ? `${textCurrent.length} chars` : 'Nothing written yet'}
           </span>
-          <button onClick={handleSubmit} disabled={submitting || submitOk}
+          <button
+            onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
+            disabled={submitting || (postType === 'media' && submitOk)}
             className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
             style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-            {submitting ? <Loader className="w-4 h-4 animate-spin" /> : submitOk ? <CheckCircle2 className="w-4 h-4" /> : <Send className="w-4 h-4" />}
-            {submitting ? 'Scheduling…' : submitOk ? 'Scheduled!' : scheduleType === 'now' ? 'Post Now' : 'Schedule Post'}
+            {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
+              : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
+              : postType === 'media'
+                ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
+                : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${textTab === 'twitter' ? 'X' : 'LinkedIn'}` : `Post to ${textTab === 'twitter' ? 'X' : 'LinkedIn'}`}</>}
           </button>
         </div>
       </div>
@@ -2031,9 +1917,9 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
 
 // ─── Sidebar + mobile nav ─────────────────────────────────────────────────────
 
-function Sidebar({ view, setView, integrations, onOpenConnect, onOpenTextRepurpose }: {
+function Sidebar({ view, setView, integrations, onOpenConnect }: {
   view: ViewMode; setView: (v: ViewMode) => void;
-  integrations: PostizIntegration[]; onOpenConnect: () => void; onOpenTextRepurpose: () => void;
+  integrations: PostizIntegration[]; onOpenConnect: () => void;
 }) {
   const navItems = [
     { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
@@ -2063,12 +1949,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, onOpenTextRepurpo
               {item.icon} {item.label}
             </button>
           ))}
-          {/* Repurpose button — opens dedicated Twitter/LinkedIn text modal */}
-          <button onClick={onOpenTextRepurpose}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition hover:bg-white/5"
-            style={{ color: 'rgba(255,255,255,0.4)', borderLeft: '2px solid transparent' }}>
-            <RefreshCw className="w-5 h-5" /> Repurpose
-          </button>
+
         </nav>
         <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: BORDER }}>
           <div className="flex items-center justify-between px-1 mb-2">
@@ -2109,12 +1990,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, onOpenTextRepurpo
             <span className="text-[10px] font-bold tracking-wide">{item.label}</span>
           </button>
         ))}
-        <button onClick={onOpenTextRepurpose}
-          className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
-          style={{ color: 'rgba(255,255,255,0.35)' }}>
-          <RefreshCw className="w-5 h-5" />
-          <span className="text-[10px] font-bold tracking-wide">Repurpose</span>
-        </button>
+
         <button onClick={onOpenConnect}
           className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
           style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
@@ -2235,7 +2111,6 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
-  const [textRepurposeOpen, setTextRepurposeOpen] = useState(false);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
@@ -2418,7 +2293,7 @@ export function MediaDistributionPage() {
         <div className="flex flex-1 overflow-hidden">
           <Sidebar view={view} setView={setView} integrations={integrations}
             onOpenConnect={() => setConnectModalOpen(true)}
-            onOpenTextRepurpose={() => setTextRepurposeOpen(true)} />
+/>
           <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarPanel integrations={integrations} userId={currentUser?.id ?? null} />}
@@ -2434,10 +2309,6 @@ export function MediaDistributionPage() {
         currentUser={currentUser}
       />
 
-      <TextRepurposeModal
-        open={textRepurposeOpen} onClose={() => setTextRepurposeOpen(false)}
-        integrations={integrations}
-      />
 
       <MediaMachineAuthModal
         open={authModalOpen}
