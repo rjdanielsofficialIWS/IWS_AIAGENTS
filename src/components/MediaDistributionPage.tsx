@@ -365,13 +365,14 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 // Nango's pre-approved OAuth apps handle Instagram, TikTok, LinkedIn, YouTube, X, Facebook.
 
 function ConnectAccountsModal({
-  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh,
+  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser,
 }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   onConnectPostiz: () => void; integrationsLoading: boolean;
   onRefresh: (force?: boolean) => void;
+  currentUser: { id: string; email: string } | null;
 }) {
-  const { user: authUser } = useAuth();
+  const authUser = currentUser;
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -440,7 +441,7 @@ function ConnectAccountsModal({
                 {integrations.map(int => (
                   <div key={int.id} className="flex items-center gap-3 p-3 rounded-xl border"
                     style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
-                    <PlatformIcon id={int.identifier} size="md" />
+                    <PlatformIcon id={int.profile || int.identifier} size="md" />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold text-white truncate">{int.name}</div>
                       <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
@@ -1116,7 +1117,7 @@ function PostComposerModal({
                       onClick={() => setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id])}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
                       style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                      <PlatformIcon id={int.identifier} size="sm" />
+                      <PlatformIcon id={int.profile || int.identifier} size="sm" />
                       <span className="max-w-[90px] truncate text-xs">{int.name}</span>
                       {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
                     </button>
@@ -1297,7 +1298,7 @@ function PostComposerModal({
                     <div key={integId} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
                       <button onClick={() => setExpandedPlatform(expanded ? null : integId)}
                         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/4 transition">
-                        <PlatformIcon id={int.identifier} size="sm" />
+                        <PlatformIcon id={int.profile || int.identifier} size="sm" />
                         <span className="text-sm font-semibold text-white flex-1 text-left">{int.name}</span>
                         {perPlatform[integId] && <span className="text-xs font-bold text-green-400">Custom</span>}
                         <ChevronRight className={`w-4 h-4 text-white/25 transition-transform ${expanded ? 'rotate-90' : ''}`} />
@@ -1697,7 +1698,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
             <div className="space-y-0.5 max-h-44 overflow-y-auto">
               {integrations.map(int => (
                 <div key={int.id} className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/5 transition">
-                  <PlatformIcon id={int.identifier} size="sm" />
+                  <PlatformIcon id={int.profile || int.identifier} size="sm" />
                   <span className="text-xs text-white/50 truncate flex-1">{int.name}</span>
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
                 </div>
@@ -1994,6 +1995,7 @@ export function MediaDistributionPage() {
         integrations={integrations} onConnectPostiz={handleConnect}
         integrationsLoading={integrationsLoading}
         onRefresh={(force) => loadIntegrations(force)}
+        currentUser={currentUser}
       />
 
       <MediaMachineAuthModal
