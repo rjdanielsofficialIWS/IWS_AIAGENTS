@@ -4,7 +4,7 @@ import {
   ArrowLeft, Loader, CheckCircle2, AlertCircle, Sparkles, X,
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
-  ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2,
+  ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -1771,9 +1771,56 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
-function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect }: {
+
+function UserMenu({ user, onSignOut }: { user: { email: string }; onSignOut: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const initials = user.email.slice(0, 2).toUpperCase();
+  React.useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <button onClick={() => setOpen(v => !v)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 4px 4px', borderRadius: 10, background: open ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${open ? 'rgba(214,178,94,0.3)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer', transition: 'all 0.15s' }}
+        onMouseEnter={e => { if (!open) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; } }}
+        onMouseLeave={e => { if (!open) { e.currentTarget.style.background = 'transparent'; } }}
+      >
+        <div style={{ width: 26, height: 26, borderRadius: 7, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#0d0d0d', flexShrink: 0 }}>
+          {initials}
+        </div>
+        <span className="hidden sm:block" style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
+        <ChevronDown className="w-3 h-3 hidden sm:block" style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+      </button>
+      {open && (
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, borderRadius: 12, background: 'linear-gradient(160deg, #1a1a1a, #161616)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 200, animation: 'dropIn 0.15s cubic-bezier(0.34,1.56,0.64,1)' }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Signed in as</div>
+            <div style={{ fontSize: 13, color: 'white', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+          </div>
+          <div style={{ padding: '6px' }}>
+            <button onClick={() => { setOpen(false); onSignOut(); }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fca5a5', background: 'transparent', border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.12)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
+              <LogOut className="w-3.5 h-3.5" /> Sign Out
+            </button>
+          </div>
+        </div>
+      )}
+      <style>{`@keyframes dropIn { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }`}</style>
+    </div>
+  );
+}
+
+function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect, user, onSignOut, onSignIn }: {
   integrations: PostizIntegration[]; integrationsLoading: boolean;
   onConnect: () => void; onDisconnect: () => void; onRefresh: (force?: boolean) => void; onOpenConnect: () => void;
+  user: { email: string } | null; onSignOut: () => void; onSignIn: () => void;
 }) {
   return (
     <div className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
@@ -1790,41 +1837,33 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
           <span className="text-xs font-black tracking-widest text-white">MEDIA <span style={{ color: GOLD }}>MACHINE</span></span>
         </div>
       </div>
-      <div className="flex items-center gap-1.5">
-        {integrations.length > 0 ? (
+      <div className="flex items-center gap-2">
+        {user ? (
           <>
-            <div className="flex items-center gap-1.5 text-xs text-green-400 font-semibold">
-              <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-              <span className="hidden sm:inline">{integrationsLoading ? 'Syncing…' : `${integrations.length} channel${integrations.length !== 1 ? 's' : ''}`}</span>
-              <span className="sm:hidden">{integrations.length}</span>
-            </div>
-            <button onClick={onRefresh} disabled={integrationsLoading}
+            {integrations.length > 0 && (
+              <div className="hidden sm:flex items-center gap-1.5 text-xs text-green-400 font-semibold mr-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                <span>{integrationsLoading ? 'Syncing…' : `${integrations.length} channel${integrations.length !== 1 ? 's' : ''}`}</span>
+              </div>
+            )}
+            <button onClick={() => onRefresh()} disabled={integrationsLoading}
               className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition disabled:opacity-30">
               <RefreshCw className={`w-3.5 h-3.5 ${integrationsLoading ? 'animate-spin' : ''}`} />
             </button>
             <button onClick={onOpenConnect}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
               style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
-              <Plus className="w-3 h-3" /> Add Channel
+              <Plus className="w-3 h-3" /> {integrations.length > 0 ? 'Add Channel' : 'Connect'}
             </button>
-            <button onClick={onDisconnect}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-red-500/10"
-              style={{ borderColor: 'rgba(239,68,68,0.25)', color: '#fca5a5' }}>
-              <Link2Off className="w-3 h-3" /> Disconnect
-            </button>
-            <button onClick={onDisconnect}
-              className="sm:hidden w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/10 transition"
-              style={{ color: '#fca5a5' }}>
-              <Link2Off className="w-3.5 h-3.5" />
-            </button>
+            <UserMenu user={user} onSignOut={onSignOut} />
           </>
         ) : (
-          <button onClick={onConnect}
+          <button onClick={onSignIn}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
             <Link2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Connect Accounts</span>
-            <span className="sm:hidden">Connect</span>
+            <span className="hidden sm:inline">Sign In to Connect</span>
+            <span className="sm:hidden">Sign In</span>
           </button>
         )}
       </div>
@@ -1842,7 +1881,7 @@ export function MediaDistributionPage() {
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [authModalOpen, setAuthModalOpen]       = useState(false);
-  const { user: authUser }                      = useAuth();
+  const { user: authUser, signOut }             = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
   const loadIntegrations = useCallback(async (force = false) => {
@@ -1896,6 +1935,11 @@ export function MediaDistributionPage() {
     setOauthError(null);
   };
 
+  const handleSignOut = async () => {
+    handleDisconnect();
+    await signOut();
+  };
+
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: BG, backgroundAttachment: 'fixed', fontFamily: "'DM Sans', sans-serif" }}>
       <style>{`
@@ -1905,6 +1949,8 @@ export function MediaDistributionPage() {
           background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
           min-height: 100vh;
         }
+        @keyframes mmFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+        @keyframes mmPulse  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
       `}</style>
 
       {oauthLoading && (
@@ -1929,16 +1975,55 @@ export function MediaDistributionPage() {
         onConnect={handleConnect} onDisconnect={handleDisconnect}
         onRefresh={(force) => loadIntegrations(force)}
         onOpenConnect={() => setConnectModalOpen(true)}
+        user={currentUser}
+        onSignOut={handleSignOut}
+        onSignIn={() => setAuthModalOpen(true)}
       />
 
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar view={view} setView={setView} integrations={integrations}
-          onOpenConnect={() => setConnectModalOpen(true)} />
-        <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
-          {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
-          {view === 'calendar' && <CalendarPanel integrations={integrations} userId={currentUser?.id ?? null} />}
-        </main>
-      </div>
+      {!currentUser ? (
+        <div className="flex-1 flex items-center justify-center p-6" style={{ position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
+          <div style={{ textAlign: 'center', maxWidth: 480, animation: 'mmFadeUp 0.5s ease both', position: 'relative' }}>
+            <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 28px', boxShadow: `0 12px 40px ${GOLD}35` }}>
+              <Send size={30} color="#000" />
+            </div>
+            <h1 style={{ fontSize: 32, fontWeight: 900, color: 'white', margin: '0 0 12px', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
+              Welcome to<br /><span style={{ color: GOLD }}>Media Machine</span>
+            </h1>
+            <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.45)', margin: '0 0 32px', lineHeight: 1.6 }}>
+              Schedule and publish to Instagram, TikTok, YouTube,<br className="hidden sm:block" />LinkedIn, X, Facebook and more — all in one place.
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 36 }}>
+              {['📅 Schedule posts', '🤖 AI captions', '📊 Multi-platform', '♻️ Content repurposing'].map(f => (
+                <span key={f} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.55)' }}>{f}</span>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <button onClick={() => setAuthModalOpen(true)}
+                style={{ padding: '13px 28px', borderRadius: 14, fontSize: 14, fontWeight: 800, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#0d0d0d', border: 'none', cursor: 'pointer', boxShadow: `0 4px 24px ${GOLD}40`, transition: 'transform 0.15s, box-shadow 0.15s', display: 'flex', alignItems: 'center', gap: 8 }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = `0 8px 32px ${GOLD}55`; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = `0 4px 24px ${GOLD}40`; }}>
+                <Send size={15} /> Get Started Free
+              </button>
+              <button onClick={() => setAuthModalOpen(true)}
+                style={{ padding: '13px 24px', borderRadius: 14, fontSize: 14, fontWeight: 700, background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s, background 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(214,178,94,0.4)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; e.currentTarget.style.background = 'transparent'; }}>
+                Sign In
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar view={view} setView={setView} integrations={integrations}
+            onOpenConnect={() => setConnectModalOpen(true)} />
+          <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
+            {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'calendar' && <CalendarPanel integrations={integrations} userId={currentUser?.id ?? null} />}
+          </main>
+        </div>
+      )}
 
       <ConnectAccountsModal
         open={connectModalOpen} onClose={() => setConnectModalOpen(false)}
