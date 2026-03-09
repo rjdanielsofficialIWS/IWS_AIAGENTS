@@ -445,19 +445,40 @@ function ConnectAccountsModal({
   const handleConnect = async () => {
     setConnecting(true); setError(null);
     try {
-      // Always do a live Supabase auth check — never trust cached React state.
-      // This guarantees we use whoever is actually signed in right now, regardless
-      // of browser history, cached sessions, or stale component state.
-      const { data: { user: liveUser }, error: authErr } = await supabase.auth.getUser();
+      // Step 1: Get the live session token — this is the JWT Supabase issued for whoever
+      // is actually signed in right now. We send it to the edge function so the SERVER
+      // can verify the real user, making it impossible to use a wrong/cached userId.
+      const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
 
-      if (authErr || !liveUser) {
+      if (sessionErr || !session) {
         setConnecting(false);
         onConnectPostiz();
         return;
       }
 
-      const connectUrl = `https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect?userId=${encodeURIComponent(liveUser.id)}&email=${encodeURIComponent(liveUser.email ?? '')}`;
-      console.log('[ConnectModal] Live auth check → connecting for:', liveUser.email, 'userId:', liveUser.id);
+      console.log('[ConnectModal] Calling edge function as:', session.user.email, 'id:', session.user.id);
+
+      // Step 2: Call the edge function as a POST with the JWT in the Authorization header.
+      // The server verifies the JWT and looks up the correct Ayrshare profile.
+      // We get back a connectUrl (the Ayrshare OAuth URL for this specific user).
+      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/ayrshare-connect', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Server error ${res.status}`);
+      }
+
+      const { connectUrl } = await res.json();
+      if (!connectUrl) throw new Error('No connect URL returned');
+
+      // Step 3: Open the Ayrshare OAuth URL in a new tab.
+      // This URL is already scoped to the correct user's Ayrshare profile.
       localStorage.setItem('postiz_social_return', '1');
       window.open(connectUrl, '_blank');
       setConnecting(false);
