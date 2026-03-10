@@ -1135,8 +1135,7 @@ function PostComposerModal({
   const [aiError, setAiError]           = useState<string | null>(null);
   const [transcript, setTranscript]     = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
-  const [youTubeTitle, setYouTubeTitle]   = useState('');
-  const [youTubeShorts, setYouTubeShorts] = useState(false);
+  const [youTubeTitle, setYouTubeTitle] = useState('');
 
   const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
   const [xText, setXText]               = useState('');
@@ -1170,7 +1169,7 @@ function PostComposerModal({
     setImageFiles([]); setImageUploads([]);
     setSubmitOk(false); setSubmitError(null);
     setTranscript(null); setGeneratedCaptions(null);
-    setYouTubeTitle(''); setYouTubeShorts(false);
+    setYouTubeTitle('');
     setAiError(null);
     setCaptionType('manual'); setAiDescription(''); setAiTone('');
     setXText(''); setLinkedinText(''); setTextTab('twitter');
@@ -1278,6 +1277,16 @@ function PostComposerModal({
       setSubmitError(`${names} require${platformsNeedingMedia.length === 1 ? 's' : ''} a video or image. Add media using the buttons above.`);
       return;
     }
+    // Pre-flight: TikTok and YouTube only accept VIDEO — not images
+    const VIDEO_ONLY_PLATFORMS = new Set(['youtube', 'tiktok']);
+    const videoOnlySelected = selectedPlatformIds.filter(p => VIDEO_ONLY_PLATFORMS.has(p));
+    const hasVideo = videoUpload.status === 'done';
+    const hasImagesOnly = !hasVideo && imageUploads.some(u => u.status === 'done');
+    if (videoOnlySelected.length > 0 && hasImagesOnly) {
+      const names = videoOnlySelected.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
+      setSubmitError(`${names} only accept video files, not images. Please upload a video instead.`);
+      return;
+    }
     setSubmitting(true); setSubmitError(null);
     try {
       const mediaUrls: string[] = [];
@@ -1292,7 +1301,7 @@ function PostComposerModal({
         const isYT = platforms.includes('youtube');
         await ayrsharePost({
           platforms, post: content, mediaUrls, scheduleDate: sd,
-          ...(isYT ? { youTubeTitle: youTubeTitle || content.slice(0, 100), youTubeShorts } : {}),
+          ...(isYT ? { youTubeTitle: youTubeTitle || content.slice(0, 100), youTubeShorts: true } : {}),
         });
       } else {
         const postPromises = selectedIntegrations.map(async (integId) => {
@@ -1307,7 +1316,7 @@ function PostComposerModal({
           const isYT = platformId === 'youtube';
           await ayrsharePost({
             platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd,
-            ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts } : {}),
+            ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}),
           });
         });
         await Promise.all(postPromises);
@@ -1501,12 +1510,6 @@ function PostComposerModal({
                       />
                       <div className="flex items-center justify-between">
                         <span className="text-xs text-white/25">{youTubeTitle.length}/100</span>
-                        <button
-                          onClick={() => setYouTubeShorts(v => !v)}
-                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition"
-                          style={{ borderColor: youTubeShorts ? GOLD : BORDER, background: youTubeShorts ? `${GOLD}15` : 'transparent', color: youTubeShorts ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                          {youTubeShorts ? '✓ YouTube Short' : '▷ Mark as YouTube Short'}
-                        </button>
                       </div>
                     </div>
                   )}
@@ -1567,14 +1570,6 @@ function PostComposerModal({
                             className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none"
                             style={{ background: 'rgba(0,0,0,0.15)' }}
                           />
-                          <div className="flex items-center justify-end px-3 pb-2">
-                            <button
-                              onClick={() => setYouTubeShorts(v => !v)}
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-bold transition"
-                              style={{ borderColor: youTubeShorts ? GOLD : BORDER, background: youTubeShorts ? `${GOLD}15` : 'transparent', color: youTubeShorts ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                              {youTubeShorts ? '✓ YouTube Short' : '▷ Mark as Short'}
-                            </button>
-                          </div>
                         </div>
                       )}
                       {Object.entries(generatedCaptions).map(([platform, caption]) => {
