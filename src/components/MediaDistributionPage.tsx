@@ -3024,11 +3024,11 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
                   <span className="text-xs text-white/50 truncate flex-1">{int.name}</span>
                   <button
                     onClick={onOpenConnect}
-                    className="opacity-0 group-hover:opacity-100 transition"
+                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"
                     title="Disconnect">
                     <Link2Off className="w-3 h-3 text-red-400/60 hover:text-red-400" />
                   </button>
-                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0 group-hover:hidden" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0 md:group-hover:hidden" />
                 </div>
               ))}
             </div>
@@ -3037,7 +3037,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
       </aside>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t"
-        style={{ background: SURFACE, borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        style={{ background: '#0d0d0f', borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {navItems.map(item => (
           <button key={item.id} onClick={() => setView(item.id)}
             className="relative flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
@@ -3298,97 +3298,103 @@ export function MediaDistributionPage() {
       />
 
       {!currentUser ? (
-        <div className="flex-1 flex items-center justify-center p-6" style={{ position: 'relative', overflow: 'hidden' }}>
-          <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
-          <div style={{ textAlign: 'center', maxWidth: 720, animation: 'mmFadeUp 0.5s ease both', position: 'relative' }}>
-            <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 28px', boxShadow: `0 12px 40px ${GOLD}35` }}>
-              <Send size={30} color="#000" />
+        <div className="flex-1 overflow-y-auto" style={{ position: 'relative' }}>
+          <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '30%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
+
+          <div className="relative flex flex-col items-center justify-start px-5 py-10 sm:py-16 min-h-full" style={{ animation: 'mmFadeUp 0.5s ease both' }}>
+
+            {/* Logo + title */}
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, boxShadow: `0 12px 40px ${GOLD}35`, flexShrink: 0 }}>
+              <Send size={26} color="#000" />
             </div>
-            <h1 style={{ fontSize: 36, fontWeight: 900, margin: '0 0 12px', letterSpacing: '-0.03em', lineHeight: 1.1 }}>
-              <span style={{ display: 'block', fontSize: 12, fontWeight: 600, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', marginBottom: 8 }}>By Infinite Wealth Solutions AI</span>
-              <span className="mm-gold-shimmer" style={{ display: 'block' }}>Media Machine</span>
-              <span style={{ display: 'block', marginTop: 6, color: 'white', fontWeight: 700, fontSize: 22 }}>Schedule smarter. Grow faster.</span>
-            </h1>
-            <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.45)', margin: '0 0 32px', lineHeight: 1.6 }}>
-              Schedule and publish to Instagram, TikTok, YouTube,<br className="hidden sm:block" />LinkedIn, X, Facebook and more — all in one place.
+
+            <div className="text-center mb-3">
+              <span className="mm-gold-shimmer" style={{ display: 'block', fontSize: 'clamp(32px, 8vw, 48px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05 }}>Media Machine</span>
+              <span style={{ display: 'block', marginTop: 8, fontSize: 11, fontWeight: 600, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>By Infinite Wealth Solutions AI</span>
+              <span style={{ display: 'block', marginTop: 10, color: 'white', fontWeight: 700, fontSize: 'clamp(16px, 4vw, 20px)' }}>Schedule smarter. Grow faster.</span>
+            </div>
+
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.45)', margin: '0 0 24px', lineHeight: 1.65, textAlign: 'center', maxWidth: 440 }}>
+              Schedule and publish to Instagram, TikTok, YouTube, LinkedIn, X, Facebook and more — all in one place.
             </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, justifyContent: 'center', marginBottom: 40 }}>
+
+            {/* Feature pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, justifyContent: 'center', marginBottom: 36, maxWidth: 500 }}>
               {['📅 Schedule posts', '🤖 AI captions', '📊 Multi-platform', '♻️ Content repurposing'].map(f => (
-                <span key={f} style={{ padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.55)' }}>{f}</span>
+                <span key={f} style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap' }}>{f}</span>
               ))}
             </div>
 
             {/* ── Pricing Packages ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 36, width: '100%', maxWidth: 700 }}>
-              {[
-                {
-                  name: 'Starter', price: '$47', per: '/mo',
-                  features: ['1 social profile', 'AI captions', 'Post scheduling', 'Content calendar'],
-                  highlight: false,
-                },
-                {
-                  name: 'Creator', price: '$97', per: '/mo',
-                  features: ['5 social profiles', 'AI captions & ideas', 'Advanced scheduling', 'Analytics', 'Content repurposing'],
-                  highlight: true,
-                },
-                {
-                  name: 'Agency', price: '$199', per: '/mo',
-                  features: ['15 social profiles', 'Everything in Creator', 'Client management', 'Priority support'],
-                  highlight: false,
-                },
-              ].map(pkg => (
-                <div key={pkg.name}
-                  style={{
-                    borderRadius: 20, padding: '28px 22px 22px',
-                    background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`,
-                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0,
-                    position: 'relative', overflow: 'hidden',
-                    boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none',
-                  }}>
-                  {pkg.highlight && (
-                    <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />
-                  )}
-                  {pkg.highlight && (
-                    <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, background: GOLD, color: '#000', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Popular</span>
-                  )}
-                  <div style={{ fontSize: 11, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>{pkg.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 3, marginBottom: 16 }}>
-                    <span style={{ fontSize: 38, fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.04em', lineHeight: 1 }}>{pkg.price}</span>
-                    <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
-                  </div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px', display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
-                    {pkg.features.map(f => (
-                      <li key={f} style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 7 }}>
-                        <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', marginTop: 1, flexShrink: 0, fontSize: 13 }}>✓</span>{f}
-                      </li>
-                    ))}
-                  </ul>
-                  <button
-                    onClick={() => setAuthModalOpen(true)}
+            <div style={{ width: '100%', maxWidth: 720, marginBottom: 32 }}>
+              {/* Mobile: stacked, Tablet+: 3 cols — achieved via inline grid with responsive trick */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {[
+                  {
+                    name: 'Starter', price: '$47', per: '/mo',
+                    features: ['1 social profile', 'AI captions', 'Post scheduling', 'Content calendar'],
+                    highlight: false,
+                  },
+                  {
+                    name: 'Creator', price: '$97', per: '/mo',
+                    features: ['5 social profiles', 'AI captions & ideas', 'Advanced scheduling', 'Analytics', 'Content repurposing'],
+                    highlight: true,
+                  },
+                  {
+                    name: 'Agency', price: '$199', per: '/mo',
+                    features: ['15 social profiles', 'Everything in Creator', 'Client management', 'Priority support'],
+                    highlight: false,
+                  },
+                ].map(pkg => (
+                  <div key={pkg.name}
                     style={{
-                      marginTop: 'auto', width: '100%', padding: '11px 0', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
-                      background: pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)',
-                      color: pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)',
-                      border: pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)',
-                      boxShadow: pkg.highlight ? `0 4px 20px ${GOLD}40` : 'none',
-                    }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 8px 28px ${GOLD}55`; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 4px 20px ${GOLD}40`; }}>
-                    Get Started
-                  </button>
-                </div>
-              ))}
+                      borderRadius: 20, padding: '24px 20px 20px',
+                      background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)',
+                      border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`,
+                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                      position: 'relative', overflow: 'hidden',
+                      boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none',
+                    }}>
+                    {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
+                    {pkg.highlight && <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, background: GOLD, color: '#000', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Popular</span>}
+                    <div style={{ fontSize: 11, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>{pkg.name}</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 3, marginBottom: 14 }}>
+                      <span style={{ fontSize: 36, fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.04em', lineHeight: 1 }}>{pkg.price}</span>
+                      <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+                    </div>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 18px', display: 'flex', flexDirection: 'column', gap: 7, width: '100%' }}>
+                      {pkg.features.map(f => (
+                        <li key={f} style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 7 }}>
+                          <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', marginTop: 1, flexShrink: 0 }}>✓</span>{f}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      onClick={() => setAuthModalOpen(true)}
+                      style={{
+                        marginTop: 'auto', width: '100%', padding: '11px 0', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+                        background: pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)',
+                        color: pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)',
+                        border: pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                        boxShadow: pkg.highlight ? `0 4px 20px ${GOLD}40` : 'none',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 8px 28px ${GOLD}55`; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 4px 20px ${GOLD}40`; }}>
+                      Get Started
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button onClick={() => setAuthModalOpen(true)}
-                style={{ padding: '13px 24px', borderRadius: 14, fontSize: 14, fontWeight: 700, background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s, background 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(214,178,94,0.4)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; e.currentTarget.style.background = 'transparent'; }}>
-                Sign In
-              </button>
-            </div>
+            {/* Sign in link */}
+            <button onClick={() => setAuthModalOpen(true)}
+              style={{ padding: '12px 28px', borderRadius: 14, fontSize: 14, fontWeight: 700, background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s, background 0.15s', marginBottom: 32 }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(214,178,94,0.4)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; e.currentTarget.style.background = 'transparent'; }}>
+              Already have an account? Sign In
+            </button>
+
           </div>
         </div>
       ) : (
