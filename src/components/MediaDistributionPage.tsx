@@ -105,6 +105,7 @@ function generateState() {
 
 async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
+  youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
 }) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token ?? '';
@@ -1134,6 +1135,8 @@ function PostComposerModal({
   const [aiError, setAiError]           = useState<string | null>(null);
   const [transcript, setTranscript]     = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
+  const [youTubeTitle, setYouTubeTitle]   = useState('');
+  const [youTubeShorts, setYouTubeShorts] = useState(false);
 
   const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
   const [xText, setXText]               = useState('');
@@ -1156,6 +1159,7 @@ function PostComposerModal({
 
   const getSelectedPlatforms = () =>
     selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
+  const isYouTubeSelected = getSelectedPlatforms().includes('youtube');
 
   const fullReset = () => {
     setPostType('media');
@@ -1166,6 +1170,7 @@ function PostComposerModal({
     setImageFiles([]); setImageUploads([]);
     setSubmitOk(false); setSubmitError(null);
     setTranscript(null); setGeneratedCaptions(null);
+    setYouTubeTitle(''); setYouTubeShorts(false);
     setAiError(null);
     setCaptionType('manual'); setAiDescription(''); setAiTone('');
     setXText(''); setLinkedinText(''); setTextTab('twitter');
@@ -1213,6 +1218,7 @@ function PostComposerModal({
       if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
       if (data.captions) setGeneratedCaptions(data.captions);
+      if (data.youTubeTitle) setYouTubeTitle(data.youTubeTitle);
     } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
     finally { setAiLoading(false); }
   };
@@ -1253,6 +1259,11 @@ function PostComposerModal({
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
     if (captionType === 'manual' && !content.trim()) { setSubmitError('Write a caption first.'); return; }
     if (captionType === 'ai' && !generatedCaptions)  { setSubmitError('Generate AI captions first.'); return; }
+    // YouTube requires a title
+    if (isYouTubeSelected && !youTubeTitle.trim() && captionType === 'manual') {
+      setSubmitError('YouTube requires a video title. Fill in the Title field above.');
+      return;
+    }
     if (videoUpload.status === 'uploading' || imageUploads.some(u => u.status === 'uploading')) {
       setSubmitError('Wait for media to finish uploading.'); return;
     }
@@ -1278,7 +1289,11 @@ function PostComposerModal({
         const platforms = selectedIntegrations
           .map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; })
           .filter(Boolean);
-        await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd });
+        const isYT = platforms.includes('youtube');
+        await ayrsharePost({
+          platforms, post: content, mediaUrls, scheduleDate: sd,
+          ...(isYT ? { youTubeTitle: youTubeTitle || content.slice(0, 100), youTubeShorts } : {}),
+        });
       } else {
         const postPromises = selectedIntegrations.map(async (integId) => {
           const integ = integrations.find(i => i.id === integId);
@@ -1289,7 +1304,11 @@ function PostComposerModal({
             ?? Object.values(generatedCaptions!)[0]
             ?? '';
           if (!caption) return;
-          await ayrsharePost({ platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd });
+          const isYT = platformId === 'youtube';
+          await ayrsharePost({
+            platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd,
+            ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts } : {}),
+          });
         });
         await Promise.all(postPromises);
       }
@@ -1460,13 +1479,37 @@ function PostComposerModal({
               </div>
 
               {captionType === 'manual' && (
-                <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-                  <textarea value={content} onChange={e => setContent(e.target.value)}
-                    placeholder="Write your caption here…" rows={5}
-                    className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
-                  <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
-                    <span className="text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length} chars</span>
+                <div className="space-y-3">
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                    <textarea value={content} onChange={e => setContent(e.target.value)}
+                      placeholder={isYouTubeSelected ? 'Write your YouTube description here…' : 'Write your caption here…'} rows={5}
+                      className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                    <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+                      <span className="text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length} chars</span>
+                    </div>
                   </div>
+                  {isYouTubeSelected && (
+                    <div className="space-y-2">
+                      <div className="text-xs font-bold text-white/30 uppercase tracking-wider">YouTube Title <span className="text-red-400">*</span></div>
+                      <input
+                        value={youTubeTitle}
+                        onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))}
+                        placeholder="Video title (required for YouTube, max 100 chars)…"
+                        maxLength={100}
+                        className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
+                        style={{ borderColor: youTubeTitle ? `${GOLD}50` : BORDER }}
+                      />
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-white/25">{youTubeTitle.length}/100</span>
+                        <button
+                          onClick={() => setYouTubeShorts(v => !v)}
+                          className="flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition"
+                          style={{ borderColor: youTubeShorts ? GOLD : BORDER, background: youTubeShorts ? `${GOLD}15` : 'transparent', color: youTubeShorts ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                          {youTubeShorts ? '✓ YouTube Short' : '▷ Mark as YouTube Short'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1508,20 +1551,47 @@ function PostComposerModal({
                         <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
                         <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Captions generated — edit if needed, then post</span>
                       </div>
+                      {/* YouTube title card (shown separately from the description) */}
+                      {isYouTubeSelected && (
+                        <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${PLATFORMS.youtube.color}30` }}>
+                          <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: `${PLATFORMS.youtube.color}20`, background: PLATFORMS.youtube.bg }}>
+                            <PlatformIcon id="youtube" size="sm" />
+                            <span className="text-xs font-bold" style={{ color: PLATFORMS.youtube.color }}>YouTube — Title</span>
+                            <span className="ml-auto text-[10px] text-white/25">{youTubeTitle.length}/100</span>
+                          </div>
+                          <input
+                            value={youTubeTitle}
+                            onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))}
+                            placeholder="Video title (required)…"
+                            maxLength={100}
+                            className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none"
+                            style={{ background: 'rgba(0,0,0,0.15)' }}
+                          />
+                          <div className="flex items-center justify-end px-3 pb-2">
+                            <button
+                              onClick={() => setYouTubeShorts(v => !v)}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[10px] font-bold transition"
+                              style={{ borderColor: youTubeShorts ? GOLD : BORDER, background: youTubeShorts ? `${GOLD}15` : 'transparent', color: youTubeShorts ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                              {youTubeShorts ? '✓ YouTube Short' : '▷ Mark as Short'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       {Object.entries(generatedCaptions).map(([platform, caption]) => {
                         const integ = integrations.find(i => i.identifier === platform || i.identifier === platform.toLowerCase());
                         const p = PLATFORMS[platform as PlatformId];
+                        const label = platform === 'youtube' ? 'YouTube — Description' : (p?.label || integ?.name || platform);
                         return (
                           <div key={platform} className="rounded-xl border overflow-hidden" style={{ borderColor: p?.color ? `${p.color}30` : BORDER }}>
                             <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: p?.color ? `${p.color}20` : BORDER, background: p?.bg || 'rgba(0,0,0,0.2)' }}>
                               <PlatformIcon id={platform} size="sm" />
-                              <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{p?.label || integ?.name || platform}</span>
+                              <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
                               <span className="ml-auto text-[10px] text-white/25">{(caption as string).length} chars</span>
                             </div>
                             <textarea
                               value={caption as string}
                               onChange={e => setGeneratedCaptions(prev => prev ? { ...prev, [platform]: e.target.value } : prev)}
-                              rows={4}
+                              rows={platform === 'youtube' ? 3 : 4}
                               className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none resize-none placeholder-white/20"
                               style={{ background: 'rgba(0,0,0,0.15)' }}
                             />
