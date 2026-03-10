@@ -89,7 +89,7 @@ type PostizIntegration = {
   picture?: string; profile?: string; disabled?: boolean;
 };
 
-type ViewMode = 'composer' | 'planner';
+type ViewMode = 'composer' | 'calendar' | 'planner';
 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
@@ -2322,18 +2322,195 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
   );
 }
 // ─── ComposerPanel ────────────────────────────────────────────────────────────
-// Center = scheduled-posts calendar. Stats tabs open a PostLogModal.
+// Center = content ideas + post composer. Stats at top open PostLogModal.
 
 function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
   const [composerOpen, setComposerOpen]   = useState(false);
+  const [repurposeOpen, setRepurposeOpen] = useState(false);
   const [logOpen, setLogOpen]             = useState(false);
   const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
   const [loading, setLoading]             = useState(false);
-  const [currentDate, setCurrentDate]     = useState(new Date());
-  const [selectedDay, setSelectedDay]     = useState<number | null>(null);
-  const [dayLogOpen, setDayLogOpen]       = useState(false);
-  const [composerDate, setComposerDate]   = useState<Date | undefined>();
+
+  const loadPosts = useCallback(async () => {
+    if (!userId) return;
+    setLoading(true);
+    try {
+      const end   = new Date(); end.setMonth(end.getMonth() + 3);
+      const start = new Date(); start.setMonth(start.getMonth() - 1);
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      const data = res.ok ? await res.json() : { posts: [] };
+      const list = Array.isArray(data?.posts) ? data.posts : [];
+      setPosts(list.map((p: any) => ({
+        id: p.id, content: p.content || '',
+        platforms: Array.isArray(p.platforms) ? p.platforms : [],
+        scheduledAt: new Date(p.scheduledAt), status: p.status || 'scheduled',
+      })));
+    } catch (e) {}
+    finally { setLoading(false); }
+  }, [userId]);
+
+  useEffect(() => { loadPosts(); }, [loadPosts]);
+
+  const counts = {
+    scheduled: posts.filter(p => p.status === 'scheduled').length,
+    published: posts.filter(p => p.status === 'published').length,
+    failed:    posts.filter(p => p.status === 'failed').length,
+  };
+
+  return (
+    <div className="flex flex-col h-full">
+
+      {/* ── Stat counters ── */}
+      <div className="grid grid-cols-3 border-b shrink-0" style={{ borderColor: BORDER }}>
+        {([
+          { key: 'scheduled' as const, label: 'Scheduled', color: GOLD },
+          { key: 'published' as const, label: 'Published',  color: '#22c55e' },
+          { key: 'failed'    as const, label: 'Failed',     color: '#ef4444' },
+        ]).map((s, i) => (
+          <button key={s.key}
+            onClick={() => { setLogFilter(s.key); setLogOpen(true); }}
+            className={`flex flex-col items-center justify-center py-3 md:py-4 transition hover:bg-white/4 ${i < 2 ? 'border-r' : ''}`}
+            style={{ borderColor: BORDER }}>
+            <div className="text-xl md:text-2xl font-black" style={{ color: s.color }}>
+              {loading ? <Loader className="w-4 h-4 animate-spin opacity-30" /> : counts[s.key]}
+            </div>
+            <div className="text-[10px] md:text-xs font-semibold text-white/30 mt-0.5">{s.label}</div>
+            <div className="text-[9px] text-white/20 mt-0.5">View log →</div>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Main content area ── */}
+      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 md:py-8 space-y-6">
+
+        {/* Quick action cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button onClick={() => setComposerOpen(true)}
+            className="group flex items-center gap-4 p-4 md:p-5 rounded-2xl border text-left transition hover:bg-white/5 hover:border-opacity-60"
+            style={{ borderColor: `${GOLD}40`, background: `${GOLD}08` }}>
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0 transition group-hover:brightness-110"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
+              <Plus className="w-5 h-5 md:w-6 md:h-6 text-black" />
+            </div>
+            <div>
+              <div className="text-sm md:text-base font-black text-white">Create Post</div>
+              <div className="text-xs text-white/40 mt-0.5">Write, upload & schedule to your channels</div>
+            </div>
+          </button>
+
+          <button onClick={() => setRepurposeOpen(true)}
+            className="group flex items-center gap-4 p-4 md:p-5 rounded-2xl border text-left transition hover:bg-white/5"
+            style={{ borderColor: `rgba(167,139,250,0.3)`, background: `rgba(167,139,250,0.06)` }}>
+            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: `linear-gradient(135deg, #a78bfa, #7c3aed)` }}>
+              <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-white" />
+            </div>
+            <div>
+              <div className="text-sm md:text-base font-black text-white">AI Content Ideas</div>
+              <div className="text-xs text-white/40 mt-0.5">Generate ideas from your video or description</div>
+            </div>
+          </button>
+        </div>
+
+        {/* Divider */}
+        <div className="flex items-center gap-3">
+          <div className="flex-1 h-px" style={{ background: BORDER }} />
+          <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Your Channels</span>
+          <div className="flex-1 h-px" style={{ background: BORDER }} />
+        </div>
+
+        {/* Connected channels summary */}
+        {integrations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
+            <div className="w-14 h-14 rounded-2xl border flex items-center justify-center" style={{ borderColor: BORDER }}>
+              <Link2Off className="w-6 h-6 text-white/15" />
+            </div>
+            <div className="text-sm font-bold text-white/30">No channels connected yet</div>
+            <div className="text-xs text-white/20">Connect your social accounts to start posting</div>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {integrations.map(int => (
+              <div key={int.id} className="flex items-center gap-2.5 p-3 rounded-xl border"
+                style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.03)' }}>
+                <PlatformIcon id={int.profile || int.identifier} size="md" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold text-white/70 truncate">{int.name}</div>
+                  <div className="flex items-center gap-1 mt-0.5">
+                    <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                    <span className="text-[10px] text-white/30">Connected</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Recent activity hint */}
+        {posts.length > 0 && (
+          <>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-px" style={{ background: BORDER }} />
+              <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Recent Activity</span>
+              <div className="flex-1 h-px" style={{ background: BORDER }} />
+            </div>
+            <div className="space-y-2">
+              {posts
+                .sort((a, b) => b.scheduledAt.getTime() - a.scheduledAt.getTime())
+                .slice(0, 4)
+                .map(post => {
+                  const statusColor = post.status === 'published' ? '#22c55e' : post.status === 'failed' ? '#ef4444' : GOLD;
+                  const statusBg    = post.status === 'published' ? 'rgba(34,197,94,0.1)' : post.status === 'failed' ? 'rgba(239,68,68,0.1)' : `${GOLD}10`;
+                  return (
+                    <div key={post.id} className="flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                      <div className="flex -space-x-1.5 shrink-0">
+                        {post.platforms.slice(0, 2).map((pid, i) => (
+                          <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
+                            <PlatformIcon id={pid} size="sm" />
+                          </div>
+                        ))}
+                        {post.platforms.length > 2 && (
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
+                            +{post.platforms.length - 2}
+                          </div>
+                        )}
+                      </div>
+                      <p className="flex-1 text-xs text-white/50 truncate">{post.content || '(No caption)'}</p>
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0"
+                        style={{ background: statusBg, color: statusColor }}>
+                        {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                      </span>
+                    </div>
+                  );
+                })}
+              <button onClick={() => { setLogFilter('all'); setLogOpen(true); }}
+                className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5 text-center"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
+                View all posts →
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+
+      <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} />
+      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)} integrations={integrations} userId={userId} onSuccess={loadPosts} />
+      <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
+    </div>
+  );
+}
+
+// ─── CalendarView ─────────────────────────────────────────────────────────────
+
+function CalendarView({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
+  const [posts, setPosts]               = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]           = useState(false);
+  const [currentDate, setCurrentDate]   = useState(new Date());
+  const [selectedDay, setSelectedDay]   = useState<number | null>(null);
+  const [dayLogOpen, setDayLogOpen]     = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerDate, setComposerDate] = useState<Date | undefined>();
 
   const year        = currentDate.getFullYear();
   const month       = currentDate.getMonth();
@@ -2348,11 +2525,9 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
     try {
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-      const res  = await fetch(
-        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
-      );
-      const data = res.ok ? await res.json() : { posts: [] };
-      const list = Array.isArray(data?.posts) ? data.posts : [];
+      const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      const data  = res.ok ? await res.json() : { posts: [] };
+      const list  = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => ({
         id: p.id, content: p.content || '',
         platforms: Array.isArray(p.platforms) ? p.platforms : [],
@@ -2364,11 +2539,8 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
 
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
-  const counts = {
-    scheduled: posts.filter(p => p.status === 'scheduled').length,
-    published: posts.filter(p => p.status === 'published').length,
-    failed:    posts.filter(p => p.status === 'failed').length,
-  };
+  const STATUS_COLOR = (s: string) => s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
+  const STATUS_BG    = (s: string) => s === 'published' ? 'rgba(34,197,94,0.15)' : s === 'failed' ? 'rgba(239,68,68,0.15)' : `${GOLD}20`;
 
   const postsOnDay = (day: number) =>
     posts.filter(p => {
@@ -2376,21 +2548,10 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
       return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
     }).sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
 
-  const openDayLog = (day: number) => {
-    setSelectedDay(day);
-    setDayLogOpen(true);
-  };
-
-  const STATUS_COLOR = (s: string) =>
-    s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
-  const STATUS_BG = (s: string) =>
-    s === 'published' ? 'rgba(34,197,94,0.15)' : s === 'failed' ? 'rgba(239,68,68,0.15)' : `${GOLD}20`;
-
   return (
     <div className="flex flex-col h-full">
-      {/* ── Header ── */}
+      {/* Header */}
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-        {/* Month navigation */}
         <div className="flex items-center gap-1.5">
           <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
             className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
@@ -2408,7 +2569,6 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
           </button>
           {loading && <Loader className="w-4 h-4 animate-spin text-white/20" />}
         </div>
-        {/* Actions */}
         <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
           className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold transition hover:brightness-110"
           style={{ background: GOLD, color: '#000' }}>
@@ -2417,99 +2577,64 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
         </button>
       </div>
 
-      {/* ── Stat tabs — click to open log ── */}
-      <div className="grid grid-cols-3 border-b shrink-0" style={{ borderColor: BORDER }}>
-        {([
-          { key: 'scheduled' as const, label: 'Scheduled', color: GOLD },
-          { key: 'published' as const, label: 'Published',  color: '#22c55e' },
-          { key: 'failed'    as const, label: 'Failed',     color: '#ef4444' },
-        ]).map((s, i) => (
-          <button key={s.key}
-            onClick={() => { setLogFilter(s.key); setLogOpen(true); }}
-            className={`flex flex-col items-center justify-center py-3 md:py-4 transition hover:bg-white/4 ${i < 2 ? 'border-r' : ''}`}
-            style={{ borderColor: BORDER }}>
-            <div className="text-xl md:text-2xl font-black" style={{ color: s.color }}>{counts[s.key]}</div>
-            <div className="text-[10px] md:text-xs font-semibold text-white/30 mt-0.5">{s.label}</div>
-            <div className="text-[9px] text-white/20 mt-0.5">View log →</div>
-          </button>
-        ))}
-      </div>
-
-      {/* ── Calendar day-of-week headers ── */}
+      {/* Day-of-week headers */}
       <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
           <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
         ))}
       </div>
 
-      {/* ── Calendar grid ── */}
-      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
-        {/* Empty leading cells */}
+      {/* Calendar grid */}
+      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
         ))}
-
-        {/* Day cells */}
         {Array.from({ length: daysInMonth }).map((_, i) => {
-          const day      = i + 1;
-          const dayPosts = postsOnDay(day);
-          const isToday  = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
+          const day       = i + 1;
+          const dayPosts  = postsOnDay(day);
+          const isToday   = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
           const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
-          const visible  = dayPosts.slice(0, 2);
-          const overflow = dayPosts.length - visible.length;
+          // Show up to 3 dots always — clean on all screen sizes
+          const dotPosts  = dayPosts.slice(0, 4);
+          const overflow  = dayPosts.length - dotPosts.length;
 
           return (
             <div key={day}
-              className="border-r border-b p-1 transition hover:bg-white/3 group cursor-pointer relative"
+              className="border-r border-b p-1.5 transition hover:bg-white/3 group cursor-pointer relative"
               style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
-              onClick={() => dayPosts.length > 0 ? openDayLog(day) : (setComposerDate(new Date(year, month, day, 10, 0)), setComposerOpen(true))}>
+              onClick={() => dayPosts.length > 0
+                ? (setSelectedDay(day), setDayLogOpen(true))
+                : (setComposerDate(new Date(year, month, day, 10, 0)), setComposerOpen(true))}>
 
               {/* Day number */}
-              <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1 shrink-0"
-                style={isToday
-                  ? { background: GOLD, color: '#000' }
-                  : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }}>
+              <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1.5"
+                style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.55)' }}>
                 {day}
               </div>
 
-              {/* Mobile: dot row + count */}
+              {/* Dot indicators — same on all screen sizes */}
               {dayPosts.length > 0 && (
-                <div className="md:hidden flex items-center gap-0.5 flex-wrap">
-                  {dayPosts.slice(0, 3).map(post => (
+                <div className="flex flex-wrap gap-0.5 items-center">
+                  {dotPosts.map(post => (
                     <span key={post.id} className="w-1.5 h-1.5 rounded-full shrink-0"
                       style={{ background: STATUS_COLOR(post.status) }} />
                   ))}
-                  {dayPosts.length > 3 && (
-                    <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                      +{dayPosts.length - 3}
+                  {overflow > 0 && (
+                    <span className="text-[8px] font-bold" style={{ color: 'rgba(255,255,255,0.3)', lineHeight: 1 }}>
+                      +{overflow}
                     </span>
                   )}
                 </div>
               )}
 
-              {/* Desktop: labeled chips */}
-              <div className="hidden md:block space-y-0.5">
-                {visible.map(post => (
-                  <div key={post.id}
-                    className="flex items-center gap-1 rounded px-1 py-0.5"
-                    style={{ background: STATUS_BG(post.status) }}>
-                    <span className="shrink-0" style={{ width: 12, height: 12 }}>
-                      <PlatformIcon id={post.platforms[0]} size="sm" />
-                    </span>
-                    <span className="truncate text-[10px] font-medium leading-tight"
-                      style={{ color: STATUS_COLOR(post.status) }}>
-                      {post.content || '(Post)'}
-                    </span>
-                  </div>
-                ))}
-                {overflow > 0 && (
-                  <div className="text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    +{overflow} more
-                  </div>
-                )}
-              </div>
+              {/* Count badge on busier days */}
+              {dayPosts.length > 0 && (
+                <div className="mt-1 text-[9px] font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                  {dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}
+                </div>
+              )}
 
-              {/* Empty day hover hint */}
+              {/* Empty hover hint */}
               {dayPosts.length === 0 && (
                 <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
                   <Plus className="w-2.5 h-2.5 text-white/20" />
@@ -2520,11 +2645,13 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
         })}
       </div>
 
-      {/* ── Day detail modal (posts on a specific day) ── */}
+      {/* Day detail modal */}
       {dayLogOpen && selectedDay !== null && (() => {
-        const dayPosts = postsOnDay(selectedDay);
+        const dayPosts  = postsOnDay(selectedDay);
         const dateLabel = new Date(year, month, selectedDay)
           .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        const STATUS_COLOR2 = (s: string) => s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
+        const STATUS_BG2    = (s: string) => s === 'published' ? 'rgba(34,197,94,0.12)' : s === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`;
         return (
           <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setDayLogOpen(false)} />
@@ -2533,7 +2660,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
               <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
                 <div>
                   <div className="text-sm font-black text-white">{dateLabel}</div>
-                  <div className="text-xs text-white/35 mt-0.5">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''} scheduled</div>
+                  <div className="text-xs text-white/35 mt-0.5">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => { setComposerDate(new Date(year, month, selectedDay, 10, 0)); setDayLogOpen(false); setComposerOpen(true); }}
@@ -2541,7 +2668,8 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
                     style={{ background: GOLD, color: '#000' }}>
                     <Plus className="w-3 h-3" /> Add Post
                   </button>
-                  <button onClick={() => setDayLogOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+                  <button onClick={() => setDayLogOpen(false)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -2550,8 +2678,8 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
                 {dayPosts.map(post => (
                   <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
                     <div className="flex -space-x-1 shrink-0 pt-0.5">
-                      {post.platforms.slice(0, 3).map((pid, i) => (
-                        <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
+                      {post.platforms.slice(0, 3).map((pid, i2) => (
+                        <div key={i2} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
                           <PlatformIcon id={pid} size="sm" />
                         </div>
                       ))}
@@ -2564,7 +2692,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
                       </div>
                     </div>
                     <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
-                      style={{ background: STATUS_BG(post.status), color: STATUS_COLOR(post.status) }}>
+                      style={{ background: STATUS_BG2(post.status), color: STATUS_COLOR2(post.status) }}>
                       {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
                     </span>
                   </div>
@@ -2575,10 +2703,6 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
         );
       })()}
 
-      {/* ── Full post log modal (opened from stat tabs) ── */}
-      <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} />
-
-      {/* ── Post composer ── */}
       <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
         integrations={integrations} userId={userId} defaultDate={composerDate} onSuccess={loadPosts} />
     </div>
@@ -2593,6 +2717,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
 }) {
   const navItems = [
     { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
+    { id: 'calendar' as ViewMode, label: 'Calendar', icon: <Calendar className="w-5 h-5" /> },
     { id: 'planner'  as ViewMode, label: 'Planner',  icon: <BookOpen className="w-5 h-5" /> },
   ];
 
@@ -2947,6 +3072,7 @@ export function MediaDistributionPage() {
             onOpenConnect={() => setConnectModalOpen(true)} />
           <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'planner'  && <PlannerPanel userId={currentUser?.id ?? null} />}
           </main>
         </div>
