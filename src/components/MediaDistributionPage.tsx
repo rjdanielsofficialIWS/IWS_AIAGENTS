@@ -990,6 +990,170 @@ function ImagePreviewCard({
   );
 }
 
+// ─── SavedPostCard ─────────────────────────────────────────────────────────────
+
+function SavedPostCard({
+  post, textPostAccounts, isEditing, editText,
+  onEditStart, onEditChange, onEditSave, onEditCancel, onDelete,
+}: {
+  post: { id: string; text: string; label: string; savedAt: Date };
+  textPostAccounts: { integ: PostizIntegration; platform: PlatformId }[];
+  isEditing: boolean;
+  editText: string;
+  onEditStart: () => void;
+  onEditChange: (v: string) => void;
+  onEditSave: () => void;
+  onEditCancel: () => void;
+  onDelete: () => void;
+}) {
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
+  const [scheduleType, setScheduleType]         = useState<'now' | 'schedule'>('now');
+  const [scheduleDateStr, setScheduleDate]       = useState(() => {
+    const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  });
+  const [posting, setPosting]   = useState(false);
+  const [postOk, setPostOk]     = useState(false);
+  const [postErr, setPostErr]   = useState<string | null>(null);
+
+  const toggle = (id: string) =>
+    setSelectedAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  const activeText = isEditing ? editText : post.text;
+
+  const handlePost = async () => {
+    if (!activeText.trim())          { setPostErr('Post is empty.'); return; }
+    if (selectedAccounts.length === 0) { setPostErr('Select at least one account.'); return; }
+    setPosting(true); setPostErr(null);
+    try {
+      const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
+      const platformIds = selectedAccounts.map(id => {
+        const a = textPostAccounts.find(a => a.integ.id === id);
+        return a?.integ.identifier || a?.platform || '';
+      }).filter(Boolean);
+      await ayrsharePost({ platforms: platformIds, post: activeText, scheduleDate: sd });
+      setPostOk(true);
+      setSelectedAccounts([]);
+      setTimeout(() => setPostOk(false), 3000);
+    } catch (e: any) { setPostErr(e.message || 'Post failed'); }
+    finally { setPosting(false); }
+  };
+
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+
+      {/* ── Header ── */}
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b" style={{ borderColor: BORDER }}>
+        <span className="text-xs font-bold" style={{ color: GOLD_L }}>🔖 {post.label}</span>
+        <span className="text-[10px] text-white/25 ml-1">
+          {post.savedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+        </span>
+        <div className="ml-auto flex items-center gap-1">
+          {isEditing ? (
+            <>
+              <button onClick={onEditSave}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:bg-white/8"
+                style={{ color: GOLD_L, border: `1px solid ${GOLD}40` }}>
+                <CheckCircle2 className="w-3.5 h-3.5" /> Save
+              </button>
+              <button onClick={onEditCancel}
+                className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/8 transition text-white/30 hover:text-white">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </>
+          ) : (
+            <button onClick={onEditStart}
+              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/8 transition"
+              style={{ color: 'rgba(255,255,255,0.3)' }} title="Edit post">
+              <Edit3 className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button onClick={onDelete}
+            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/15 transition text-red-400/40 hover:text-red-400"
+            title="Delete">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* ── Post body ── */}
+      {isEditing ? (
+        <textarea
+          value={editText}
+          onChange={e => onEditChange(e.target.value)}
+          autoFocus rows={5}
+          className="w-full bg-transparent px-4 py-3 text-sm text-white outline-none resize-none"
+          style={{ borderBottom: `1px solid ${BORDER}` }}
+        />
+      ) : (
+        <div className="px-4 py-3 text-sm text-white/75 leading-relaxed whitespace-pre-wrap"
+          style={{ borderBottom: `1px solid ${BORDER}` }}>
+          {post.text}
+        </div>
+      )}
+
+      {/* ── Account selector ── */}
+      <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+        <div className="text-[10px] font-bold text-white/25 uppercase tracking-wider mb-2">Post to</div>
+        {textPostAccounts.length === 0 ? (
+          <p className="text-xs text-white/25">No X, LinkedIn, or Threads account connected.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {textPostAccounts.map(({ integ, platform }) => {
+              const sel = selectedAccounts.includes(integ.id);
+              const p   = PLATFORMS[platform];
+              return (
+                <button key={integ.id} onClick={() => toggle(integ.id)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border font-semibold transition"
+                  style={{ borderColor: sel ? (p?.color || GOLD) : BORDER, background: sel ? (p?.bg || `${GOLD}15`) : 'transparent', color: sel ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
+                  <PlatformIcon id={platform} size="sm" />
+                  <span className="text-xs truncate max-w-[80px]">{integ.name}</span>
+                  {sel && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ── Schedule / post now toggle ── */}
+      <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+        <div className="flex gap-2 mb-2">
+          {(['now', 'schedule'] as const).map(t => (
+            <button key={t} onClick={() => setScheduleType(t)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+              style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+              {t === 'now' ? '⚡ Post Now' : '🗓 Schedule'}
+            </button>
+          ))}
+        </div>
+        {scheduleType === 'schedule' && (
+          <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
+            className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none w-full"
+            style={{ borderColor: BORDER }} />
+        )}
+      </div>
+
+      {/* ── Footer: error + post button ── */}
+      <div className="px-4 py-3 flex items-center justify-between gap-3">
+        <div className="flex-1">
+          {postErr && <p className="text-xs text-red-400">{postErr}</p>}
+          {postOk  && <p className="text-xs text-green-400 font-bold">✓ {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</p>}
+          <span className="text-[10px] text-white/20">{activeText.length} chars</span>
+        </div>
+        <button onClick={handlePost} disabled={posting || selectedAccounts.length === 0}
+          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition disabled:opacity-40 hover:brightness-110 shrink-0"
+          style={{ background: postOk ? '#22c55e' : GOLD, color: '#000' }}>
+          {posting ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Posting…</>
+            : postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Done!</>
+            : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
+        </button>
+      </div>
+
+    </div>
+  );
+}
+
 // ─── InlinePostComposer ────────────────────────────────────────────────────────
 // Inline version of PostComposerModal (no modal wrapper)
 
@@ -1717,7 +1881,41 @@ function InlinePostComposer({
         </>
       )}
 
-      {submitError && (
+      {postType === 'saved' && (
+        <>
+          {savedPosts.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <span className="text-4xl">🔖</span>
+              <div className="text-sm font-bold text-white/30">No saved posts yet</div>
+              <div className="text-xs text-white/20">Save any manual or AI-generated post using the 🔖 Save button</div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">
+                {savedPosts.length} Saved Post{savedPosts.length !== 1 ? 's' : ''}
+              </div>
+
+              {savedPosts.map(p => (
+                <SavedPostCard
+                  key={p.id}
+                  post={p}
+                  textPostAccounts={textPostAccounts}
+                  isEditing={savedEditId === p.id}
+                  editText={savedEditText}
+                  onEditStart={() => { setSavedEditId(p.id); setSavedEditText(p.text); }}
+                  onEditChange={setSavedEditText}
+                  onEditSave={() => {
+                    persistSaved(savedPosts.map(x => x.id === p.id ? { ...x, text: savedEditText } : x));
+                    setSavedEditId(null);
+                  }}
+                  onEditCancel={() => setSavedEditId(null)}
+                  onDelete={() => deleteSavedPost(p.id)}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
         <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {submitError}
         </div>
