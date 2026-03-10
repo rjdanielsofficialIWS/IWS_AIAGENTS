@@ -100,8 +100,8 @@ type PlannerItem = {
   id: string;
   title: string;
   notes?: string;
-  plannedDate: string;   // 'YYYY-MM-DD'
-  plannedTime?: string;  // 'HH:MM'
+  plannedDate: string;
+  plannedTime?: string;
   category: string;
   sourceLabel?: string;
 };
@@ -137,7 +137,6 @@ async function ayrsharePost(payload: {
   return data;
 }
 
-// Platforms that require video/image — text-only posts will be rejected by Ayrshare
 const MEDIA_REQUIRED_PLATFORMS = new Set(['youtube', 'tiktok', 'instagram']);
 
 async function fetchChannels(userId: string, force = false): Promise<PostizIntegration[]> {
@@ -150,16 +149,6 @@ async function fetchChannels(userId: string, force = false): Promise<PostizInteg
   return channels.map(ch => ({ ...ch, identifier: ch.identifier || ch.id || '' }));
 }
 
-/**
- * Upload a file to Supabase Storage / R2 via the upload-media edge function v19.
- *
- * Protocol (matches upload-media v19):
- *   <= 4MB  → legacy direct POST (binary body + x-file-path header)
- *   <= 50MB → init (action:'init') → chunk (binary POST, x-action:chunk) → returns URL
- *   >  50MB → init returns uploadId + provider:'r2' → multipart chunks → complete
- *
- * Returns the public URL of the uploaded file.
- */
 async function uploadViaNativeXHR(
   file: File | Blob,
   kind: 'video' | 'image',
@@ -172,11 +161,10 @@ async function uploadViaNativeXHR(
   const filePath    = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
   const fileSize    = file instanceof File ? file.size : (file as Blob).size;
-  const DIRECT_MAX  = 4  * 1024 * 1024;  // 4 MB  — legacy direct mode
-  const SUPABASE_MAX = 50 * 1024 * 1024; // 50 MB — above this goes to R2 multipart
-  const CHUNK_SIZE  = 5  * 1024 * 1024;  // 5 MB chunks
+  const DIRECT_MAX  = 4  * 1024 * 1024;
+  const SUPABASE_MAX = 50 * 1024 * 1024;
+  const CHUNK_SIZE  = 5  * 1024 * 1024;
 
-  // ── Small file (<=4MB): legacy direct POST ────────────────────────────────
   if (fileSize <= DIRECT_MAX) {
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
@@ -200,8 +188,6 @@ async function uploadViaNativeXHR(
     });
   }
 
-  // ── Large file: init → chunk(s) → [complete for R2] ──────────────────────
-  // Step 1: init — tells the edge function the file size so it picks provider
   const initRes = await fetch(EDGE, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -212,9 +198,7 @@ async function uploadViaNativeXHR(
     throw new Error(e.error || `Upload init failed (${initRes.status})`);
   }
   const { uploadId, provider } = await initRes.json();
-  // provider: 'supabase' (<=50MB) or 'r2' (>50MB)
 
-  // Step 2: send chunk(s)
   const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
   const parts: { partNumber: number; etag: string }[] = [];
   let uploadedBytes = 0;
@@ -248,7 +232,6 @@ async function uploadViaNativeXHR(
 
     if (!chunkRes.ok) {
       const e = await chunkRes.json().catch(() => ({}));
-      // Abort R2 multipart if applicable
       if (uploadId) {
         fetch(EDGE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'abort', filePath, uploadId }) }).catch(() => {});
       }
@@ -259,14 +242,11 @@ async function uploadViaNativeXHR(
     uploadedBytes += (end - start);
     if (onProgress) onProgress(Math.round(uploadedBytes / fileSize * 100));
 
-    // Supabase provider: single chunk returns the final URL (whole file fits in one go)
     if (provider === 'supabase') return chunkData.url;
 
-    // R2: collect ETags for multipart complete
     if (chunkData.etag) parts.push({ partNumber: partNo, etag: chunkData.etag });
   }
 
-  // Step 3: complete R2 multipart
   const completeRes = await fetch(EDGE, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -469,10 +449,6 @@ function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'l
       bg: '#E60023',
       node: <svg width={iconPx} height={iconPx} viewBox="0 0 24 24" fill="white"><path d="M12 0C5.373 0 0 5.373 0 12c0 5.084 3.163 9.426 7.627 11.174-.105-.949-.2-2.405.042-3.441.218-.937 1.407-5.965 1.407-5.965s-.359-.719-.359-1.782c0-1.668.967-2.914 2.171-2.914 1.023 0 1.518.769 1.518 1.69 0 1.029-.655 2.568-.994 3.995-.283 1.194.599 2.169 1.777 2.169 2.133 0 3.772-2.249 3.772-5.495 0-2.873-2.064-4.882-5.012-4.882-3.414 0-5.418 2.561-5.418 5.207 0 1.031.397 2.138.893 2.738a.36.36 0 01.083.345l-.333 1.36c-.053.22-.174.267-.402.161-1.499-.698-2.436-2.889-2.436-4.649 0-3.785 2.75-7.262 7.929-7.262 4.163 0 7.398 2.967 7.398 6.931 0 4.136-2.607 7.464-6.227 7.464-1.216 0-2.359-.632-2.75-1.378l-.748 2.853c-.271 1.043-1.002 2.35-1.492 3.146C9.57 23.812 10.763 24 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0z"/></svg>,
     },
-    snapchat: {
-      bg: '#FFFC00',
-      node: <svg width={iconPx} height={iconPx} viewBox="0 0 24 24" fill="black"><path d="M12.206.793c.99 0 4.347.276 5.93 3.821.529 1.193.403 3.219.299 4.847l-.003.06c-.012.18-.022.345-.03.51.075.045.203.09.401.09.3-.016.659-.12 1.033-.301.165-.088.344-.104.464-.104.182 0 .359.029.509.09.45.149.734.479.734.838.015.449-.39.839-1.213 1.168-.089.029-.209.075-.344.119-.45.135-1.139.36-1.333.81-.09.224-.061.524.12.868l.015.015c.06.136 1.526 3.475 4.791 4.014.255.044.435.27.42.509 0 .075-.015.149-.045.225-.24.569-1.273.988-3.146 1.271-.059.091-.12.375-.164.57-.029.179-.074.36-.134.553-.076.271-.27.405-.555.405h-.03c-.135 0-.313-.031-.538-.074-.36-.075-.765-.135-1.273-.135-.3 0-.599.015-.913.074-.6.104-1.123.464-1.723.884-.853.599-1.826 1.288-3.294 1.288-.06 0-.119-.015-.18-.015h-.149c-1.468 0-2.427-.675-3.279-1.288-.599-.42-1.107-.779-1.707-.884-.314-.045-.629-.074-.928-.074-.54 0-.958.089-1.272.149-.211.043-.391.074-.54.074-.374 0-.523-.224-.583-.42-.061-.192-.09-.389-.135-.567-.046-.181-.105-.494-.166-.57-1.918-.222-2.95-.642-3.189-1.226-.031-.063-.052-.15-.055-.225-.015-.243.165-.465.42-.509 3.264-.54 4.73-3.879 4.791-4.02l.016-.029c.18-.345.224-.645.119-.869-.195-.434-.884-.658-1.332-.809-.121-.029-.24-.074-.346-.119-1.107-.435-1.257-.93-1.197-1.273.09-.479.674-.793 1.168-.793.146 0 .27.029.383.074.42.194.789.3 1.104.3.234 0 .384-.06.479-.105l-.036-.69c-.098-1.626-.229-3.651.294-4.836C7.867 1.07 11.218.793 12.206.793z"/></svg>,
-    },
     gmb: {
       bg: '#4285F4',
       node: <svg width={iconPx} height={iconPx} viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/></svg>,
@@ -650,292 +626,6 @@ function ConnectAccountsModal({
           <p className="text-xs text-white/30 text-center">
             Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
           </p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── RepurposePostSelector ────────────────────────────────────────────────────
-
-function RepurposePostSelector({ posts, onUsePost }: {
-  posts: { twitter: string[]; linkedin: string[] };
-  onUsePost: (text: string) => void;
-}) {
-  const [tab, setTab] = useState<'twitter' | 'linkedin'>('twitter');
-  const [editedPosts, setEditedPosts] = useState<{ twitter: string[]; linkedin: string[] }>({
-    twitter: [...(posts.twitter || [])],
-    linkedin: [...(posts.linkedin || [])],
-  });
-  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
-  const [editingIdx, setEditingIdx]   = useState<number | null>(null);
-  const currentList = editedPosts[tab];
-  const handleSelect = (idx: number) => { setSelectedIdx(idx === selectedIdx ? null : idx); setEditingIdx(null); };
-  const handleEdit   = (idx: number, val: string) => {
-    setEditedPosts(prev => ({ ...prev, [tab]: prev[tab].map((p, i) => i === idx ? val : p) }));
-  };
-  return (
-    <div className="space-y-3">
-      <div className="flex gap-2">
-        {(['twitter', 'linkedin'] as const).map(t => (
-          <button key={t} onClick={() => { setTab(t); setSelectedIdx(null); setEditingIdx(null); }}
-            className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
-            style={{ borderColor: tab === t ? GOLD : BORDER, background: tab === t ? `${GOLD}18` : 'transparent', color: tab === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-            {t === 'twitter' ? '𝕏 Twitter/X (10)' : 'in LinkedIn (10)'}
-          </button>
-        ))}
-      </div>
-      <div className="text-xs text-white/30 px-0.5">Tap to select · tap again to edit · one post at a time</div>
-      <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-        {currentList.map((post, idx) => {
-          const isSelected = selectedIdx === idx;
-          const isEditing  = editingIdx === idx;
-          return (
-            <div key={idx} className="rounded-xl border overflow-hidden transition-all"
-              style={{ borderColor: isSelected ? GOLD : BORDER, background: isSelected ? `${GOLD}08` : 'rgba(0,0,0,0.2)' }}>
-              <div className="flex items-center gap-2 px-3 pt-2.5 pb-1.5">
-                <button onClick={() => handleSelect(idx)}
-                  className="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
-                  style={{ borderColor: isSelected ? GOLD : 'rgba(255,255,255,0.2)', background: isSelected ? GOLD : 'transparent' }}>
-                  {isSelected && <CheckCircle2 className="w-3 h-3 text-black" />}
-                </button>
-                <span className="text-xs text-white/25 font-bold">#{idx + 1}</span>
-                <div className="flex-1" />
-                <button onClick={() => setEditingIdx(isEditing ? null : idx)}
-                  className="text-xs px-2 py-0.5 rounded-md transition hover:bg-white/10"
-                  style={{ color: isEditing ? GOLD : 'rgba(255,255,255,0.25)' }}>
-                  {isEditing ? 'Done' : 'Edit'}
-                </button>
-              </div>
-              {isEditing ? (
-                <textarea value={post} onChange={e => handleEdit(idx, e.target.value)}
-                  rows={tab === 'linkedin' ? 6 : 3}
-                  className="w-full px-3 pb-3 bg-transparent text-xs text-white leading-relaxed outline-none resize-none" autoFocus />
-              ) : (
-                <button onClick={() => handleSelect(idx)} className="w-full text-left px-3 pb-3 text-xs leading-relaxed"
-                  style={{ color: isSelected ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.5)' }}>
-                  {post}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      {selectedIdx !== null && (
-        <button onClick={() => onUsePost(currentList[selectedIdx!])}
-          className="w-full py-2.5 rounded-xl text-xs font-bold transition hover:brightness-110"
-          style={{ background: GOLD, color: '#000' }}>
-          ✓ Use Post #{selectedIdx + 1} in Composer
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ─── RepurposeIdeasModal ──────────────────────────────────────────────────────
-
-function RepurposeIdeasModal({ open, onClose, onAddToPlanner }: {
-  open: boolean; onClose: () => void;
-  onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
-}) {
-  const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
-  const [description, setDescription] = useState('');
-  const [tone, setTone]               = useState('');
-  const [videoFile, setVideoFile]     = useState<File | null>(null);
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState<string | null>(null);
-  const [ideas, setIdeas]             = useState<any | null>(null);
-  const [added, setAdded]             = useState<Set<string>>(new Set());
-
-  const handleGenerate = async () => {
-    setLoading(true); setError(null); setIdeas(null); setAdded(new Set());
-    try {
-      let source = '';
-      if (captionMode === 'from_video') {
-        if (!videoFile) throw new Error('Select a video first');
-        source = await transcribeVideo(videoFile);
-      } else {
-        if (!description.trim()) throw new Error('Enter a description of your video');
-        source = description;
-      }
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone }),
-      });
-      if (!res.ok) throw new Error('Generation failed');
-      const data = await res.json();
-      setIdeas(data.ideas);
-    } catch (e: any) { setError(e.message || 'Something went wrong'); }
-    finally { setLoading(false); }
-  };
-
-  const handleAdd = (key: string, title: string, notes: string | undefined, category: string, sourceLabel: string) => {
-    if (added.has(key)) return;
-    onAddToPlanner?.({ title, notes, category, sourceLabel });
-    setAdded(prev => new Set([...prev, key]));
-  };
-
-  const reset = () => { setDescription(''); setTone(''); setVideoFile(null); setIdeas(null); setError(null); setAdded(new Set()); };
-
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-        style={{ background: SURFACE, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div>
-            <h2 className="text-base font-bold text-white">♻️ Content Ideas</h2>
-            <p className="text-sm text-white/40 mt-0.5">Find new angles from your video — add directly to your planner</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
-          <div className="flex gap-2">
-            {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-              <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
-                style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                {label}
-              </button>
-            ))}
-          </div>
-          {captionMode === 'from_video' && (
-            !videoFile ? (
-              <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
-                <Video className="w-6 h-6 text-white/25" />
-                <span className="text-xs text-white/40">Click to select your talking video</span>
-                <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
-              </label>
-            ) : (
-              <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
-                <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
-              </div>
-            )
-          )}
-          {captionMode === 'from_description' && (
-            <textarea value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="Describe your video — what you talked about, main points, key takeaways…" rows={4}
-              className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-          )}
-          <input value={tone} onChange={e => setTone(e.target.value)}
-            placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
-            className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-          {error && <div className="text-xs text-red-300">{error}</div>}
-          {!ideas && (
-            <button onClick={handleGenerate} disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-              style={{ background: GOLD, color: '#000' }}>
-              {loading
-                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Processing & Transcribing…' : 'Generating Ideas…'}</span>
-                : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
-            </button>
-          )}
-          {ideas && (
-            <div className="space-y-5">
-              {ideas.short_clips?.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🎬 Short Clip Ideas</div>
-                  <div className="space-y-2">
-                    {ideas.short_clips.map((clip: any, i: number) => {
-                      const key = `clip-${i}`;
-                      return (
-                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-bold text-white">{clip.title}</div>
-                              <div className="text-xs text-white/45 mt-1">{clip.angle}</div>
-                              <div className="text-xs font-semibold mt-1.5" style={{ color: GOLD }}>{clip.platform}</div>
-                            </div>
-                            <button onClick={() => handleAdd(key, clip.title, clip.angle, 'short_clip', 'Short Clip')}
-                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
-                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '✓ Added' : '+ Planner'}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {ideas.social_hooks?.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🪝 Hook Ideas</div>
-                  <div className="space-y-1.5">
-                    {ideas.social_hooks.map((hook: string, i: number) => {
-                      const key = `hook-${i}`;
-                      return (
-                        <div key={i} className="flex items-start gap-2 p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                          <p className="flex-1 text-sm text-white/60 leading-relaxed">{hook}</p>
-                          <button onClick={() => handleAdd(key, hook, undefined, 'hook', 'Hook Idea')}
-                            className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
-                            style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                            {added.has(key) ? '✓ Added' : '+ Planner'}
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {ideas.blog_angles?.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">✍️ Blog / Article Angles</div>
-                  <div className="space-y-2">
-                    {ideas.blog_angles.map((b: any, i: number) => {
-                      const key = `blog-${i}`;
-                      return (
-                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-bold text-white">{b.headline}</div>
-                              <div className="text-xs text-white/45 mt-1">{b.angle}</div>
-                            </div>
-                            <button onClick={() => handleAdd(key, b.headline, b.angle, 'blog', 'Blog Angle')}
-                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
-                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '✓ Added' : '+ Planner'}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {ideas.other_formats?.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📦 Other Formats</div>
-                  <div className="space-y-2">
-                    {ideas.other_formats.map((f: any, i: number) => {
-                      const key = `other-${i}`;
-                      return (
-                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-bold text-white">{f.format}</div>
-                              <div className="text-xs text-white/45 mt-1">{f.concept}</div>
-                            </div>
-                            <button onClick={() => handleAdd(key, f.format, f.concept, 'other', 'Other Format')}
-                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
-                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '✓ Added' : '+ Planner'}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
-                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-                ↺ Generate New Ideas
-              </button>
-            </div>
-          )}
         </div>
       </div>
     </div>
@@ -1272,13 +962,15 @@ function ImagePreviewCard({
   );
 }
 
-// ─── PostComposerModal ────────────────────────────────────────────────────────
+// ─── InlinePostComposer ────────────────────────────────────────────────────────
+// Inline version of PostComposerModal (no modal wrapper)
 
-function PostComposerModal({
-  open, onClose, integrations, userId, defaultDate, onSuccess,
+function InlinePostComposer({
+  integrations, userId, onSuccess,
 }: {
-  open: boolean; onClose: () => void; integrations: PostizIntegration[];
-  userId: string | null; defaultDate?: Date; onSuccess?: () => void;
+  integrations: PostizIntegration[];
+  userId: string | null;
+  onSuccess?: () => void;
 }) {
   type PostType = 'media' | 'text';
   const [postType, setPostType]         = useState<PostType>('media');
@@ -1332,33 +1024,6 @@ function PostComposerModal({
   const getSelectedPlatforms = () =>
     selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
   const isYouTubeSelected = getSelectedPlatforms().includes('youtube');
-
-  const fullReset = () => {
-    setPostType('media');
-    setSelectedIntegrations([]); setContent('');
-    setVideoFile(null);
-    setVideoObjectUrl(prev => { if (prev) URL.revokeObjectURL(prev); return null; });
-    setVideoUpload({ status: 'idle' });
-    setImageFiles([]); setImageUploads([]);
-    setSubmitOk(false); setSubmitError(null);
-    setTranscript(null); setGeneratedCaptions(null);
-    setYouTubeTitle('');
-    setAiError(null);
-    setCaptionType('manual'); setAiDescription(''); setAiTone('');
-    setXText(''); setLinkedinText(''); setTextTab('twitter');
-    setShowTextAi(false); setTextAiDesc(''); setTextAiTone('');
-    setTextAiVideo(null); setTextAiPosts(null); setTextAiError(null);
-    setTextAiSelected({ twitter: null, linkedin: null });
-  };
-
-  useEffect(() => { if (!open) fullReset(); }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  useEffect(() => {
-    if (defaultDate) {
-      const d = new Date(defaultDate); d.setHours(10, 0, 0, 0);
-      setScheduleDate(d.toISOString().slice(0, 16));
-    }
-  }, [defaultDate]);
 
   const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
     setU({ status: 'uploading', progress: 0 });
@@ -1431,7 +1096,6 @@ function PostComposerModal({
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
     if (captionType === 'manual' && !content.trim()) { setSubmitError('Write a caption first.'); return; }
     if (captionType === 'ai' && !generatedCaptions)  { setSubmitError('Generate AI captions first.'); return; }
-    // YouTube requires a title
     if (isYouTubeSelected && !youTubeTitle.trim() && captionType === 'manual') {
       setSubmitError('YouTube requires a video title. Fill in the Title field above.');
       return;
@@ -1439,7 +1103,6 @@ function PostComposerModal({
     if (videoUpload.status === 'uploading' || imageUploads.some(u => u.status === 'uploading')) {
       setSubmitError('Wait for media to finish uploading.'); return;
     }
-    // Pre-flight: YouTube, TikTok, Instagram require media
     const selectedPlatformIds = selectedIntegrations
       .map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; })
       .filter(Boolean);
@@ -1450,7 +1113,6 @@ function PostComposerModal({
       setSubmitError(`${names} require${platformsNeedingMedia.length === 1 ? 's' : ''} a video or image. Add media using the buttons above.`);
       return;
     }
-    // Pre-flight: TikTok and YouTube only accept VIDEO — not images
     const VIDEO_ONLY_PLATFORMS = new Set(['youtube', 'tiktok']);
     const videoOnlySelected = selectedPlatformIds.filter(p => VIDEO_ONLY_PLATFORMS.has(p));
     const hasVideo = videoUpload.status === 'done';
@@ -1496,7 +1158,13 @@ function PostComposerModal({
       }
 
       setSubmitOk(true);
-      setTimeout(() => { onClose(); onSuccess?.(); }, 1600);
+      setTimeout(() => {
+        setSubmitOk(false);
+        setContent(''); setVideoFile(null); setVideoObjectUrl(null);
+        setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]);
+        setGeneratedCaptions(null); setSelectedIntegrations([]);
+        onSuccess?.();
+      }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
     finally { setSubmitting(false); }
   };
@@ -1515,8 +1183,6 @@ function PostComposerModal({
     } catch (e: any) { setSubmitError(e.message || 'Post failed'); }
     finally { setSubmitting(false); }
   };
-
-  if (!open) return null;
 
   const ScheduleSection = () => (
     <div>
@@ -1537,398 +1203,685 @@ function PostComposerModal({
   );
 
   return (
-    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-2xl flex flex-col border overflow-hidden shadow-2xl rounded-t-2xl md:rounded-2xl max-h-[92vh] md:max-h-[90vh]"
-        style={{ background: SURFACE, borderColor: BORDER }}>
+    <div className="space-y-4 md:space-y-5">
+      {/* Post type toggle */}
+      <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
+        {([
+          ['media', '📎', 'Media Post', 'Video, image & captions'],
+          ['text',  '✍️', 'Text Post',  'X (Twitter) & LinkedIn'],
+        ] as const).map(([type, emoji, label, sub]) => (
+          <button key={type} onClick={() => { setPostType(type); setSubmitOk(false); setSubmitError(null); }}
+            className="flex flex-col items-start px-4 py-3 rounded-xl transition"
+            style={{ background: postType === type ? `${GOLD}18` : 'transparent', border: `1px solid ${postType === type ? GOLD : 'transparent'}` }}>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-base">{emoji}</span>
+              <span className="text-sm font-bold" style={{ color: postType === type ? GOLD_L : 'rgba(255,255,255,0.5)' }}>{label}</span>
+            </div>
+            <span className="text-xs pl-7" style={{ color: postType === type ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)' }}>{sub}</span>
+          </button>
+        ))}
+      </div>
 
-        <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 w-10 h-1 rounded-full bg-white/20 md:hidden" />
-          <h2 className="text-base font-bold text-white">Create Post</h2>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
-        </div>
-
-        <div className="px-4 md:px-6 pt-4 pb-1 shrink-0">
-          <div className="grid grid-cols-2 gap-2 p-1 rounded-2xl" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
-            {([
-              ['media', '📎', 'Media Post', 'Video, image & captions'],
-              ['text',  '✍️', 'Text Post',  'X (Twitter) & LinkedIn'],
-            ] as const).map(([type, emoji, label, sub]) => (
-              <button key={type} onClick={() => { setPostType(type); setSubmitOk(false); setSubmitError(null); }}
-                className="flex flex-col items-start px-4 py-3 rounded-xl transition"
-                style={{ background: postType === type ? `${GOLD}18` : 'transparent', border: `1px solid ${postType === type ? GOLD : 'transparent'}` }}>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="text-base">{emoji}</span>
-                  <span className="text-sm font-bold" style={{ color: postType === type ? GOLD_L : 'rgba(255,255,255,0.5)' }}>{label}</span>
-                </div>
-                <span className="text-xs pl-7" style={{ color: postType === type ? 'rgba(255,255,255,0.4)' : 'rgba(255,255,255,0.2)' }}>{sub}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-5">
-
-          {postType === 'media' && (
-            <>
-              <div>
-                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
-                {integrations.length === 0 ? (
-                  <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>No channels connected yet.</div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {integrations.map(int => {
-                      const selected = selectedIntegrations.includes(int.id);
-                      const p = PLATFORMS[int.identifier as PlatformId];
-                      return (
-                        <button key={int.id}
-                          onClick={() => {
-                            setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]);
-                            setGeneratedCaptions(null);
-                          }}
-                          className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
-                          style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                          <PlatformIcon id={int.profile || int.identifier} size="sm" />
-                          <span className="max-w-[90px] truncate text-xs">{int.name}</span>
-                          {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 px-1">
-                <span className="text-xs font-bold text-white/25 uppercase tracking-wider mr-1">Add media</span>
-                <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
-                  <Image className="w-3.5 h-3.5" /> Image
-                  <input type="file" accept="image/*" multiple className="hidden"
-                    onChange={e => {
-                      const files = Array.from(e.target.files || []);
-                      setImageFiles(files);
-                      setImageUploads(files.map(() => ({ status: 'idle' })));
-                      files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
-                    }} />
-                </label>
-                <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
-                  <Video className="w-3.5 h-3.5" /> Video
-                  <input type="file" accept="video/*" className="hidden"
-                    onChange={e => {
-                      const f = e.target.files?.[0];
-                      if (f) {
-                        if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-                        const url = URL.createObjectURL(f);
-                        setVideoFile(f); setVideoObjectUrl(url);
-                        setVideoUpload({ status: 'preparing' });
-                        setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
-                      }
-                    }} />
-                </label>
-              </div>
-
-              {(imageFiles.length > 0 || videoFile) && (
-                <div className="space-y-3">
-                  {videoFile && videoObjectUrl && (
-                    <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl} uploadState={videoUpload}
-                      onRemove={() => { URL.revokeObjectURL(videoObjectUrl); setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' }); }} />
-                  )}
-                  {imageFiles.length === 1 && (
-                    <ImagePreviewCard file={imageFiles[0]} uploadState={imageUploads[0] ?? { status: 'idle' }}
-                      onRemove={() => { setImageFiles([]); setImageUploads([]); }} />
-                  )}
-                  {imageFiles.length > 1 && (
-                    <div className="grid grid-cols-2 gap-2">
-                      {imageFiles.map((f, i) => (
-                        <ImagePreviewCard key={i} file={f} uploadState={imageUploads[i] ?? { status: 'idle' }}
-                          onRemove={() => { setImageFiles(prev => prev.filter((_, xi) => xi !== i)); setImageUploads(prev => prev.filter((_, xi) => xi !== i)); }} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <div>
-                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
-                <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
-                  {([['manual', '✏️ Write Manually'], ['ai', '✨ AI per Platform']] as const).map(([t, label]) => (
-                    <button key={t} onClick={() => { setCaptionType(t); setGeneratedCaptions(null); }}
-                      className="flex-1 py-2 rounded-lg text-xs font-bold transition"
-                      style={{ background: captionType === t ? `${GOLD}18` : 'transparent', border: `1px solid ${captionType === t ? GOLD : 'transparent'}`, color: captionType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {captionType === 'manual' && (
-                <div className="space-y-3">
-                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-                    <textarea value={content} onChange={e => setContent(e.target.value)}
-                      placeholder={isYouTubeSelected ? 'Write your YouTube description here…' : 'Write your caption here…'} rows={5}
-                      className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
-                    <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
-                      <span className="text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length} chars</span>
-                    </div>
-                  </div>
-                  {isYouTubeSelected && (
-                    <div className="space-y-2">
-                      <div className="text-xs font-bold text-white/30 uppercase tracking-wider">YouTube Title <span className="text-red-400">*</span></div>
-                      <input
-                        value={youTubeTitle}
-                        onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))}
-                        placeholder="Video title (required for YouTube, max 100 chars)…"
-                        maxLength={100}
-                        className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
-                        style={{ borderColor: youTubeTitle ? `${GOLD}50` : BORDER }}
-                      />
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs text-white/25">{youTubeTitle.length}/100</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {captionType === 'ai' && (
-                <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-                  <div className="px-4 pt-4 pb-3 space-y-3">
-                    <div className="flex gap-2">
-                      {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-                        <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
-                          style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                          {label}
-                        </button>
-                      ))}
-                    </div>
-                    {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first — AI will transcribe it to write captions</div>}
-                    {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
-                    {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate below</div>}
-                    {captionMode === 'from_description' && (
-                      <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
-                        placeholder="Describe your video or content — topic, key points, your offer…" rows={3}
-                        className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-                    )}
-                    <input value={aiTone} onChange={e => setAiTone(e.target.value)}
-                      placeholder="Tone (optional): casual, alex hormozi, luxury, funny…"
-                      className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-                    {selectedIntegrations.length === 0 && <div className="text-xs text-amber-400/70 px-1">⚠️ Select at least one channel above to generate captions for those platforms</div>}
-                    <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
-                      style={{ background: GOLD, color: '#000' }}>
-                      {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
-                    </button>
-                    {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
-                    {transcript && <TranscriptViewer transcript={transcript} />}
-                  </div>
-
-                  {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
-                    <div className="border-t px-4 pb-4 pt-3 space-y-3" style={{ borderColor: BORDER }}>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-                        <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Captions generated — edit if needed, then post</span>
-                      </div>
-                      {/* YouTube title card (shown separately from the description) */}
-                      {isYouTubeSelected && (
-                        <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${PLATFORMS.youtube.color}30` }}>
-                          <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: `${PLATFORMS.youtube.color}20`, background: PLATFORMS.youtube.bg }}>
-                            <PlatformIcon id="youtube" size="sm" />
-                            <span className="text-xs font-bold" style={{ color: PLATFORMS.youtube.color }}>YouTube — Title</span>
-                            <span className="ml-auto text-[10px] text-white/25">{youTubeTitle.length}/100</span>
-                          </div>
-                          <input
-                            value={youTubeTitle}
-                            onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))}
-                            placeholder="Video title (required)…"
-                            maxLength={100}
-                            className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none"
-                            style={{ background: 'rgba(0,0,0,0.15)' }}
-                          />
-                        </div>
-                      )}
-                      {Object.entries(generatedCaptions).map(([platform, caption]) => {
-                        const integ = integrations.find(i => i.identifier === platform || i.identifier === platform.toLowerCase());
-                        const p = PLATFORMS[platform as PlatformId];
-                        const label = platform === 'youtube' ? 'YouTube — Description' : (p?.label || integ?.name || platform);
-                        return (
-                          <div key={platform} className="rounded-xl border overflow-hidden" style={{ borderColor: p?.color ? `${p.color}30` : BORDER }}>
-                            <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: p?.color ? `${p.color}20` : BORDER, background: p?.bg || 'rgba(0,0,0,0.2)' }}>
-                              <PlatformIcon id={platform} size="sm" />
-                              <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
-                              <span className="ml-auto text-[10px] text-white/25">{(caption as string).length} chars</span>
-                            </div>
-                            <textarea
-                              value={caption as string}
-                              onChange={e => setGeneratedCaptions(prev => prev ? { ...prev, [platform]: e.target.value } : prev)}
-                              rows={platform === 'youtube' ? 3 : 4}
-                              className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none resize-none placeholder-white/20"
-                              style={{ background: 'rgba(0,0,0,0.15)' }}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              <ScheduleSection />
-            </>
-          )}
-
-          {postType === 'text' && (
-            <>
-              <div className="flex gap-2">
-                {(['twitter', 'linkedin'] as const).map(p => {
-                  const connected = p === 'twitter' ? !!xInteg : !!liInteg;
+      {postType === 'media' && (
+        <>
+          <div>
+            <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
+            {integrations.length === 0 ? (
+              <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>No channels connected yet.</div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {integrations.map(int => {
+                  const selected = selectedIntegrations.includes(int.id);
+                  const p = PLATFORMS[int.identifier as PlatformId];
                   return (
-                    <button key={p} onClick={() => { setTextTab(p); setSubmitError(null); setSubmitOk(false); }}
-                      className="flex-1 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2"
-                      style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}18` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                      {p === 'twitter' ? '𝕏 Twitter/X' : 'in LinkedIn'}
-                      <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${connected ? 'bg-green-400' : 'bg-white/15'}`} />
+                    <button key={int.id}
+                      onClick={() => {
+                        setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]);
+                        setGeneratedCaptions(null);
+                      }}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
+                      style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
+                      <PlatformIcon id={int.profile || int.identifier} size="sm" />
+                      <span className="max-w-[90px] truncate text-xs">{int.name}</span>
+                      {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
                     </button>
                   );
                 })}
               </div>
+            )}
+          </div>
 
-              <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-                <textarea
-                  value={textCurrent}
-                  onChange={e => setTextCurrent(e.target.value)}
-                  placeholder={textTab === 'twitter' ? 'Write your X (Twitter) post here…' : 'Write your LinkedIn post here…'}
-                  rows={textTab === 'linkedin' ? 7 : 5}
-                  className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
-                />
-                <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
-                  <span className="text-xs text-white/20">{textCurrent.length} chars</span>
-                  {textTab === 'twitter' && textCurrent.length > 280 && <span className="text-xs text-red-400 font-bold">Over 280 char limit</span>}
-                </div>
-              </div>
+          <div className="flex items-center gap-2 px-1">
+            <span className="text-xs font-bold text-white/25 uppercase tracking-wider mr-1">Add media</span>
+            <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
+              <Image className="w-3.5 h-3.5" /> Image
+              <input type="file" accept="image/*" multiple className="hidden"
+                onChange={e => {
+                  const files = Array.from(e.target.files || []);
+                  setImageFiles(files);
+                  setImageUploads(files.map(() => ({ status: 'idle' })));
+                  files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
+                }} />
+            </label>
+            <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
+              <Video className="w-3.5 h-3.5" /> Video
+              <input type="file" accept="video/*" className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) {
+                    if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+                    const url = URL.createObjectURL(f);
+                    setVideoFile(f); setVideoObjectUrl(url);
+                    setVideoUpload({ status: 'preparing' });
+                    setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
+                  }
+                }} />
+            </label>
+          </div>
 
-              {!textHasConn && (
-                <div className="text-xs text-amber-400/70 flex items-center gap-1.5 px-1">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                  No {textTab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected — add one in Channels.
+          {(imageFiles.length > 0 || videoFile) && (
+            <div className="space-y-3">
+              {videoFile && videoObjectUrl && (
+                <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl} uploadState={videoUpload}
+                  onRemove={() => { URL.revokeObjectURL(videoObjectUrl); setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' }); }} />
+              )}
+              {imageFiles.length === 1 && (
+                <ImagePreviewCard file={imageFiles[0]} uploadState={imageUploads[0] ?? { status: 'idle' }}
+                  onRemove={() => { setImageFiles([]); setImageUploads([]); }} />
+              )}
+              {imageFiles.length > 1 && (
+                <div className="grid grid-cols-2 gap-2">
+                  {imageFiles.map((f, i) => (
+                    <ImagePreviewCard key={i} file={f} uploadState={imageUploads[i] ?? { status: 'idle' }}
+                      onRemove={() => { setImageFiles(prev => prev.filter((_, xi) => xi !== i)); setImageUploads(prev => prev.filter((_, xi) => xi !== i)); }} />
+                  ))}
                 </div>
               )}
+            </div>
+          )}
 
-              <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-                <button onClick={() => setShowTextAi(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
-                    <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Generate Posts</span>
-                  </div>
-                  <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showTextAi ? 'rotate-90' : ''}`} />
+          <div>
+            <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
+            <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
+              {([['manual', '✏️ Write Manually'], ['ai', '✨ AI per Platform']] as const).map(([t, label]) => (
+                <button key={t} onClick={() => { setCaptionType(t); setGeneratedCaptions(null); }}
+                  className="flex-1 py-2 rounded-lg text-xs font-bold transition"
+                  style={{ background: captionType === t ? `${GOLD}18` : 'transparent', border: `1px solid ${captionType === t ? GOLD : 'transparent'}`, color: captionType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                  {label}
                 </button>
-                {showTextAi && (
-                  <div className="border-t px-4 pb-4 space-y-3" style={{ borderColor: BORDER }}>
-                    <p className="text-xs text-white/35 pt-3">Generates 10 post ideas per platform. Click any to load it into the composer above.</p>
+              ))}
+            </div>
+          </div>
+
+          {captionType === 'manual' && (
+            <div className="space-y-3">
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                <textarea value={content} onChange={e => setContent(e.target.value)}
+                  placeholder={isYouTubeSelected ? 'Write your YouTube description here…' : 'Write your caption here…'} rows={5}
+                  className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+                  <span className="text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length} chars</span>
+                </div>
+              </div>
+              {isYouTubeSelected && (
+                <div className="space-y-2">
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider">YouTube Title <span className="text-red-400">*</span></div>
+                  <input
+                    value={youTubeTitle}
+                    onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))}
+                    placeholder="Video title (required for YouTube, max 100 chars)…"
+                    maxLength={100}
+                    className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
+                    style={{ borderColor: youTubeTitle ? `${GOLD}50` : BORDER }}
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/25">{youTubeTitle.length}/100</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {captionType === 'ai' && (
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+              <div className="px-4 pt-4 pb-3 space-y-3">
+                <div className="flex gap-2">
+                  {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                      style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first — AI will transcribe it to write captions</div>}
+                {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
+                {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate below</div>}
+                {captionMode === 'from_description' && (
+                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
+                    placeholder="Describe your video or content — topic, key points, your offer…" rows={3}
+                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+                )}
+                <input value={aiTone} onChange={e => setAiTone(e.target.value)}
+                  placeholder="Tone (optional): casual, alex hormozi, luxury, funny…"
+                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+                {selectedIntegrations.length === 0 && <div className="text-xs text-amber-400/70 px-1">⚠️ Select at least one channel above to generate captions for those platforms</div>}
+                <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                  style={{ background: GOLD, color: '#000' }}>
+                  {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
+                </button>
+                {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
+                {transcript && <TranscriptViewer transcript={transcript} />}
+              </div>
+
+              {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
+                <div className="border-t px-4 pb-4 pt-3 space-y-3" style={{ borderColor: BORDER }}>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                    <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Captions generated — edit if needed, then post</span>
+                  </div>
+                  {isYouTubeSelected && (
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${PLATFORMS.youtube.color}30` }}>
+                      <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: `${PLATFORMS.youtube.color}20`, background: PLATFORMS.youtube.bg }}>
+                        <PlatformIcon id="youtube" size="sm" />
+                        <span className="text-xs font-bold" style={{ color: PLATFORMS.youtube.color }}>YouTube — Title</span>
+                        <span className="ml-auto text-[10px] text-white/25">{youTubeTitle.length}/100</span>
+                      </div>
+                      <input
+                        value={youTubeTitle}
+                        onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))}
+                        placeholder="Video title (required)…"
+                        maxLength={100}
+                        className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none"
+                        style={{ background: 'rgba(0,0,0,0.15)' }}
+                      />
+                    </div>
+                  )}
+                  {Object.entries(generatedCaptions).map(([platform, caption]) => {
+                    const integ = integrations.find(i => i.identifier === platform || i.identifier === platform.toLowerCase());
+                    const p = PLATFORMS[platform as PlatformId];
+                    const label = platform === 'youtube' ? 'YouTube — Description' : (p?.label || integ?.name || platform);
+                    return (
+                      <div key={platform} className="rounded-xl border overflow-hidden" style={{ borderColor: p?.color ? `${p.color}30` : BORDER }}>
+                        <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: p?.color ? `${p.color}20` : BORDER, background: p?.bg || 'rgba(0,0,0,0.2)' }}>
+                          <PlatformIcon id={platform} size="sm" />
+                          <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
+                          <span className="ml-auto text-[10px] text-white/25">{(caption as string).length} chars</span>
+                        </div>
+                        <textarea
+                          value={caption as string}
+                          onChange={e => setGeneratedCaptions(prev => prev ? { ...prev, [platform]: e.target.value } : prev)}
+                          rows={platform === 'youtube' ? 3 : 4}
+                          className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none resize-none placeholder-white/20"
+                          style={{ background: 'rgba(0,0,0,0.15)' }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          <ScheduleSection />
+        </>
+      )}
+
+      {postType === 'text' && (
+        <>
+          <div className="flex gap-2">
+            {(['twitter', 'linkedin'] as const).map(p => {
+              const connected = p === 'twitter' ? !!xInteg : !!liInteg;
+              return (
+                <button key={p} onClick={() => { setTextTab(p); setSubmitError(null); setSubmitOk(false); }}
+                  className="flex-1 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2"
+                  style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}18` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                  {p === 'twitter' ? '𝕏 Twitter/X' : 'in LinkedIn'}
+                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${connected ? 'bg-green-400' : 'bg-white/15'}`} />
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+            <textarea
+              value={textCurrent}
+              onChange={e => setTextCurrent(e.target.value)}
+              placeholder={textTab === 'twitter' ? 'Write your X (Twitter) post here…' : 'Write your LinkedIn post here…'}
+              rows={textTab === 'linkedin' ? 7 : 5}
+              className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+            />
+            <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+              <span className="text-xs text-white/20">{textCurrent.length} chars</span>
+              {textTab === 'twitter' && textCurrent.length > 280 && <span className="text-xs text-red-400 font-bold">Over 280 char limit</span>}
+            </div>
+          </div>
+
+          {!textHasConn && (
+            <div className="text-xs text-amber-400/70 flex items-center gap-1.5 px-1">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              No {textTab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected — add one in Channels.
+            </div>
+          )}
+
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+            <button onClick={() => setShowTextAi(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Generate Posts</span>
+              </div>
+              <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showTextAi ? 'rotate-90' : ''}`} />
+            </button>
+            {showTextAi && (
+              <div className="border-t px-4 pb-4 space-y-3" style={{ borderColor: BORDER }}>
+                <p className="text-xs text-white/35 pt-3">Generates 10 post ideas per platform. Click any to load it into the composer above.</p>
+                <div className="flex gap-2">
+                  {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => setTextAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
+                      style={{ borderColor: textAiMode === m ? GOLD : BORDER, background: textAiMode === m ? `${GOLD}12` : 'transparent', color: textAiMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {textAiMode === 'from_video' && (
+                  !textAiVideo ? (
+                    <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                      <Video className="w-6 h-6 text-white/25" />
+                      <span className="text-xs text-white/40">Click to select your talking video</span>
+                      <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setTextAiVideo(f); }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                      <span className="text-white/60 truncate flex-1">{textAiVideo.name}</span>
+                      <button onClick={() => setTextAiVideo(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )
+                )}
+                {textAiMode === 'from_description' && (
+                  <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
+                    placeholder="Describe what you want to post about — topic, key points, your offer…" rows={3}
+                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+                )}
+                <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
+                  placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
+                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+                {textAiError && <div className="text-xs text-red-300 px-1">{textAiError}</div>}
+                <button onClick={handleTextAiGenerate} disabled={textAiLoading}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                  style={{ background: GOLD, color: '#000' }}>
+                  {textAiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Transcribing…' : 'Generating…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
+                </button>
+                {textAiPosts && (
+                  <div className="space-y-2 pt-1">
                     <div className="flex gap-2">
-                      {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-                        <button key={m} onClick={() => setTextAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
-                          style={{ borderColor: textAiMode === m ? GOLD : BORDER, background: textAiMode === m ? `${GOLD}12` : 'transparent', color: textAiMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                          {label}
+                      {(['twitter', 'linkedin'] as const).map(p => (
+                        <button key={p} onClick={() => setTextTab(p)}
+                          className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
+                          style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}15` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                          {p === 'twitter' ? `𝕏 (${textAiPosts.twitter.length})` : `LinkedIn (${textAiPosts.linkedin.length})`}
                         </button>
                       ))}
                     </div>
-                    {textAiMode === 'from_video' && (
-                      !textAiVideo ? (
-                        <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
-                          <Video className="w-6 h-6 text-white/25" />
-                          <span className="text-xs text-white/40">Click to select your talking video</span>
-                          <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setTextAiVideo(f); }} />
-                        </label>
-                      ) : (
-                        <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                          <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                          <span className="text-white/60 truncate flex-1">{textAiVideo.name}</span>
-                          <button onClick={() => setTextAiVideo(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
-                        </div>
-                      )
-                    )}
-                    {textAiMode === 'from_description' && (
-                      <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
-                        placeholder="Describe what you want to post about — topic, key points, your offer…" rows={3}
-                        className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-                    )}
-                    <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
-                      placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
-                      className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-                    {textAiError && <div className="text-xs text-red-300 px-1">{textAiError}</div>}
-                    <button onClick={handleTextAiGenerate} disabled={textAiLoading}
-                      className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
-                      style={{ background: GOLD, color: '#000' }}>
-                      {textAiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Transcribing…' : 'Generating…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
-                    </button>
-                    {textAiPosts && (
-                      <div className="space-y-2 pt-1">
-                        <div className="flex gap-2">
-                          {(['twitter', 'linkedin'] as const).map(p => (
-                            <button key={p} onClick={() => setTextTab(p)}
-                              className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
-                              style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}15` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                              {p === 'twitter' ? `𝕏 (${textAiPosts.twitter.length})` : `LinkedIn (${textAiPosts.linkedin.length})`}
-                            </button>
-                          ))}
-                        </div>
-                        <div className="text-xs text-white/25">Click any post to load it into the composer above ↑</div>
-                        <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                          {(textAiPosts[textTab] || []).map((post, idx) => {
-                            const isSel = textAiSelected[textTab] === idx;
-                            return (
-                              <button key={idx} onClick={() => useTextAiPost(textTab, idx)}
-                                className="w-full text-left px-3 py-2.5 rounded-xl border text-xs leading-relaxed transition"
-                                style={{ borderColor: isSel ? GOLD : BORDER, background: isSel ? `${GOLD}10` : 'rgba(0,0,0,0.2)', color: isSel ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
-                                <div className="flex items-center gap-1.5 mb-1">
-                                  <span className="text-white/20 font-bold">#{idx + 1}</span>
-                                  <span className="text-white/15">{post.length}c</span>
-                                  {isSel && <span className="ml-auto font-bold text-xs" style={{ color: GOLD }}>✓ In use</span>}
-                                </div>
-                                {post}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
+                    <div className="text-xs text-white/25">Click any post to load it into the composer above ↑</div>
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                      {(textAiPosts[textTab] || []).map((post, idx) => {
+                        const isSel = textAiSelected[textTab] === idx;
+                        return (
+                          <button key={idx} onClick={() => useTextAiPost(textTab, idx)}
+                            className="w-full text-left px-3 py-2.5 rounded-xl border text-xs leading-relaxed transition"
+                            style={{ borderColor: isSel ? GOLD : BORDER, background: isSel ? `${GOLD}10` : 'rgba(0,0,0,0.2)', color: isSel ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
+                            <div className="flex items-center gap-1.5 mb-1">
+                              <span className="text-white/20 font-bold">#{idx + 1}</span>
+                              <span className="text-white/15">{post.length}c</span>
+                              {isSel && <span className="ml-auto font-bold text-xs" style={{ color: GOLD }}>✓ In use</span>}
+                            </div>
+                            {post}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
+            )}
+          </div>
 
-              <ScheduleSection />
-            </>
+          <ScheduleSection />
+        </>
+      )}
+
+      {submitError && (
+        <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
+          <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {submitError}
+        </div>
+      )}
+
+      {/* Submit button */}
+      <button
+        onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
+        disabled={submitting || (postType === 'media' && submitOk)}
+        className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+        style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
+        {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
+          : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
+          : postType === 'media'
+            ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
+            : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${textTab === 'twitter' ? 'X' : 'LinkedIn'}` : `Post to ${textTab === 'twitter' ? 'X' : 'LinkedIn'}`}</>}
+      </button>
+    </div>
+  );
+}
+
+// ─── InlineContentIdeas ───────────────────────────────────────────────────────
+// Inline content ideas panel with AI/manual toggle and save-to-planner
+
+function InlineContentIdeas({ userId, onAddToPlanner }: {
+  userId: string | null;
+  onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
+}) {
+  const [mode, setMode] = useState<'manual' | 'ai'>('manual');
+
+  // Manual entry state
+  const [manualTitle, setManualTitle]   = useState('');
+  const [manualNotes, setManualNotes]   = useState('');
+  const [manualCategory, setManualCategory] = useState('idea');
+  const [manualSaved, setManualSaved]   = useState(false);
+
+  // AI state
+  const [captionMode, setCaptionMode]   = useState<'from_video' | 'from_description'>('from_description');
+  const [description, setDescription]   = useState('');
+  const [tone, setTone]                 = useState('');
+  const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+  const [ideas, setIdeas]               = useState<any | null>(null);
+  const [added, setAdded]               = useState<Set<string>>(new Set());
+
+  const CATEGORY_COLORS: Record<string, string> = {
+    idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c',
+  };
+
+  const CATEGORY_OPTIONS = [
+    { value: 'idea', label: '💡 General Idea' },
+    { value: 'short_clip', label: '🎬 Short Clip' },
+    { value: 'hook', label: '🪝 Hook' },
+    { value: 'blog', label: '✍️ Blog/Article' },
+    { value: 'other', label: '📦 Other' },
+  ];
+
+  const handleManualSave = () => {
+    if (!manualTitle.trim()) return;
+    onAddToPlanner?.({
+      title: manualTitle.trim(),
+      notes: manualNotes.trim() || undefined,
+      category: manualCategory,
+      sourceLabel: 'Manual',
+    });
+    setManualSaved(true);
+    setTimeout(() => {
+      setManualSaved(false);
+      setManualTitle('');
+      setManualNotes('');
+      setManualCategory('idea');
+    }, 1500);
+  };
+
+  const handleAiGenerate = async () => {
+    setLoading(true); setError(null); setIdeas(null); setAdded(new Set());
+    try {
+      let source = '';
+      if (captionMode === 'from_video') {
+        if (!videoFile) throw new Error('Select a video first');
+        source = await transcribeVideo(videoFile);
+      } else {
+        if (!description.trim()) throw new Error('Enter a description of your video');
+        source = description;
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone }),
+      });
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json();
+      setIdeas(data.ideas);
+    } catch (e: any) { setError(e.message || 'Something went wrong'); }
+    finally { setLoading(false); }
+  };
+
+  const handleAdd = (key: string, title: string, notes: string | undefined, category: string, sourceLabel: string) => {
+    if (added.has(key)) return;
+    onAddToPlanner?.({ title, notes, category, sourceLabel });
+    setAdded(prev => new Set([...prev, key]));
+  };
+
+  const reset = () => {
+    setDescription(''); setTone(''); setVideoFile(null); setIdeas(null); setError(null); setAdded(new Set());
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Mode toggle */}
+      <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
+        <button onClick={() => setMode('manual')}
+          className="flex-1 py-2 rounded-lg text-xs font-bold transition"
+          style={{ background: mode === 'manual' ? `${GOLD}18` : 'transparent', border: `1px solid ${mode === 'manual' ? GOLD : 'transparent'}`, color: mode === 'manual' ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+          ✏️ Manual Entry
+        </button>
+        <button onClick={() => setMode('ai')}
+          className="flex-1 py-2 rounded-lg text-xs font-bold transition"
+          style={{ background: mode === 'ai' ? `${GOLD}18` : 'transparent', border: `1px solid ${mode === 'ai' ? GOLD : 'transparent'}`, color: mode === 'ai' ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+          ✨ AI Generate
+        </button>
+      </div>
+
+      {/* ── Manual Entry ── */}
+      {mode === 'manual' && (
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Idea Title</label>
+            <input
+              value={manualTitle}
+              onChange={e => setManualTitle(e.target.value)}
+              placeholder="What's the content idea?"
+              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
+              style={{ borderColor: BORDER }}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
+            <textarea
+              value={manualNotes}
+              onChange={e => setManualNotes(e.target.value)}
+              placeholder="Any angles, references, key points…"
+              rows={3}
+              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none"
+              style={{ borderColor: BORDER }}
+            />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Category</label>
+            <div className="flex flex-wrap gap-2 mt-1.5">
+              {CATEGORY_OPTIONS.map(cat => {
+                const col = CATEGORY_COLORS[cat.value] || GOLD;
+                return (
+                  <button key={cat.value} onClick={() => setManualCategory(cat.value)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                    style={{
+                      borderColor: manualCategory === cat.value ? col : BORDER,
+                      background: manualCategory === cat.value ? `${col}18` : 'transparent',
+                      color: manualCategory === cat.value ? col : 'rgba(255,255,255,0.35)',
+                    }}>
+                    {cat.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <button
+            onClick={handleManualSave}
+            disabled={!manualTitle.trim() || manualSaved || !userId}
+            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110 flex items-center justify-center gap-2"
+            style={{ background: manualSaved ? '#22c55e' : GOLD, color: '#000' }}>
+            {manualSaved
+              ? <><CheckCircle2 className="w-4 h-4" /> Saved to Planner!</>
+              : <><Plus className="w-4 h-4" /> Save to Content Planner</>}
+          </button>
+          {!userId && <p className="text-xs text-amber-400/70 text-center">Sign in to save ideas to the planner</p>}
+        </div>
+      )}
+
+      {/* ── AI Generate ── */}
+      {mode === 'ai' && (
+        <div className="space-y-3">
+          <div className="flex gap-2">
+            {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
+                style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {captionMode === 'from_video' && (
+            !videoFile ? (
+              <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                <Video className="w-6 h-6 text-white/25" />
+                <span className="text-xs text-white/40">Click to select your talking video</span>
+                <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
+              </label>
+            ) : (
+              <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
+                <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            )
+          )}
+          {captionMode === 'from_description' && (
+            <textarea value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="Describe your video — what you talked about, main points, key takeaways…" rows={4}
+              className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+          )}
+          <input value={tone} onChange={e => setTone(e.target.value)}
+            placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
+            className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+          {error && <div className="text-xs text-red-300">{error}</div>}
+          {!ideas && (
+            <button onClick={handleAiGenerate} disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+              style={{ background: GOLD, color: '#000' }}>
+              {loading
+                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Processing & Transcribing…' : 'Generating Ideas…'}</span>
+                : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
+            </button>
           )}
 
-          {submitError && (
-            <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {submitError}
+          {ideas && (
+            <div className="space-y-5">
+              {ideas.short_clips?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🎬 Short Clip Ideas</div>
+                  <div className="space-y-2">
+                    {ideas.short_clips.map((clip: any, i: number) => {
+                      const key = `clip-${i}`;
+                      return (
+                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-white">{clip.title}</div>
+                              <div className="text-xs text-white/45 mt-1">{clip.angle}</div>
+                              <div className="text-xs font-semibold mt-1.5" style={{ color: GOLD }}>{clip.platform}</div>
+                            </div>
+                            <button onClick={() => handleAdd(key, clip.title, clip.angle, 'short_clip', 'Short Clip')}
+                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {ideas.social_hooks?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🪝 Hook Ideas</div>
+                  <div className="space-y-1.5">
+                    {ideas.social_hooks.map((hook: string, i: number) => {
+                      const key = `hook-${i}`;
+                      return (
+                        <div key={i} className="flex items-start gap-2 p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <p className="flex-1 text-sm text-white/60 leading-relaxed">{hook}</p>
+                          <button onClick={() => handleAdd(key, hook, undefined, 'hook', 'Hook Idea')}
+                            className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                            style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                            {added.has(key) ? '✓ Added' : '+ Planner'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {ideas.blog_angles?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">✍️ Blog / Article Angles</div>
+                  <div className="space-y-2">
+                    {ideas.blog_angles.map((b: any, i: number) => {
+                      const key = `blog-${i}`;
+                      return (
+                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-white">{b.headline}</div>
+                              <div className="text-xs text-white/45 mt-1">{b.angle}</div>
+                            </div>
+                            <button onClick={() => handleAdd(key, b.headline, b.angle, 'blog', 'Blog Angle')}
+                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {ideas.other_formats?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📦 Other Formats</div>
+                  <div className="space-y-2">
+                    {ideas.other_formats.map((f: any, i: number) => {
+                      const key = `other-${i}`;
+                      return (
+                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-white">{f.format}</div>
+                              <div className="text-xs text-white/45 mt-1">{f.concept}</div>
+                            </div>
+                            <button onClick={() => handleAdd(key, f.format, f.concept, 'other', 'Other Format')}
+                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+                ↺ Generate New Ideas
+              </button>
             </div>
           )}
         </div>
-
-        <div className="px-4 md:px-6 py-3 md:py-4 border-t flex items-center justify-between gap-3 shrink-0" style={{ borderColor: BORDER }}>
-          <span className="text-xs text-white/25">
-            {postType === 'media'
-              ? selectedIntegrations.length > 0
-                  ? captionType === 'ai' && generatedCaptions
-                    ? `${Object.keys(generatedCaptions).length} captions ready`
-                    : `${selectedIntegrations.length} channel${selectedIntegrations.length !== 1 ? 's' : ''} selected`
-                  : 'No channels selected'
-              : textCurrent.length > 0 ? `${textCurrent.length} chars` : 'Nothing written yet'}
-          </span>
-          <button
-            onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
-            disabled={submitting || (postType === 'media' && submitOk)}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-            style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-            {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
-              : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
-              : postType === 'media'
-                ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
-                : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${textTab === 'twitter' ? 'X' : 'LinkedIn'}` : `Post to ${textTab === 'twitter' ? 'X' : 'LinkedIn'}`}</>}
-          </button>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -1944,7 +1897,6 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addDate, setAddDate]           = useState('');
   const [repurposeOpen, setRepurposeOpen] = useState(false);
-  // Pending item from Ideas generator waiting for a date to be assigned
   const [pendingItem, setPendingItem]   = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
 
   const year        = currentDate.getFullYear();
@@ -2001,7 +1953,6 @@ function PlannerPanel({ userId }: { userId: string | null }) {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-2">
           <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
@@ -2040,14 +1991,12 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         </div>
       </div>
 
-      {/* Day headers */}
       <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
           <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
         ))}
       </div>
 
-      {/* Calendar grid */}
       <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
@@ -2057,7 +2006,6 @@ function PlannerPanel({ userId }: { userId: string | null }) {
           const dayItems = itemsOnDay(day);
           const isToday  = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
           const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
-          // Show up to 2 items inline, rest as +N badge
           const visibleItems = dayItems.slice(0, 2);
           const overflow     = dayItems.length - visibleItems.length;
 
@@ -2073,13 +2021,10 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                   setPendingItem(null); setAddModalOpen(true);
                 }
               }}>
-              {/* Day number */}
               <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1 shrink-0"
                 style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }}>
                 {day}
               </div>
-
-              {/* Mobile: dot row + count */}
               {dayItems.length > 0 && (
                 <div className="md:hidden flex items-center gap-0.5 flex-wrap">
                   {dayItems.slice(0, 3).map(item => {
@@ -2093,8 +2038,6 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                   )}
                 </div>
               )}
-
-              {/* Desktop: labeled chips */}
               <div className="hidden md:block space-y-0.5">
                 {visibleItems.map(item => {
                   const col = CATEGORY_COLORS[item.category] || GOLD;
@@ -2117,8 +2060,6 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                   </div>
                 )}
               </div>
-
-              {/* Hover add hint when empty */}
               {dayItems.length === 0 && (
                 <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
                   <Plus className="w-2.5 h-2.5 text-white/20" />
@@ -2129,7 +2070,6 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         })}
       </div>
 
-      {/* Day detail modal */}
       {dayModalOpen && selectedDay !== null && (
         <DayDetailModal
           day={selectedDay} month={month} year={year}
@@ -2144,7 +2084,6 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         />
       )}
 
-      {/* Add item modal */}
       {addModalOpen && (
         <AddPlannerItemModal
           userId={userId}
@@ -2155,7 +2094,24 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         />
       )}
 
-      <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} onAddToPlanner={handleAddToPlanner} />
+      {repurposeOpen && (
+        <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setRepurposeOpen(false)} />
+          <div className="relative w-full md:max-w-xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            style={{ background: SURFACE, borderColor: BORDER }}>
+            <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
+              <div>
+                <h2 className="text-base font-bold text-white">♻️ Content Ideas</h2>
+                <p className="text-sm text-white/40 mt-0.5">Find new angles — add directly to your planner</p>
+              </div>
+              <button onClick={() => setRepurposeOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2321,16 +2277,19 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
     </div>
   );
 }
+
 // ─── ComposerPanel ────────────────────────────────────────────────────────────
-// Center = content ideas + post composer. Stats at top open PostLogModal.
+// Two-column layout: Create Post (left) | Content Ideas (right)
+// No "Your Channels" section — that's in the sidebar.
 
 function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
-  const [composerOpen, setComposerOpen]   = useState(false);
-  const [repurposeOpen, setRepurposeOpen] = useState(false);
   const [logOpen, setLogOpen]             = useState(false);
   const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
   const [loading, setLoading]             = useState(false);
+  const [addModalOpen, setAddModalOpen]   = useState(false);
+  const [addDate]                         = useState(() => new Date().toISOString().split('T')[0]);
+  const [pendingItem, setPendingItem]     = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
 
   const loadPosts = useCallback(async () => {
     if (!userId) return;
@@ -2358,6 +2317,11 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
     failed:    posts.filter(p => p.status === 'failed').length,
   };
 
+  const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }) => {
+    setPendingItem(item);
+    setAddModalOpen(true);
+  };
+
   return (
     <div className="flex flex-col h-full">
 
@@ -2381,122 +2345,54 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
         ))}
       </div>
 
-      {/* ── Main content area ── */}
-      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-6 md:py-8 space-y-6">
+      {/* ── Main two-column layout ── */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x min-h-full" style={{ '--tw-divide-opacity': 1 } as any}>
 
-        {/* Quick action cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <button onClick={() => setComposerOpen(true)}
-            className="group flex items-center gap-4 p-4 md:p-5 rounded-2xl border text-left transition hover:bg-white/5 hover:border-opacity-60"
-            style={{ borderColor: `${GOLD}40`, background: `${GOLD}08` }}>
-            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0 transition group-hover:brightness-110"
-              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
-              <Plus className="w-5 h-5 md:w-6 md:h-6 text-black" />
-            </div>
-            <div>
-              <div className="text-sm md:text-base font-black text-white">Create Post</div>
-              <div className="text-xs text-white/40 mt-0.5">Write, upload & schedule to your channels</div>
-            </div>
-          </button>
-
-          <button onClick={() => setRepurposeOpen(true)}
-            className="group flex items-center gap-4 p-4 md:p-5 rounded-2xl border text-left transition hover:bg-white/5"
-            style={{ borderColor: `rgba(167,139,250,0.3)`, background: `rgba(167,139,250,0.06)` }}>
-            <div className="w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center shrink-0"
-              style={{ background: `linear-gradient(135deg, #a78bfa, #7c3aed)` }}>
-              <Sparkles className="w-5 h-5 md:w-6 md:h-6 text-white" />
-            </div>
-            <div>
-              <div className="text-sm md:text-base font-black text-white">AI Content Ideas</div>
-              <div className="text-xs text-white/40 mt-0.5">Generate ideas from your video or description</div>
-            </div>
-          </button>
-        </div>
-
-        {/* Divider */}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 h-px" style={{ background: BORDER }} />
-          <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Your Channels</span>
-          <div className="flex-1 h-px" style={{ background: BORDER }} />
-        </div>
-
-        {/* Connected channels summary */}
-        {integrations.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-10 text-center gap-3">
-            <div className="w-14 h-14 rounded-2xl border flex items-center justify-center" style={{ borderColor: BORDER }}>
-              <Link2Off className="w-6 h-6 text-white/15" />
-            </div>
-            <div className="text-sm font-bold text-white/30">No channels connected yet</div>
-            <div className="text-xs text-white/20">Connect your social accounts to start posting</div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-            {integrations.map(int => (
-              <div key={int.id} className="flex items-center gap-2.5 p-3 rounded-xl border"
-                style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.03)' }}>
-                <PlatformIcon id={int.profile || int.identifier} size="md" />
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-bold text-white/70 truncate">{int.name}</div>
-                  <div className="flex items-center gap-1 mt-0.5">
-                    <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                    <span className="text-[10px] text-white/30">Connected</span>
-                  </div>
-                </div>
+          {/* Left column: Create Post */}
+          <div className="px-4 md:px-6 py-6 space-y-1" style={{ borderColor: BORDER }}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
+                <Send className="w-4 h-4 text-black" />
               </div>
-            ))}
+              <div>
+                <div className="text-sm font-black text-white">Create Post</div>
+                <div className="text-xs text-white/35">Write, upload & schedule to your channels</div>
+              </div>
+            </div>
+            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={loadPosts} />
           </div>
-        )}
 
-        {/* Recent activity hint */}
-        {posts.length > 0 && (
-          <>
-            <div className="flex items-center gap-3">
-              <div className="flex-1 h-px" style={{ background: BORDER }} />
-              <span className="text-[10px] font-bold text-white/20 uppercase tracking-widest">Recent Activity</span>
-              <div className="flex-1 h-px" style={{ background: BORDER }} />
+          {/* Right column: Content Ideas */}
+          <div className="px-4 md:px-6 py-6 border-t lg:border-t-0" style={{ borderColor: BORDER }}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: `linear-gradient(135deg, #a78bfa, #7c3aed)` }}>
+                <Sparkles className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <div className="text-sm font-black text-white">Content Ideas</div>
+                <div className="text-xs text-white/35">Generate or add ideas — save to your planner</div>
+              </div>
             </div>
-            <div className="space-y-2">
-              {posts
-                .sort((a, b) => b.scheduledAt.getTime() - a.scheduledAt.getTime())
-                .slice(0, 4)
-                .map(post => {
-                  const statusColor = post.status === 'published' ? '#22c55e' : post.status === 'failed' ? '#ef4444' : GOLD;
-                  const statusBg    = post.status === 'published' ? 'rgba(34,197,94,0.1)' : post.status === 'failed' ? 'rgba(239,68,68,0.1)' : `${GOLD}10`;
-                  return (
-                    <div key={post.id} className="flex items-center gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
-                      <div className="flex -space-x-1.5 shrink-0">
-                        {post.platforms.slice(0, 2).map((pid, i) => (
-                          <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
-                            <PlatformIcon id={pid} size="sm" />
-                          </div>
-                        ))}
-                        {post.platforms.length > 2 && (
-                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
-                            +{post.platforms.length - 2}
-                          </div>
-                        )}
-                      </div>
-                      <p className="flex-1 text-xs text-white/50 truncate">{post.content || '(No caption)'}</p>
-                      <span className="px-2 py-0.5 rounded-md text-[10px] font-bold shrink-0"
-                        style={{ background: statusBg, color: statusColor }}>
-                        {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
-                      </span>
-                    </div>
-                  );
-                })}
-              <button onClick={() => { setLogFilter('all'); setLogOpen(true); }}
-                className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5 text-center"
-                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
-                View all posts →
-              </button>
-            </div>
-          </>
-        )}
+            <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} />
+          </div>
+        </div>
       </div>
 
+      {/* Modals */}
       <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} />
-      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)} integrations={integrations} userId={userId} onSuccess={loadPosts} />
-      <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
+
+      {addModalOpen && (
+        <AddPlannerItemModal
+          userId={userId}
+          initialDate={addDate}
+          prefilled={pendingItem ?? undefined}
+          onClose={() => { setAddModalOpen(false); setPendingItem(null); }}
+          onSaved={() => { setAddModalOpen(false); setPendingItem(null); }}
+        />
+      )}
     </div>
   );
 }
@@ -2540,7 +2436,6 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
   const STATUS_COLOR = (s: string) => s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
-  const STATUS_BG    = (s: string) => s === 'published' ? 'rgba(34,197,94,0.15)' : s === 'failed' ? 'rgba(239,68,68,0.15)' : `${GOLD}20`;
 
   const postsOnDay = (day: number) =>
     posts.filter(p => {
@@ -2550,7 +2445,6 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
@@ -2577,14 +2471,12 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
         </button>
       </div>
 
-      {/* Day-of-week headers */}
       <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
           <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
         ))}
       </div>
 
-      {/* Calendar grid */}
       <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
@@ -2594,7 +2486,6 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
           const dayPosts  = postsOnDay(day);
           const isToday   = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
           const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
-          // Show up to 3 dots always — clean on all screen sizes
           const dotPosts  = dayPosts.slice(0, 4);
           const overflow  = dayPosts.length - dotPosts.length;
 
@@ -2605,14 +2496,10 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
               onClick={() => dayPosts.length > 0
                 ? (setSelectedDay(day), setDayLogOpen(true))
                 : (setComposerDate(new Date(year, month, day, 10, 0)), setComposerOpen(true))}>
-
-              {/* Day number */}
               <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1.5"
                 style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.55)' }}>
                 {day}
               </div>
-
-              {/* Dot indicators — same on all screen sizes */}
               {dayPosts.length > 0 && (
                 <div className="flex flex-wrap gap-0.5 items-center">
                   {dotPosts.map(post => (
@@ -2626,15 +2513,11 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
                   )}
                 </div>
               )}
-
-              {/* Count badge on busier days */}
               {dayPosts.length > 0 && (
                 <div className="mt-1 text-[9px] font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>
                   {dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}
                 </div>
               )}
-
-              {/* Empty hover hint */}
               {dayPosts.length === 0 && (
                 <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
                   <Plus className="w-2.5 h-2.5 text-white/20" />
@@ -2645,7 +2528,6 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
         })}
       </div>
 
-      {/* Day detail modal */}
       {dayLogOpen && selectedDay !== null && (() => {
         const dayPosts  = postsOnDay(selectedDay);
         const dateLabel = new Date(year, month, selectedDay)
@@ -2703,8 +2585,22 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
         );
       })()}
 
-      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
-        integrations={integrations} userId={userId} defaultDate={composerDate} onSuccess={loadPosts} />
+      {/* Calendar New Post modal — uses regular modal for calendar view */}
+      {composerOpen && (
+        <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setComposerOpen(false)} />
+          <div className="relative w-full md:max-w-2xl flex flex-col border overflow-hidden shadow-2xl rounded-t-2xl md:rounded-2xl max-h-[92vh] md:max-h-[90vh]"
+            style={{ background: SURFACE, borderColor: BORDER }}>
+            <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+              <h2 className="text-base font-bold text-white">Create Post</h2>
+              <button onClick={() => setComposerOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+              <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); setComposerOpen(false); }} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3002,6 +2898,7 @@ export function MediaDistributionPage() {
         @keyframes mmPulse  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
         @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
+        .lg\\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
       `}</style>
 
       {oauthLoading && (
