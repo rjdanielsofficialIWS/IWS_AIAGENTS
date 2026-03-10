@@ -19,18 +19,16 @@ interface DemoPage {
   system_prompt: string;
   first_message: string;
   is_active: boolean;
-
-  // ✅ NEW: pull company name from the same demo_pages row
   company_name?: string | null;
 }
 
 type ChatMsg = { role: 'assistant' | 'user'; content: string };
 type ModalMode = 'voice' | 'chat' | null;
 
-const VAPI_PUBLIC_KEY = 'bbb09258-06b0-44a8-99fd-5a4dee906809';
+// ✅ Fixed: must match the Vapi account where assistants are created (same as HomePage)
+const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const CALENDLY_URL = 'https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding';
 
-// ✅ Slightly richer/less dull gold
 const GOLD_PRIMARY = '#D6B25E';
 const GOLD_HOVER = '#F0D27C';
 
@@ -47,7 +45,6 @@ export function DynamicDemoPage() {
 
   const [modal, setModal] = useState<ModalMode>(null);
 
-  // ✅ Match HomePage desktop background “glow motion”
   const [bgOffset, setBgOffset] = useState(0);
 
   // Voice
@@ -70,13 +67,11 @@ export function DynamicDemoPage() {
       .join(' ');
   }, [targetSlug]);
 
-  // ✅ NEW: company name pulled from Supabase row (fallback to displayName if missing)
   const companyName = useMemo(() => {
     const fromDb = (demoPage?.company_name || '').trim();
     return fromDb || displayName;
   }, [demoPage?.company_name, displayName]);
 
-  // ✅ Same scroll offset behavior as HomePage
   useEffect(() => {
     let raf = 0;
     const onScroll = () => {
@@ -95,7 +90,6 @@ export function DynamicDemoPage() {
     };
   }, []);
 
-  // Remove any floating Vapi launcher widgets (but don't mess with modal content)
   const nukeVapiLauncher = () => {
     document.querySelectorAll('vapi-widget').forEach((node) => {
       const el = node as HTMLElement;
@@ -220,21 +214,20 @@ export function DynamicDemoPage() {
     chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
   }, [chatMsgs, chatLoading]);
 
-  // Start voice immediately when voice modal opens
+  // Start voice when modal opens
   useEffect(() => {
     if (modal !== 'voice') return;
     if (!demoPage?.assistant_id) return;
 
     let cancelled = false;
 
+    // Open window before async work so mobile browsers don't block it
     const start = async () => {
       try {
         setVoiceError(null);
         setVoiceStatus('connecting');
 
-        try {
-          vapiRef.current?.stop();
-        } catch {}
+        try { vapiRef.current?.stop(); } catch {}
         vapiRef.current = null;
 
         const vapi = new Vapi(VAPI_PUBLIC_KEY);
@@ -274,9 +267,7 @@ export function DynamicDemoPage() {
 
     return () => {
       cancelled = true;
-      try {
-        vapiRef.current?.stop();
-      } catch {}
+      try { vapiRef.current?.stop(); } catch {}
       vapiRef.current = null;
       setVoiceStatus('idle');
       setVoiceError(null);
@@ -284,9 +275,7 @@ export function DynamicDemoPage() {
   }, [modal, demoPage]);
 
   const closeModal = () => {
-    try {
-      vapiRef.current?.stop();
-    } catch {}
+    try { vapiRef.current?.stop(); } catch {}
     vapiRef.current = null;
     setVoiceStatus('idle');
     setVoiceError(null);
@@ -386,7 +375,6 @@ export function DynamicDemoPage() {
         backgroundSize: 'cover',
       }}
     >
-      {/* ✅ Gold shimmer animation (used on displayName + all “Book intro call” CTAs) */}
       <style>
         {`
           .gold-shimmer {
@@ -422,7 +410,6 @@ export function DynamicDemoPage() {
         `}
       </style>
 
-      {/* ✅ Same overlay layer as HomePage desktop */}
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute inset-0 bg-[radial-gradient(800px_520px_at_20%_20%,rgba(200,162,74,0.10),transparent_58%),radial-gradient(900px_560px_at_80%_70%,rgba(255,255,255,0.04),transparent_60%)]" />
       </div>
@@ -455,7 +442,6 @@ export function DynamicDemoPage() {
           they need — automatically.
         </div>
 
-        {/* ✅ UPDATED COPY + ✅ dynamic company name with shimmer */}
         <p className="mt-10 text-lg font-semibold">
           Choose how you&apos;d like to contact{' '}
           <span className="gold-shimmer font-bold">{companyName}</span>
@@ -490,8 +476,6 @@ export function DynamicDemoPage() {
             href={CALENDLY_URL}
             target="_blank"
             rel="noopener noreferrer"
-            data-track="book"
-            data-track-label="Book intro call"
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold transition border"
             style={{
               borderColor: 'rgba(214, 178, 94, 0.55)',
@@ -511,7 +495,7 @@ export function DynamicDemoPage() {
             <span className="gold-shimmer font-bold">Book intro call</span>
           </a>
 
-          <p className="mt-1 text-[11px] text-gray-400">Quick intro + we’ll show how it fits.</p>
+          <p className="mt-1 text-[11px] text-gray-400">Quick intro + we'll show how it fits.</p>
         </div>
       </main>
 
@@ -545,16 +529,11 @@ export function DynamicDemoPage() {
 
                   <button
                     className="mt-8 w-28 h-28 rounded-full transition flex items-center justify-center"
-                    style={{
-                      backgroundColor: '#DC2626',
-                      boxShadow: '0 18px 60px rgba(0,0,0,0.6)',
-                    }}
+                    style={{ backgroundColor: '#DC2626', boxShadow: '0 18px 60px rgba(0,0,0,0.6)' }}
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = '#B91C1C')}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = '#DC2626')}
                     onClick={() => {
-                      try {
-                        vapiRef.current?.stop();
-                      } catch {}
+                      try { vapiRef.current?.stop(); } catch {}
                       setVoiceStatus('ended');
                       closeModal();
                     }}
@@ -567,8 +546,6 @@ export function DynamicDemoPage() {
                     href={CALENDLY_URL}
                     target="_blank"
                     rel="noopener noreferrer"
-                    data-track="book"
-                    data-track-label="Book intro call (voice modal)"
                     className="mt-6 inline-flex items-center gap-2 text-sm font-semibold hover:underline"
                     style={{ color: GOLD_HOVER }}
                   >
@@ -632,8 +609,6 @@ export function DynamicDemoPage() {
                       href={CALENDLY_URL}
                       target="_blank"
                       rel="noopener noreferrer"
-                      data-track="book"
-                      data-track-label="Book intro call (chat modal)"
                       className="inline-flex items-center gap-2 text-sm font-semibold hover:underline"
                       style={{ color: GOLD_HOVER }}
                     >
