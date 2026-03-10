@@ -18,6 +18,12 @@ const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)'
 const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
+// Resolve a raw API status against current time — if scheduled but past-due, treat as published
+const resolveStatus = (raw: string, scheduledAt: Date): 'scheduled' | 'published' | 'failed' => {
+  if (raw === 'scheduled' && scheduledAt < new Date()) return 'published';
+  return (raw as any) || 'scheduled';
+};
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ORG_ID = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
 
@@ -655,9 +661,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        const rawStatus = p.status || 'scheduled';
-        const status = rawStatus === 'scheduled' && scheduledAt < now ? 'published' : rawStatus;
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) };
       }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
     } catch (e) {}
     finally { setLoading(false); }
@@ -2408,11 +2412,10 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => ({
-        id: p.id, content: p.content || '',
-        platforms: Array.isArray(p.platforms) ? p.platforms : [],
-        scheduledAt: new Date(p.scheduledAt), status: p.status || 'scheduled',
-      })));
+      setPosts(list.map((p: any) => {
+        const scheduledAt = new Date(p.scheduledAt);
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) };
+      }));
     } catch (e) {}
     finally { setLoading(false); }
   }, [userId]);
@@ -2532,11 +2535,10 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
       const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
       const data  = res.ok ? await res.json() : { posts: [] };
       const list  = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => ({
-        id: p.id, content: p.content || '',
-        platforms: Array.isArray(p.platforms) ? p.platforms : [],
-        scheduledAt: new Date(p.scheduledAt), status: p.status || 'scheduled',
-      })));
+      setPosts(list.map((p: any) => {
+        const scheduledAt = new Date(p.scheduledAt);
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) };
+      }));
     } catch (e) {}
     finally { setLoading(false); }
   }, [userId, year, month]);
