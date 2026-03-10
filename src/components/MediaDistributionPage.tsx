@@ -558,6 +558,9 @@ function ConnectAccountsModal({
         return;
       }
 
+      // Open the window BEFORE the async fetch so mobile browsers don't block it
+      const popup = window.open('', '_blank');
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
         method: 'POST',
         headers: {
@@ -567,15 +570,21 @@ function ConnectAccountsModal({
       });
 
       if (!res.ok) {
+        popup?.close();
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server error ${res.status}`);
       }
 
       const { connectUrl } = await res.json();
-      if (!connectUrl) throw new Error('No connect URL returned');
+      if (!connectUrl) { popup?.close(); throw new Error('No connect URL returned'); }
 
       localStorage.setItem('postiz_social_return', '1');
-      window.open(connectUrl, '_blank');
+      if (popup) {
+        popup.location.href = connectUrl;
+      } else {
+        // Fallback if popup was blocked — navigate current tab
+        window.location.href = connectUrl;
+      }
       setConnecting(false);
     } catch (err: any) {
       setError(err instanceof Error ? err.message : 'Failed to open connection manager. Please try again.');
