@@ -1015,11 +1015,23 @@ function InlinePostComposer({
   const [textAiPosts, setTextAiPosts]   = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
   const [textAiSelected, setTextAiSelected] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
 
-  const xInteg    = integrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
-  const liInteg   = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
-  const textCurrent = textTab === 'twitter' ? xText : linkedinText;
-  const setTextCurrent = (v: string) => { if (textTab === 'twitter') setXText(v); else setLinkedinText(v); };
-  const textHasConn   = textTab === 'twitter' ? !!xInteg : !!liInteg;
+  const xInteg       = integrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
+  const liInteg      = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
+  const threadsInteg = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('threads'));
+
+  // Multi-select for text post accounts
+  const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
+  const toggleTextAccount = (id: string) => setSelectedTextAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  // AI edit state
+  const [aiEditText, setAiEditText] = useState('');
+  const [showAiEdit, setShowAiEdit] = useState(false);
+
+  const textPostAccounts = [
+    ...(xInteg       ? [{ integ: xInteg,       platform: 'x' as PlatformId       }] : []),
+    ...(liInteg      ? [{ integ: liInteg,       platform: 'linkedin' as PlatformId }] : []),
+    ...(threadsInteg ? [{ integ: threadsInteg,  platform: 'threads' as PlatformId  }] : []),
+  ];
 
   const getSelectedPlatforms = () =>
     selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
@@ -1089,6 +1101,8 @@ function InlinePostComposer({
     if (platform === 'twitter') setXText(text); else setLinkedinText(text);
     setTextAiSelected(prev => ({ ...prev, [platform]: idx }));
     setTextTab(platform);
+    setAiEditText(text);
+    setShowAiEdit(true);
   };
 
   const handleMediaSubmit = async () => {
@@ -1170,21 +1184,26 @@ function InlinePostComposer({
   };
 
   const handleTextSubmit = async () => {
-    const text = textTab === 'twitter' ? xText : linkedinText;
-    if (!text.trim())    { setSubmitError('Write something first.'); return; }
-    if (!textHasConn)    { setSubmitError(`No ${textTab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected.`); return; }
+    const text = showTextAi && showAiEdit ? aiEditText : (textTab === 'twitter' ? xText : linkedinText);
+    if (!text.trim()) { setSubmitError('Write something first.'); return; }
+    if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account to post to.'); return; }
     setSubmitting(true); setSubmitError(null);
     try {
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      await ayrsharePost({ platforms: [textTab === 'twitter' ? 'x' : 'linkedin'], post: text, scheduleDate: sd });
+      const platformIds = selectedTextAccounts.map(id => {
+        const acct = textPostAccounts.find(a => a.integ.id === id);
+        return acct?.integ.identifier || acct?.platform || '';
+      }).filter(Boolean);
+      await ayrsharePost({ platforms: platformIds, post: text, scheduleDate: sd });
       setSubmitOk(true);
       if (textTab === 'twitter') setXText(''); else setLinkedinText('');
+      setAiEditText(''); setShowAiEdit(false); setSelectedTextAccounts([]);
       setTimeout(() => setSubmitOk(false), 3000);
     } catch (e: any) { setSubmitError(e.message || 'Post failed'); }
     finally { setSubmitting(false); }
   };
 
-  const ScheduleSection = () => (
+  const scheduleSectionJsx = (
     <div>
       <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">When to post</div>
       <div className="flex gap-2 mb-3">
@@ -1423,49 +1442,72 @@ function InlinePostComposer({
             </div>
           )}
 
-          <ScheduleSection />
+          {scheduleSectionJsx}
         </>
       )}
 
       {postType === 'text' && (
         <>
-          <div className="flex gap-2">
-            {(['twitter', 'linkedin'] as const).map(p => {
-              const connected = p === 'twitter' ? !!xInteg : !!liInteg;
-              return (
-                <button key={p} onClick={() => { setTextTab(p); setSubmitError(null); setSubmitOk(false); }}
-                  className="flex-1 py-2.5 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2"
-                  style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}18` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                  {p === 'twitter' ? '𝕏 Twitter/X' : 'in LinkedIn'}
-                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${connected ? 'bg-green-400' : 'bg-white/15'}`} />
-                </button>
-              );
-            })}
+          {/* Account selector — same style as media post */}
+          <div>
+            <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
+            {textPostAccounts.length === 0 ? (
+              <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                No X, LinkedIn, or Threads account connected yet.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {textPostAccounts.map(({ integ, platform }) => {
+                  const selected = selectedTextAccounts.includes(integ.id);
+                  const p = PLATFORMS[platform];
+                  return (
+                    <button key={integ.id}
+                      onClick={() => { toggleTextAccount(integ.id); setSubmitError(null); }}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
+                      style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
+                      <PlatformIcon id={platform} size="sm" />
+                      <span className="max-w-[90px] truncate text-xs">{integ.name}</span>
+                      {selected && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-            <textarea
-              value={textCurrent}
-              onChange={e => setTextCurrent(e.target.value)}
-              placeholder={textTab === 'twitter' ? 'Write your X (Twitter) post here…' : 'Write your LinkedIn post here…'}
-              rows={textTab === 'linkedin' ? 7 : 5}
-              className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
-            />
-            <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
-              <span className="text-xs text-white/20">{textCurrent.length} chars</span>
-              {textTab === 'twitter' && textCurrent.length > 280 && <span className="text-xs text-red-400 font-bold">Over 280 char limit</span>}
-            </div>
-          </div>
-
-          {!textHasConn && (
-            <div className="text-xs text-amber-400/70 flex items-center gap-1.5 px-1">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-              No {textTab === 'twitter' ? 'Twitter/X' : 'LinkedIn'} account connected — add one in Channels.
+          {/* Manual text compose — hidden when AI mode is open */}
+          {!showTextAi && (
+            <div>
+              {/* Platform tab selector for manual writing */}
+              <div className="flex gap-2 mb-3">
+                {(['twitter', 'linkedin'] as const).map(p => (
+                  <button key={p} onClick={() => { setTextTab(p); setSubmitError(null); }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition"
+                    style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}18` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                    <PlatformIcon id={p === 'twitter' ? 'x' : 'linkedin'} size="sm" />
+                    {p === 'twitter' ? 'X / Twitter' : 'LinkedIn'}
+                  </button>
+                ))}
+              </div>
+              <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                <textarea
+                  value={textTab === 'twitter' ? xText : linkedinText}
+                  onChange={e => { if (textTab === 'twitter') setXText(e.target.value); else setLinkedinText(e.target.value); }}
+                  placeholder={textTab === 'twitter' ? 'Write your X (Twitter) post here…' : 'Write your LinkedIn post here…'}
+                  rows={textTab === 'linkedin' ? 7 : 5}
+                  className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                />
+                <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+                  <span className="text-xs text-white/20">{(textTab === 'twitter' ? xText : linkedinText).length} chars</span>
+                  {textTab === 'twitter' && xText.length > 280 && <span className="text-xs text-red-400 font-bold">Over 280 char limit</span>}
+                </div>
+              </div>
             </div>
           )}
 
+          {/* AI Generate section */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-            <button onClick={() => setShowTextAi(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+            <button onClick={() => { setShowTextAi(v => !v); setShowAiEdit(false); }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>AI Generate Posts</span>
@@ -1474,7 +1516,7 @@ function InlinePostComposer({
             </button>
             {showTextAi && (
               <div className="border-t px-4 pb-4 space-y-3" style={{ borderColor: BORDER }}>
-                <p className="text-xs text-white/35 pt-3">Generates 10 post ideas per platform. Click any to load it into the composer above.</p>
+                <p className="text-xs text-white/35 pt-3">Generates 10 post ideas per platform. Select one to edit and post.</p>
                 <div className="flex gap-2">
                   {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                     <button key={m} onClick={() => setTextAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
@@ -1512,18 +1554,20 @@ function InlinePostComposer({
                   style={{ background: GOLD, color: '#000' }}>
                   {textAiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Transcribing…' : 'Generating…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
                 </button>
+
                 {textAiPosts && (
                   <div className="space-y-2 pt-1">
                     <div className="flex gap-2">
                       {(['twitter', 'linkedin'] as const).map(p => (
                         <button key={p} onClick={() => setTextTab(p)}
-                          className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
+                          className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5"
                           style={{ borderColor: textTab === p ? GOLD : BORDER, background: textTab === p ? `${GOLD}15` : 'transparent', color: textTab === p ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                          {p === 'twitter' ? `𝕏 (${textAiPosts.twitter.length})` : `LinkedIn (${textAiPosts.linkedin.length})`}
+                          <PlatformIcon id={p === 'twitter' ? 'x' : 'linkedin'} size="sm" />
+                          {p === 'twitter' ? `X (${textAiPosts.twitter.length})` : `LinkedIn (${textAiPosts.linkedin.length})`}
                         </button>
                       ))}
                     </div>
-                    <div className="text-xs text-white/25">Click any post to load it into the composer above ↑</div>
+                    <div className="text-xs text-white/25">Click a post to select &amp; edit it before posting</div>
                     <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                       {(textAiPosts[textTab] || []).map((post, idx) => {
                         const isSel = textAiSelected[textTab] === idx;
@@ -1534,20 +1578,38 @@ function InlinePostComposer({
                             <div className="flex items-center gap-1.5 mb-1">
                               <span className="text-white/20 font-bold">#{idx + 1}</span>
                               <span className="text-white/15">{post.length}c</span>
-                              {isSel && <span className="ml-auto font-bold text-xs" style={{ color: GOLD }}>✓ In use</span>}
+                              {isSel && <span className="ml-auto font-bold text-xs flex items-center gap-1" style={{ color: GOLD }}><Edit3 className="w-3 h-3" /> Editing</span>}
                             </div>
                             {post}
                           </button>
                         );
                       })}
                     </div>
+
+                    {/* Inline edit box for selected AI post */}
+                    {showAiEdit && (
+                      <div className="rounded-xl border overflow-hidden mt-2" style={{ borderColor: `${GOLD}50`, background: 'rgba(0,0,0,0.3)' }}>
+                        <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: `${GOLD}20` }}>
+                          <Edit3 className="w-3.5 h-3.5" style={{ color: GOLD }} />
+                          <span className="text-xs font-bold" style={{ color: GOLD }}>Edit before posting</span>
+                          <span className="ml-auto text-xs text-white/20">{aiEditText.length} chars</span>
+                        </div>
+                        <textarea
+                          value={aiEditText}
+                          onChange={e => setAiEditText(e.target.value)}
+                          rows={5}
+                          className="w-full bg-transparent px-3 py-2.5 text-xs text-white placeholder-white/20 outline-none resize-none"
+                          placeholder="Edit this post before scheduling or posting…"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )}
           </div>
 
-          <ScheduleSection />
+          {scheduleSectionJsx}
         </>
       )}
 
@@ -1567,7 +1629,7 @@ function InlinePostComposer({
           : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
           : postType === 'media'
             ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
-            : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${textTab === 'twitter' ? 'X' : 'LinkedIn'}` : `Post to ${textTab === 'twitter' ? 'X' : 'LinkedIn'}`}</>}
+            : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
       </button>
     </div>
   );
