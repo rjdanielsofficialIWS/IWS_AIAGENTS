@@ -651,11 +651,14 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
       const data = res.ok ? await res.json() : { posts: [] };
+      const now = new Date();
       const list = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => ({
-        id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [],
-        scheduledAt: new Date(p.scheduledAt), status: p.status || 'scheduled',
-      })).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
+      setPosts(list.map((p: any) => {
+        const scheduledAt = new Date(p.scheduledAt);
+        const rawStatus = p.status || 'scheduled';
+        const status = rawStatus === 'scheduled' && scheduledAt < now ? 'published' : rawStatus;
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status };
+      }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
     } catch (e) {}
     finally { setLoading(false); }
   }, [userId, open]);
