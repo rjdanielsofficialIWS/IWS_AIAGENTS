@@ -5,6 +5,7 @@ import {
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
+  ClipboardList, FileText, Trash2, BookOpen,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -88,11 +89,21 @@ type PostizIntegration = {
   picture?: string; profile?: string; disabled?: boolean;
 };
 
-type ViewMode = 'composer' | 'calendar';
+type ViewMode = 'composer' | 'planner';
 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
   scheduledAt: Date; status: 'scheduled' | 'published' | 'failed';
+};
+
+type PlannerItem = {
+  id: string;
+  title: string;
+  notes?: string;
+  plannedDate: string;   // 'YYYY-MM-DD'
+  plannedTime?: string;  // 'HH:MM'
+  category: string;
+  sourceLabel?: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -723,7 +734,319 @@ function RepurposePostSelector({ posts, onUsePost }: {
 
 // ─── RepurposeIdeasModal ──────────────────────────────────────────────────────
 
-function RepurposeIdeasModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+function RepurposeIdeasModal({ open, onClose, onAddToPlanner }: {
+  open: boolean; onClose: () => void;
+  onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
+}) {
+  const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
+  const [description, setDescription] = useState('');
+  const [tone, setTone]               = useState('');
+  const [videoFile, setVideoFile]     = useState<File | null>(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState<string | null>(null);
+  const [ideas, setIdeas]             = useState<any | null>(null);
+  const [added, setAdded]             = useState<Set<string>>(new Set());
+
+  const handleGenerate = async () => {
+    setLoading(true); setError(null); setIdeas(null); setAdded(new Set());
+    try {
+      let source = '';
+      if (captionMode === 'from_video') {
+        if (!videoFile) throw new Error('Select a video first');
+        source = await transcribeVideo(videoFile);
+      } else {
+        if (!description.trim()) throw new Error('Enter a description of your video');
+        source = description;
+      }
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone }),
+      });
+      if (!res.ok) throw new Error('Generation failed');
+      const data = await res.json();
+      setIdeas(data.ideas);
+    } catch (e: any) { setError(e.message || 'Something went wrong'); }
+    finally { setLoading(false); }
+  };
+
+  const handleAdd = (key: string, title: string, notes: string | undefined, category: string, sourceLabel: string) => {
+    if (added.has(key)) return;
+    onAddToPlanner?.({ title, notes, category, sourceLabel });
+    setAdded(prev => new Set([...prev, key]));
+  };
+
+  const reset = () => { setDescription(''); setTone(''); setVideoFile(null); setIdeas(null); setError(null); setAdded(new Set()); };
+
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <h2 className="text-base font-bold text-white">♻️ Content Ideas</h2>
+            <p className="text-sm text-white/40 mt-0.5">Find new angles from your video — add directly to your planner</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4">
+          <div className="flex gap-2">
+            {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+              <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
+                style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                {label}
+              </button>
+            ))}
+          </div>
+          {captionMode === 'from_video' && (
+            !videoFile ? (
+              <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                <Video className="w-6 h-6 text-white/25" />
+                <span className="text-xs text-white/40">Click to select your talking video</span>
+                <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
+              </label>
+            ) : (
+              <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
+                <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            )
+          )}
+          {captionMode === 'from_description' && (
+            <textarea value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="Describe your video — what you talked about, main points, key takeaways…" rows={4}
+              className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+          )}
+          <input value={tone} onChange={e => setTone(e.target.value)}
+            placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
+            className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+          {error && <div className="text-xs text-red-300">{error}</div>}
+          {!ideas && (
+            <button onClick={handleGenerate} disabled={loading}
+              className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+              style={{ background: GOLD, color: '#000' }}>
+              {loading
+                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Processing & Transcribing…' : 'Generating Ideas…'}</span>
+                : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
+            </button>
+          )}
+          {ideas && (
+            <div className="space-y-5">
+              {ideas.short_clips?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🎬 Short Clip Ideas</div>
+                  <div className="space-y-2">
+                    {ideas.short_clips.map((clip: any, i: number) => {
+                      const key = `clip-${i}`;
+                      return (
+                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-white">{clip.title}</div>
+                              <div className="text-xs text-white/45 mt-1">{clip.angle}</div>
+                              <div className="text-xs font-semibold mt-1.5" style={{ color: GOLD }}>{clip.platform}</div>
+                            </div>
+                            <button onClick={() => handleAdd(key, clip.title, clip.angle, 'short_clip', 'Short Clip')}
+                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {ideas.social_hooks?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🪝 Hook Ideas</div>
+                  <div className="space-y-1.5">
+                    {ideas.social_hooks.map((hook: string, i: number) => {
+                      const key = `hook-${i}`;
+                      return (
+                        <div key={i} className="flex items-start gap-2 p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <p className="flex-1 text-sm text-white/60 leading-relaxed">{hook}</p>
+                          <button onClick={() => handleAdd(key, hook, undefined, 'hook', 'Hook Idea')}
+                            className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                            style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                            {added.has(key) ? '✓ Added' : '+ Planner'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {ideas.blog_angles?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">✍️ Blog / Article Angles</div>
+                  <div className="space-y-2">
+                    {ideas.blog_angles.map((b: any, i: number) => {
+                      const key = `blog-${i}`;
+                      return (
+                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-white">{b.headline}</div>
+                              <div className="text-xs text-white/45 mt-1">{b.angle}</div>
+                            </div>
+                            <button onClick={() => handleAdd(key, b.headline, b.angle, 'blog', 'Blog Angle')}
+                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {ideas.other_formats?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📦 Other Formats</div>
+                  <div className="space-y-2">
+                    {ideas.other_formats.map((f: any, i: number) => {
+                      const key = `other-${i}`;
+                      return (
+                        <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-white">{f.format}</div>
+                              <div className="text-xs text-white/45 mt-1">{f.concept}</div>
+                            </div>
+                            <button onClick={() => handleAdd(key, f.format, f.concept, 'other', 'Other Format')}
+                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                              style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+                ↺ Generate New Ideas
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PostLogModal ─────────────────────────────────────────────────────────────
+
+function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
+  open: boolean; onClose: () => void; userId: string | null; initialFilter?: string;
+}) {
+  const [posts, setPosts]     = useState<ScheduledPost[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter]   = useState<'all' | 'scheduled' | 'published' | 'failed'>(initialFilter as any);
+
+  useEffect(() => { if (open) setFilter(initialFilter as any); }, [open, initialFilter]);
+
+  const loadPosts = useCallback(async () => {
+    if (!userId || !open) return;
+    setLoading(true);
+    try {
+      const end   = new Date(); end.setMonth(end.getMonth() + 3);
+      const start = new Date(); start.setMonth(start.getMonth() - 1);
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      const data = res.ok ? await res.json() : { posts: [] };
+      const list = Array.isArray(data?.posts) ? data.posts : [];
+      setPosts(list.map((p: any) => ({
+        id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [],
+        scheduledAt: new Date(p.scheduledAt), status: p.status || 'scheduled',
+      })).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
+    } catch (e) {}
+    finally { setLoading(false); }
+  }, [userId, open]);
+
+  useEffect(() => { loadPosts(); }, [loadPosts]);
+
+  if (!open) return null;
+
+  const filtered = posts.filter(p => filter === 'all' || p.status === filter);
+  const counts = {
+    all: posts.length,
+    scheduled: posts.filter(p => p.status === 'scheduled').length,
+    published: posts.filter(p => p.status === 'published').length,
+    failed:    posts.filter(p => p.status === 'failed').length,
+  };
+
+  return (
+    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <h2 className="text-base font-bold text-white">📋 Post Log</h2>
+            <p className="text-xs text-white/35 mt-0.5">Your recent and upcoming posts</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex items-center gap-1 px-5 py-2.5 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
+          {(['all', 'scheduled', 'published', 'failed'] as const).map(f => (
+            <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
+              style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+              {f} {f !== 'all' && <span className="opacity-60">({counts[f]})</span>}
+            </button>
+          ))}
+          {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+          {loading && posts.length === 0 ? (
+            <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading…</div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <div className="text-sm font-bold text-white/25">No {filter === 'all' ? '' : filter} posts found</div>
+            </div>
+          ) : (
+            filtered.map(post => (
+              <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                <div className="flex -space-x-1.5 shrink-0 pt-0.5">
+                  {post.platforms.slice(0, 3).map((pid, i) => (
+                    <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
+                  ))}
+                  {post.platforms.length > 3 && (
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
+                      +{post.platforms.length - 3}
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    <span className="text-xs text-white/25 flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                    </span>
+                  </div>
+                </div>
+                <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
+                  style={{
+                    background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : post.status === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`,
+                    color:      post.status === 'published' ? '#86efac'              : post.status === 'failed' ? '#fca5a5'              : GOLD_L,
+                  }}>
+                  {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
   const [captionMode, setCaptionMode] = useState<'from_video' | 'from_description'>('from_description');
   const [description, setDescription] = useState('');
   const [tone, setTone]               = useState('');
@@ -1760,15 +2083,19 @@ function PostComposerModal({
   );
 }
 
-// ─── CalendarPanel ────────────────────────────────────────────────────────────
+// ─── PlannerPanel ─────────────────────────────────────────────────────────────
 
-function CalendarPanel({ userId, integrations }: { userId: string | null; integrations: PostizIntegration[] }) {
+function PlannerPanel({ userId }: { userId: string | null }) {
   const [currentDate, setCurrentDate]   = useState(new Date());
-  const [posts, setPosts]               = useState<ScheduledPost[]>([]);
+  const [items, setItems]               = useState<PlannerItem[]>([]);
   const [loading, setLoading]           = useState(false);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerDate, setComposerDate] = useState<Date | undefined>();
+  const [selectedDay, setSelectedDay]   = useState<number | null>(null);
+  const [dayModalOpen, setDayModalOpen] = useState(false);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addDate, setAddDate]           = useState('');
   const [repurposeOpen, setRepurposeOpen] = useState(false);
+  // Pending item from Ideas generator waiting for a date to be assigned
+  const [pendingItem, setPendingItem]   = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
 
   const year        = currentDate.getFullYear();
   const month       = currentDate.getMonth();
@@ -1777,37 +2104,54 @@ function CalendarPanel({ userId, integrations }: { userId: string | null; integr
   const monthName   = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
   const today       = new Date();
 
-  const loadPosts = useCallback(async () => {
+  const loadItems = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      const start = new Date(year, month, 1).toISOString();
-      const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-      const res  = await fetch(
-        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
-      );
-      const data = res.ok ? await res.json() : { posts: [] };
-      const list = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => ({
-        id:          p.id,
-        content:     p.content || '',
-        platforms:   Array.isArray(p.platforms) ? p.platforms : [],
-        scheduledAt: new Date(p.scheduledAt),
-        status:      p.status || 'scheduled',
-      })));
+      const { data, error } = await supabase
+        .from('content_planner')
+        .select('*')
+        .eq('supabase_user_id', userId)
+        .gte('planned_date', `${year}-${String(month + 1).padStart(2, '0')}-01`)
+        .lte('planned_date', `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`);
+      if (!error && data) {
+        setItems(data.map((r: any) => ({
+          id: r.id, title: r.title, notes: r.notes,
+          plannedDate: r.planned_date, plannedTime: r.planned_time,
+          category: r.category || 'idea', sourceLabel: r.source_label,
+        })));
+      }
     } catch (e) {}
     finally { setLoading(false); }
-  }, [userId, year, month]);
+  }, [userId, year, month, daysInMonth]);
 
-  useEffect(() => { loadPosts(); }, [loadPosts]);
+  useEffect(() => { loadItems(); }, [loadItems]);
 
-  const postsOnDay = (day: number) => posts.filter(p => {
-    const d = new Date(p.scheduledAt);
-    return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
-  });
+  const itemsOnDay = (day: number) => {
+    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return items.filter(it => it.plannedDate === dateStr)
+      .sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1);
+  };
+
+  const deleteItem = async (id: string) => {
+    await supabase.from('content_planner').delete().eq('id', id);
+    setItems(prev => prev.filter(it => it.id !== id));
+  };
+
+  const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }) => {
+    setPendingItem(item);
+    setAddDate(today.toISOString().split('T')[0]);
+    setRepurposeOpen(false);
+    setAddModalOpen(true);
+  };
+
+  const CATEGORY_COLORS: Record<string, string> = {
+    idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c',
+  };
 
   return (
     <div className="flex flex-col h-full">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-2">
           <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
@@ -1828,221 +2172,542 @@ function CalendarPanel({ userId, integrations }: { userId: string | null; integr
         </div>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setRepurposeOpen(true)}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold border transition hover:bg-white/5"
+            className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition hover:bg-white/5"
             style={{ borderColor: `${GOLD}35`, color: GOLD }}>
-            <Sparkles className="w-4 h-4" /> Content Ideas
+            <Sparkles className="w-3.5 h-3.5" /> AI Ideas
           </button>
           <button onClick={() => setRepurposeOpen(true)}
             className="sm:hidden w-9 h-9 rounded-xl flex items-center justify-center border transition hover:bg-white/5"
             style={{ borderColor: `${GOLD}35`, color: GOLD }}>
             <Sparkles className="w-4 h-4" />
           </button>
-          <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
-            className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold transition hover:brightness-110"
+          <button onClick={() => { setAddDate(today.toISOString().split('T')[0]); setPendingItem(null); setAddModalOpen(true); }}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
-            <Plus className="w-4 h-4" />
-            <span className="hidden sm:inline">New Post</span>
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Add Idea</span>
           </button>
         </div>
       </div>
+
+      {/* Day headers */}
       <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-          <div key={d} className="py-2.5 text-center text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
+          <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
         ))}
       </div>
-      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(60px,1fr)' }}>
+
+      {/* Calendar grid */}
+      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
         ))}
         {Array.from({ length: daysInMonth }).map((_, i) => {
           const day      = i + 1;
-          const dayPosts = postsOnDay(day);
+          const dayItems = itemsOnDay(day);
           const isToday  = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
           const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
+          // Show up to 2 items inline, rest as +N badge
+          const visibleItems = dayItems.slice(0, 2);
+          const overflow     = dayItems.length - visibleItems.length;
+
           return (
             <div key={day}
-              className="border-r border-b p-1 md:p-2 cursor-pointer hover:bg-white/3 transition group"
+              className="border-r border-b p-1 cursor-pointer hover:bg-white/3 transition group relative"
               style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
-              onClick={() => { setComposerDate(new Date(year, month, day, 10, 0)); setComposerOpen(true); }}>
-              <div className="w-5 h-5 md:w-7 md:h-7 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1"
-                style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.55)' }}>
+              onClick={() => {
+                if (dayItems.length > 0) {
+                  setSelectedDay(day); setDayModalOpen(true);
+                } else {
+                  setAddDate(`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`);
+                  setPendingItem(null); setAddModalOpen(true);
+                }
+              }}>
+              {/* Day number */}
+              <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1 shrink-0"
+                style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }}>
                 {day}
               </div>
+
+              {/* Items — compact dots on mobile, labels on desktop */}
               <div className="space-y-0.5">
-                {dayPosts.slice(0, 2).map(post => (
-                  <div key={post.id} className="flex items-center gap-1 px-1 py-0.5 rounded text-[9px] md:text-xs truncate"
-                    style={{
-                      background: post.status === 'published' ? 'rgba(34,197,94,0.15)' : post.status === 'failed' ? 'rgba(239,68,68,0.15)' : `${GOLD}18`,
-                      color:      post.status === 'published' ? '#86efac'              : post.status === 'failed' ? '#fca5a5'              : GOLD_L,
-                    }}>
-                    <span className="hidden md:block shrink-0" style={{ width: 12, height: 12 }}><PlatformIcon id={post.platforms[0]} size="sm" /></span>
-                    <span className="truncate hidden md:block">{post.content || '(Post)'}</span>
-                    <span className="md:hidden w-1.5 h-1.5 rounded-full shrink-0" style={{
-                      background: post.status === 'published' ? '#86efac' : post.status === 'failed' ? '#fca5a5' : GOLD,
-                    }} />
+                {visibleItems.map(item => {
+                  const col = CATEGORY_COLORS[item.category] || GOLD;
+                  return (
+                    <div key={item.id}
+                      className="flex items-center gap-1 rounded px-1 py-0.5"
+                      style={{ background: `${col}18` }}>
+                      {/* Mobile: just a dot */}
+                      <span className="md:hidden w-1.5 h-1.5 rounded-full shrink-0" style={{ background: col }} />
+                      {/* Desktop: time + truncated title */}
+                      <span className="hidden md:block text-[9px] shrink-0" style={{ color: `${col}99` }}>
+                        {item.plannedTime ? item.plannedTime.slice(0, 5) : ''}
+                      </span>
+                      <span className="hidden md:block truncate text-[10px] font-medium leading-tight" style={{ color: col, maxWidth: '100%' }}>
+                        {item.title}
+                      </span>
+                    </div>
+                  );
+                })}
+                {overflow > 0 && (
+                  <div className="text-[9px] md:text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    +{overflow} more
                   </div>
-                ))}
-                {dayPosts.length > 2 && <div className="text-[9px] md:text-xs text-white/25 pl-1">+{dayPosts.length - 2}</div>}
+                )}
               </div>
-              {dayPosts.length === 0 && (
-                <div className="opacity-0 group-hover:opacity-100 transition text-[9px] md:text-xs text-white/20 flex items-center gap-0.5 mt-1">
-                  <Plus className="w-2.5 h-2.5 md:w-3 md:h-3" />
-                  <span className="hidden md:inline">Add</span>
+
+              {/* Hover add hint when empty */}
+              {dayItems.length === 0 && (
+                <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
+                  <Plus className="w-2.5 h-2.5 text-white/20" />
                 </div>
               )}
             </div>
           );
         })}
       </div>
-      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
-        integrations={integrations} userId={userId} defaultDate={composerDate} onSuccess={loadPosts} />
-      <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
+
+      {/* Day detail modal */}
+      {dayModalOpen && selectedDay !== null && (
+        <DayDetailModal
+          day={selectedDay} month={month} year={year}
+          items={itemsOnDay(selectedDay)}
+          onClose={() => setDayModalOpen(false)}
+          onDelete={deleteItem}
+          onAdd={() => {
+            setAddDate(`${year}-${String(month+1).padStart(2,'0')}-${String(selectedDay).padStart(2,'0')}`);
+            setPendingItem(null); setDayModalOpen(false); setAddModalOpen(true);
+          }}
+          categoryColors={CATEGORY_COLORS}
+        />
+      )}
+
+      {/* Add item modal */}
+      {addModalOpen && (
+        <AddPlannerItemModal
+          userId={userId}
+          initialDate={addDate}
+          prefilled={pendingItem ?? undefined}
+          onClose={() => { setAddModalOpen(false); setPendingItem(null); }}
+          onSaved={() => { setAddModalOpen(false); setPendingItem(null); loadItems(); }}
+        />
+      )}
+
+      <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} onAddToPlanner={handleAddToPlanner} />
     </div>
   );
 }
 
+// ─── DayDetailModal ───────────────────────────────────────────────────────────
+
+function DayDetailModal({ day, month, year, items, onClose, onDelete, onAdd, categoryColors }: {
+  day: number; month: number; year: number;
+  items: PlannerItem[];
+  onClose: () => void;
+  onDelete: (id: string) => void;
+  onAdd: () => void;
+  categoryColors: Record<string, string>;
+}) {
+  const dateLabel = new Date(year, month, day).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  return (
+    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <div className="text-sm font-black text-white">{dateLabel}</div>
+            <div className="text-xs text-white/35 mt-0.5">{items.length} idea{items.length !== 1 ? 's' : ''} planned</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onAdd}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
+              style={{ background: GOLD, color: '#000' }}>
+              <Plus className="w-3 h-3" /> Add
+            </button>
+            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+          {items
+            .sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1)
+            .map(item => {
+              const col = categoryColors[item.category] || GOLD;
+              return (
+                <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                  <div className="w-1 self-stretch rounded-full shrink-0 mt-0.5" style={{ background: col }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-white leading-snug">{item.title}</span>
+                      {item.sourceLabel && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${col}18`, color: col }}>
+                          {item.sourceLabel}
+                        </span>
+                      )}
+                    </div>
+                    {item.notes && <p className="text-xs text-white/40 mt-1 leading-relaxed">{item.notes}</p>}
+                    {item.plannedTime && (
+                      <div className="flex items-center gap-1 mt-1.5 text-xs text-white/30">
+                        <Clock className="w-3 h-3" />
+                        {item.plannedTime.slice(0, 5)}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => onDelete(item.id)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 text-white/20 hover:text-red-400 transition shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AddPlannerItemModal ──────────────────────────────────────────────────────
+
+function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved }: {
+  userId: string | null;
+  initialDate: string;
+  prefilled?: { title: string; notes?: string; category: string; sourceLabel: string };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle]       = useState(prefilled?.title || '');
+  const [notes, setNotes]       = useState(prefilled?.notes || '');
+  const [date, setDate]         = useState(initialDate);
+  const [time, setTime]         = useState('');
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const category                = prefilled?.category || 'idea';
+  const sourceLabel             = prefilled?.sourceLabel;
+
+  const handleSave = async () => {
+    if (!title.trim()) { setError('Add a title for this idea'); return; }
+    if (!date)         { setError('Pick a date'); return; }
+    if (!userId)       { setError('Not logged in'); return; }
+    setSaving(true); setError(null);
+    try {
+      const { error: dbErr } = await supabase.from('content_planner').insert({
+        supabase_user_id: userId,
+        title: title.trim(),
+        notes: notes.trim() || null,
+        planned_date: date,
+        planned_time: time || null,
+        category,
+        source_label: sourceLabel || 'Manual',
+      });
+      if (dbErr) throw new Error(dbErr.message);
+      onSaved();
+    } catch (e: any) { setError(e.message || 'Save failed'); setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-sm rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div className="text-sm font-black text-white">
+            {prefilled ? `Add to Planner — ${prefilled.sourceLabel}` : 'Add Idea to Planner'}
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-5 py-5 space-y-3">
+          <div>
+            <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Title</label>
+            <input value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="What's the idea?" autoFocus
+              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
+              style={{ borderColor: BORDER }} />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="Any details, angles, references…" rows={3}
+              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none"
+              style={{ borderColor: BORDER }} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Date</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="mt-1.5 w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                style={{ borderColor: BORDER, colorScheme: 'dark' }} />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Time <span className="font-normal opacity-50">(optional)</span></label>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)}
+                className="mt-1.5 w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                style={{ borderColor: BORDER, colorScheme: 'dark' }} />
+            </div>
+          </div>
+          {error && <div className="text-xs text-red-300">{error}</div>}
+          <button onClick={handleSave} disabled={saving}
+            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
+            {saving ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Saving…</span> : 'Save to Planner'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 // ─── ComposerPanel ────────────────────────────────────────────────────────────
+// Center = scheduled-posts calendar. Stats tabs open a PostLogModal.
 
 function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
   const [composerOpen, setComposerOpen]   = useState(false);
-  const [repurposeOpen, setRepurposeOpen] = useState(false);
+  const [logOpen, setLogOpen]             = useState(false);
+  const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
   const [loading, setLoading]             = useState(false);
-  const [filter, setFilter]               = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
+  const [currentDate, setCurrentDate]     = useState(new Date());
+  const [selectedDay, setSelectedDay]     = useState<number | null>(null);
+  const [dayLogOpen, setDayLogOpen]       = useState(false);
+  const [composerDate, setComposerDate]   = useState<Date | undefined>();
+
+  const year        = currentDate.getFullYear();
+  const month       = currentDate.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDay    = new Date(year, month, 1).getDay();
+  const monthName   = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const today       = new Date();
 
   const loadPosts = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      const end   = new Date(); end.setMonth(end.getMonth() + 3);
-      const start = new Date(); start.setMonth(start.getMonth() - 1);
+      const start = new Date(year, month, 1).toISOString();
+      const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const res  = await fetch(
-        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`
+        `${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`
       );
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => ({
-        id:          p.id,
-        content:     p.content || '',
-        platforms:   Array.isArray(p.platforms) ? p.platforms : [],
-        scheduledAt: new Date(p.scheduledAt),
-        status:      p.status || 'scheduled',
-      })).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
+        id: p.id, content: p.content || '',
+        platforms: Array.isArray(p.platforms) ? p.platforms : [],
+        scheduledAt: new Date(p.scheduledAt), status: p.status || 'scheduled',
+      })));
     } catch (e) {}
     finally { setLoading(false); }
-  }, [userId]);
+  }, [userId, year, month]);
 
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
-  const filtered = posts.filter(p => filter === 'all' || p.status === filter);
   const counts = {
-    all: posts.length,
     scheduled: posts.filter(p => p.status === 'scheduled').length,
     published: posts.filter(p => p.status === 'published').length,
     failed:    posts.filter(p => p.status === 'failed').length,
   };
 
+  const postsOnDay = (day: number) =>
+    posts.filter(p => {
+      const d = p.scheduledAt;
+      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+    }).sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+
+  const openDayLog = (day: number) => {
+    setSelectedDay(day);
+    setDayLogOpen(true);
+  };
+
+  const STATUS_COLOR = (s: string) =>
+    s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
+  const STATUS_BG = (s: string) =>
+    s === 'published' ? 'rgba(34,197,94,0.15)' : s === 'failed' ? 'rgba(239,68,68,0.15)' : `${GOLD}20`;
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between px-4 md:px-8 py-4 md:py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
-        <div>
-          <h1 className="text-lg md:text-xl font-black text-white">Posts</h1>
-          <p className="text-xs md:text-sm text-white/30 mt-0.5">Schedule and manage your content</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setRepurposeOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2.5 rounded-xl text-xs md:text-sm font-bold border transition hover:bg-white/5"
-            style={{ borderColor: `${GOLD}35`, color: GOLD }}>
-            <Sparkles className="w-3.5 h-3.5 md:w-4 md:h-4" />
-            <span className="hidden sm:inline">Content Ideas</span>
-            <span className="sm:hidden">Ideas</span>
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+        {/* Month navigation */}
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <ChevronLeft className="w-4 h-4" />
           </button>
-          <button onClick={() => setComposerOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 md:px-5 md:py-2.5 rounded-xl text-xs md:text-sm font-bold transition hover:brightness-110"
-            style={{ background: GOLD, color: '#000' }}>
-            <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
-            <span className="hidden sm:inline">Create Post</span>
-            <span className="sm:hidden">New</span>
+          <span className="text-sm md:text-base font-bold text-white w-32 md:w-44 text-center">{monthName}</span>
+          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <ChevronRight className="w-4 h-4" />
           </button>
+          <button onClick={() => setCurrentDate(new Date())}
+            className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition"
+            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+            Today
+          </button>
+          {loading && <Loader className="w-4 h-4 animate-spin text-white/20" />}
         </div>
+        {/* Actions */}
+        <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
+          className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold transition hover:brightness-110"
+          style={{ background: GOLD, color: '#000' }}>
+          <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+          <span className="hidden sm:inline">New Post</span>
+        </button>
       </div>
-      <div className="grid grid-cols-3 gap-2 md:gap-4 px-4 md:px-8 py-3 md:py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
-        {[
-          { key: 'scheduled', label: 'Scheduled', color: GOLD },
-          { key: 'published', label: 'Published',  color: '#22c55e' },
-          { key: 'failed',    label: 'Failed',     color: '#ef4444' },
-        ].map(s => (
-          <div key={s.key} className="rounded-xl border p-3 md:p-4 cursor-pointer transition hover:bg-white/4"
-            style={{ borderColor: BORDER }} onClick={() => setFilter(s.key as any)}>
-            <div className="text-xl md:text-2xl font-black" style={{ color: s.color }}>{counts[s.key as keyof typeof counts]}</div>
-            <div className="text-[10px] md:text-xs font-semibold text-white/30 mt-0.5 md:mt-1">{s.label}</div>
-          </div>
+
+      {/* ── Stat tabs — click to open log ── */}
+      <div className="grid grid-cols-3 border-b shrink-0" style={{ borderColor: BORDER }}>
+        {([
+          { key: 'scheduled' as const, label: 'Scheduled', color: GOLD },
+          { key: 'published' as const, label: 'Published',  color: '#22c55e' },
+          { key: 'failed'    as const, label: 'Failed',     color: '#ef4444' },
+        ]).map((s, i) => (
+          <button key={s.key}
+            onClick={() => { setLogFilter(s.key); setLogOpen(true); }}
+            className={`flex flex-col items-center justify-center py-3 md:py-4 transition hover:bg-white/4 ${i < 2 ? 'border-r' : ''}`}
+            style={{ borderColor: BORDER }}>
+            <div className="text-xl md:text-2xl font-black" style={{ color: s.color }}>{counts[s.key]}</div>
+            <div className="text-[10px] md:text-xs font-semibold text-white/30 mt-0.5">{s.label}</div>
+            <div className="text-[9px] text-white/20 mt-0.5">View log →</div>
+          </button>
         ))}
       </div>
-      <div className="flex items-center gap-1 px-4 md:px-8 py-2 md:py-3 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
-        {(['all', 'scheduled', 'published', 'failed'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
-            style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-            {f} {f !== 'all' && <span className="ml-1 opacity-60">{counts[f]}</span>}
-          </button>
+
+      {/* ── Calendar day-of-week headers ── */}
+      <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
         ))}
-        {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
       </div>
-      <div className="flex-1 overflow-y-auto px-4 md:px-8 py-4 md:py-5">
-        {!userId ? (
-          <div className="flex flex-col items-center justify-center h-56 text-center">
-            <div className="w-16 h-16 rounded-2xl border mb-4 flex items-center justify-center" style={{ borderColor: BORDER }}><Link2Off className="w-7 h-7 text-white/15" /></div>
-            <div className="text-sm font-bold text-white/30">Connect your accounts to get started</div>
-          </div>
-        ) : loading && posts.length === 0 ? (
-          <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading posts…</div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-56 text-center">
-            <div className="w-14 h-14 rounded-2xl border mb-4 flex items-center justify-center" style={{ borderColor: BORDER }}><Edit3 className="w-6 h-6 text-white/15" /></div>
-            <div className="text-sm font-bold text-white/30">No {filter === 'all' ? '' : filter} posts yet</div>
-            {filter === 'all' && (
-              <button onClick={() => setComposerOpen(true)} className="mt-4 px-4 py-2 rounded-xl text-sm font-bold hover:brightness-110 transition" style={{ background: GOLD, color: '#000' }}>
-                Create your first post
-              </button>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filtered.map(post => (
-              <div key={post.id} className="flex items-start gap-3 p-3 md:p-4 rounded-xl border hover:bg-white/3 transition cursor-pointer" style={{ borderColor: BORDER }}>
-                <div className="flex -space-x-1.5 shrink-0 pt-0.5">
-                  {post.platforms.slice(0, 3).map((pid, i) => (
-                    <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
-                  ))}
-                  {post.platforms.length > 3 && (
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
-                      +{post.platforms.length - 3}
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
-                  <div className="flex items-center gap-3 mt-1.5">
-                    <span className="text-xs text-white/25 flex items-center gap-1.5">
-                      <Clock className="w-3 h-3" />
-                      {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+
+      {/* ── Calendar grid ── */}
+      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
+        {/* Empty leading cells */}
+        {Array.from({ length: firstDay }).map((_, i) => (
+          <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
+        ))}
+
+        {/* Day cells */}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day      = i + 1;
+          const dayPosts = postsOnDay(day);
+          const isToday  = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
+          const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
+          const visible  = dayPosts.slice(0, 2);
+          const overflow = dayPosts.length - visible.length;
+
+          return (
+            <div key={day}
+              className="border-r border-b p-1 transition hover:bg-white/3 group cursor-pointer relative"
+              style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
+              onClick={() => dayPosts.length > 0 ? openDayLog(day) : (setComposerDate(new Date(year, month, day, 10, 0)), setComposerOpen(true))}>
+
+              {/* Day number */}
+              <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1 shrink-0"
+                style={isToday
+                  ? { background: GOLD, color: '#000' }
+                  : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }}>
+                {day}
+              </div>
+
+              {/* Post chips — dots on mobile, labeled on desktop */}
+              <div className="space-y-0.5">
+                {visible.map(post => (
+                  <div key={post.id}
+                    className="flex items-center gap-1 rounded px-1 py-0.5"
+                    style={{ background: STATUS_BG(post.status) }}>
+                    {/* Mobile: colored dot */}
+                    <span className="md:hidden w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ background: STATUS_COLOR(post.status) }} />
+                    {/* Desktop: platform icon + truncated text */}
+                    <span className="hidden md:block shrink-0" style={{ width: 12, height: 12 }}>
+                      <PlatformIcon id={post.platforms[0]} size="sm" />
+                    </span>
+                    <span className="hidden md:block truncate text-[10px] font-medium leading-tight"
+                      style={{ color: STATUS_COLOR(post.status) }}>
+                      {post.content || '(Post)'}
                     </span>
                   </div>
-                </div>
-                <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
-                  style={{
-                    background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : post.status === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`,
-                    color:      post.status === 'published' ? '#86efac'              : post.status === 'failed' ? '#fca5a5'              : GOLD_L,
-                  }}>
-                  {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
-                </span>
+                ))}
+                {overflow > 0 && (
+                  <div className="text-[9px] md:text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    +{overflow} more
+                  </div>
+                )}
               </div>
-            ))}
-          </div>
-        )}
+
+              {/* Empty day hover hint */}
+              {dayPosts.length === 0 && (
+                <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
+                  <Plus className="w-2.5 h-2.5 text-white/20" />
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)} integrations={integrations} userId={userId} onSuccess={loadPosts} />
-      <RepurposeIdeasModal open={repurposeOpen} onClose={() => setRepurposeOpen(false)} />
+
+      {/* ── Day detail modal (posts on a specific day) ── */}
+      {dayLogOpen && selectedDay !== null && (() => {
+        const dayPosts = postsOnDay(selectedDay);
+        const dateLabel = new Date(year, month, selectedDay)
+          .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        return (
+          <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setDayLogOpen(false)} />
+            <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+              style={{ background: SURFACE, borderColor: BORDER }}>
+              <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+                <div>
+                  <div className="text-sm font-black text-white">{dateLabel}</div>
+                  <div className="text-xs text-white/35 mt-0.5">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''} scheduled</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { setComposerDate(new Date(year, month, selectedDay, 10, 0)); setDayLogOpen(false); setComposerOpen(true); }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition"
+                    style={{ background: GOLD, color: '#000' }}>
+                    <Plus className="w-3 h-3" /> Add Post
+                  </button>
+                  <button onClick={() => setDayLogOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+                {dayPosts.map(post => (
+                  <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                    <div className="flex -space-x-1 shrink-0 pt-0.5">
+                      {post.platforms.slice(0, 3).map((pid, i) => (
+                        <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
+                          <PlatformIcon id={pid} size="sm" />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
+                      <div className="flex items-center gap-1.5 mt-1 text-xs text-white/25">
+                        <Clock className="w-3 h-3" />
+                        {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </div>
+                    </div>
+                    <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
+                      style={{ background: STATUS_BG(post.status), color: STATUS_COLOR(post.status) }}>
+                      {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Full post log modal (opened from stat tabs) ── */}
+      <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} />
+
+      {/* ── Post composer ── */}
+      <PostComposerModal open={composerOpen} onClose={() => setComposerOpen(false)}
+        integrations={integrations} userId={userId} defaultDate={composerDate} onSuccess={loadPosts} />
     </div>
   );
 }
@@ -2055,7 +2720,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
 }) {
   const navItems = [
     { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
-    { id: 'calendar' as ViewMode, label: 'Calendar', icon: <Calendar className="w-5 h-5" /> },
+    { id: 'planner'  as ViewMode, label: 'Planner',  icon: <BookOpen className="w-5 h-5" /> },
   ];
 
   return (
@@ -2409,7 +3074,7 @@ export function MediaDistributionPage() {
             onOpenConnect={() => setConnectModalOpen(true)} />
           <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
-            {view === 'calendar' && <CalendarPanel integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'planner'  && <PlannerPanel userId={currentUser?.id ?? null} />}
           </main>
         </div>
       )}
