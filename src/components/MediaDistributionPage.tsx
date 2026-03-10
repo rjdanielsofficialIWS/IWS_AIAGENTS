@@ -620,7 +620,7 @@ function ConnectAccountsModal({
                       <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
                     </div>
                     <button
-                      onClick={() => window.open('https://app.ayrshare.com/dashboard/linkedAccounts', '_blank')}
+                      onClick={handleConnect}
                       className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition hover:bg-red-500/15"
                       style={{ color: 'rgba(239,68,68,0.7)', border: '1px solid rgba(239,68,68,0.2)' }}
                       title="Disconnect account">
@@ -3023,7 +3023,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
                   <PlatformIcon id={int.profile || int.identifier} size="sm" />
                   <span className="text-xs text-white/50 truncate flex-1">{int.name}</span>
                   <button
-                    onClick={() => window.open('https://app.ayrshare.com/dashboard/linkedAccounts', '_blank')}
+                    onClick={onOpenConnect}
                     className="opacity-0 group-hover:opacity-100 transition"
                     title="Disconnect">
                     <Link2Off className="w-3 h-3 text-red-400/60 hover:text-red-400" />
