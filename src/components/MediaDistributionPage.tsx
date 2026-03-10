@@ -139,11 +139,12 @@ async function fetchChannels(userId: string, force = false): Promise<PostizInteg
 }
 
 /**
- * Upload a file to Supabase Storage via the upload-media edge function.
+ * Upload a file to Supabase Storage / R2 via the upload-media edge function v19.
  *
- * Large files (>4MB): requests a signed URL from the edge function, then
- *   PUTs the file directly to Supabase Storage (no size limit, no proxy).
- * Small files (<=4MB): binary POST through the edge function.
+ * Protocol (matches upload-media v19):
+ *   <= 4MB  → legacy direct POST (binary body + x-file-path header)
+ *   <= 50MB → init (action:'init') → chunk (binary POST, x-action:chunk) → returns URL
+ *   >  50MB → init returns uploadId + provider:'r2' → multipart chunks → complete
  *
  * Returns the public URL of the uploaded file.
  */
@@ -152,115 +153,119 @@ async function uploadViaNativeXHR(
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void
 ): Promise<string> {
+  const EDGE = `${SUPABASE_URL}/functions/v1/upload-media`;
   const ext = file instanceof File
     ? (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg'))
     : (kind === 'video' ? 'mp4' : 'wav');
-  const filePath = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+  const filePath    = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
-  const fileSize = file instanceof File ? file.size : (file as Blob).size;
-  const DIRECT_LIMIT = 4 * 1024 * 1024; // 4 MB
+  const fileSize    = file instanceof File ? file.size : (file as Blob).size;
+  const DIRECT_MAX  = 4  * 1024 * 1024;  // 4 MB  — legacy direct mode
+  const SUPABASE_MAX = 50 * 1024 * 1024; // 50 MB — above this goes to R2 multipart
+  const CHUNK_SIZE  = 5  * 1024 * 1024;  // 5 MB chunks
 
-  // ── Large file: signed URL → PUT directly to Storage ─────────────────────
-  if (fileSize > DIRECT_LIMIT) {
-    // Step 1: get signed upload URL from our edge function
-    let signedUrl: string;
-    let publicUrl: string;
-
-    try {
-      const signRes = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'sign', filePath, contentType }),
-      });
-
-      const signText = await signRes.text();
-      console.log('[uploadViaNativeXHR] Sign response status:', signRes.status);
-      console.log('[uploadViaNativeXHR] Sign response body:', signText.slice(0, 300));
-
-      if (!signRes.ok) {
-        throw new Error(`Edge function sign request failed (${signRes.status}): ${signText}`);
-      }
-
-      let signData: any;
-      try { signData = JSON.parse(signText); }
-      catch { throw new Error('Edge function returned invalid JSON: ' + signText.slice(0, 200)); }
-
-      // Defensive: handle all possible key names
-      signedUrl = signData.signedUrl ?? signData.signedURL ?? signData.signed_url ?? signData.url ?? '';
-      publicUrl = signData.publicUrl ?? signData.public_url ?? '';
-
-      console.log('[uploadViaNativeXHR] signedUrl:', signedUrl ? signedUrl.slice(0, 100) : '(empty!)');
-      console.log('[uploadViaNativeXHR] publicUrl:', publicUrl);
-
-      if (!signedUrl) {
-        throw new Error(
-          `No signed URL returned from edge function. Response keys: ${Object.keys(signData || {}).join(', ')}. Body: ${signText.slice(0, 300)}`
-        );
-      }
-
-      // Ensure the URL is absolute
-      if (!signedUrl.startsWith('http')) {
-        signedUrl = `${SUPABASE_URL}/storage/v1${signedUrl.startsWith('/') ? '' : '/'}${signedUrl}`;
-        console.log('[uploadViaNativeXHR] signedUrl rebuilt to:', signedUrl.slice(0, 100));
-      }
-
-      if (!publicUrl) {
-        publicUrl = `${SUPABASE_URL}/storage/v1/object/public/media/${filePath}`;
-      }
-    } catch (err: any) {
-      throw new Error(`Failed to get upload URL: ${err.message}`);
-    }
-
-    // Step 2: PUT file directly to Supabase Storage signed URL
+  // ── Small file (<=4MB): legacy direct POST ────────────────────────────────
+  if (fileSize <= DIRECT_MAX) {
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open('PUT', signedUrl);
-      xhr.setRequestHeader('Content-Type', contentType);
-      if (onProgress) {
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-        };
-      }
+      xhr.open('POST', EDGE);
+      xhr.setRequestHeader('x-file-path', filePath);
+      xhr.setRequestHeader('content-type', contentType);
+      if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
       xhr.onload = () => {
-        console.log('[uploadViaNativeXHR] PUT response status:', xhr.status);
         if (xhr.status >= 200 && xhr.status < 300) {
-          resolve(publicUrl);
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (!data.url) throw new Error('No URL in response: ' + xhr.responseText.slice(0, 200));
+            resolve(data.url);
+          } catch (e: any) { reject(new Error('Invalid upload response: ' + e.message)); }
         } else {
-          reject(new Error(`Upload to storage failed: HTTP ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
+          reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
         }
       };
-      xhr.onerror = () => reject(new Error('Network error during upload to Supabase Storage'));
+      xhr.onerror = () => reject(new Error('Network error during upload'));
       xhr.send(file);
     });
   }
 
-  // ── Small file: direct binary POST through edge function ──────────────────
-  return new Promise<string>((resolve, reject) => {
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', `${SUPABASE_URL}/functions/v1/upload-media`);
-    xhr.setRequestHeader('x-file-path', filePath);
-    xhr.setRequestHeader('content-type', contentType);
-    if (onProgress) {
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100));
-      };
-    }
-    xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          if (!data.url) throw new Error('No URL in response');
-          resolve(data.url);
-        } catch {
-          reject(new Error('Invalid response from upload function'));
-        }
-      } else {
-        reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText}`));
-      }
-    };
-    xhr.onerror = () => reject(new Error('Network error during upload'));
-    xhr.send(file);
+  // ── Large file: init → chunk(s) → [complete for R2] ──────────────────────
+  // Step 1: init — tells the edge function the file size so it picks provider
+  const initRes = await fetch(EDGE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'init', filePath, contentType, fileSize }),
   });
+  if (!initRes.ok) {
+    const e = await initRes.json().catch(() => ({}));
+    throw new Error(e.error || `Upload init failed (${initRes.status})`);
+  }
+  const { uploadId, provider } = await initRes.json();
+  // provider: 'supabase' (<=50MB) or 'r2' (>50MB)
+
+  // Step 2: send chunk(s)
+  const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+  const parts: { partNumber: number; etag: string }[] = [];
+  let uploadedBytes = 0;
+
+  for (let i = 0; i < totalChunks; i++) {
+    const start  = i * CHUNK_SIZE;
+    const end    = Math.min(start + CHUNK_SIZE, fileSize);
+    const chunk  = file.slice(start, end);
+    const partNo = i + 1;
+
+    const chunkRes = await new Promise<Response>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', EDGE);
+      xhr.setRequestHeader('x-action', 'chunk');
+      xhr.setRequestHeader('x-file-path', filePath);
+      xhr.setRequestHeader('x-provider', provider || 'supabase');
+      xhr.setRequestHeader('content-type', contentType);
+      if (uploadId) {
+        xhr.setRequestHeader('x-upload-id', uploadId);
+        xhr.setRequestHeader('x-part-number', String(partNo));
+      }
+      xhr.onload = () => resolve(new Response(xhr.responseText, { status: xhr.status }));
+      xhr.onerror = () => reject(new Error('Network error on chunk upload'));
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable && onProgress) {
+          onProgress(Math.round((uploadedBytes + e.loaded) / fileSize * 100));
+        }
+      };
+      xhr.send(chunk);
+    });
+
+    if (!chunkRes.ok) {
+      const e = await chunkRes.json().catch(() => ({}));
+      // Abort R2 multipart if applicable
+      if (uploadId) {
+        fetch(EDGE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'abort', filePath, uploadId }) }).catch(() => {});
+      }
+      throw new Error(e.error || `Chunk ${partNo} failed (${chunkRes.status})`);
+    }
+
+    const chunkData = await chunkRes.json();
+    uploadedBytes += (end - start);
+    if (onProgress) onProgress(Math.round(uploadedBytes / fileSize * 100));
+
+    // Supabase provider: single chunk returns the final URL (whole file fits in one go)
+    if (provider === 'supabase') return chunkData.url;
+
+    // R2: collect ETags for multipart complete
+    if (chunkData.etag) parts.push({ partNumber: partNo, etag: chunkData.etag });
+  }
+
+  // Step 3: complete R2 multipart
+  const completeRes = await fetch(EDGE, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'complete', filePath, uploadId, parts }),
+  });
+  if (!completeRes.ok) {
+    const e = await completeRes.json().catch(() => ({}));
+    throw new Error(e.error || `Upload complete failed (${completeRes.status})`);
+  }
+  const { url } = await completeRes.json();
+  return url;
 }
 
 function pcmToWav(samples: Float32Array, sampleRate = 16000): Blob {
