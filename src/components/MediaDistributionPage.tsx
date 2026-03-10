@@ -1025,7 +1025,7 @@ function InlinePostComposer({
 
   // AI edit state
   const [aiEditText, setAiEditText] = useState('');
-  const [showAiEdit, setShowAiEdit] = useState(false);
+  const [editingIdx, setEditingIdx] = useState<{ tab: 'twitter' | 'linkedin'; idx: number } | null>(null);
 
   const textPostAccounts = [
     ...(xInteg       ? [{ integ: xInteg,       platform: 'x' as PlatformId       }] : []),
@@ -1102,7 +1102,8 @@ function InlinePostComposer({
     setTextAiSelected(prev => ({ ...prev, [platform]: idx }));
     setTextTab(platform);
     setAiEditText(text);
-    setShowAiEdit(true);
+    
+    setEditingIdx(null);
   };
 
   const handleMediaSubmit = async () => {
@@ -1184,7 +1185,7 @@ function InlinePostComposer({
   };
 
   const handleTextSubmit = async () => {
-    const text = showTextAi && showAiEdit ? aiEditText : xText;
+    const text = editingIdx ? aiEditText : xText;
     if (!text.trim()) { setSubmitError('Write something first.'); return; }
     if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account to post to.'); return; }
     setSubmitting(true); setSubmitError(null);
@@ -1197,7 +1198,7 @@ function InlinePostComposer({
       await ayrsharePost({ platforms: platformIds, post: text, scheduleDate: sd });
       setSubmitOk(true);
       setXText(''); setLinkedinText('');
-      setAiEditText(''); setShowAiEdit(false); setSelectedTextAccounts([]);
+      setAiEditText(''); setEditingIdx(null); setSelectedTextAccounts([]);
       setTimeout(() => setSubmitOk(false), 3000);
     } catch (e: any) { setSubmitError(e.message || 'Post failed'); }
     finally { setSubmitting(false); }
@@ -1496,7 +1497,7 @@ function InlinePostComposer({
 
           {/* AI Generate section */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-            <button onClick={() => { setShowTextAi(v => !v); setShowAiEdit(false); }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+            <button onClick={() => { setShowTextAi(v => !v); }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
@@ -1558,7 +1559,7 @@ function InlinePostComposer({
                     {/* Tab: X posts vs LinkedIn posts */}
                     <div className="flex gap-2">
                       {([['twitter', 'x'] , ['linkedin', 'linkedin']] as [string, PlatformId][]).map(([key, iconId]) => (
-                        <button key={key} onClick={() => { setTextTab(key as any); setShowAiEdit(false); }}
+                        <button key={key} onClick={() => { setTextTab(key as any); setEditingIdx(null); }}
                           className="flex-1 py-2 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5"
                           style={{ borderColor: textTab === key ? GOLD : BORDER, background: textTab === key ? `${GOLD}15` : 'transparent', color: textTab === key ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
                           <PlatformIcon id={iconId} size="sm" />
@@ -1569,45 +1570,82 @@ function InlinePostComposer({
                       ))}
                     </div>
 
-                    <div className="text-xs text-white/25">Select a post to edit it, then post to your chosen accounts ↑</div>
+                    <div className="text-xs text-white/25">Click a post to select it · click ✏️ to edit inline</div>
 
-                    <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                    <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1">
                       {(textTab === 'twitter' ? textAiPosts.twitter : textAiPosts.linkedin).map((post, idx) => {
-                        const isSel = textAiSelected[textTab as 'twitter' | 'linkedin'] === idx;
+                        const platform = textTab as 'twitter' | 'linkedin';
+                        const isSel     = textAiSelected[platform] === idx;
+                        const isEditing = editingIdx?.tab === platform && editingIdx?.idx === idx;
+                        const liveText  = isEditing ? aiEditText : post;
+
                         return (
-                          <button key={idx} onClick={() => useTextAiPost(textTab as 'twitter' | 'linkedin', idx)}
-                            className="w-full text-left px-3 py-2.5 rounded-xl border text-xs leading-relaxed transition"
-                            style={{ borderColor: isSel ? GOLD : BORDER, background: isSel ? `${GOLD}10` : 'rgba(0,0,0,0.2)', color: isSel ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
-                            <div className="flex items-center gap-1.5 mb-1">
-                              <span className="text-white/20 font-bold">#{idx + 1}</span>
-                              <span className="text-white/15">{post.length}c</span>
-                              {isSel && <span className="ml-auto font-bold text-xs flex items-center gap-1" style={{ color: GOLD }}><Edit3 className="w-3 h-3" /> Selected</span>}
+                          <div key={idx} className="relative rounded-xl border overflow-hidden transition"
+                            style={{ borderColor: isSel ? GOLD : BORDER, background: isSel ? `${GOLD}08` : 'rgba(0,0,0,0.2)' }}>
+
+                            {/* Edit button — top right */}
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (isEditing) {
+                                  // save edits back into the post list
+                                  if (textAiPosts) {
+                                    const updated = { ...textAiPosts };
+                                    updated[platform] = [...updated[platform]];
+                                    updated[platform][idx] = aiEditText;
+                                    setTextAiPosts(updated);
+                                  }
+                                  setEditingIdx(null);
+                                  // re-select with edited text if this was selected
+                                  if (isSel) {
+                                    if (platform === 'twitter') setXText(aiEditText); else setLinkedinText(aiEditText);
+                                    setAiEditText(aiEditText);
+                                  }
+                                } else {
+                                  setAiEditText(post);
+                                  setEditingIdx({ tab: platform, idx });
+                                }
+                              }}
+                              className="absolute top-2 right-2 z-10 w-6 h-6 rounded-md flex items-center justify-center transition hover:bg-white/10"
+                              style={{ color: isEditing ? GOLD : 'rgba(255,255,255,0.25)' }}
+                              title={isEditing ? 'Done editing' : 'Edit this post'}>
+                              {isEditing ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Edit3 className="w-3 h-3" />}
+                            </button>
+
+                            {/* Card body — click to select */}
+                            {isEditing ? (
+                              <textarea
+                                value={aiEditText}
+                                onChange={e => setAiEditText(e.target.value)}
+                                autoFocus
+                                rows={5}
+                                onClick={e => e.stopPropagation()}
+                                className="w-full bg-transparent px-3 pt-3 pb-2 pr-8 text-xs text-white outline-none resize-none leading-relaxed"
+                              />
+                            ) : (
+                              <div
+                                onClick={() => useTextAiPost(platform, idx)}
+                                className="px-3 pt-3 pb-2 pr-8 text-xs leading-relaxed cursor-pointer"
+                                style={{ color: isSel ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
+                                {liveText}
+                              </div>
+                            )}
+
+                            {/* Footer */}
+                            <div className="flex items-center gap-2 px-3 py-1.5 border-t" style={{ borderColor: BORDER }}>
+                              <span className="text-[10px] text-white/20 font-bold">#{idx + 1}</span>
+                              <span className="text-[10px] text-white/15">{liveText.length}c</span>
+                              {isSel && !isEditing && (
+                                <span className="ml-auto text-[10px] font-bold" style={{ color: GOLD }}>✓ Selected</span>
+                              )}
+                              {isEditing && (
+                                <span className="ml-auto text-[10px] font-bold text-amber-400/70">editing…</span>
+                              )}
                             </div>
-                            {post}
-                          </button>
+                          </div>
                         );
                       })}
                     </div>
-
-                    {/* Edit box — appears when a post is selected */}
-                    {showAiEdit && (
-                      <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}50`, background: 'rgba(0,0,0,0.3)' }}>
-                        <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: `${GOLD}20` }}>
-                          <Edit3 className="w-3.5 h-3.5" style={{ color: GOLD }} />
-                          <span className="text-xs font-bold" style={{ color: GOLD }}>Edit before posting</span>
-                          <span className="ml-auto text-xs" style={{ color: aiEditText.length > 280 && textTab === 'twitter' ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
-                            {aiEditText.length} chars{aiEditText.length > 280 && textTab === 'twitter' ? ' · over X limit' : ''}
-                          </span>
-                        </div>
-                        <textarea
-                          value={aiEditText}
-                          onChange={e => setAiEditText(e.target.value)}
-                          rows={6}
-                          className="w-full bg-transparent px-3 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
-                          placeholder="Edit this post before scheduling or posting…"
-                        />
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
