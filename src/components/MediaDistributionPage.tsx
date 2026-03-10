@@ -3300,7 +3300,7 @@ export function MediaDistributionPage() {
       {!currentUser ? (
         <div className="flex-1 flex items-center justify-center p-6" style={{ position: 'relative', overflow: 'hidden' }}>
           <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '50%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
-          <div style={{ textAlign: 'center', maxWidth: 480, animation: 'mmFadeUp 0.5s ease both', position: 'relative' }}>
+          <div style={{ textAlign: 'center', maxWidth: 720, animation: 'mmFadeUp 0.5s ease both', position: 'relative' }}>
             <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 28px', boxShadow: `0 12px 40px ${GOLD}35` }}>
               <Send size={30} color="#000" />
             </div>
@@ -3319,7 +3319,7 @@ export function MediaDistributionPage() {
             </div>
 
             {/* ── Pricing Packages ── */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 36, width: '100%', maxWidth: 520, margin: '0 auto 36px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginBottom: 36, width: '100%', maxWidth: 700 }}>
               {[
                 {
                   name: 'Starter', price: '$47', per: '/mo',
@@ -3339,42 +3339,42 @@ export function MediaDistributionPage() {
               ].map(pkg => (
                 <div key={pkg.name}
                   style={{
-                    borderRadius: 16, padding: '18px 14px 16px',
-                    background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}18, ${GOLD}08)` : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${pkg.highlight ? GOLD + '55' : 'rgba(255,255,255,0.08)'}`,
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+                    borderRadius: 20, padding: '28px 22px 22px',
+                    background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)',
+                    border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`,
+                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0,
                     position: 'relative', overflow: 'hidden',
-                    boxShadow: pkg.highlight ? `0 8px 32px ${GOLD}20` : 'none',
+                    boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none',
                   }}>
                   {pkg.highlight && (
                     <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />
                   )}
                   {pkg.highlight && (
-                    <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: GOLD, color: '#000', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Popular</span>
+                    <span style={{ position: 'absolute', top: 14, right: 14, fontSize: 9, fontWeight: 800, padding: '3px 8px', borderRadius: 20, background: GOLD, color: '#000', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Popular</span>
                   )}
-                  <div style={{ fontSize: 11, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>{pkg.name}</div>
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 2 }}>
-                    <span style={{ fontSize: 26, fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em' }}>{pkg.price}</span>
-                    <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>{pkg.name}</div>
+                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 3, marginBottom: 16 }}>
+                    <span style={{ fontSize: 38, fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.04em', lineHeight: 1 }}>{pkg.price}</span>
+                    <span style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
                   </div>
-                  <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 5, width: '100%' }}>
+                  <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 20px', display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
                     {pkg.features.map(f => (
-                      <li key={f} style={{ fontSize: 10, color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'flex-start', gap: 5 }}>
-                        <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', marginTop: 1, flexShrink: 0 }}>✓</span>{f}
+                      <li key={f} style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 7 }}>
+                        <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', marginTop: 1, flexShrink: 0, fontSize: 13 }}>✓</span>{f}
                       </li>
                     ))}
                   </ul>
                   <button
                     onClick={() => setAuthModalOpen(true)}
                     style={{
-                      marginTop: 4, width: '100%', padding: '9px 0', borderRadius: 10, fontSize: 11, fontWeight: 800, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
-                      background: pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.06)',
-                      color: pkg.highlight ? '#000' : 'rgba(255,255,255,0.65)',
-                      border: pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.1)',
-                      boxShadow: pkg.highlight ? `0 4px 16px ${GOLD}35` : 'none',
+                      marginTop: 'auto', width: '100%', padding: '11px 0', borderRadius: 12, fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+                      background: pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)',
+                      color: pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)',
+                      border: pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                      boxShadow: pkg.highlight ? `0 4px 20px ${GOLD}40` : 'none',
                     }}
-                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; }}>
+                    onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 8px 28px ${GOLD}55`; }}
+                    onMouseLeave={e => { e.currentTarget.style.transform = 'none'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 4px 20px ${GOLD}40`; }}>
                     Get Started
                   </button>
                 </div>
