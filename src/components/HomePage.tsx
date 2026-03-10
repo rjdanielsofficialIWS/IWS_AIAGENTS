@@ -192,7 +192,7 @@ export function HomePage() {
     vapiRef.current = null; setVoiceStatus('idle'); setVoiceError(null); setPhoneModal(null);
   };
 
-  // ── Platform grid data — matching MediaDistributionPage icons & brand colors ──
+  // ── Platform grid — exact same SVGs & brand colors as MediaDistributionPage ──
   const platforms = [
     {
       name: 'TikTok', color: '#ffffff', bg: 'rgba(255,255,255,0.08)',
@@ -215,7 +215,7 @@ export function HomePage() {
       icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>,
     },
     {
-      name: 'Twitter/X', color: '#ffffff', bg: 'rgba(255,255,255,0.08)',
+      name: 'X (Twitter)', color: '#ffffff', bg: 'rgba(255,255,255,0.08)',
       icon: <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-4.714-6.231-5.401 6.231H2.744l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>,
     },
     {
@@ -330,7 +330,7 @@ export function HomePage() {
         </div>
       </section>
 
-      {/* USE CASES — charcoal/matte black cards */}
+      {/* USE CASES */}
       <section id="use-cases" className="relative z-10 py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
@@ -369,7 +369,7 @@ export function HomePage() {
               <div>
                 <div className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-6">
                   <Share2 className="h-4 w-4 text-[#C8A24A]" />
-                  <span className="text-sm text-[#C8A24A] font-semibold">Media Machine — $99/mo</span>
+                  <span className="text-sm text-[#C8A24A] font-semibold">Media Machine — starts at $47/mo</span>
                 </div>
                 <h2 className="text-3xl sm:text-4xl font-bold mb-6">
                   Manage All Your Social Media{' '}
@@ -397,7 +397,7 @@ export function HomePage() {
                 </Link>
               </div>
 
-              {/* Platform grid — brand colors + proper icon backgrounds */}
+              {/* Platform grid — exact brand colors & SVGs matching MediaDistributionPage */}
               <div className="grid grid-cols-4 gap-3">
                 {platforms.map(p => (
                   <div key={p.name}
