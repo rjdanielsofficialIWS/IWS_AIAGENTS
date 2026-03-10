@@ -1916,6 +1916,7 @@ function InlinePostComposer({
           )}
         </>
       )}
+      {submitError && (
         <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {submitError}
         </div>
