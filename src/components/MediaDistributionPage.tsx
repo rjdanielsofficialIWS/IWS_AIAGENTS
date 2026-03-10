@@ -2079,28 +2079,40 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                 {day}
               </div>
 
-              {/* Items — compact dots on mobile, labels on desktop */}
-              <div className="space-y-0.5">
+              {/* Mobile: dot row + count */}
+              {dayItems.length > 0 && (
+                <div className="md:hidden flex items-center gap-0.5 flex-wrap">
+                  {dayItems.slice(0, 3).map(item => {
+                    const col = CATEGORY_COLORS[item.category] || GOLD;
+                    return <span key={item.id} className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: col }} />;
+                  })}
+                  {dayItems.length > 3 && (
+                    <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      +{dayItems.length - 3}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Desktop: labeled chips */}
+              <div className="hidden md:block space-y-0.5">
                 {visibleItems.map(item => {
                   const col = CATEGORY_COLORS[item.category] || GOLD;
                   return (
                     <div key={item.id}
                       className="flex items-center gap-1 rounded px-1 py-0.5"
                       style={{ background: `${col}18` }}>
-                      {/* Mobile: just a dot */}
-                      <span className="md:hidden w-1.5 h-1.5 rounded-full shrink-0" style={{ background: col }} />
-                      {/* Desktop: time + truncated title */}
-                      <span className="hidden md:block text-[9px] shrink-0" style={{ color: `${col}99` }}>
+                      <span className="text-[9px] shrink-0" style={{ color: `${col}99` }}>
                         {item.plannedTime ? item.plannedTime.slice(0, 5) : ''}
                       </span>
-                      <span className="hidden md:block truncate text-[10px] font-medium leading-tight" style={{ color: col, maxWidth: '100%' }}>
+                      <span className="truncate text-[10px] font-medium leading-tight" style={{ color: col }}>
                         {item.title}
                       </span>
                     </div>
                   );
                 })}
                 {overflow > 0 && (
-                  <div className="text-[9px] md:text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  <div className="text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
                     +{overflow} more
                   </div>
                 )}
@@ -2460,27 +2472,38 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
                 {day}
               </div>
 
-              {/* Post chips — dots on mobile, labeled on desktop */}
-              <div className="space-y-0.5">
+              {/* Mobile: dot row + count */}
+              {dayPosts.length > 0 && (
+                <div className="md:hidden flex items-center gap-0.5 flex-wrap">
+                  {dayPosts.slice(0, 3).map(post => (
+                    <span key={post.id} className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ background: STATUS_COLOR(post.status) }} />
+                  ))}
+                  {dayPosts.length > 3 && (
+                    <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      +{dayPosts.length - 3}
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {/* Desktop: labeled chips */}
+              <div className="hidden md:block space-y-0.5">
                 {visible.map(post => (
                   <div key={post.id}
                     className="flex items-center gap-1 rounded px-1 py-0.5"
                     style={{ background: STATUS_BG(post.status) }}>
-                    {/* Mobile: colored dot */}
-                    <span className="md:hidden w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: STATUS_COLOR(post.status) }} />
-                    {/* Desktop: platform icon + truncated text */}
-                    <span className="hidden md:block shrink-0" style={{ width: 12, height: 12 }}>
+                    <span className="shrink-0" style={{ width: 12, height: 12 }}>
                       <PlatformIcon id={post.platforms[0]} size="sm" />
                     </span>
-                    <span className="hidden md:block truncate text-[10px] font-medium leading-tight"
+                    <span className="truncate text-[10px] font-medium leading-tight"
                       style={{ color: STATUS_COLOR(post.status) }}>
                       {post.content || '(Post)'}
                     </span>
                   </div>
                 ))}
                 {overflow > 0 && (
-                  <div className="text-[9px] md:text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                  <div className="text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
                     +{overflow} more
                   </div>
                 )}
