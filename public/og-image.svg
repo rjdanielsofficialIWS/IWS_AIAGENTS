@@ -1,92 +1,207 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
   <defs>
-    <radialGradient id="bg" cx="35%" cy="20%" r="90%">
-      <stop offset="0%" stop-color="#2a2a2a"/>
-      <stop offset="55%" stop-color="#0b0b0b"/>
-      <stop offset="100%" stop-color="#000000"/>
+    <!-- Deep dark background -->
+    <radialGradient id="bg" cx="20%" cy="15%" r="75%">
+      <stop offset="0%" stop-color="#111008"/>
+      <stop offset="60%" stop-color="#080805"/>
+      <stop offset="100%" stop-color="#020201"/>
     </radialGradient>
 
-    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#8F6B1E"/>
-      <stop offset="40%" stop-color="#C8A24A"/>
-      <stop offset="75%" stop-color="#E3C36A"/>
-      <stop offset="100%" stop-color="#A77D27"/>
+    <!-- Gold gradient for text and accents -->
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#BF9530"/>
+      <stop offset="35%" stop-color="#E8C96A"/>
+      <stop offset="65%" stop-color="#F5DFA0"/>
+      <stop offset="100%" stop-color="#C8A240"/>
     </linearGradient>
 
-    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="6"/>
+    <!-- Gold for secondary elements -->
+    <linearGradient id="goldSubtle" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#8A6B1A"/>
+      <stop offset="50%" stop-color="#C8A240"/>
+      <stop offset="100%" stop-color="#8A6B1A"/>
+    </linearGradient>
+
+    <!-- Glow blur for emblem -->
+    <filter id="emblemGlow" x="-40%" y="-40%" width="180%" height="180%">
+      <feGaussianBlur stdDeviation="18" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+
+    <!-- Soft glow for circles -->
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="40"/>
+    </filter>
+
+    <!-- Text glow -->
+    <filter id="textGlow" x="-10%" y="-30%" width="120%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+
+    <!-- Clip path for clean edges -->
+    <clipPath id="frame">
+      <rect width="1200" height="630"/>
+    </clipPath>
   </defs>
 
-  <rect width="1200" height="630" fill="url(#bg)"/>
+  <g clip-path="url(#frame)">
+    <!-- Background -->
+    <rect width="1200" height="630" fill="url(#bg)"/>
 
-  <circle cx="320" cy="160" r="260" fill="rgba(200,162,74,0.12)"/>
-  <circle cx="940" cy="520" r="320" fill="rgba(200,162,74,0.08)"/>
+    <!-- Atmospheric glow orbs -->
+    <circle cx="180" cy="200" r="340" fill="#C8A240" opacity="0.055" filter="url(#softGlow)"/>
+    <circle cx="1050" cy="480" r="280" fill="#C8A240" opacity="0.04" filter="url(#softGlow)"/>
 
-  <!-- Shield Icon -->
-  <g transform="translate(120,140)">
-    <path
-      d="M160 10
-         C220 40 275 47 320 60
-         V220
-         C320 300 250 360 160 420
-         C70 360 0 300 0 220
-         V60
-         C45 47 100 40 160 10 Z"
-      fill="none"
-      stroke="url(#gold)"
-      stroke-width="16"
-      filter="url(#glow)"
-    />
-    <path
-      d="M160 40
-         C210 66 250 73 280 84
-         V216
-         C280 280 225 325 160 370
-         C95 325 40 280 40 216
-         V84
-         C70 73 110 66 160 40 Z"
-      fill="#0b0b0b"
-      stroke="url(#gold)"
-      stroke-width="7"
-      opacity="0.92"
-    />
-    <text
-      x="160" y="205"
-      text-anchor="middle"
-      font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial"
-      font-size="86"
-      font-weight="900"
-      letter-spacing="6"
-      fill="url(#gold)"
-    >IWS</text>
+    <!-- Fine grain texture lines (horizontal) -->
+    <rect x="0" y="0" width="1200" height="630" fill="none" opacity="0.03"
+      style="background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.015) 2px, rgba(255,255,255,0.015) 4px)"/>
+
+    <!-- Top border line -->
+    <rect x="0" y="0" width="1200" height="1" fill="url(#goldSubtle)" opacity="0.6"/>
+    <!-- Bottom border line -->
+    <rect x="0" y="629" width="1200" height="1" fill="url(#goldSubtle)" opacity="0.6"/>
+
+    <!-- Left decorative border panel -->
+    <rect x="0" y="0" width="3" height="630" fill="url(#gold)" opacity="0.5"/>
+
+    <!-- IWS Emblem — left side, vertically centered -->
+    <g transform="translate(100, 315)" filter="url(#emblemGlow)">
+      <!-- Outer hexagon-ish shield shape -->
+      <path
+        d="M0,-148 L90,-88 L90,44 L44,120 L0,148 L-44,120 L-90,44 L-90,-88 Z"
+        fill="none"
+        stroke="url(#gold)"
+        stroke-width="2"
+        opacity="0.35"
+      />
+      <!-- Main shield -->
+      <path
+        d="M0,-118
+           C36,-96 74,-88 100,-76
+           L100,28
+           C100,88 60,126 0,158
+           C-60,126 -100,88 -100,28
+           L-100,-76
+           C-74,-88 -36,-96 0,-118 Z"
+        fill="none"
+        stroke="url(#gold)"
+        stroke-width="2.5"
+        opacity="0.9"
+      />
+      <!-- Shield fill -->
+      <path
+        d="M0,-118
+           C36,-96 74,-88 100,-76
+           L100,28
+           C100,88 60,126 0,158
+           C-60,126 -100,88 -100,28
+           L-100,-76
+           C-74,-88 -36,-96 0,-118 Z"
+        fill="#0d0d08"
+        opacity="0.95"
+      />
+      <!-- Inner shield line -->
+      <path
+        d="M0,-96
+           C28,-78 58,-72 78,-62
+           L78,24
+           C78,72 46,102 0,128
+           C-46,102 -78,72 -78,24
+           L-78,-62
+           C-58,-72 -28,-78 0,-96 Z"
+        fill="none"
+        stroke="url(#gold)"
+        stroke-width="1"
+        opacity="0.4"
+      />
+      <!-- IWS text -->
+      <text
+        x="0" y="22"
+        text-anchor="middle"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="62"
+        font-weight="700"
+        letter-spacing="6"
+        fill="url(#gold)"
+        filter="url(#textGlow)"
+      >IWS</text>
+      <!-- Small decorative line under text -->
+      <rect x="-34" y="38" width="68" height="1.5" rx="1" fill="url(#gold)" opacity="0.6"/>
+    </g>
+
+    <!-- Vertical divider line -->
+    <rect x="265" y="80" width="1" height="470" fill="url(#goldSubtle)" opacity="0.3"/>
+
+    <!-- Right content area -->
+    <g transform="translate(320, 0)">
+
+      <!-- Eyebrow label -->
+      <text
+        x="0" y="195"
+        font-family="'Courier New', Courier, monospace"
+        font-size="15"
+        font-weight="400"
+        fill="#C8A240"
+        opacity="0.75"
+        letter-spacing="5"
+      >INTELLIGENT SYSTEMS · EST. 2025</text>
+
+      <!-- Main headline -->
+      <text
+        x="0" y="275"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="72"
+        font-weight="700"
+        fill="#F5F0E8"
+        letter-spacing="-1"
+        filter="url(#textGlow)"
+      >Infinite Wealth</text>
+
+      <text
+        x="0" y="355"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="72"
+        font-weight="700"
+        letter-spacing="-1"
+      >
+        <tspan fill="url(#gold)" filter="url(#textGlow)">Solutions AI</tspan>
+      </text>
+
+      <!-- Divider -->
+      <rect x="0" y="378" width="560" height="1.5" rx="1" fill="url(#goldSubtle)" opacity="0.4"/>
+
+      <!-- Description -->
+      <text
+        x="0" y="425"
+        font-family="Georgia, 'Times New Roman', serif"
+        font-size="28"
+        font-weight="400"
+        fill="#D4C9A8"
+        letter-spacing="0.5"
+        opacity="0.9"
+      >AI systems that multiply your output.</text>
+
+      <!-- Bottom URL tag -->
+      <text
+        x="0" y="498"
+        font-family="'Courier New', Courier, monospace"
+        font-size="14"
+        font-weight="400"
+        fill="#C8A240"
+        opacity="0.5"
+        letter-spacing="3"
+      >INFINITEWEALTHSOLUTIONSAI.COM</text>
+
+    </g>
+
+    <!-- Corner ornaments — top right -->
+    <line x1="1140" y1="40" x2="1180" y2="40" stroke="#C8A240" stroke-width="1" opacity="0.4"/>
+    <line x1="1180" y1="40" x2="1180" y2="80" stroke="#C8A240" stroke-width="1" opacity="0.4"/>
+    <!-- Corner ornaments — bottom right -->
+    <line x1="1140" y1="590" x2="1180" y2="590" stroke="#C8A240" stroke-width="1" opacity="0.4"/>
+    <line x1="1180" y1="550" x2="1180" y2="590" stroke="#C8A240" stroke-width="1" opacity="0.4"/>
+    <!-- Corner ornaments — bottom left -->
+    <line x1="20" y1="590" x2="60" y2="590" stroke="#C8A240" stroke-width="1" opacity="0.4"/>
   </g>
-
-  <!-- Text -->
-  <text x="520" y="285"
-    font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial"
-    font-size="64"
-    font-weight="900"
-    fill="#ffffff">
-    Infinite Wealth Solutions
-  </text>
-
-  <text x="520" y="345"
-    font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial"
-    font-size="34"
-    font-weight="800"
-    fill="url(#gold)"
-    letter-spacing="2">
-    AI
-  </text>
-
-  <text x="520" y="410"
-    font-family="ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial"
-    font-size="34"
-    font-weight="700"
-    fill="rgba(255,255,255,0.78)">
-    Try our AI Phone Agent
-  </text>
-
-  <rect x="520" y="438" width="520" height="4" rx="2" fill="url(#gold)" opacity="0.55"/>
 </svg>
