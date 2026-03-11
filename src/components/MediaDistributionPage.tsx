@@ -3307,10 +3307,10 @@ export function MediaDistributionPage() {
       />
 
       {!currentUser ? (
-        <div className="flex-1 overflow-y-auto" style={{ position: 'relative' }}>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
           <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '30%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
 
-          <div className="relative flex flex-col items-center justify-start min-h-full" style={{ padding: 'clamp(20px, 5vw, 56px) clamp(12px, 4vw, 24px)', animation: 'mmFadeUp 0.5s ease both' }}>
+          <div className="relative flex flex-col items-center justify-start min-h-full" style={{ padding: 'clamp(20px, 5vw, 56px) clamp(12px, 4vw, 24px)', animation: 'mmFadeUp 0.5s ease both', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
 
             {/* Logo + title */}
             <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18, boxShadow: `0 12px 40px ${GOLD}35`, flexShrink: 0 }}>
@@ -3335,7 +3335,7 @@ export function MediaDistributionPage() {
             </div>
 
             {/* Pricing Packages - always 3 cols, compact + fluid on mobile */}
-            <div style={{ width: '100%', maxWidth: 740, marginBottom: 24 }}>
+            <div style={{ width: '100%', maxWidth: 'min(740px, 100%)', marginBottom: 24 }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'clamp(6px, 2vw, 12px)' }}>
                 {[
                   {
