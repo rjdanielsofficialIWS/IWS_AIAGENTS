@@ -255,10 +255,10 @@ export function HomePage() {
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
             <span className="gold-shimmer block font-extrabold">Infinite Wealth Solutions</span>
-            <span className="block mt-3 text-white font-bold">AI systems that multiply your output.</span>
+            <span className="block mt-3 text-white font-bold">Your business runs. We make sure it never stops.</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed max-w-3xl mx-auto">
-           One video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
+            We build AI systems that multiply your output. One video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-10">
             <button data-track="cta" data-track-label="Get a Package Quote"
@@ -272,7 +272,7 @@ export function HomePage() {
             </a>
           </div>
           <div className="flex flex-wrap justify-center gap-8">
-            {[{ value: '10x', label: 'Content from 1 Video' }, { value: '19+', label: 'Social Platforms' }, { value: '24/7', label: 'AI Availability' }].map(s => (
+            {[{ value: '24/7', label: 'Always On' }, { value: '3x', label: 'Services, 1 Stack' }, { value: '100%', label: 'Built for Growth' }].map(s => (
               <div key={s.label}><div className="text-2xl font-black text-[#C8A24A]">{s.value}</div><div className="text-xs text-gray-500 mt-0.5">{s.label}</div></div>
             ))}
           </div>
