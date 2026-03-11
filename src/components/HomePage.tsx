@@ -255,10 +255,10 @@ export function HomePage() {
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
             <span className="gold-shimmer block font-extrabold">Infinite Wealth Solutions</span>
-            <span className="block mt-3 text-white font-bold">Your business runs. We make sure it never stops.</span>
+            <span className="block mt-3 text-white font-bold">AI systems that multiply your output.</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed max-w-3xl mx-auto">
-            We build AI systems that multiply your output. One video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
+           One video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-10">
             <button data-track="cta" data-track-label="Get a Package Quote"
