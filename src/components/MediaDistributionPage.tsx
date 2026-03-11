@@ -3419,35 +3419,29 @@ export function MediaDistributionPage() {
 
       ) : (
         /* ── STATES 2 & 3: Logged in — always show dashboard ── */
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Upgrade banner — only shown when no active subscription */}
+          {subscription?.status !== 'active' && (
+            <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexShrink: 0 }}>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>
+                ✨ You're on the free preview —
+              </span>
+              <button onClick={() => setPricingOpen(true)}
+                style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0 }}>
+                Upgrade to unlock all features
+              </button>
+            </div>
+          )}
+          <div className="flex flex-1 overflow-hidden">
           <Sidebar view={view} setView={setView} integrations={integrations}
             onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
           <main className="flex-1 overflow-hidden pb-[60px] md:pb-0" style={{ position: 'relative' }}>
-
-            {/* Feature gate overlay — shown when no active subscription */}
-            {subscription?.status !== 'active' && (
-              <div style={{ position: 'absolute', inset: 0, zIndex: 40, backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', background: 'rgba(13,13,15,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', animation: 'mmFadeUp 0.3s ease both' }}>
-                <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: `0 8px 28px ${GOLD}35` }}>
-                  <Send size={20} color="#000" />
-                </div>
-                <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 8, textAlign: 'center', letterSpacing: '-0.02em' }}>Unlock Media Machine</div>
-                <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 28, textAlign: 'center', maxWidth: 320, lineHeight: 1.6 }}>
-                  Choose a plan to start scheduling, publishing, and growing across every platform.
-                </p>
-                <button onClick={() => setPricingOpen(true)}
-                  style={{ padding: '12px 32px', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 6px 24px ${GOLD}40`, marginBottom: 12 }}>
-                  View Plans &amp; Pricing
-                </button>
-                <button onClick={handleSignOut} style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 12px' }}>
-                  Sign out
-                </button>
-              </div>
-            )}
 
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
           </main>
+          </div>
         </div>
       )}
 
@@ -3512,7 +3506,6 @@ export function MediaDistributionPage() {
         onClose={() => setAuthModalOpen(false)}
         onSuccess={() => {
           setAuthModalOpen(false);
-          setTimeout(() => openConnectModal(), 300);
         }}
       />
     </div>
