@@ -3177,7 +3177,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
             <Link2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Sign In to Connect</span>
+            <span className="hidden sm:inline">Already have an account? Sign In to Connect</span>
             <span className="sm:hidden">Sign In</span>
           </button>
         )}
@@ -3433,14 +3433,14 @@ export function MediaDistributionPage() {
             <span className="mm-gold-shimmer" style={{ display: 'block', fontSize: 'clamp(32px, 8vw, 56px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.0, marginBottom: 8, textAlign: 'center' }}>Media Machine</span>
             <span style={{ display: 'block', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 16, textAlign: 'center' }}>By Infinite Wealth Solutions AI</span>
             <p style={{ fontSize: 'clamp(14px, 3vw, 17px)', color: 'rgba(255,255,255,0.55)', marginBottom: 12, lineHeight: 1.6, textAlign: 'center', maxWidth: 420, fontWeight: 500 }}>
-              Schedule smarter. Grow faster.
+              One video. Thirty pieces of content. Every platform.
             </p>
             <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', margin: '0 0 36px', lineHeight: 1.6, textAlign: 'center', maxWidth: 380 }}>
-              Publish to Instagram, TikTok, YouTube, LinkedIn, X, Facebook and more - all from one dashboard.
+              Upload a video and Media Machine handles the rest — transcript extraction, AI caption generation, platform scheduling, and future content strategy. All automatic.
             </p>
             {/* Feature pills */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 40, maxWidth: 440 }}>
-              {['\u{1F4C5} Schedule posts', '\u{1F916} AI captions', '\u{1F4CA} Analytics', '\u267B\uFE0F Repurposing'].map(f => (
+              {['📅 Auto-Schedule', '🤖 AI Captions', '♻️ Content Repurposing', '💡 Strategy AI'].map(f => (
                 <span key={f} style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{f}</span>
               ))}
             </div>
@@ -3448,11 +3448,11 @@ export function MediaDistributionPage() {
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, width: '100%', maxWidth: 320 }}>
               <button onClick={() => setAuthModalOpen(true)}
                 style={{ width: '100%', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}40`, letterSpacing: '-0.01em' }}>
-                Get Started Free
+                Start Multiplying Your Content
               </button>
               <button onClick={() => setAuthModalOpen(true)}
                 style={{ width: '100%', padding: '12px 0', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
-                Sign In
+                Already have an account? Sign In
               </button>
             </div>
           </div>
@@ -3464,11 +3464,11 @@ export function MediaDistributionPage() {
           {/* Upgrade banner — only shown when no active subscription */}
           {subscription?.status !== 'active' && (
             <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ You're on the free preview</span>
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
               <button onClick={() => setPricingOpen(true)}
                 style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
-                Upgrade to unlock all features
+                Upgrade to start multiplying your content
               </button>
             </div>
           )}
@@ -3492,8 +3492,8 @@ export function MediaDistributionPage() {
           <div className="mm-pricing-sheet" style={{ width: '100%', maxWidth: 820, background: '#111', borderRadius: '20px 20px 0 0', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', padding: 'clamp(20px, 5vw, 36px) clamp(16px, 5vw, 36px)', position: 'relative', maxHeight: '92dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <button onClick={() => setPricingOpen(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&#10005;</button>
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
-              <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 6, letterSpacing: '-0.02em' }}>Choose your plan</div>
-              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>All plans include a 7-day free trial. Cancel anytime.</p>
+              <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 6, letterSpacing: '-0.02em' }}>Choose Your Growth Plan</div>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Every plan includes full AI content generation, multi-platform scheduling, and the content strategy engine.</p>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
                 {[
