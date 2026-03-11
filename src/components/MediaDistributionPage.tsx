@@ -566,7 +566,7 @@ function PricingModal({ open, onClose, onSelectPlan, currentPlan }: {
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="overflow-y-auto flex-1 px-5 py-6">
+        <div className="overflow-y-auto flex-1 px-5 py-6" style={{ WebkitOverflowScrolling: 'touch' }}>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {plans.map(plan => {
               const isCurrent = currentPlan?.toLowerCase() === plan.id;
@@ -709,7 +709,7 @@ function ConnectAccountsModal({
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
-        <div className="overflow-y-auto flex-1 p-6 space-y-4">
+        <div className="overflow-y-auto flex-1 p-6 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
           {integrations.length > 0 && (
             <div>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Connected ({integrations.length})</div>
@@ -807,7 +807,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
           ))}
           {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2" style={{ WebkitOverflowScrolling: 'touch' }}>
           {loading && posts.length === 0 ? (
             <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading…</div>
           ) : filtered.length === 0 ? (
@@ -1664,7 +1664,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                       ))}
                     </div>
                     <div className="text-xs text-white/25">Click a post to select · ✏️ to edit</div>
-                    <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1">
+                    <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: 'touch' }}>
                       {(textTab === 'twitter' ? textAiPosts.twitter : textAiPosts.linkedin).map((post, idx) => {
                         const platform = textTab as 'twitter' | 'linkedin';
                         const isSel     = textAiSelected[platform] === idx;
@@ -2043,7 +2043,7 @@ function DayDetailModal({ day, month, year, items, onClose, onDelete, onAdd, cat
             <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2" style={{ WebkitOverflowScrolling: 'touch' }}>
           {items.sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1).map(item => {
             const col = categoryColors[item.category] || GOLD;
             return (
@@ -2216,7 +2216,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
+      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)', WebkitOverflowScrolling: 'touch' }}>
         {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />)}
         {Array.from({ length: daysInMonth }).map((_, i) => {
           const day       = i + 1;
@@ -2277,7 +2277,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
               <div><h2 className="text-base font-bold text-white">♻️ Content Ideas</h2><p className="text-sm text-white/40 mt-0.5">Add directly to your planner</p></div>
               <button onClick={() => setRepurposeOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-5"><InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} /></div>
+            <div className="flex-1 overflow-y-auto px-6 py-5" style={{ WebkitOverflowScrolling: 'touch' }}><InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} /></div>
           </div>
         </div>
       )}
@@ -2339,7 +2339,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x min-h-full" style={{ '--tw-divide-opacity': 1 } as any}>
           <div className="px-4 md:px-6 py-6 space-y-1" style={{ borderColor: BORDER }}>
             <div className="flex items-center gap-2 mb-4">
@@ -2432,7 +2432,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>)}
       </div>
 
-      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
+      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)', WebkitOverflowScrolling: 'touch' }}>
         {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />)}
         {Array.from({ length: daysInMonth }).map((_, i) => {
           const day       = i + 1;
@@ -2477,7 +2477,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
                   <button onClick={() => setDayLogOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2" style={{ WebkitOverflowScrolling: 'touch' }}>
                 {dayPosts.map(post => (
                   <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
                     <div className="flex -space-x-1 shrink-0 pt-0.5">
@@ -2506,7 +2506,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
               <h2 className="text-base font-bold text-white">Create Post</h2>
               <button onClick={() => setComposerOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            <div className="flex-1 overflow-y-auto p-4 md:p-6" style={{ WebkitOverflowScrolling: 'touch' }}>
               <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); setComposerOpen(false); }} />
             </div>
           </div>
@@ -2556,7 +2556,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
           {integrations.length === 0 ? (
             <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5" style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}><Plus className="w-3.5 h-3.5" /> Add channels</button>
           ) : (
-            <div className="space-y-0.5 max-h-44 overflow-y-auto">
+            <div className="space-y-0.5 max-h-44 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
               {integrations.map(int => (
                 <div key={int.id} className="group flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/5 transition">
                   <PlatformIcon id={int.profile || int.identifier} size="sm" />
@@ -2926,6 +2926,8 @@ export function MediaDistributionPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
         * { box-sizing: border-box; }
+* { -webkit-tap-highlight-color: transparent; }
+body { overscroll-behavior: none; touch-action: pan-y; }
         html, body {
           background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
           min-height: 100vh;
@@ -2972,7 +2974,7 @@ export function MediaDistributionPage() {
 
       {/* ── STATE 1: Logged out — simple hero + sign in/up ── */}
       {!currentUser ? (
-        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative', WebkitOverflowScrolling: 'touch' }}>
           <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '35%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
           <div className="relative flex flex-col items-center justify-center min-h-full" style={{ padding: 'clamp(40px, 8vw, 80px) clamp(16px, 5vw, 32px)', animation: 'mmFadeUp 0.5s ease both' }}>
             {/* Logo */}
@@ -3009,7 +3011,7 @@ export function MediaDistributionPage() {
 
       ) : (
         /* ── STATES 2 & 3: Logged in — always show dashboard ── */
-        <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="flex flex-col flex-1 min-h-0">
           {/* Upgrade banner — only shown when no active subscription */}
           {subscription?.status !== 'active' && (
             <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
@@ -3021,10 +3023,10 @@ export function MediaDistributionPage() {
               </button>
             </div>
           )}
-          <div className="flex flex-1 overflow-hidden">
+          <div className="flex flex-1 min-h-0">
             <Sidebar view={view} setView={setView} integrations={integrations}
               onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
-            <main className="flex-1 overflow-hidden pb-[60px] md:pb-0" style={{ position: 'relative' }}>
+            <main className="flex-1 overflow-y-auto overflow-x-hidden pb-[60px] md:pb-0 md:overflow-hidden" style={{ position: 'relative' }}>
               {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
               {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
               {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
