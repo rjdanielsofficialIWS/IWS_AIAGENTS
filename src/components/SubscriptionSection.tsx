@@ -114,7 +114,7 @@ export function SubscriptionSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-6">
           {plans.map((plan) => {
             const cardStyle = plan.popular
               ? {
