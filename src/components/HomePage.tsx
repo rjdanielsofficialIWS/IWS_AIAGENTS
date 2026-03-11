@@ -18,45 +18,45 @@ const GOLD_PRIMARY = '#C8A24A';
 const GOLD_HOVER = '#E3C36A';
 const VAPI_PUBLIC_KEY = 'ebb2120b-ac56-4ce9-b1d5-17966931c665';
 const HOME_VAPI_ASSISTANT_ID = '76efe9e0-957c-410a-9163-75acbceec45e';
-const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Alex speaking, how may I help you?';
+const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI, Alex speaking, how may I help you?';
 
 const useCases = [
   {
-    scenario: 'A lead calls at midnight. Your AI agent answers, qualifies them, and books the appointment without you lifting a finger.',
-    service: 'AI Voice Agents',
+    scenario: 'A lead calls at midnight. Your AI agent answers, qualifies them, and books the appointment — without you lifting a finger.',
+    service: 'AI Phone Agents',
     icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'You record one video. Media Machine extracts the transcript, generates platform-specific captions, and schedules posts across every channel automatically.',
+    scenario: 'Your sales rep is busy. AI dials the prospect list, handles objections, and hands off only the interested ones — warm and ready to close.',
+    service: 'AI Phone Agents',
+    icon: <Phone className="h-4 w-4" />,
+  },
+  {
+    scenario: 'You record one video. AI extracts the transcript, writes platform-specific captions, and schedules posts across every channel automatically.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'A prospect visits your site at 2am. Your AI agent chats, answers objections, and drops a booking link before they bounce.',
-    service: 'AI Voice Agents',
-    icon: <Phone className="h-4 w-4" />,
+    scenario: 'You take a week off. Your content calendar stays full, posts go out on schedule, and your audience keeps growing without you.',
+    service: 'Social Media Manager',
+    icon: <Share2 className="h-4 w-4" />,
   },
   {
     scenario: 'Your competitor has a slick website. Yours actually converts because it was built around your specific audience and buying journey.',
-    service: 'Web Development',
+    service: 'Web Design',
     icon: <Zap className="h-4 w-4" />,
   },
   {
-    scenario: 'You take a week off. Your content calendar is full, posts go out on schedule, and your audience keeps growing without you.',
-    service: 'Social Media Manager',
-    icon: <Share2 className="h-4 w-4" />,
-  },
-  {
-    scenario: 'Your phone line is slammed. AI handles every overflow call simultaneously, captures every lead, and never puts anyone on hold.',
-    service: 'AI Voice Agents',
-    icon: <Phone className="h-4 w-4" />,
+    scenario: 'A prospect visits at 2am and has questions. Your site answers them, builds trust, and drops a booking link before they even think about leaving.',
+    service: 'Web Design',
+    icon: <Zap className="h-4 w-4" />,
   },
 ];
 
 const serviceTagColors: Record<string, { bg: string; text: string; border: string }> = {
-  'AI Voice Agents':      { bg: 'rgba(200,162,74,0.10)', text: '#C8A24A', border: 'rgba(200,162,74,0.30)' },
+  'AI Phone Agents':      { bg: 'rgba(200,162,74,0.10)', text: '#C8A24A', border: 'rgba(200,162,74,0.30)' },
   'Social Media Manager': { bg: 'rgba(139,92,246,0.10)', text: '#a78bfa', border: 'rgba(139,92,246,0.30)' },
-  'Web Development':      { bg: 'rgba(34,197,94,0.10)',  text: '#4ade80', border: 'rgba(34,197,94,0.30)'  },
+  'Web Design':           { bg: 'rgba(34,197,94,0.10)',  text: '#4ade80', border: 'rgba(34,197,94,0.30)'  },
 };
 
 export function HomePage() {
@@ -255,7 +255,7 @@ export function HomePage() {
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
             <span className="gold-shimmer block font-extrabold">Infinite Wealth Solutions</span>
-            <span className="block mt-3 text-white font-bold">Your content works harder. Your phone never sleeps.</span>
+            <span className="block mt-3 text-white font-bold">Your business runs. We make sure it never stops.</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed max-w-3xl mx-auto">
             We build AI systems that multiply your output. One video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
@@ -330,7 +330,7 @@ export function HomePage() {
                 <div className="space-y-3 mb-8">
                   {[
                     'AI generates platform-specific captions from your video transcript',
-                    'Auto-schedules across TikTok, Instagram, LinkedIn, YouTube, X, and 15+ more',
+                    'Auto-schedules across TikTok, Instagram, LinkedIn, YouTube, X, and 15 more platforms',
                     'Visual content calendar shows your entire pipeline at a glance',
                     'AI suggests future content ideas based on your past performance',
                     'Agencies can manage multiple brands from one dashboard',
