@@ -3384,6 +3384,10 @@ export function MediaDistributionPage() {
         @keyframes mmFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
         @keyframes mmPulse  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
         @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @media (min-width: 640px) {
+          .mm-pricing-backdrop { align-items: center !important; padding: 16px !important; }
+          .mm-pricing-sheet { border-radius: 24px !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; max-height: 90vh !important; }
+        }
         .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
         .lg\\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
       `}</style>
@@ -3459,12 +3463,11 @@ export function MediaDistributionPage() {
         <div className="flex flex-col flex-1 overflow-hidden">
           {/* Upgrade banner — only shown when no active subscription */}
           {subscription?.status !== 'active' && (
-            <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '7px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexShrink: 0 }}>
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>
-                ✨ You're on the free preview —
-              </span>
+            <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
               <button onClick={() => setPricingOpen(true)}
-                style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0 }}>
+                style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
                 Upgrade to unlock all features
               </button>
             </div>
@@ -3484,15 +3487,15 @@ export function MediaDistributionPage() {
 
       {/* ── Pricing Modal ── */}
       {pricingOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, animation: 'mmFadeUp 0.2s ease both' }}
+        <div className="mm-pricing-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0, animation: 'mmFadeUp 0.2s ease both' }}
           onClick={e => { if (e.target === e.currentTarget) setPricingOpen(false); }}>
-          <div style={{ width: '100%', maxWidth: 780, background: '#111', borderRadius: 24, border: '1px solid rgba(255,255,255,0.1)', padding: 'clamp(20px, 4vw, 36px)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
+          <div className="mm-pricing-sheet" style={{ width: '100%', maxWidth: 820, background: '#111', borderRadius: '20px 20px 0 0', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', padding: 'clamp(20px, 5vw, 36px) clamp(16px, 5vw, 36px)', position: 'relative', maxHeight: '92dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <button onClick={() => setPricingOpen(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&#10005;</button>
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
               <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 6, letterSpacing: '-0.02em' }}>Choose your plan</div>
               <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>All plans include a 7-day free trial. Cancel anytime.</p>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
                 {[
                   { name: 'Starter', price: '$47', per: '/mo', features: ['1 social profile', 'AI captions', 'Scheduling', 'Calendar'], highlight: false },
                   { name: 'Creator', price: '$97', per: '/mo', features: ['5 social profiles', 'AI captions & ideas', 'Analytics', 'Repurposing'], highlight: true },
@@ -3528,26 +3531,26 @@ export function MediaDistributionPage() {
             </div>
 
             {/* Promo Code */}
-            <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, textAlign: 'center' }}>Have a promo code?</div>
-              <div style={{ display: 'flex', gap: 8, maxWidth: 340, margin: '0 auto' }}>
+            <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', fontWeight: 500, whiteSpace: 'nowrap' }}>Have a promo code?</span>
+              <div style={{ display: 'flex', gap: 6 }}>
                 <input
                   type="text"
                   value={promoCode}
                   onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoError(''); setPromoSuccess(''); }}
                   onKeyDown={e => e.key === 'Enter' && handlePromoRedeem()}
                   placeholder="Enter code"
-                  style={{ flex: 1, padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', outline: 'none', letterSpacing: '0.08em' }}
+                  style={{ width: 110, padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', outline: 'none', letterSpacing: '0.08em' }}
                 />
                 <button
                   onClick={handlePromoRedeem}
                   disabled={promoLoading || !promoCode.trim()}
-                  style={{ padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', border: 'none', opacity: promoLoading || !promoCode.trim() ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+                  style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', border: 'none', opacity: promoLoading || !promoCode.trim() ? 0.5 : 1, whiteSpace: 'nowrap' }}>
                   {promoLoading ? '...' : 'Apply'}
                 </button>
               </div>
-              {promoError && <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', textAlign: 'center' }}>{promoError}</div>}
-              {promoSuccess && <div style={{ marginTop: 8, fontSize: 12, color: 'rgb(74,222,128)', textAlign: 'center' }}>{promoSuccess}</div>}
+              {promoError && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: '#f87171', textAlign: 'center' }}>{promoError}</div>}
+              {promoSuccess && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: 'rgb(74,222,128)', textAlign: 'center' }}>{promoSuccess}</div>}
             </div>
 
           </div>
