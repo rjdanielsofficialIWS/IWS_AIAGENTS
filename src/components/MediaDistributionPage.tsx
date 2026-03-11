@@ -5,7 +5,7 @@ import {
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
-  ClipboardList, FileText, Trash2, BookOpen,
+  Trash2, BookOpen,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -36,7 +36,6 @@ const VIRAL_ANGLES = [
   'listicle with an unexpected final item',
 ].join(', ');
 
-const ORG_ID = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6'; // eslint-disable-line
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
