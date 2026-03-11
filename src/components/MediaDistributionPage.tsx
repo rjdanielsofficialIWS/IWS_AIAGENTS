@@ -3191,6 +3191,9 @@ export function MediaDistributionPage() {
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
+  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string } | null>(null);
+  const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
+  const [portalLoading, setPortalLoading]       = useState(false);
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [authModalOpen, setAuthModalOpen]       = useState(false);
@@ -3214,7 +3217,26 @@ export function MediaDistributionPage() {
     finally { clearTimeout(safetyTimer); setIntegrationsLoading(false); }
   }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => { if (currentUserId) loadIntegrations(); }, [currentUserId, loadIntegrations]);
+  useEffect(() => {
+    if (!currentUserId) return;
+    loadIntegrations();
+    // Load subscription
+    (async () => {
+      try {
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end').eq('supabase_user_id', currentUserId).maybeSingle();
+        if (data) setSubscription(data);
+      } catch (_) {}
+    })();
+    // Handle ?checkout=success return
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout') === 'success') {
+      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(async () => {
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end').eq('supabase_user_id', currentUserId).maybeSingle();
+        if (data) setSubscription(data);
+      }, 2500);
+    }
+  }, [currentUserId]);
 
   useEffect(() => {
     const onVisible = () => {
