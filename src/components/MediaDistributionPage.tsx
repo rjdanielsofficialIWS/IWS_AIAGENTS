@@ -3197,6 +3197,10 @@ export function MediaDistributionPage() {
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
   const [pricingOpen, setPricingOpen]           = useState(false);
+  const [promoCode, setPromoCode]               = useState('');
+  const [promoLoading, setPromoLoading]         = useState(false);
+  const [promoError, setPromoError]             = useState('');
+  const [promoSuccess, setPromoSuccess]         = useState('');
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [authModalOpen, setAuthModalOpen]       = useState(false);
@@ -3328,6 +3332,39 @@ export function MediaDistributionPage() {
       else throw new Error(data.error || 'Portal failed');
     } catch (e: any) { setOauthError(e.message); }
     finally { setPortalLoading(false); }
+  };
+
+  const handlePromoRedeem = async () => {
+    if (!promoCode.trim()) return;
+    setPromoLoading(true);
+    setPromoError('');
+    setPromoSuccess('');
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/redeem-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPromoError(data.error || 'Invalid promo code'); return; }
+      setPromoSuccess('🎉 Promo applied! Unlocking your account...');
+      setTimeout(async () => {
+        // Reload subscription from DB
+        if (currentUser) {
+          const { data: sub } = await supabase.from('subscriptions').select('*').eq('supabase_user_id', currentUser.id).single();
+          if (sub) setSubscription(sub);
+        }
+        setPricingOpen(false);
+        setPromoCode('');
+        setPromoSuccess('');
+      }, 1500);
+    } catch {
+      setPromoError('Something went wrong. Please try again.');
+    } finally {
+      setPromoLoading(false);
+    }
   };
 
   const handleSignOut = async () => {
@@ -3489,6 +3526,30 @@ export function MediaDistributionPage() {
                   );
                 })}
             </div>
+
+            {/* Promo Code */}
+            <div style={{ marginTop: 24, borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: 20 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10, textAlign: 'center' }}>Have a promo code?</div>
+              <div style={{ display: 'flex', gap: 8, maxWidth: 340, margin: '0 auto' }}>
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoError(''); setPromoSuccess(''); }}
+                  onKeyDown={e => e.key === 'Enter' && handlePromoRedeem()}
+                  placeholder="Enter code"
+                  style={{ flex: 1, padding: '10px 14px', borderRadius: 10, fontSize: 13, fontWeight: 700, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.12)', color: 'white', outline: 'none', letterSpacing: '0.08em' }}
+                />
+                <button
+                  onClick={handlePromoRedeem}
+                  disabled={promoLoading || !promoCode.trim()}
+                  style={{ padding: '10px 18px', borderRadius: 10, fontSize: 13, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', border: 'none', opacity: promoLoading || !promoCode.trim() ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+                  {promoLoading ? '...' : 'Apply'}
+                </button>
+              </div>
+              {promoError && <div style={{ marginTop: 8, fontSize: 12, color: '#f87171', textAlign: 'center' }}>{promoError}</div>}
+              {promoSuccess && <div style={{ marginTop: 8, fontSize: 12, color: 'rgb(74,222,128)', textAlign: 'center' }}>{promoSuccess}</div>}
+            </div>
+
           </div>
         </div>
       )}
