@@ -22,32 +22,32 @@ const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Alex speaking, h
 
 const useCases = [
   {
-    scenario: 'A lead calls at midnight — your AI agent answers, qualifies them, and books the appointment without you lifting a finger.',
+    scenario: 'A lead calls at midnight. Your AI agent answers, qualifies them, and books the appointment without you lifting a finger.',
     service: 'AI Voice Agents',
     icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'You record one video — Media Machine extracts the transcript, generates platform-specific captions, and schedules posts across every channel automatically.',
+    scenario: 'You record one video. Media Machine extracts the transcript, generates platform-specific captions, and schedules posts across every channel automatically.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'A prospect visits your site at 2am — your AI agent chats, answers objections, and drops a booking link before they bounce.',
+    scenario: 'A prospect visits your site at 2am. Your AI agent chats, answers objections, and drops a booking link before they bounce.',
     service: 'AI Voice Agents',
     icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'Your competitor has a slick website — yours actually converts because it was built around your specific audience and buying journey.',
+    scenario: 'Your competitor has a slick website. Yours actually converts because it was built around your specific audience and buying journey.',
     service: 'Web Development',
     icon: <Zap className="h-4 w-4" />,
   },
   {
-    scenario: 'You take a week off — your content calendar is full, posts go out on schedule, and your audience keeps growing without you.',
+    scenario: 'You take a week off. Your content calendar is full, posts go out on schedule, and your audience keeps growing without you.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'Your phone line is slammed — AI handles every overflow call simultaneously, captures every lead, and never puts anyone on hold.',
+    scenario: 'Your phone line is slammed. AI handles every overflow call simultaneously, captures every lead, and never puts anyone on hold.',
     service: 'AI Voice Agents',
     icon: <Phone className="h-4 w-4" />,
   },
@@ -83,7 +83,7 @@ export function HomePage() {
         { id: 'websiteUrl' as keyof FormData, label: 'Website URL (optional)', type: 'input' as const, placeholder: 'https://yourwebsite.com', icon: Globe, required: false },
       ],
     },
-    { id: 'industryServices', title: 'Industry and Services', type: 'textarea' as const, placeholder: 'Example: Plumbing — Drain cleaning, water heaters, emergency calls, etc.', rows: 4, icon: MessageSquare, required: true },
+    { id: 'industryServices', title: 'Industry and Services', type: 'textarea' as const, placeholder: 'Example: Plumbing, drain cleaning, water heaters, emergency calls, etc.', rows: 4, icon: MessageSquare, required: true },
     {
       id: 'contactInfo', title: 'Your Contact Info', subtitle: "We'll send your demo link here", type: 'multi-input' as const,
       fields: [
@@ -258,7 +258,7 @@ export function HomePage() {
             <span className="block mt-3 text-white font-bold">Your content works harder. Your phone never sleeps.</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed max-w-3xl mx-auto">
-            We build AI systems that multiply your output — one video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
+            We build AI systems that multiply your output. One video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-10">
             <button data-track="cta" data-track-label="Get a Package Quote"
@@ -318,14 +318,14 @@ export function HomePage() {
               <div>
                 <div className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-6">
                   <Share2 className="h-4 w-4 text-[#C8A24A]" />
-                  <span className="text-sm text-[#C8A24A] font-semibold">Media Machine — The Content Multiplication Engine</span>
+                  <span className="text-sm text-[#C8A24A] font-semibold">Media Machine, The Content Multiplication Engine</span>
                 </div>
                 <h2 className="text-3xl sm:text-4xl font-bold mb-6">
                   Turn One Video Into 30 Pieces of Content{' '}
                   <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Across Every Platform</span>
                 </h2>
                 <p className="text-gray-300 text-lg leading-relaxed mb-8">
-                  Most creators spend hours making content for one platform. Media Machine flips that model. Upload a video and our AI extracts the transcript, analyzes your content strategy, generates tailored posts for every platform, and schedules everything automatically. You get 10–20 assets from a single upload.
+                  Most creators spend hours making content for one platform. Media Machine flips that model. Upload a video and our AI extracts the transcript, analyzes your content strategy, generates tailored posts for every platform, and schedules everything automatically. You get 10 to 20 assets from a single upload.
                 </p>
                 <div className="space-y-3 mb-8">
                   {[
@@ -388,7 +388,7 @@ export function HomePage() {
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
               Get Your <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Free AI Demo</span>
             </h2>
-            <p className="text-gray-400">Tell us about your business and we'll build you a custom AI demo — free, no strings attached.</p>
+            <p className="text-gray-400">Tell us about your business and we'll build you a custom AI demo. Free, no strings attached.</p>
           </div>
           <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12">
             {submitStatus === 'error' && (
@@ -493,7 +493,7 @@ export function HomePage() {
             )}
             {isSubmitting && (
               <p className="text-center text-sm text-gray-400 mt-4 animate-pulse">
-                Building your custom AI agent — this may take up to 60 seconds…
+                Building your custom AI agent. This may take up to 60 seconds…
               </p>
             )}
           </div>
@@ -545,7 +545,7 @@ export function HomePage() {
           </div>
           <div className="text-left">
             <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>Talk to Our AI Agent</div>
-            <div className="text-[11px] text-gray-300 leading-tight">Available 24/7 — try it now</div>
+            <div className="text-[11px] text-gray-300 leading-tight">Available 24/7. Try it now.</div>
           </div>
         </button>
       </div>
@@ -563,7 +563,7 @@ export function HomePage() {
                 <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>Alex — AI Voice Agent</h3>
                 <p className="text-gray-300">
                   {voiceStatus === 'connecting' && 'Connecting…'}
-                  {voiceStatus === 'live' && 'Live — speak normally.'}
+                  {voiceStatus === 'live' && 'Live. Speak normally.'}
                   {voiceStatus === 'ended' && 'Call ended.'}
                   {voiceStatus === 'error' && 'Could not start the call.'}
                   {voiceStatus === 'idle' && 'Ready.'}
