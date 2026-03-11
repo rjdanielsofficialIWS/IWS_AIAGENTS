@@ -92,7 +92,7 @@ const PLATFORMS: Record<PlatformId, {
   },
 };
 
-// \u2500\u2500\u2500 Types \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 type UploadState =
   | { status: 'idle' }
@@ -123,7 +123,7 @@ type PlannerItem = {
   sourceLabel?: string;
 };
 
-// \u2500\u2500\u2500 Helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function generateState() {
   const a = new Uint8Array(16);
@@ -148,7 +148,7 @@ async function ayrsharePost(payload: {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const msg = data.error || `Post failed (${res.status})`;
-    const hint = data.hint ? `\n\n\ud83d\udca1 ${data.hint}` : '';
+    const hint = data.hint ? `\n\n💡 ${data.hint}` : '';
     throw new Error(msg + hint);
   }
   return data;
@@ -420,7 +420,7 @@ async function transcribeVideo(videoFile: File): Promise<string> {
   return transcript;
 }
 
-// \u2500\u2500\u2500 Small shared components \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── Small shared components ──────────────────────────────────────────────────
 
 function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'lg' }) {
   const px = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
@@ -512,7 +512,7 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
   );
 }
 
-// \u2500\u2500\u2500 PricingModal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── PricingModal ─────────────────────────────────────────────────────────────
 
 function PricingModal({ open, onClose, onSelectPlan, currentPlan }: {
   open: boolean; onClose: () => void;
@@ -612,7 +612,7 @@ function PricingModal({ open, onClose, onSelectPlan, currentPlan }: {
                         background: isCurrent ? 'rgba(34,197,94,0.15)' : plan.highlight ? GOLD : 'rgba(255,255,255,0.08)',
                         color: isCurrent ? '#86efac' : plan.highlight ? '#000' : 'rgba(255,255,255,0.7)',
                       }}>
-                      {loading === plan.id ? <Loader className="w-4 h-4 animate-spin" /> : isCurrent ? '\u2713 Current Plan' : `Get ${plan.name}`}
+                      {loading === plan.id ? <Loader className="w-4 h-4 animate-spin" /> : isCurrent ? '✓ Current Plan' : `Get ${plan.name}`}
                     </button>
                   </div>
                 </div>
@@ -625,7 +625,7 @@ function PricingModal({ open, onClose, onSelectPlan, currentPlan }: {
   );
 }
 
-// \u2500\u2500\u2500 ConnectAccountsModal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── ConnectAccountsModal ─────────────────────────────────────────────────────
 
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser,
@@ -747,7 +747,7 @@ function ConnectAccountsModal({
   );
 }
 
-// \u2500\u2500\u2500 PostLogModal \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── PostLogModal ─────────────────────────────────────────────────────────────
 
 function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
   open: boolean; onClose: () => void; userId: string | null; initialFilter?: string;
@@ -794,7 +794,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
         style={{ background: SURFACE, borderColor: BORDER }}>
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
-            <h2 className="text-base font-bold text-white">\ud83d\udccb Post Log</h2>
+            <h2 className="text-base font-bold text-white">📋 Post Log</h2>
             <p className="text-xs text-white/35 mt-0.5">Your recent and upcoming posts</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
@@ -853,7 +853,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
   );
 }
 
-// \u2500\u2500\u2500 VideoPreviewCard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── VideoPreviewCard ─────────────────────────────────────────────────────────
 
 function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: File; objectUrl: string; uploadState: UploadState; onRemove: () => void }) {
   const videoRef   = useRef<HTMLVideoElement>(null);
@@ -986,7 +986,7 @@ function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: Fi
   );
 }
 
-// \u2500\u2500\u2500 ImagePreviewCard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── ImagePreviewCard ─────────────────────────────────────────────────────────
 
 function ImagePreviewCard({ file, uploadState, onRemove }: { file: File; uploadState: UploadState; onRemove: () => void }) {
   const [objectUrl] = useState(() => URL.createObjectURL(file));
@@ -1028,7 +1028,7 @@ function ImagePreviewCard({ file, uploadState, onRemove }: { file: File; uploadS
   );
 }
 
-// \u2500\u2500\u2500 SavedPostCard \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── SavedPostCard ────────────────────────────────────────────────────────────
 
 function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStart, onEditChange, onEditSave, onEditCancel, onDelete }: {
   post: { id: string; text: string; label: string; savedAt: Date };
@@ -1068,7 +1068,7 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
       <div className="flex items-center gap-2 px-4 py-2.5 border-b" style={{ borderColor: BORDER }}>
-        <span className="text-xs font-bold" style={{ color: GOLD_L }}>\ud83d\udd16 {post.label}</span>
+        <span className="text-xs font-bold" style={{ color: GOLD_L }}>🔖 {post.label}</span>
         <span className="text-[10px] text-white/25 ml-1">{post.savedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
         <div className="ml-auto flex items-center gap-1">
           {isEditing ? (
@@ -1117,7 +1117,7 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
           {(['now', 'schedule'] as const).map(t => (
             <button key={t} onClick={() => setScheduleType(t)} className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
               style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-              {t === 'now' ? '\u26a1 Post Now' : '\ud83d\uddd3 Schedule'}
+              {t === 'now' ? '⚡ Post Now' : '🗓 Schedule'}
             </button>
           ))}
         </div>
@@ -1129,7 +1129,7 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
       <div className="px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex-1">
           {postErr && <p className="text-xs text-red-400">{postErr}</p>}
-          {postOk  && <p className="text-xs text-green-400 font-bold">\u2713 {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</p>}
+          {postOk  && <p className="text-xs text-green-400 font-bold">✓ {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</p>}
           <span className="text-[10px] text-white/20">{activeText.length} chars</span>
         </div>
         <button onClick={handlePost} disabled={posting || selectedAccounts.length === 0}
@@ -1144,7 +1144,7 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
   );
 }
 
-// \u2500\u2500\u2500 InlinePostComposer \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── InlinePostComposer ────────────────────────────────────────────────────────
 
 function InlinePostComposer({ integrations, userId, onSuccess }: {
   integrations: PostizIntegration[];
@@ -1372,7 +1372,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
         {(['now', 'schedule'] as const).map(t => (
           <button key={t} onClick={() => setScheduleType(t)} className="px-4 py-2 rounded-xl text-sm font-bold border transition"
             style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-            {t === 'now' ? '\u26a1 Post Now' : '\ud83d\uddd3 Schedule'}
+            {t === 'now' ? '⚡ Post Now' : '🗓 Schedule'}
           </button>
         ))}
       </div>
@@ -1388,9 +1388,9 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
       {/* Post type toggle */}
       <div className="grid grid-cols-3 gap-2 p-1 rounded-2xl" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
         {([
-          ['media', '\ud83d\udcce', 'Media Post',  'Video & images'],
-          ['text',  '\u270d\ufe0f', 'Text Post',   'X, LinkedIn & more'],
-          ['saved', '\ud83d\udd16', 'Saved',       `${savedPosts.length} post${savedPosts.length !== 1 ? 's' : ''}`],
+          ['media', '📎', 'Media Post',  'Video & images'],
+          ['text',  '✍️', 'Text Post',   'X, LinkedIn & more'],
+          ['saved', '🔖', 'Saved',       `${savedPosts.length} post${savedPosts.length !== 1 ? 's' : ''}`],
         ] as const).map(([type, emoji, label, sub]) => (
           <button key={type} onClick={() => { setPostType(type); setSubmitOk(false); setSubmitError(null); }}
             className="flex flex-col items-start px-3 py-3 rounded-xl transition"
@@ -1474,7 +1474,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
             <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
-              {([['manual', '\u270f\ufe0f Write Manually'], ['ai', '\u2728 AI per Platform']] as const).map(([t, label]) => (
+              {([['manual', '✏️ Write Manually'], ['ai', '✨ AI per Platform']] as const).map(([t, label]) => (
                 <button key={t} onClick={() => { setCaptionType(t); setGeneratedCaptions(null); }}
                   className="flex-1 py-2 rounded-lg text-xs font-bold transition"
                   style={{ background: captionType === t ? `${GOLD}18` : 'transparent', border: `1px solid ${captionType === t ? GOLD : 'transparent'}`, color: captionType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
@@ -1508,14 +1508,14 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
               <div className="px-4 pt-4 pb-3 space-y-3">
                 <div className="flex gap-2">
-                  {([['from_video', '\ud83c\udf99 From Video'], ['from_description', '\ud83d\udcdd From Description']] as const).map(([m, label]) => (
+                  {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                     <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
                       style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
                       {label}
                     </button>
                   ))}
                 </div>
-                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">\u26a0\ufe0f Add a video above first</div>}
+                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first</div>}
                 {captionMode === 'from_description' && (
                   <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)} placeholder="Describe your video or content…" rows={3}
                     className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
@@ -1597,10 +1597,10 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
               <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
                 <span className="text-xs text-white/20">{xText.length} chars</span>
                 <div className="flex items-center gap-2">
-                  {xText.length > 280 && <span className="text-xs text-amber-400/80 font-bold">\u26a0 Over X's 280 limit</span>}
+                  {xText.length > 280 && <span className="text-xs text-amber-400/80 font-bold">⚠ Over X's 280 limit</span>}
                   <button onClick={() => { savePost(xText, 'Manual'); setXText(''); }} disabled={!xText.trim()}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-30 hover:bg-white/8"
-                    style={{ color: GOLD_L, border: `1px solid ${GOLD}30` }}>\ud83d\udd16 Save</button>
+                    style={{ color: GOLD_L, border: `1px solid ${GOLD}30` }}>🔖 Save</button>
                 </div>
               </div>
             </div>
@@ -1611,7 +1611,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
-                  {showTextAi ? 'Write Manually Instead' : '\u2728 AI Generate Posts'}
+                  {showTextAi ? 'Write Manually Instead' : '✨ AI Generate Posts'}
                 </span>
               </div>
               <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showTextAi ? 'rotate-90' : ''}`} />
@@ -1620,7 +1620,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
               <div className="border-t px-4 pb-4 space-y-3" style={{ borderColor: BORDER }}>
                 <p className="text-xs text-white/35 pt-3">Generates <strong className="text-white/50">10 X posts</strong> &amp; <strong className="text-white/50">10 LinkedIn posts</strong>.</p>
                 <div className="flex gap-2">
-                  {([['from_video', '\ud83c\udf99 From Video'], ['from_description', '\ud83d\udcdd From Description']] as const).map(([m, label]) => (
+                  {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                     <button key={m} onClick={() => setTextAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
                       style={{ borderColor: textAiMode === m ? GOLD : BORDER, background: textAiMode === m ? `${GOLD}12` : 'transparent', color: textAiMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
                       {label}
@@ -1664,7 +1664,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                         </button>
                       ))}
                     </div>
-                    <div className="text-xs text-white/25">Click a post to select \u00b7 \u270f\ufe0f to edit</div>
+                    <div className="text-xs text-white/25">Click a post to select · ✏️ to edit</div>
                     <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1">
                       {(textTab === 'twitter' ? textAiPosts.twitter : textAiPosts.linkedin).map((post, idx) => {
                         const platform = textTab as 'twitter' | 'linkedin';
@@ -1703,10 +1703,10 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                             <div className="flex items-center gap-2 px-3 py-1.5 border-t" style={{ borderColor: BORDER }}>
                               <span className="text-[10px] text-white/20 font-bold">#{idx + 1}</span>
                               <span className="text-[10px] text-white/15">{liveText.length}c</span>
-                              {isSel && !isEditing && <span className="text-[10px] font-bold" style={{ color: GOLD }}>\u2713 Selected</span>}
+                              {isSel && !isEditing && <span className="text-[10px] font-bold" style={{ color: GOLD }}>✓ Selected</span>}
                               <button onClick={e => { e.stopPropagation(); savePost(liveText, textTab === 'twitter' ? 'X Post' : 'LinkedIn Post'); }}
                                 className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition hover:bg-white/8"
-                                style={{ color: GOLD_L, border: `1px solid ${GOLD}25` }}>\ud83d\udd16 Save</button>
+                                style={{ color: GOLD_L, border: `1px solid ${GOLD}25` }}>🔖 Save</button>
                             </div>
                           </div>
                         );
@@ -1725,9 +1725,9 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
         <>
           {savedPosts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
-              <span className="text-4xl">\ud83d\udd16</span>
+              <span className="text-4xl">🔖</span>
               <div className="text-sm font-bold text-white/30">No saved posts yet</div>
-              <div className="text-xs text-white/20">Save any post using the \ud83d\udd16 Save button</div>
+              <div className="text-xs text-white/20">Save any post using the 🔖 Save button</div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -1765,7 +1765,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
   );
 }
 
-// \u2500\u2500\u2500 InlineContentIdeas \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── InlineContentIdeas ────────────────────────────────────────────────────────
 
 function InlineContentIdeas({ userId, onAddToPlanner }: {
   userId: string | null;
@@ -1787,8 +1787,8 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
 
   const CATEGORY_COLORS: Record<string, string> = { idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c' };
   const CATEGORY_OPTIONS = [
-    { value: 'idea', label: '\ud83d\udca1 General Idea' }, { value: 'short_clip', label: '\ud83c\udfac Short Clip' },
-    { value: 'hook', label: '\ud83e\ude9d Hook' }, { value: 'blog', label: '\u270d\ufe0f Blog/Article' }, { value: 'other', label: '\ud83d\udce6 Other' },
+    { value: 'idea', label: '💡 General Idea' }, { value: 'short_clip', label: '🎬 Short Clip' },
+    { value: 'hook', label: '🪝 Hook' }, { value: 'blog', label: '✍️ Blog/Article' }, { value: 'other', label: '📦 Other' },
   ];
 
   const handleManualSave = () => {
@@ -1833,11 +1833,11 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
       <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
         <button onClick={() => setMode('manual')} className="flex-1 py-2 rounded-lg text-xs font-bold transition"
           style={{ background: mode === 'manual' ? `${GOLD}18` : 'transparent', border: `1px solid ${mode === 'manual' ? GOLD : 'transparent'}`, color: mode === 'manual' ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-          \u270f\ufe0f Manual Entry
+          ✏️ Manual Entry
         </button>
         <button onClick={() => setMode('ai')} className="flex-1 py-2 rounded-lg text-xs font-bold transition"
           style={{ background: mode === 'ai' ? `${GOLD}18` : 'transparent', border: `1px solid ${mode === 'ai' ? GOLD : 'transparent'}`, color: mode === 'ai' ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-          \u2728 AI Generate
+          ✨ AI Generate
         </button>
       </div>
 
@@ -1878,7 +1878,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
       {mode === 'ai' && (
         <div className="space-y-3">
           <div className="flex gap-2">
-            {([['from_video', '\ud83c\udf99 From Video'], ['from_description', '\ud83d\udcdd From Description']] as const).map(([m, label]) => (
+            {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
               <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
                 style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
                 {label}
@@ -1917,7 +1917,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
             <div className="space-y-5">
               {ideas.short_clips?.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">\ud83c\udfac Short Clip Ideas</div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🎬 Short Clip Ideas</div>
                   <div className="space-y-2">
                     {ideas.short_clips.map((clip: any, i: number) => {
                       const key = `clip-${i}`;
@@ -1932,7 +1932,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                             <button onClick={() => handleAdd(key, clip.title, clip.angle, 'short_clip', 'Short Clip')}
                               className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
                               style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '\u2713 Added' : '+ Planner'}
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
                             </button>
                           </div>
                         </div>
@@ -1943,7 +1943,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               )}
               {ideas.social_hooks?.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">\ud83e\ude9d Hook Ideas</div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🪝 Hook Ideas</div>
                   <div className="space-y-1.5">
                     {ideas.social_hooks.map((hook: string, i: number) => {
                       const key = `hook-${i}`;
@@ -1953,7 +1953,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                           <button onClick={() => handleAdd(key, hook, undefined, 'hook', 'Hook Idea')}
                             className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
                             style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                            {added.has(key) ? '\u2713 Added' : '+ Planner'}
+                            {added.has(key) ? '✓ Added' : '+ Planner'}
                           </button>
                         </div>
                       );
@@ -1963,7 +1963,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               )}
               {ideas.blog_angles?.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">\u270d\ufe0f Blog / Article Angles</div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">✍️ Blog / Article Angles</div>
                   <div className="space-y-2">
                     {ideas.blog_angles.map((b: any, i: number) => {
                       const key = `blog-${i}`;
@@ -1977,7 +1977,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                             <button onClick={() => handleAdd(key, b.headline, b.angle, 'blog', 'Blog Angle')}
                               className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
                               style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '\u2713 Added' : '+ Planner'}
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
                             </button>
                           </div>
                         </div>
@@ -1988,7 +1988,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               )}
               {ideas.other_formats?.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">\ud83d\udce6 Other Formats</div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📦 Other Formats</div>
                   <div className="space-y-2">
                     {ideas.other_formats.map((f: any, i: number) => {
                       const key = `other-${i}`;
@@ -2002,7 +2002,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                             <button onClick={() => handleAdd(key, f.format, f.concept, 'other', 'Other Format')}
                               className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
                               style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '\u2713 Added' : '+ Planner'}
+                              {added.has(key) ? '✓ Added' : '+ Planner'}
                             </button>
                           </div>
                         </div>
@@ -2012,7 +2012,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                 </div>
               )}
               <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5" style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-                \u21ba Generate New Ideas
+                ↺ Generate New Ideas
               </button>
             </div>
           )}
@@ -2022,7 +2022,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
   );
 }
 
-// \u2500\u2500\u2500 PlannerPanel helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── PlannerPanel helpers ─────────────────────────────────────────────────────
 
 function DayDetailModal({ day, month, year, items, onClose, onDelete, onAdd, categoryColors }: {
   day: number; month: number; year: number; items: PlannerItem[];
@@ -2140,7 +2140,7 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
   );
 }
 
-// \u2500\u2500\u2500 PlannerPanel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── PlannerPanel ─────────────────────────────────────────────────────────────
 
 function PlannerPanel({ userId }: { userId: string | null }) {
   const [currentDate, setCurrentDate]   = useState(new Date());
@@ -2275,7 +2275,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setRepurposeOpen(false)} />
           <div className="relative w-full md:max-w-xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" style={{ background: SURFACE, borderColor: BORDER }}>
             <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
-              <div><h2 className="text-base font-bold text-white">\u267b\ufe0f Content Ideas</h2><p className="text-sm text-white/40 mt-0.5">Add directly to your planner</p></div>
+              <div><h2 className="text-base font-bold text-white">♻️ Content Ideas</h2><p className="text-sm text-white/40 mt-0.5">Add directly to your planner</p></div>
               <button onClick={() => setRepurposeOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5"><InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} /></div>
@@ -2286,7 +2286,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   );
 }
 
-// \u2500\u2500\u2500 ComposerPanel \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── ComposerPanel ─────────────────────────────────────────────────────────────
 
 function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
   const [logOpen, setLogOpen]           = useState(false);
@@ -2335,7 +2335,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
             className={`flex flex-col items-center justify-center py-3 md:py-4 transition hover:bg-white/4 ${i < 2 ? 'border-r' : ''}`} style={{ borderColor: BORDER }}>
             <div className="text-xl md:text-2xl font-black" style={{ color: s.color }}>{loading ? <Loader className="w-4 h-4 animate-spin opacity-30" /> : counts[s.key]}</div>
             <div className="text-[10px] md:text-xs font-semibold text-white/30 mt-0.5">{s.label}</div>
-            <div className="text-[9px] text-white/20 mt-0.5">View log \u2192</div>
+            <div className="text-[9px] text-white/20 mt-0.5">View log →</div>
           </button>
         ))}
       </div>
@@ -2372,7 +2372,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
   );
 }
 
-// \u2500\u2500\u2500 CalendarView \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── CalendarView ─────────────────────────────────────────────────────────────
 
 function CalendarView({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
   const [posts, setPosts]               = useState<ScheduledPost[]>([]);
@@ -2517,7 +2517,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
   );
 }
 
-// \u2500\u2500\u2500 Sidebar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function Sidebar({ view, setView, integrations, onOpenConnect }: {
   view: ViewMode; setView: (v: ViewMode) => void;
@@ -2591,7 +2591,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
   );
 }
 
-// \u2500\u2500\u2500 UserMenu \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── UserMenu ─────────────────────────────────────────────────────────────────
 
 function UserMenu({ user, onSignOut, subscription, onManagePlan }: {
   user: { email: string; fullName?: string }; onSignOut: () => void;
@@ -2651,7 +2651,7 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: {
   );
 }
 
-// \u2500\u2500\u2500 TopBar \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── TopBar ───────────────────────────────────────────────────────────────────
 
 function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, user, onSignOut, onSignIn, subscription, onManagePlan }: {
   integrations: PostizIntegration[]; integrationsLoading: boolean;
@@ -2686,7 +2686,7 @@ function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, u
               className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition disabled:opacity-30">
               <RefreshCw className={`w-3.5 h-3.5 ${integrationsLoading ? 'animate-spin' : ''}`} />
             </button>
-            {/* \u2500\u2500 THE FIX: Check subscription before opening connect modal \u2500\u2500 */}
+            {/* ── THE FIX: Check subscription before opening connect modal ── */}
             <button onClick={onOpenConnect}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
               style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
@@ -2706,7 +2706,7 @@ function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, u
   );
 }
 
-// \u2500\u2500\u2500 Main export \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+// ─── Main export ──────────────────────────────────────────────────────────────
 
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
