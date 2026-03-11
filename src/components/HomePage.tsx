@@ -295,7 +295,7 @@ export function HomePage() {
               return (
                 <div key={i}
                   className="border rounded-xl p-6 flex flex-col gap-4 transition-all"
-                  style={{ background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.09)' }}>
+                  style={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.13)' }}>
                   <p className="text-gray-300 text-sm leading-relaxed flex-1">"{uc.scenario}"</p>
                   <div className="flex items-center gap-2 mt-auto">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border"
