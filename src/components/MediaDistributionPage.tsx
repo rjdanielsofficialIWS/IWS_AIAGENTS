@@ -29,10 +29,10 @@ const VIRAL_ANGLES = [
   'bold contrarian take that challenges common wisdom',
   'personal story with a surprising or emotional twist',
   'specific number or stat that stops the scroll',
-  'open loop hook — tease the payoff without giving it away',
+  'open loop hook, tease the payoff without giving it away',
   'relatable pain point that makes the reader feel seen',
   'before/after transformation framing',
-  'curiosity gap — what most people get wrong about X',
+  'curiosity gap, what most people get wrong about X',
   'social proof or authority positioning',
   'direct call-to-action with urgency or scarcity',
   'listicle with an unexpected final item',
@@ -558,8 +558,11 @@ function ConnectAccountsModal({
         return;
       }
 
-      // Open the window BEFORE the async fetch so mobile browsers don't block it
-      const popup = window.open('', '_blank');
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      // On desktop: open popup first (before async) so browser doesn't block it
+      // On mobile: popup is unreliable — we'll navigate the current tab instead
+      const popup = isMobile ? null : window.open('', '_blank');
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
         method: 'POST',
@@ -582,7 +585,7 @@ function ConnectAccountsModal({
       if (popup) {
         popup.location.href = connectUrl;
       } else {
-        // Fallback if popup was blocked — navigate current tab
+        // Mobile: navigate current tab directly — always works
         window.location.href = connectUrl;
       }
       setConnecting(false);
@@ -1639,7 +1642,7 @@ function InlinePostComposer({
                   {Object.entries(generatedCaptions).map(([platform, caption]) => {
                     const integ = integrations.find(i => i.identifier === platform || i.identifier === platform.toLowerCase());
                     const p = PLATFORMS[platform as PlatformId];
-                    const label = platform === 'youtube' ? 'YouTube — Description' : (p?.label || integ?.name || platform);
+                    const label = platform === 'youtube' ? 'YouTube Description' : (p?.label || integ?.name || platform);
                     return (
                       <div key={platform} className="rounded-xl border overflow-hidden" style={{ borderColor: p?.color ? `${p.color}30` : BORDER }}>
                         <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: p?.color ? `${p.color}20` : BORDER, background: p?.bg || 'rgba(0,0,0,0.2)' }}>
@@ -2605,7 +2608,7 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
         style={{ background: SURFACE, borderColor: BORDER }}>
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div className="text-sm font-black text-white">
-            {prefilled ? `Add to Planner — ${prefilled.sourceLabel}` : 'Add Idea to Planner'}
+            {prefilled ? `Add to Planner: ${prefilled.sourceLabel}` : 'Add Idea to Planner'}
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <X className="w-4 h-4" />
@@ -3473,7 +3476,7 @@ export function MediaDistributionPage() {
           {/* Upgrade banner — only shown when no active subscription */}
           {subscription?.status !== 'active' && (
             <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ You're on the free preview</span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
               <button onClick={() => setPricingOpen(true)}
                 style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
