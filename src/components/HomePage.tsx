@@ -22,32 +22,32 @@ const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI - Alex speaking, h
 
 const useCases = [
   {
-    scenario: 'A customer calls after hours — AI answers, books the appointment, and sends a confirmation.',
+    scenario: 'A lead calls at midnight — your AI agent answers, qualifies them, and books the appointment without you lifting a finger.',
     service: 'AI Voice Agents',
     icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'You record one video — AI repurposes and schedules it across TikTok, Instagram, and LinkedIn automatically.',
+    scenario: 'You record one video — Media Machine extracts the transcript, generates platform-specific captions, and schedules posts across every channel automatically.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'A lead visits your site at 2am — AI answers their questions, qualifies them, and books a call.',
+    scenario: 'A prospect visits your site at 2am — your AI agent chats, answers objections, and drops a booking link before they bounce.',
     service: 'AI Voice Agents',
     icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'Your competitor has a slick website — yours converts 3x better because it was built for your specific audience.',
+    scenario: 'Your competitor has a slick website — yours actually converts because it was built around your specific audience and buying journey.',
     service: 'Web Development',
     icon: <Zap className="h-4 w-4" />,
   },
   {
-    scenario: 'You go on vacation — your social media keeps posting, engaging, and growing on autopilot.',
+    scenario: 'You take a week off — your content calendar is full, posts go out on schedule, and your audience keeps growing without you.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'Your phone line is busy — AI handles the overflow, captures every lead, and never puts anyone on hold.',
+    scenario: 'Your phone line is slammed — AI handles every overflow call simultaneously, captures every lead, and never puts anyone on hold.',
     service: 'AI Voice Agents',
     icon: <Phone className="h-4 w-4" />,
   },
@@ -251,20 +251,20 @@ export function HomePage() {
         <div className="max-w-4xl mx-auto text-center">
           <div className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-8">
             <Sparkles className="h-4 w-4 text-[#C8A24A]" />
-            <span className="text-sm text-[#C8A24A] font-semibold">AI-Powered Business Solutions</span>
+            <span className="text-sm text-[#C8A24A] font-semibold">The AI Growth Stack for Modern Businesses</span>
           </div>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
             <span className="gold-shimmer block font-extrabold">Infinite Wealth Solutions</span>
-            <span className="block mt-3 text-white font-bold">Transform your business with AI</span>
+            <span className="block mt-3 text-white font-bold">Your content works harder. Your phone never sleeps.</span>
           </h1>
           <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed max-w-3xl mx-auto">
-            From AI-powered voice agents to social media management and custom websites — we deliver premium digital solutions that drive results.
+            We build AI systems that multiply your output — one video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-10">
             <button data-track="cta" data-track-label="Get a Package Quote"
               onClick={() => document.getElementById('lead-capture')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
               className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3">
-              <MessageSquare className="h-6 w-6" /><span>FREE AI Phone Agent</span>
+              <MessageSquare className="h-6 w-6" /><span>Get a Free AI Demo</span>
             </button>
             <a href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer"
               className="w-full sm:w-auto bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 flex items-center justify-center space-x-3">
@@ -272,7 +272,7 @@ export function HomePage() {
             </a>
           </div>
           <div className="flex flex-wrap justify-center gap-8">
-            {[{ value: '500+', label: 'Businesses Helped' }, { value: '19+', label: 'Social Platforms' }, { value: '24/7', label: 'AI Availability' }].map(s => (
+            {[{ value: '10x', label: 'Content from 1 Video' }, { value: '19+', label: 'Social Platforms' }, { value: '24/7', label: 'AI Availability' }].map(s => (
               <div key={s.label}><div className="text-2xl font-black text-[#C8A24A]">{s.value}</div><div className="text-xs text-gray-500 mt-0.5">{s.label}</div></div>
             ))}
           </div>
@@ -284,10 +284,10 @@ export function HomePage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-12">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-white">
-              Real Problems.{' '}
-              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Real Solutions.</span>
+              One Input.{' '}
+              <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Infinite Output.</span>
             </h2>
-            <p className="text-gray-400 text-lg">See exactly how our services work in the real world.</p>
+            <p className="text-gray-400 text-lg">See how our AI systems turn a single action into compounding results across your entire business.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {useCases.map((uc, i) => {
@@ -318,22 +318,22 @@ export function HomePage() {
               <div>
                 <div className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-6">
                   <Share2 className="h-4 w-4 text-[#C8A24A]" />
-                  <span className="text-sm text-[#C8A24A] font-semibold">Media Machine — starts at $47/mo</span>
+                  <span className="text-sm text-[#C8A24A] font-semibold">Media Machine — The Content Multiplication Engine</span>
                 </div>
                 <h2 className="text-3xl sm:text-4xl font-bold mb-6">
-                  Manage All Your Social Media{' '}
-                  <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">In One Place</span>
+                  Turn One Video Into 30 Pieces of Content{' '}
+                  <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Across Every Platform</span>
                 </h2>
                 <p className="text-gray-300 text-lg leading-relaxed mb-8">
-                  Connect TikTok, Instagram, LinkedIn, YouTube, and 15+ more platforms. Use AI to generate captions, schedule posts at optimal times, and track performance — all from your personalized dashboard.
+                  Most creators spend hours making content for one platform. Media Machine flips that model. Upload a video and our AI extracts the transcript, analyzes your content strategy, generates tailored posts for every platform, and schedules everything automatically. You get 10–20 assets from a single upload.
                 </p>
                 <div className="space-y-3 mb-8">
                   {[
-                    'AI-generated captions and content ideas',
-                    'Schedule posts across 19+ social platforms',
-                    'Visual content calendar',
-                    'Analytics and performance tracking',
-                    'Connect multiple client accounts',
+                    'AI generates platform-specific captions from your video transcript',
+                    'Auto-schedules across TikTok, Instagram, LinkedIn, YouTube, X, and 15+ more',
+                    'Visual content calendar shows your entire pipeline at a glance',
+                    'AI suggests future content ideas based on your past performance',
+                    'Agencies can manage multiple brands from one dashboard',
                   ].map(f => (
                     <div key={f} className="flex items-center space-x-3">
                       <CheckCircle className="h-5 w-5 text-[#C8A24A] shrink-0" />
@@ -342,7 +342,7 @@ export function HomePage() {
                   ))}
                 </div>
                 <Link to="/MediaMachine" className="inline-flex items-center space-x-3 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02]">
-                  <Share2 className="h-5 w-5" /><span>Launch Media Machine</span><ArrowRight className="h-5 w-5" />
+                  <Share2 className="h-5 w-5" /><span>Start Multiplying Your Content</span><ArrowRight className="h-5 w-5" />
                 </Link>
               </div>
 
@@ -386,9 +386,9 @@ export function HomePage() {
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-10">
             <h2 className="text-3xl sm:text-4xl font-bold mb-4">
-              Get Your <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">FREE AI Demo</span>
+              Get Your <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Free AI Demo</span>
             </h2>
-            <p className="text-gray-400">See how AI can transform your business in under 5 minutes</p>
+            <p className="text-gray-400">Tell us about your business and we'll build you a custom AI demo — free, no strings attached.</p>
           </div>
           <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12">
             {submitStatus === 'error' && (
@@ -414,8 +414,8 @@ export function HomePage() {
             {submitStatus === 'success' ? (
               <div className="text-center py-12">
                 <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="h-12 w-12 text-green-400" /></div>
-                <h4 className="text-3xl font-bold mb-6">You're All Set!</h4>
-                <p className="text-lg text-gray-300 mb-8">You can test out your demo agent here:</p>
+                <h4 className="text-3xl font-bold mb-6">You're In — Let's Build.</h4>
+                <p className="text-lg text-gray-300 mb-8">Your custom AI agent is being built. Test it out here:</p>
                 <a href={createdSlug ? `https://infinitewealthsolutionsai.com/demo/${createdSlug}` : 'https://infinitewealthsolutionsai.com/demo'}
                   target="_blank" rel="noopener noreferrer"
                   className="inline-flex items-center space-x-2 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all">
@@ -491,6 +491,11 @@ export function HomePage() {
                 </button>
               </div>
             )}
+            {isSubmitting && (
+              <p className="text-center text-sm text-gray-400 mt-4 animate-pulse">
+                Building your custom AI agent — this may take up to 60 seconds…
+              </p>
+            )}
           </div>
         </div>
       </section>
@@ -503,7 +508,7 @@ export function HomePage() {
           <div className="grid sm:grid-cols-3 gap-8 mb-8">
             <div>
               <div className="flex items-center space-x-2 mb-3"><Zap className="h-6 w-6 text-[#C8A24A]" /><span className="font-bold text-[#C8A24A]">Infinite Wealth Solutions AI</span></div>
-              <p className="text-gray-500 text-sm">Transforming businesses with premium AI-powered digital solutions.</p>
+              <p className="text-gray-500 text-sm">We build AI systems that multiply your output, capture every lead, and keep your business growing around the clock.</p>
             </div>
             <div>
               <h4 className="font-semibold text-gray-300 mb-3 text-sm">Services</h4>
@@ -539,8 +544,8 @@ export function HomePage() {
             <Phone className="h-5 w-5" style={{ color: GOLD_HOVER }} />
           </div>
           <div className="text-left">
-            <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>Try Our AI Phone Agent</div>
-            <div className="text-[11px] text-gray-300 leading-tight">Alex answers instantly</div>
+            <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>Talk to Our AI Agent</div>
+            <div className="text-[11px] text-gray-300 leading-tight">Available 24/7 — try it now</div>
           </div>
         </button>
       </div>
@@ -550,7 +555,7 @@ export function HomePage() {
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
           <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60">
-              <div className="font-bold">Try Our AI Phone Agent</div>
+              <div className="font-bold">Talk to Our AI Agent</div>
               <button className="text-gray-300 hover:text-white" onClick={closePhoneModal}><X className="h-5 w-5" /></button>
             </div>
             <div className="p-5">
