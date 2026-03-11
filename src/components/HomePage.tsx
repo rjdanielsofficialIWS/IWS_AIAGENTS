@@ -390,7 +390,7 @@ export function HomePage() {
             </h2>
             <p className="text-gray-400">Tell us about your business and we'll build you a custom AI demo. Free, no strings attached.</p>
           </div>
-          <div id="lead-capture" className="bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 sm:p-12">
+          <div id="lead-capture" className="rounded-2xl p-8 sm:p-12" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.13)' }}>
             {submitStatus === 'error' && (
               <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center space-x-3">
                 <AlertCircle className="h-6 w-6 text-red-400" /><p className="text-red-300">Sorry, there was an error. Please try again.</p>
