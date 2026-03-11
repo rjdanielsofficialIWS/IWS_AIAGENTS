@@ -3074,7 +3074,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
 
 // ─── UserMenu ─────────────────────────────────────────────────────────────────
 
-function UserMenu({ user, onSignOut }: { user: { email: string }; onSignOut: () => void }) {
+function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { email: string }; onSignOut: () => void; subscription?: { plan: string; status: string } | null; onManagePlan?: () => void }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const initials = user.email.slice(0, 2).toUpperCase();
@@ -3168,7 +3168,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
               style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
               <Plus className="w-3 h-3" /> {integrations.length > 0 ? 'Add Channel' : 'Connect'}
             </button>
-            <UserMenu user={user} onSignOut={onSignOut} />
+            <UserMenu user={user} onSignOut={onSignOut} subscription={subscription} onManagePlan={onManagePlan} />
           </>
         ) : (
           <button onClick={onSignIn}
