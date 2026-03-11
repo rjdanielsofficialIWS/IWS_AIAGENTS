@@ -3092,6 +3092,18 @@ function UserMenu({ user, onSignOut }: { user: { email: string }; onSignOut: () 
           {initials}
         </div>
         <span className="hidden sm:block" style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
+        {subscription?.status === 'active' && (
+          <button onClick={onManagePlan} title="Manage subscription"
+            style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', letterSpacing: '0.06em', textTransform: 'uppercase', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+            {subscription.plan}
+          </button>
+        )}
+        {(!subscription || subscription.status !== 'active') && user && (
+          <button onClick={onManagePlan} title="Upgrade plan"
+            style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em', textTransform: 'uppercase', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', flexShrink: 0 }}>
+            upgrade
+          </button>
+        )}
         <ChevronDown className="w-3 h-3 hidden sm:block" style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
       {open && (
@@ -3258,6 +3270,41 @@ export function MediaDistributionPage() {
     setOauthError(null);
   };
 
+  const handleCheckout = async (plan: string) => {
+    if (!currentUser) { setAuthModalOpen(true); return; }
+    setCheckoutLoading(plan);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ plan, successUrl: window.location.href + '?checkout=success', cancelUrl: window.location.href }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else throw new Error(data.error || 'Checkout failed');
+    } catch (e: any) { setOauthError(e.message); }
+    finally { setCheckoutLoading(null); }
+  };
+
+  const handlePortal = async () => {
+    setPortalLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-portal`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ returnUrl: window.location.href }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else throw new Error(data.error || 'Portal failed');
+    } catch (e: any) { setOauthError(e.message); }
+    finally { setPortalLoading(false); }
+  };
+
   const handleSignOut = async () => {
     handleDisconnect();
     await signOut();
@@ -3304,6 +3351,8 @@ export function MediaDistributionPage() {
         user={currentUser}
         onSignOut={handleSignOut}
         onSignIn={() => setAuthModalOpen(true)}
+        subscription={subscription}
+        onManagePlan={currentUser ? (subscription?.status === 'active' ? handlePortal : () => {}) : () => setAuthModalOpen(true)}
       />
 
       {!currentUser ? (
@@ -3377,19 +3426,27 @@ export function MediaDistributionPage() {
                         </li>
                       ))}
                     </ul>
-                    <button
-                      onClick={() => setAuthModalOpen(true)}
-                      style={{
-                        marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
-                        background: pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)',
-                        color: pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)',
-                        border: pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)',
-                        boxShadow: pkg.highlight ? `0 4px 20px ${GOLD}40` : 'none',
-                      }}
-                      onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-2px)'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 8px 28px ${GOLD}55`; }}
-                      onMouseLeave={e => { e.currentTarget.style.transform = 'none'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 4px 20px ${GOLD}40`; }}>
-                      Get Started
-                    </button>
+                    {(() => {
+                      const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
+                      const isLoading = checkoutLoading === pkg.name.toLowerCase();
+                      return (
+                        <button
+                          onClick={() => isCurrentPlan ? handlePortal() : currentUser ? handleCheckout(pkg.name.toLowerCase()) : setAuthModalOpen(true)}
+                          disabled={isLoading || portalLoading}
+                          style={{
+                            marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
+                            background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)',
+                            color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)',
+                            border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)',
+                            boxShadow: pkg.highlight && !isCurrentPlan ? `0 4px 20px ${GOLD}40` : 'none',
+                            opacity: isLoading ? 0.6 : 1,
+                          }}
+                          onMouseEnter={e => { if (!isCurrentPlan) { e.currentTarget.style.transform = 'translateY(-2px)'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 8px 28px ${GOLD}55`; }}}
+                          onMouseLeave={e => { e.currentTarget.style.transform = 'none'; if (pkg.highlight && !isCurrentPlan) e.currentTarget.style.boxShadow = `0 4px 20px ${GOLD}40`; }}>
+                          {isLoading ? '...' : isCurrentPlan ? '✓ Current Plan' : currentUser ? 'Subscribe' : 'Get Started'}
+                        </button>
+                      );
+                    })()}
                   </div>
                 ))}
               </div>
@@ -3405,7 +3462,7 @@ export function MediaDistributionPage() {
 
           </div>
         </div>
-      ) : (
+      ) : subscription?.status === 'active' ? (
         <div className="flex flex-1 overflow-hidden">
           <Sidebar view={view} setView={setView} integrations={integrations}
             onOpenConnect={() => setConnectModalOpen(true)} />
@@ -3414,6 +3471,55 @@ export function MediaDistributionPage() {
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'planner'  && <PlannerPanel userId={currentUser?.id ?? null} />}
           </main>
+        </div>
+      ) : (
+        /* Logged in but no active subscription — show pricing */
+        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
+          <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '40%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none' }} />
+          <div className="relative flex flex-col items-center justify-start min-h-full" style={{ padding: 'clamp(24px, 5vw, 56px) clamp(12px, 4vw, 24px)', animation: 'mmFadeUp 0.4s ease both' }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: `0 8px 32px ${GOLD}30` }}>
+              <Send size={20} color="#000" />
+            </div>
+            <div style={{ fontSize: 'clamp(20px, 5vw, 28px)', fontWeight: 900, color: 'white', marginBottom: 8, letterSpacing: '-0.02em', textAlign: 'center' }}>Choose your plan</div>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 28, textAlign: 'center', maxWidth: 340 }}>
+              You're signed in as <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{currentUser?.email}</strong>. Pick a plan to get started.
+            </p>
+            <div style={{ width: '100%', maxWidth: 740, marginBottom: 24 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'clamp(6px, 2vw, 12px)' }}>
+                {[
+                  { name: 'Starter', price: '$47', per: '/mo', features: ['1 social profile', 'AI captions', 'Scheduling', 'Calendar'], highlight: false },
+                  { name: 'Creator', price: '$97', per: '/mo', features: ['5 social profiles', 'AI captions & ideas', 'Analytics', 'Repurposing'], highlight: true },
+                  { name: 'Agency', price: '$199', per: '/mo', features: ['15 social profiles', 'Everything in Creator', 'Client mgmt', 'Priority support'], highlight: false },
+                ].map(pkg => (
+                  <div key={pkg.name} style={{ borderRadius: 16, padding: 'clamp(12px, 3vw, 22px) clamp(10px, 2.5vw, 16px)', background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)', border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none' }}>
+                    {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
+                    {pkg.highlight && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 20, background: GOLD, color: '#000', textTransform: 'uppercase' }}>Popular</span>}
+                    <div style={{ fontSize: 9, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{pkg.name}</div>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginBottom: 8 }}>
+                      <span style={{ fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em', lineHeight: 1 }}>{pkg.price}</span>
+                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+                    </div>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {pkg.features.map(f => (
+                        <li key={f} style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                          <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>&#10003;</span>{f}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      onClick={() => handleCheckout(pkg.name.toLowerCase())}
+                      disabled={checkoutLoading === pkg.name.toLowerCase()}
+                      style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: checkoutLoading === pkg.name.toLowerCase() ? 0.6 : 1 }}>
+                      {checkoutLoading === pkg.name.toLowerCase() ? 'Loading...' : 'Subscribe'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <button onClick={handleSignOut} style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 16px' }}>
+              Sign out
+            </button>
+          </div>
         </div>
       )}
 
