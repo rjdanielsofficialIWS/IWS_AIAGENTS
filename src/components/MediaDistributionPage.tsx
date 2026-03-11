@@ -3196,6 +3196,7 @@ export function MediaDistributionPage() {
   const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string } | null>(null);
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
+  const [pricingOpen, setPricingOpen]           = useState(false);
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [authModalOpen, setAuthModalOpen]       = useState(false);
@@ -3376,173 +3377,124 @@ export function MediaDistributionPage() {
         onSignOut={handleSignOut}
         onSignIn={() => setAuthModalOpen(true)}
         subscription={subscription}
-        onManagePlan={currentUser ? (subscription?.status === 'active' ? handlePortal : () => {}) : () => setAuthModalOpen(true)}
+        onManagePlan={currentUser ? (subscription?.status === 'active' ? handlePortal : () => setPricingOpen(true)) : () => setAuthModalOpen(true)}
       />
 
+      {/* ── STATE 1: Logged out — simple hero + sign in/up ── */}
       {!currentUser ? (
         <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
-          <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '30%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
-
-          <div className="relative flex flex-col items-center justify-start min-h-full" style={{ padding: 'clamp(20px, 5vw, 56px) clamp(12px, 4vw, 24px)', animation: 'mmFadeUp 0.5s ease both', width: '100%', maxWidth: '100%', boxSizing: 'border-box' }}>
-
-            {/* Logo + title */}
-            <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18, boxShadow: `0 12px 40px ${GOLD}35`, flexShrink: 0 }}>
-              <Send size={22} color="#000" />
+          <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '35%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
+          <div className="relative flex flex-col items-center justify-center min-h-full" style={{ padding: 'clamp(40px, 8vw, 80px) clamp(16px, 5vw, 32px)', animation: 'mmFadeUp 0.5s ease both' }}>
+            {/* Logo */}
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, boxShadow: `0 16px 48px ${GOLD}35`, flexShrink: 0 }}>
+              <Send size={26} color="#000" />
             </div>
-
-            <div className="text-center" style={{ marginBottom: 10 }}>
-              <span className="mm-gold-shimmer" style={{ display: 'block', fontSize: 'clamp(26px, 7vw, 48px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05 }}>Media Machine</span>
-              <span style={{ display: 'block', marginTop: 7, fontSize: 10, fontWeight: 600, letterSpacing: '0.12em', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase' }}>By Infinite Wealth Solutions AI</span>
-              <span style={{ display: 'block', marginTop: 8, color: 'white', fontWeight: 700, fontSize: 'clamp(13px, 3.5vw, 20px)' }}>Schedule smarter. Grow faster.</span>
-            </div>
-
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', margin: '0 0 18px', lineHeight: 1.6, textAlign: 'center', maxWidth: 360 }}>
-              Schedule and publish to Instagram, TikTok, YouTube, LinkedIn, X, Facebook and more - all in one place.
+            <span className="mm-gold-shimmer" style={{ display: 'block', fontSize: 'clamp(32px, 8vw, 56px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.0, marginBottom: 8, textAlign: 'center' }}>Media Machine</span>
+            <span style={{ display: 'block', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 16, textAlign: 'center' }}>By Infinite Wealth Solutions AI</span>
+            <p style={{ fontSize: 'clamp(14px, 3vw, 17px)', color: 'rgba(255,255,255,0.55)', marginBottom: 12, lineHeight: 1.6, textAlign: 'center', maxWidth: 420, fontWeight: 500 }}>
+              Schedule smarter. Grow faster.
             </p>
-
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', margin: '0 0 36px', lineHeight: 1.6, textAlign: 'center', maxWidth: 380 }}>
+              Publish to Instagram, TikTok, YouTube, LinkedIn, X, Facebook and more - all from one dashboard.
+            </p>
             {/* Feature pills */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 22, maxWidth: 460 }}>
-              {['\u{1F4C5} Schedule', '\u{1F916} AI Captions', '\u{1F4CA} Multi-platform', '\u267B\uFE0F Repurposing'].map(f => (
-                <span key={f} style={{ padding: '4px 10px', borderRadius: 20, fontSize: 10, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap' }}>{f}</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 40, maxWidth: 440 }}>
+              {['\u{1F4C5} Schedule posts', '\u{1F916} AI captions', '\u{1F4CA} Analytics', '\u267B\uFE0F Repurposing'].map(f => (
+                <span key={f} style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{f}</span>
               ))}
             </div>
-
-            {/* Pricing Packages - always 3 cols, compact + fluid on mobile */}
-            <div style={{ width: '100%', maxWidth: 'min(740px, 100%)', marginBottom: 24 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'clamp(6px, 2vw, 12px)' }}>
-                {[
-                  {
-                    name: 'Starter', price: '$47', per: '/mo',
-                    features: ['1 social profile', 'AI captions', 'Scheduling', 'Calendar'],
-                    highlight: false,
-                  },
-                  {
-                    name: 'Creator', price: '$97', per: '/mo',
-                    features: ['5 social profiles', 'AI captions & ideas', 'Analytics', 'Repurposing'],
-                    highlight: true,
-                  },
-                  {
-                    name: 'Agency', price: '$199', per: '/mo',
-                    features: ['15 social profiles', 'Everything in Creator', 'Client mgmt', 'Priority support'],
-                    highlight: false,
-                  },
-                ].map(pkg => (
-                  <div key={pkg.name}
-                    style={{
-                      borderRadius: 16, padding: 'clamp(12px, 3vw, 22px) clamp(10px, 2.5vw, 16px) clamp(12px, 2.5vw, 16px)',
-                      background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`,
-                      display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
-                      position: 'relative', overflow: 'hidden',
-                      boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none',
-                    }}>
-                    {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
-                    {pkg.highlight && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 20, background: GOLD, color: '#000', letterSpacing: '0.06em', textTransform: 'uppercase' }}>Popular</span>}
-                    <div style={{ fontSize: 9, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{pkg.name}</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginBottom: 8 }}>
-                      <span style={{ fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em', lineHeight: 1 }}>{pkg.price}</span>
-                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
-                    </div>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4, width: '100%' }}>
-                      {pkg.features.map(f => (
-                        <li key={f} style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-                          <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', marginTop: 1, flexShrink: 0 }}>&#10003;</span>{f}
-                        </li>
-                      ))}
-                    </ul>
-                    {(() => {
-                      const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
-                      const isLoading = checkoutLoading === pkg.name.toLowerCase();
-                      return (
-                        <button
-                          onClick={() => isCurrentPlan ? handlePortal() : currentUser ? handleCheckout(pkg.name.toLowerCase()) : setAuthModalOpen(true)}
-                          disabled={isLoading || portalLoading}
-                          style={{
-                            marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', transition: 'transform 0.15s, box-shadow 0.15s',
-                            background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)',
-                            color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)',
-                            border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)',
-                            boxShadow: pkg.highlight && !isCurrentPlan ? `0 4px 20px ${GOLD}40` : 'none',
-                            opacity: isLoading ? 0.6 : 1,
-                          }}
-                          onMouseEnter={e => { if (!isCurrentPlan) { e.currentTarget.style.transform = 'translateY(-2px)'; if (pkg.highlight) e.currentTarget.style.boxShadow = `0 8px 28px ${GOLD}55`; }}}
-                          onMouseLeave={e => { e.currentTarget.style.transform = 'none'; if (pkg.highlight && !isCurrentPlan) e.currentTarget.style.boxShadow = `0 4px 20px ${GOLD}40`; }}>
-                          {isLoading ? '...' : isCurrentPlan ? '✓ Current Plan' : currentUser ? 'Subscribe' : 'Get Started'}
-                        </button>
-                      );
-                    })()}
-                  </div>
-                ))}
-              </div>
+            {/* CTA buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, width: '100%', maxWidth: 320 }}>
+              <button onClick={() => setAuthModalOpen(true)}
+                style={{ width: '100%', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}40`, letterSpacing: '-0.01em' }}>
+                Get Started Free
+              </button>
+              <button onClick={() => setAuthModalOpen(true)}
+                style={{ width: '100%', padding: '12px 0', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                Sign In
+              </button>
             </div>
-
-            {/* Sign in link */}
-            <button onClick={() => setAuthModalOpen(true)}
-              style={{ padding: '10px 22px', borderRadius: 12, fontSize: 13, fontWeight: 700, background: 'transparent', border: '1px solid rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', transition: 'border-color 0.15s, color 0.15s, background 0.15s', marginBottom: 24 }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(214,178,94,0.4)'; e.currentTarget.style.color = 'white'; e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-              onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; e.currentTarget.style.color = 'rgba(255,255,255,0.6)'; e.currentTarget.style.background = 'transparent'; }}>
-              Already have an account? Sign In
-            </button>
-
           </div>
         </div>
-      ) : subscription?.status === 'active' ? (
+
+      ) : (
+        /* ── STATES 2 & 3: Logged in — always show dashboard ── */
         <div className="flex flex-1 overflow-hidden">
           <Sidebar view={view} setView={setView} integrations={integrations}
-            onOpenConnect={() => setConnectModalOpen(true)} />
-          <main className="flex-1 overflow-hidden pb-[60px] md:pb-0">
+            onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
+          <main className="flex-1 overflow-hidden pb-[60px] md:pb-0" style={{ position: 'relative' }}>
+
+            {/* Feature gate overlay — shown when no active subscription */}
+            {subscription?.status !== 'active' && (
+              <div style={{ position: 'absolute', inset: 0, zIndex: 40, backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)', background: 'rgba(13,13,15,0.75)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '24px', animation: 'mmFadeUp 0.3s ease both' }}>
+                <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: `0 8px 28px ${GOLD}35` }}>
+                  <Send size={20} color="#000" />
+                </div>
+                <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 8, textAlign: 'center', letterSpacing: '-0.02em' }}>Unlock Media Machine</div>
+                <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 28, textAlign: 'center', maxWidth: 320, lineHeight: 1.6 }}>
+                  Choose a plan to start scheduling, publishing, and growing across every platform.
+                </p>
+                <button onClick={() => setPricingOpen(true)}
+                  style={{ padding: '12px 32px', borderRadius: 12, fontSize: 14, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 6px 24px ${GOLD}40`, marginBottom: 12 }}>
+                  View Plans &amp; Pricing
+                </button>
+                <button onClick={handleSignOut} style={{ fontSize: 12, color: 'rgba(255,255,255,0.25)', background: 'none', border: 'none', cursor: 'pointer', padding: '6px 12px' }}>
+                  Sign out
+                </button>
+              </div>
+            )}
+
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
-            {view === 'planner'  && <PlannerPanel userId={currentUser?.id ?? null} />}
+            {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
           </main>
         </div>
-      ) : (
-        /* Logged in but no active subscription — show pricing */
-        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
-          <div style={{ position: 'absolute', width: 500, height: 500, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '40%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none' }} />
-          <div className="relative flex flex-col items-center justify-start min-h-full" style={{ padding: 'clamp(24px, 5vw, 56px) clamp(12px, 4vw, 24px)', animation: 'mmFadeUp 0.4s ease both' }}>
-            <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: `0 8px 32px ${GOLD}30` }}>
-              <Send size={20} color="#000" />
+      )}
+
+      {/* ── Pricing Modal ── */}
+      {pricingOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, animation: 'mmFadeUp 0.2s ease both' }}
+          onClick={e => { if (e.target === e.currentTarget) setPricingOpen(false); }}>
+          <div style={{ width: '100%', maxWidth: 780, background: '#111', borderRadius: 24, border: '1px solid rgba(255,255,255,0.1)', padding: 'clamp(20px, 4vw, 36px)', position: 'relative', maxHeight: '90vh', overflowY: 'auto' }}>
+            <button onClick={() => setPricingOpen(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&#10005;</button>
+            <div style={{ textAlign: 'center', marginBottom: 28 }}>
+              <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 6, letterSpacing: '-0.02em' }}>Choose your plan</div>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>All plans include a 7-day free trial. Cancel anytime.</p>
             </div>
-            <div style={{ fontSize: 'clamp(20px, 5vw, 28px)', fontWeight: 900, color: 'white', marginBottom: 8, letterSpacing: '-0.02em', textAlign: 'center' }}>Choose your plan</div>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', marginBottom: 28, textAlign: 'center', maxWidth: 340 }}>
-              You're signed in as <strong style={{ color: 'rgba(255,255,255,0.7)' }}>{currentUser?.email}</strong>. Pick a plan to get started.
-            </p>
-            <div style={{ width: '100%', maxWidth: 740, marginBottom: 24 }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'clamp(6px, 2vw, 12px)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
                 {[
                   { name: 'Starter', price: '$47', per: '/mo', features: ['1 social profile', 'AI captions', 'Scheduling', 'Calendar'], highlight: false },
                   { name: 'Creator', price: '$97', per: '/mo', features: ['5 social profiles', 'AI captions & ideas', 'Analytics', 'Repurposing'], highlight: true },
                   { name: 'Agency', price: '$199', per: '/mo', features: ['15 social profiles', 'Everything in Creator', 'Client mgmt', 'Priority support'], highlight: false },
-                ].map(pkg => (
-                  <div key={pkg.name} style={{ borderRadius: 16, padding: 'clamp(12px, 3vw, 22px) clamp(10px, 2.5vw, 16px)', background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)', border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none' }}>
-                    {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
-                    {pkg.highlight && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 20, background: GOLD, color: '#000', textTransform: 'uppercase' }}>Popular</span>}
-                    <div style={{ fontSize: 9, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{pkg.name}</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginBottom: 8 }}>
-                      <span style={{ fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em', lineHeight: 1 }}>{pkg.price}</span>
-                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+                ].map(pkg => {
+                  const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
+                  const isLoading = checkoutLoading === pkg.name.toLowerCase();
+                  return (
+                    <div key={pkg.name} style={{ borderRadius: 16, padding: 'clamp(12px, 3vw, 22px) clamp(10px, 2.5vw, 16px)', background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)', border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none' }}>
+                      {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
+                      {pkg.highlight && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 20, background: GOLD, color: '#000', textTransform: 'uppercase' }}>Popular</span>}
+                      <div style={{ fontSize: 9, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{pkg.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginBottom: 8 }}>
+                        <span style={{ fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em', lineHeight: 1 }}>{pkg.price}</span>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+                      </div>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {pkg.features.map(f => (
+                          <li key={f} style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                            <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>&#10003;</span>{f}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        onClick={() => isCurrentPlan ? handlePortal() : handleCheckout(pkg.name.toLowerCase())}
+                        disabled={isLoading || portalLoading}
+                        style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: isLoading ? 0.6 : 1 }}>
+                        {isLoading ? 'Loading...' : isCurrentPlan ? '&#10003; Current Plan' : 'Subscribe'}
+                      </button>
                     </div>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {pkg.features.map(f => (
-                        <li key={f} style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-                          <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>&#10003;</span>{f}
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      onClick={() => handleCheckout(pkg.name.toLowerCase())}
-                      disabled={checkoutLoading === pkg.name.toLowerCase()}
-                      style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: checkoutLoading === pkg.name.toLowerCase() ? 0.6 : 1 }}>
-                      {checkoutLoading === pkg.name.toLowerCase() ? 'Loading...' : 'Subscribe'}
-                    </button>
-                  </div>
-                ))}
-              </div>
+                  );
+                })}
             </div>
-            <button onClick={handleSignOut} style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer', padding: '8px 16px' }}>
-              Sign out
-            </button>
           </div>
         </div>
       )}
