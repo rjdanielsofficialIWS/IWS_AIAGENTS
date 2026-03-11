@@ -114,40 +114,39 @@ export function SubscriptionSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 pt-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-6">
           {plans.map((plan) => {
             const cardStyle = plan.popular
               ? {
-                  background: `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)`,
-                  border: `1px solid ${GOLD}60`,
-                  boxShadow: `0 12px 48px ${GOLD}25`,
+                  background: `linear-gradient(160deg, ${GOLD}28, rgba(30,26,12,0.95))`,
+                  border: `1px solid ${GOLD}70`,
+                  boxShadow: `0 12px 48px ${GOLD}30`,
                 }
               : {
-                  background: 'rgba(255,255,255,0.03)',
-                  border: '1px solid rgba(255,255,255,0.09)',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.13)',
                 };
 
             return (
-              <div
-                key={plan.name}
-                className="relative rounded-2xl p-8 flex flex-col overflow-hidden"
-                style={cardStyle}
-              >
-                {/* Popular gold top line */}
+              <div key={plan.name} className="relative pt-5">
                 {plan.popular && (
-                  <div
-                    className="absolute top-0 left-0 right-0 h-[2px]"
-                    style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }}
-                  />
-                )}
-
-                {plan.popular && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 z-10">
                     <span className="text-xs font-black px-4 py-1 rounded-full whitespace-nowrap" style={{ background: GOLD, color: '#000' }}>
                       MOST POPULAR
                     </span>
                   </div>
                 )}
+                <div
+                  className="relative rounded-2xl p-8 flex flex-col overflow-hidden h-full"
+                  style={cardStyle}
+                >
+                  {/* Popular gold top line */}
+                  {plan.popular && (
+                    <div
+                      className="absolute top-0 left-0 right-0 h-[2px]"
+                      style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }}
+                    />
+                  )}
 
                 <div className="mb-6">
                   <h3
@@ -179,6 +178,7 @@ export function SubscriptionSection() {
                 </ul>
 
                 <PlanCTA cta={plan.cta} popular={plan.popular} />
+                </div>
               </div>
             );
           })}
