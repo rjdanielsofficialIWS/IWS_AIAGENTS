@@ -3193,7 +3193,7 @@ export function MediaDistributionPage() {
   const [connectModalOpen, setConnectModalOpen] = useState(false);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
-  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string } | null>(null);
+  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string } | null>(null);
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
   const [pricingOpen, setPricingOpen]           = useState(false);
@@ -3230,7 +3230,7 @@ export function MediaDistributionPage() {
     // Load subscription
     (async () => {
       try {
-        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end').eq('supabase_user_id', currentUserId).maybeSingle();
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
       } catch (_) {}
     })();
@@ -3239,7 +3239,7 @@ export function MediaDistributionPage() {
     if (params.get('checkout') === 'success') {
       window.history.replaceState({}, '', window.location.pathname);
       setTimeout(async () => {
-        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end').eq('supabase_user_id', currentUserId).maybeSingle();
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
       }, 2500);
     }
@@ -3318,6 +3318,11 @@ export function MediaDistributionPage() {
   };
 
   const handlePortal = async () => {
+    // Promo users don't have a real Stripe customer — show a friendly message instead
+    if (subscription?.stripe_customer_id?.startsWith('promo_')) {
+      setOauthError('Your account was activated with a promo code. No billing to manage.');
+      return;
+    }
     setPortalLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -3328,6 +3333,10 @@ export function MediaDistributionPage() {
         body: JSON.stringify({ returnUrl: window.location.href }),
       });
       const data = await res.json();
+      if (data.promo) {
+        setOauthError('Your account was activated with a promo code. No billing to manage.');
+        return;
+      }
       if (data.url) window.location.href = data.url;
       else throw new Error(data.error || 'Portal failed');
     } catch (e: any) { setOauthError(e.message); }
