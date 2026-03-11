@@ -5,7 +5,7 @@ import {
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
-  Trash2, BookOpen,
+  ClipboardList, FileText, Trash2, BookOpen,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -18,24 +18,28 @@ const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)'
 const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
+// Resolve a raw API status against current time — if scheduled but past-due, treat as published
 const resolveStatus = (raw: string, scheduledAt: Date): 'scheduled' | 'published' | 'failed' => {
   if (raw === 'scheduled' && scheduledAt < new Date()) return 'published';
   return (raw as any) || 'scheduled';
 };
 
+// Viral content angles injected into every AI generation call
 const VIRAL_ANGLES = [
   'bold contrarian take that challenges common wisdom',
   'personal story with a surprising or emotional twist',
   'specific number or stat that stops the scroll',
-  'open loop hook — tease the payoff without giving it away',
+  'open loop hook, tease the payoff without giving it away',
   'relatable pain point that makes the reader feel seen',
   'before/after transformation framing',
-  'curiosity gap — what most people get wrong about X',
+  'curiosity gap, what most people get wrong about X',
   'social proof or authority positioning',
   'direct call-to-action with urgency or scarcity',
   'listicle with an unexpected final item',
 ].join(', ');
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const ORG_ID = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
 
 const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
 
@@ -178,6 +182,7 @@ async function uploadViaNativeXHR(
   const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
   const fileSize    = file instanceof File ? file.size : (file as Blob).size;
   const DIRECT_MAX  = 4  * 1024 * 1024;
+  const SUPABASE_MAX = 50 * 1024 * 1024;
   const CHUNK_SIZE  = 5  * 1024 * 1024;
 
   if (fileSize <= DIRECT_MAX) {
@@ -502,123 +507,16 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
           {expanded || !isLong ? transcript : transcript.slice(0, PREVIEW_LENGTH) + '…'}
         </p>
         {isLong && (
-          <button onClick={() => setExpanded(v => !v)} className="mt-2 flex items-center gap-1 text-xs font-bold transition hover:brightness-125" style={{ color: GOLD }}>
-            {expanded ? <><ChevronUp className="w-3.5 h-3.5" /> Show less</> : <><ChevronDown className="w-3.5 h-3.5" /> Read full transcript</>}
+          <button
+            onClick={() => setExpanded(v => !v)}
+            className="mt-2 flex items-center gap-1 text-xs font-bold transition hover:brightness-125"
+            style={{ color: GOLD }}
+          >
+            {expanded
+              ? <><ChevronUp className="w-3.5 h-3.5" /> Show less</>
+              : <><ChevronDown className="w-3.5 h-3.5" /> Read full transcript</>}
           </button>
         )}
-      </div>
-    </div>
-  );
-}
-
-// ─── PricingModal ─────────────────────────────────────────────────────────────
-
-function PricingModal({ open, onClose, onSelectPlan, currentPlan }: {
-  open: boolean; onClose: () => void;
-  onSelectPlan: (planId: string) => void;
-  currentPlan?: string | null;
-}) {
-  const [loading, setLoading] = useState<string | null>(null);
-
-  if (!open) return null;
-
-  const plans = [
-    {
-      id: 'starter',
-      name: 'Starter',
-      price: '$47',
-      period: '/mo',
-      description: 'Perfect for solo creators getting started',
-      features: ['1 social profile per platform', 'AI caption generation', 'Content planner', 'Schedule up to 30 posts/mo'],
-      highlight: false,
-    },
-    {
-      id: 'creator',
-      name: 'Creator',
-      price: '$97',
-      period: '/mo',
-      description: 'For creators scaling their content',
-      features: ['3 social profiles per platform', 'AI caption + repurposing', 'Unlimited scheduling', 'Content ideas & hooks', 'Priority support'],
-      highlight: true,
-    },
-    {
-      id: 'agency',
-      name: 'Agency',
-      price: '$199',
-      period: '/mo',
-      description: 'For agencies managing multiple brands',
-      features: ['Unlimited social profiles', 'All Creator features', 'Multi-client management', 'White-label ready', 'Dedicated support'],
-      highlight: false,
-    },
-  ];
-
-  return (
-    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/85 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-3xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[92vh]"
-        style={{ background: 'linear-gradient(160deg, #111 0%, #1a1a1a 100%)', borderColor: `${GOLD}30` }}>
-        <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div>
-            <h2 className="text-lg font-black text-white">Upgrade Media Machine</h2>
-            <p className="text-sm text-white/40 mt-0.5">Choose a plan to connect your social accounts and start posting</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="overflow-y-auto flex-1 px-5 py-6" style={{ WebkitOverflowScrolling: 'touch' }}>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {plans.map(plan => {
-              const isCurrent = currentPlan?.toLowerCase() === plan.id;
-              return (
-                <div key={plan.id}
-                  className="relative flex flex-col rounded-2xl border overflow-hidden"
-                  style={{
-                    borderColor: plan.highlight ? GOLD : BORDER,
-                    background: plan.highlight ? `linear-gradient(160deg, ${GOLD}08, rgba(0,0,0,0.3))` : 'rgba(0,0,0,0.2)',
-                  }}>
-                  {plan.highlight && (
-                    <div className="absolute top-0 left-0 right-0 h-0.5" style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />
-                  )}
-                  {plan.highlight && (
-                    <div className="absolute -top-px left-1/2 -translate-x-1/2">
-                      <span className="text-[10px] font-black px-3 py-0.5 rounded-b-lg uppercase tracking-wider"
-                        style={{ background: GOLD, color: '#000' }}>Most Popular</span>
-                    </div>
-                  )}
-                  <div className="p-5 flex-1">
-                    <div className="text-sm font-black text-white mb-1">{plan.name}</div>
-                    <div className="flex items-baseline gap-0.5 mb-2">
-                      <span className="text-3xl font-black" style={{ color: plan.highlight ? GOLD_L : 'white' }}>{plan.price}</span>
-                      <span className="text-sm text-white/40">{plan.period}</span>
-                    </div>
-                    <p className="text-xs text-white/40 mb-4">{plan.description}</p>
-                    <ul className="space-y-2">
-                      {plan.features.map((f, i) => (
-                        <li key={i} className="flex items-start gap-2 text-xs text-white/60">
-                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: plan.highlight ? GOLD : 'rgba(255,255,255,0.3)' }} />
-                          {f}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="px-5 pb-5">
-                    <button
-                      onClick={() => { if (!isCurrent) { setLoading(plan.id); onSelectPlan(plan.id); } }}
-                      disabled={loading === plan.id || isCurrent}
-                      className="w-full py-2.5 rounded-xl text-sm font-bold transition disabled:opacity-60 flex items-center justify-center gap-2"
-                      style={{
-                        background: isCurrent ? 'rgba(34,197,94,0.15)' : plan.highlight ? GOLD : 'rgba(255,255,255,0.08)',
-                        color: isCurrent ? '#86efac' : plan.highlight ? '#000' : 'rgba(255,255,255,0.7)',
-                      }}>
-                      {loading === plan.id ? <Loader className="w-4 h-4 animate-spin" /> : isCurrent ? '✓ Current Plan' : `Get ${plan.name}`}
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
       </div>
     </div>
   );
@@ -637,13 +535,11 @@ function ConnectAccountsModal({
   const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [liveEmail, setLiveEmail] = useState<string>('');
-  const [liveDisplayName, setLiveDisplayName] = useState<string>('');
 
   useEffect(() => {
     if (open) {
       supabase.auth.getUser().then(({ data: { user } }) => {
         setLiveEmail(user?.email ?? '');
-        setLiveDisplayName(user?.user_metadata?.full_name ?? user?.user_metadata?.name ?? '');
       });
     } else {
       setConnecting(false);
@@ -655,42 +551,46 @@ function ConnectAccountsModal({
     setConnecting(true); setError(null);
     try {
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+
       if (sessionErr || !session) {
         setConnecting(false);
         onConnectPostiz();
         return;
       }
+
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      // On desktop: open popup first (before async) so browser doesn't block it
+      // On mobile: popup is unreliable — we'll navigate the current tab instead
+      const popup = isMobile ? null : window.open('', '_blank');
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
       });
+
       if (!res.ok) {
+        popup?.close();
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server error ${res.status}`);
       }
+
       const { connectUrl } = await res.json();
-      if (!connectUrl) { throw new Error('No connect URL returned'); }
+      if (!connectUrl) { popup?.close(); throw new Error('No connect URL returned'); }
+
       localStorage.setItem('postiz_social_return', '1');
-      const popup = window.open(connectUrl, '_blank');
-      setConnecting(false);
       if (popup) {
-        // Poll for popup close, then force-refresh channels with retries
-        const poll = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(poll);
-            try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
-            // Retry fetching channels a few times to account for Ayrshare processing delay
-            let attempts = 0;
-            const retry = setInterval(() => {
-              attempts++;
-              onRefresh(true);
-              if (attempts >= 3) clearInterval(retry);
-            }, 2000);
-          }
-        }, 500);
+        popup.location.href = connectUrl;
+      } else {
+        // Mobile: navigate current tab directly — always works
+        window.location.href = connectUrl;
       }
+      setConnecting(false);
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Failed to open connection manager.');
+      setError(err instanceof Error ? err.message : 'Failed to open connection manager. Please try again.');
       setConnecting(false);
     }
   };
@@ -700,19 +600,28 @@ function ConnectAccountsModal({
   return (
     <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-lg rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
-        style={{ background: SURFACE, borderColor: BORDER, maxHeight: '90vh' }}>
+      <div
+        className="relative w-full md:max-w-lg rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
+        style={{ background: SURFACE, borderColor: BORDER, maxHeight: '90vh' }}
+      >
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Connect Channels</h2>
-            <p className="text-sm text-white/40 mt-0.5">{liveEmail ? `Account: ${liveDisplayName || liveEmail}` : 'Link your social accounts'}</p>
+            <p className="text-sm text-white/40 mt-0.5">
+              {liveEmail ? `Account: ${liveEmail}` : 'Link your social accounts to start scheduling'}
+            </p>
           </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <div className="overflow-y-auto flex-1 p-6 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+
+        <div className="overflow-y-auto flex-1 p-6 space-y-4">
           {integrations.length > 0 && (
             <div>
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">Connected ({integrations.length})</div>
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
+                Connected ({integrations.length})
+              </div>
               <div className="space-y-2">
                 {integrations.map(int => (
                   <div key={int.id} className="group flex items-center gap-3 p-3 rounded-xl border transition"
@@ -722,9 +631,11 @@ function ConnectAccountsModal({
                       <div className="text-sm font-bold text-white truncate">{int.name}</div>
                       <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
                     </div>
-                    <button onClick={handleConnect}
+                    <button
+                      onClick={handleConnect}
                       className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition hover:bg-red-500/15"
-                      style={{ color: 'rgba(239,68,68,0.7)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                      style={{ color: 'rgba(239,68,68,0.7)', border: '1px solid rgba(239,68,68,0.2)' }}
+                      title="Disconnect account">
                       <Link2Off className="w-3 h-3" /> Disconnect
                     </button>
                     <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 group-hover:hidden" />
@@ -733,13 +644,27 @@ function ConnectAccountsModal({
               </div>
             </div>
           )}
-          {error && <div className="p-3 rounded-xl text-xs text-red-400 border border-red-400/20 bg-red-400/5">{error}</div>}
-          <button onClick={handleConnect} disabled={connecting}
+
+          {error && (
+            <div className="p-3 rounded-xl text-xs text-red-400 border border-red-400/20 bg-red-400/5">
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleConnect}
+            disabled={connecting}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110 disabled:opacity-50"
-            style={{ background: GOLD, color: '#000' }}>
-            {connecting ? <><Loader className="w-4 h-4 animate-spin" /> Opening…</> : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
+            style={{ background: GOLD, color: '#000' }}
+          >
+            {connecting
+              ? <><Loader className="w-4 h-4 animate-spin" /> Opening…</>
+              : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
           </button>
-          <p className="text-xs text-white/30 text-center">Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more</p>
+
+          <p className="text-xs text-white/30 text-center">
+            Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
+          </p>
         </div>
       </div>
     </div>
@@ -765,6 +690,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
       const data = res.ok ? await res.json() : { posts: [] };
+      const now = new Date();
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
@@ -807,7 +733,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
           ))}
           {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
           {loading && posts.length === 0 ? (
             <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading…</div>
           ) : filtered.length === 0 ? (
@@ -854,7 +780,9 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
 
 // ─── VideoPreviewCard ─────────────────────────────────────────────────────────
 
-function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: File; objectUrl: string; uploadState: UploadState; onRemove: () => void }) {
+function VideoPreviewCard({
+  file, objectUrl, uploadState, onRemove,
+}: { file: File; objectUrl: string; uploadState: UploadState; onRemove: () => void }) {
   const videoRef   = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying]         = useState(true);
   const [muted, setMuted]             = useState(true);
@@ -872,12 +800,13 @@ function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: Fi
 
   const togglePlay = () => {
     const v = videoRef.current; if (!v) return;
-    if (v.paused) { v.play(); setPlaying(true); } else { v.pause(); setPlaying(false); }
+    if (v.paused) { v.play(); setPlaying(true); }
+    else          { v.pause(); setPlaying(false); }
   };
 
   const handleTimeUpdate     = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
   const handleLoadedMetadata = () => setDuration(videoRef.current?.duration ?? 0);
-  const handleEnded          = () => setPlaying(false);
+  const handleEnded          = () => { setPlaying(false); };
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
     const t = parseFloat(e.target.value);
@@ -895,8 +824,12 @@ function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: Fi
 
   const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseFloat(e.target.value);
-    if (videoRef.current) { videoRef.current.volume = val; videoRef.current.muted = val === 0; }
-    setVolume(val); setMuted(val === 0);
+    if (videoRef.current) {
+      videoRef.current.volume = val;
+      videoRef.current.muted = val === 0;
+    }
+    setVolume(val);
+    setMuted(val === 0);
   };
 
   const handleFullscreen = () => {
@@ -908,59 +841,93 @@ function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: Fi
   const fmt = (s: number) => {
     if (!isFinite(s)) return '0:00';
     const m = Math.floor(s / 60);
-    return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
+    const sec = Math.floor(s % 60);
+    return `${m}:${sec.toString().padStart(2, '0')}`;
   };
 
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: '#000' }}>
       <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
-        <video ref={videoRef} src={objectUrl} className="w-full h-full object-contain" playsInline muted preload="auto"
-          onTimeUpdate={handleTimeUpdate} onLoadedMetadata={handleLoadedMetadata} onEnded={handleEnded}
-          onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onClick={togglePlay} style={{ cursor: 'pointer' }} />
+        <video
+          ref={videoRef}
+          src={objectUrl}
+          className="w-full h-full object-contain"
+          playsInline
+          muted
+          preload="auto"
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onEnded={handleEnded}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+          onClick={togglePlay}
+          style={{ cursor: 'pointer' }}
+        />
         {!playing && (
-          <button onClick={togglePlay} className="absolute inset-0 flex items-center justify-center group" style={{ background: 'rgba(0,0,0,0.4)' }}>
-            <div className="w-14 h-14 rounded-full flex items-center justify-center transition group-hover:scale-105" style={{ background: 'rgba(0,0,0,0.75)', border: `2px solid ${GOLD}` }}>
+          <button onClick={togglePlay} className="absolute inset-0 flex items-center justify-center group"
+            style={{ background: 'rgba(0,0,0,0.4)' }}>
+            <div className="w-14 h-14 rounded-full flex items-center justify-center transition group-hover:scale-105"
+              style={{ background: 'rgba(0,0,0,0.75)', border: `2px solid ${GOLD}` }}>
               <Play className="w-6 h-6 ml-0.5" style={{ color: GOLD }} />
             </div>
           </button>
         )}
         {muted && playing && (
-          <button onClick={toggleMute} className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold transition hover:scale-105"
+          <button onClick={toggleMute}
+            className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold transition hover:scale-105"
             style={{ background: 'rgba(0,0,0,0.75)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
-            <VolumeX className="w-3.5 h-3.5" /><span>Tap to unmute</span>
+            <VolumeX className="w-3.5 h-3.5" />
+            <span>Tap to unmute</span>
           </button>
         )}
-        <button onClick={onRemove} className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
+        <button onClick={onRemove}
+          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
           style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
           <X className="w-3.5 h-3.5 text-white/70" />
         </button>
       </div>
       <div className="px-3 py-2 space-y-1.5" style={{ background: 'rgba(0,0,0,0.7)' }}>
-        <input type="range" min={0} max={duration || 1} step={0.1} value={currentTime} onChange={handleScrub}
-          className="w-full h-1 rounded-full appearance-none cursor-pointer" style={{ accentColor: GOLD }} />
+        <input type="range" min={0} max={duration || 1} step={0.1} value={currentTime}
+          onChange={handleScrub}
+          className="w-full h-1 rounded-full appearance-none cursor-pointer"
+          style={{ accentColor: GOLD }} />
         <div className="flex items-center gap-2">
-          <button onClick={togglePlay} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition shrink-0" style={{ color: GOLD }}>
+          <button onClick={togglePlay}
+            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition shrink-0"
+            style={{ color: GOLD }}>
             {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
           </button>
-          <span className="text-[10px] font-mono text-white/40 shrink-0 tabular-nums">{fmt(currentTime)} / {fmt(duration)}</span>
+          <span className="text-[10px] font-mono text-white/40 shrink-0 tabular-nums">
+            {fmt(currentTime)} / {fmt(duration)}
+          </span>
           <div className="flex-1" />
-          <div className="flex items-center gap-1" onMouseEnter={() => setShowVolume(true)} onMouseLeave={() => setShowVolume(false)}>
-            <button onClick={toggleMute} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/50 hover:text-white">
+          <div className="flex items-center gap-1"
+            onMouseEnter={() => setShowVolume(true)}
+            onMouseLeave={() => setShowVolume(false)}>
+            <button onClick={toggleMute}
+              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/50 hover:text-white">
               {muted || volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
             </button>
             <div className={`overflow-hidden transition-all duration-200 ${showVolume ? 'w-16 opacity-100' : 'w-0 opacity-0 pointer-events-none'}`}>
-              <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume} onChange={handleVolume}
-                className="w-16 h-1 rounded-full appearance-none cursor-pointer" style={{ accentColor: GOLD }} />
+              <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
+                onChange={handleVolume}
+                className="w-16 h-1 rounded-full appearance-none cursor-pointer"
+                style={{ accentColor: GOLD }} />
             </div>
           </div>
-          <button onClick={handleFullscreen} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/40 hover:text-white shrink-0">
+          <button onClick={handleFullscreen}
+            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/40 hover:text-white shrink-0">
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
       {(uploadState.status === 'preparing' || uploadState.status === 'uploading') && (
         <div className="px-3 py-2 border-t" style={{ borderColor: BORDER }}>
-          {uploadState.status === 'preparing' && <div className="flex items-center gap-2 text-xs text-white/40"><Loader className="w-3 h-3 animate-spin shrink-0" /> Preparing…</div>}
+          {uploadState.status === 'preparing' && (
+            <div className="flex items-center gap-2 text-xs text-white/40">
+              <Loader className="w-3 h-3 animate-spin shrink-0" /> Preparing upload…
+            </div>
+          )}
           {uploadState.status === 'uploading' && (
             <div className="space-y-1">
               <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
@@ -978,7 +945,7 @@ function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: Fi
       )}
       {uploadState.status === 'done' && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-green-400 border-t" style={{ borderColor: BORDER }}>
-          <CheckCircle2 className="w-3 h-3" /> Uploaded — ready to post
+          <CheckCircle2 className="w-3 h-3" /> Uploaded, ready to post
         </div>
       )}
     </div>
@@ -987,7 +954,9 @@ function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: Fi
 
 // ─── ImagePreviewCard ─────────────────────────────────────────────────────────
 
-function ImagePreviewCard({ file, uploadState, onRemove }: { file: File; uploadState: UploadState; onRemove: () => void }) {
+function ImagePreviewCard({
+  file, uploadState, onRemove,
+}: { file: File; uploadState: UploadState; onRemove: () => void }) {
   const [objectUrl] = useState(() => URL.createObjectURL(file));
   useEffect(() => () => URL.revokeObjectURL(objectUrl), [objectUrl]);
 
@@ -995,7 +964,8 @@ function ImagePreviewCard({ file, uploadState, onRemove }: { file: File; uploadS
     <div className="relative rounded-xl border overflow-hidden group" style={{ borderColor: BORDER }}>
       <img src={objectUrl} className="w-full object-cover max-h-64" alt={file.name} />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition" />
-      <button onClick={onRemove} className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
+      <button onClick={onRemove}
+        className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
         style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
         <X className="w-3.5 h-3.5 text-white/70" />
       </button>
@@ -1010,7 +980,8 @@ function ImagePreviewCard({ file, uploadState, onRemove }: { file: File; uploadS
       )}
       {uploadState.status === 'done' && (
         <div className="absolute bottom-2 right-2">
-          <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-green-400" style={{ background: 'rgba(0,0,0,0.7)' }}>
+          <div className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold text-green-400"
+            style={{ background: 'rgba(0,0,0,0.7)' }}>
             <CheckCircle2 className="w-3 h-3" /> Ready
           </div>
         </div>
@@ -1023,31 +994,47 @@ function ImagePreviewCard({ file, uploadState, onRemove }: { file: File; uploadS
           </div>
         </div>
       )}
+      <div className="absolute bottom-0 left-0 right-0 px-3 py-1.5 text-[10px] text-white/40 truncate opacity-0 group-hover:opacity-100 transition"
+        style={{ background: 'rgba(0,0,0,0.6)' }}>
+        {file.name}
+      </div>
     </div>
   );
 }
 
-// ─── SavedPostCard ────────────────────────────────────────────────────────────
+// ─── SavedPostCard ─────────────────────────────────────────────────────────────
 
-function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStart, onEditChange, onEditSave, onEditCancel, onDelete }: {
+function SavedPostCard({
+  post, textPostAccounts, isEditing, editText,
+  onEditStart, onEditChange, onEditSave, onEditCancel, onDelete,
+}: {
   post: { id: string; text: string; label: string; savedAt: Date };
   textPostAccounts: { integ: PostizIntegration; platform: PlatformId }[];
-  isEditing: boolean; editText: string;
-  onEditStart: () => void; onEditChange: (v: string) => void;
-  onEditSave: () => void; onEditCancel: () => void; onDelete: () => void;
+  isEditing: boolean;
+  editText: string;
+  onEditStart: () => void;
+  onEditChange: (v: string) => void;
+  onEditSave: () => void;
+  onEditCancel: () => void;
+  onDelete: () => void;
 }) {
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [scheduleType, setScheduleType]         = useState<'now' | 'schedule'>('now');
-  const [scheduleDateStr, setScheduleDate]       = useState(() => { const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0); return d.toISOString().slice(0, 16); });
+  const [scheduleDateStr, setScheduleDate]       = useState(() => {
+    const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  });
   const [posting, setPosting]   = useState(false);
   const [postOk, setPostOk]     = useState(false);
   const [postErr, setPostErr]   = useState<string | null>(null);
 
-  const toggle = (id: string) => setSelectedAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggle = (id: string) =>
+    setSelectedAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
   const activeText = isEditing ? editText : post.text;
 
   const handlePost = async () => {
-    if (!activeText.trim())            { setPostErr('Post is empty.'); return; }
+    if (!activeText.trim())          { setPostErr('Post is empty.'); return; }
     if (selectedAccounts.length === 0) { setPostErr('Select at least one account.'); return; }
     setPosting(true); setPostErr(null);
     try {
@@ -1066,29 +1053,58 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
 
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+
+      {/* ── Header ── */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b" style={{ borderColor: BORDER }}>
         <span className="text-xs font-bold" style={{ color: GOLD_L }}>🔖 {post.label}</span>
-        <span className="text-[10px] text-white/25 ml-1">{post.savedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}</span>
+        <span className="text-[10px] text-white/25 ml-1">
+          {post.savedAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+        </span>
         <div className="ml-auto flex items-center gap-1">
           {isEditing ? (
             <>
-              <button onClick={onEditSave} className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:bg-white/8" style={{ color: GOLD_L, border: `1px solid ${GOLD}40` }}>
+              <button onClick={onEditSave}
+                className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:bg-white/8"
+                style={{ color: GOLD_L, border: `1px solid ${GOLD}40` }}>
                 <CheckCircle2 className="w-3.5 h-3.5" /> Save
               </button>
-              <button onClick={onEditCancel} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/8 transition text-white/30 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+              <button onClick={onEditCancel}
+                className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/8 transition text-white/30 hover:text-white">
+                <X className="w-3.5 h-3.5" />
+              </button>
             </>
           ) : (
-            <button onClick={onEditStart} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/8 transition" style={{ color: 'rgba(255,255,255,0.3)' }} title="Edit"><Edit3 className="w-3.5 h-3.5" /></button>
+            <button onClick={onEditStart}
+              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/8 transition"
+              style={{ color: 'rgba(255,255,255,0.3)' }} title="Edit post">
+              <Edit3 className="w-3.5 h-3.5" />
+            </button>
           )}
-          <button onClick={onDelete} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/15 transition text-red-400/40 hover:text-red-400"><Trash2 className="w-3.5 h-3.5" /></button>
+          <button onClick={onDelete}
+            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/15 transition text-red-400/40 hover:text-red-400"
+            title="Delete">
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
+
+      {/* ── Post body ── */}
       {isEditing ? (
-        <textarea value={editText} onChange={e => onEditChange(e.target.value)} autoFocus rows={5}
-          className="w-full bg-transparent px-4 py-3 text-sm text-white outline-none resize-none" style={{ borderBottom: `1px solid ${BORDER}` }} />
+        <textarea
+          value={editText}
+          onChange={e => onEditChange(e.target.value)}
+          autoFocus rows={5}
+          className="w-full bg-transparent px-4 py-3 text-sm text-white outline-none resize-none"
+          style={{ borderBottom: `1px solid ${BORDER}` }}
+        />
       ) : (
-        <div className="px-4 py-3 text-sm text-white/75 leading-relaxed whitespace-pre-wrap" style={{ borderBottom: `1px solid ${BORDER}` }}>{post.text}</div>
+        <div className="px-4 py-3 text-sm text-white/75 leading-relaxed whitespace-pre-wrap"
+          style={{ borderBottom: `1px solid ${BORDER}` }}>
+          {post.text}
+        </div>
       )}
+
+      {/* ── Account selector ── */}
       <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
         <div className="text-[10px] font-bold text-white/25 uppercase tracking-wider mb-2">Post to</div>
         {textPostAccounts.length === 0 ? (
@@ -1111,10 +1127,13 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
           </div>
         )}
       </div>
+
+      {/* ── Schedule / post now toggle ── */}
       <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
         <div className="flex gap-2 mb-2">
           {(['now', 'schedule'] as const).map(t => (
-            <button key={t} onClick={() => setScheduleType(t)} className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+            <button key={t} onClick={() => setScheduleType(t)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
               style={{ borderColor: scheduleType === t ? GOLD : BORDER, background: scheduleType === t ? `${GOLD}18` : 'transparent', color: scheduleType === t ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
               {t === 'now' ? '⚡ Post Now' : '🗓 Schedule'}
             </button>
@@ -1122,9 +1141,12 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
         </div>
         {scheduleType === 'schedule' && (
           <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
-            className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none w-full" style={{ borderColor: BORDER }} />
+            className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none w-full"
+            style={{ borderColor: BORDER }} />
         )}
       </div>
+
+      {/* ── Footer: error + post button ── */}
       <div className="px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex-1">
           {postErr && <p className="text-xs text-red-400">{postErr}</p>}
@@ -1139,83 +1161,92 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
             : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
         </button>
       </div>
+
     </div>
   );
 }
 
 // ─── InlinePostComposer ────────────────────────────────────────────────────────
+// Inline version of PostComposerModal (no modal wrapper)
 
-function InlinePostComposer({ integrations, userId, onSuccess }: {
+function InlinePostComposer({
+  integrations, userId, onSuccess,
+}: {
   integrations: PostizIntegration[];
   userId: string | null;
   onSuccess?: () => void;
 }) {
   type PostType = 'media' | 'text' | 'saved';
   type SavedPost = { id: string; text: string; label: string; savedAt: Date };
-
-  const [postType, setPostType]             = useState<PostType>('media');
-  const [savedPosts, setSavedPosts]         = useState<SavedPost[]>(() => {
+  const [postType, setPostType]         = useState<PostType>('media');
+  const [savedPosts, setSavedPosts]     = useState<SavedPost[]>(() => {
     try { return JSON.parse(localStorage.getItem('mm_saved_posts') || '[]').map((p: any) => ({ ...p, savedAt: new Date(p.savedAt) })); }
     catch { return []; }
   });
-  const [savedEditId, setSavedEditId]       = useState<string | null>(null);
-  const [savedEditText, setSavedEditText]   = useState('');
-
+  const [savedEditId, setSavedEditId]   = useState<string | null>(null);
+  const [savedEditText, setSavedEditText] = useState('');
   const persistSaved = (posts: SavedPost[]) => {
     setSavedPosts(posts);
     try { localStorage.setItem('mm_saved_posts', JSON.stringify(posts)); } catch {}
   };
   const savePost = (text: string, label: string) => {
     if (!text.trim()) return;
-    persistSaved([{ id: Date.now().toString(), text: text.trim(), label, savedAt: new Date() }, ...savedPosts]);
+    const next = [{ id: Date.now().toString(), text: text.trim(), label, savedAt: new Date() }, ...savedPosts];
+    persistSaved(next);
   };
   const deleteSavedPost = (id: string) => persistSaved(savedPosts.filter(p => p.id !== id));
+  const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now');
+  const [scheduleDateStr, setScheduleDate] = useState(() => {
+    const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
+    return d.toISOString().slice(0, 16);
+  });
+  const [submitOk, setSubmitOk]         = useState(false);
+  const [submitError, setSubmitError]   = useState<string | null>(null);
+  const [submitting, setSubmitting]     = useState(false);
 
-  const [scheduleType, setScheduleType]     = useState<'now' | 'schedule'>('now');
-  const [scheduleDateStr, setScheduleDate]   = useState(() => { const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0); return d.toISOString().slice(0, 16); });
-  const [submitOk, setSubmitOk]             = useState(false);
-  const [submitError, setSubmitError]       = useState<string | null>(null);
-  const [submitting, setSubmitting]         = useState(false);
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
-  const [content, setContent]               = useState('');
-  const [videoFile, setVideoFile]           = useState<File | null>(null);
+  const [content, setContent]           = useState('');
+  const [videoFile, setVideoFile]       = useState<File | null>(null);
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
-  const [videoUpload, setVideoUpload]       = useState<UploadState>({ status: 'idle' });
-  const [imageFiles, setImageFiles]         = useState<File[]>([]);
-  const [imageUploads, setImageUploads]     = useState<UploadState[]>([]);
-
+  const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
+  const [imageFiles, setImageFiles]     = useState<File[]>([]);
+  const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
   type CaptionType = 'manual' | 'ai';
+  const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
-  const [captionType, setCaptionType]       = useState<CaptionType>('manual');
-  const [captionMode, setCaptionMode]       = useState<CaptionMode>('from_video');
-  const [aiTone, setAiTone]                 = useState('');
-  const [aiDescription, setAiDescription]   = useState('');
-  const [aiLoading, setAiLoading]           = useState(false);
-  const [aiError, setAiError]               = useState<string | null>(null);
-  const [transcript, setTranscript]         = useState<string | null>(null);
+  const [captionMode, setCaptionMode]   = useState<CaptionMode>('from_video');
+  const [aiTone, setAiTone]             = useState('');
+  const [aiDescription, setAiDescription] = useState('');
+  const [aiLoading, setAiLoading]       = useState(false);
+  const [aiError, setAiError]           = useState<string | null>(null);
+  const [transcript, setTranscript]     = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
-  const [youTubeTitle, setYouTubeTitle]     = useState('');
+  const [youTubeTitle, setYouTubeTitle] = useState('');
 
-  const [textTab, setTextTab]               = useState<'twitter' | 'linkedin'>('twitter');
-  const [xText, setXText]                   = useState('');
-  const [showTextAi, setShowTextAi]         = useState(false);
-  const [textAiMode, setTextAiMode]         = useState<'from_video' | 'from_description'>('from_description');
-  const [textAiDesc, setTextAiDesc]         = useState('');
-  const [textAiTone, setTextAiTone]         = useState('');
-  const [textAiVideo, setTextAiVideo]       = useState<File | null>(null);
-  const [textAiLoading, setTextAiLoading]   = useState(false);
-  const [textAiError, setTextAiError]       = useState<string | null>(null);
-  const [textAiPosts, setTextAiPosts]       = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
+  const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
+  const [xText, setXText]               = useState('');
+  const [linkedinText, setLinkedinText] = useState('');
+  const [showTextAi, setShowTextAi]     = useState(false);
+  const [textAiMode, setTextAiMode]     = useState<'from_video' | 'from_description'>('from_description');
+  const [textAiDesc, setTextAiDesc]     = useState('');
+  const [textAiTone, setTextAiTone]     = useState('');
+  const [textAiVideo, setTextAiVideo]   = useState<File | null>(null);
+  const [textAiLoading, setTextAiLoading] = useState(false);
+  const [textAiError, setTextAiError]   = useState<string | null>(null);
+  const [textAiPosts, setTextAiPosts]   = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
   const [textAiSelected, setTextAiSelected] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
-  const [aiEditText, setAiEditText]         = useState('');
-  const [editingIdx, setEditingIdx]         = useState<{ tab: 'twitter' | 'linkedin'; idx: number } | null>(null);
-  const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
-
-  const toggleTextAccount = (id: string) => setSelectedTextAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
   const xInteg       = integrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
   const liInteg      = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
   const threadsInteg = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('threads'));
+
+  // Multi-select for text post accounts
+  const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
+  const toggleTextAccount = (id: string) => setSelectedTextAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
+  // AI edit state
+  const [aiEditText, setAiEditText] = useState('');
+  const [editingIdx, setEditingIdx] = useState<{ tab: 'twitter' | 'linkedin'; idx: number } | null>(null);
 
   const textPostAccounts = [
     ...(xInteg       ? [{ integ: xInteg,       platform: 'x' as PlatformId       }] : []),
@@ -1223,7 +1254,8 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
     ...(threadsInteg ? [{ integ: threadsInteg,  platform: 'threads' as PlatformId  }] : []),
   ];
 
-  const getSelectedPlatforms = () => selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
+  const getSelectedPlatforms = () =>
+    selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
   const isYouTubeSelected = getSelectedPlatforms().includes('youtube');
 
   const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
@@ -1231,7 +1263,9 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
     try {
       const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct }));
       setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
-    } catch (e: any) { setU({ status: 'error', message: e.message || 'Upload failed' }); }
+    } catch (e: any) {
+      setU({ status: 'error', message: e.message || 'Upload failed' });
+    }
   };
 
   const handleAiGenerate = async () => {
@@ -1239,11 +1273,11 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
     try {
       let sourceText = '';
       if (captionMode === 'from_video') {
-        if (!videoFile) throw new Error('Add a video first');
+        if (!videoFile) throw new Error('Add a video using the Video button above first');
         sourceText = await transcribeVideo(videoFile);
         setTranscript(sourceText);
       } else {
-        if (!aiDescription.trim()) throw new Error('Enter a description');
+        if (!aiDescription.trim()) throw new Error('Enter a description of your video');
         sourceText = aiDescription;
       }
       const mode = captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description';
@@ -1285,37 +1319,45 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
 
   const useTextAiPost = (platform: 'twitter' | 'linkedin', idx: number) => {
     const text = textAiPosts?.[platform]?.[idx] ?? '';
-    if (platform === 'twitter') setXText(text);
+    if (platform === 'twitter') setXText(text); else setLinkedinText(text);
     setTextAiSelected(prev => ({ ...prev, [platform]: idx }));
     setTextTab(platform);
     setAiEditText(text);
+    
     setEditingIdx(null);
   };
 
   const handleMediaSubmit = async () => {
-    if (!userId)                       { setSubmitError('Sign in to post.'); return; }
-    if (!selectedIntegrations.length)  { setSubmitError('Select at least one channel.'); return; }
+    if (!userId)                      { setSubmitError('Sign in to post.'); return; }
+    if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
     if (captionType === 'manual' && !content.trim()) { setSubmitError('Write a caption first.'); return; }
     if (captionType === 'ai' && !generatedCaptions)  { setSubmitError('Generate AI captions first.'); return; }
-    if (videoUpload.status === 'uploading' || imageUploads.some(u => u.status === 'uploading')) { setSubmitError('Wait for media to finish uploading.'); return; }
-
-    const selectedPlatformIds = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; }).filter(Boolean);
+    if (isYouTubeSelected && !youTubeTitle.trim() && captionType === 'manual') {
+      setSubmitError('YouTube requires a video title. Fill in the Title field above.');
+      return;
+    }
+    if (videoUpload.status === 'uploading' || imageUploads.some(u => u.status === 'uploading')) {
+      setSubmitError('Wait for media to finish uploading.'); return;
+    }
+    const selectedPlatformIds = selectedIntegrations
+      .map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; })
+      .filter(Boolean);
     const platformsNeedingMedia = selectedPlatformIds.filter(p => MEDIA_REQUIRED_PLATFORMS.has(p));
     const hasMedia = videoUpload.status === 'done' || imageUploads.some(u => u.status === 'done');
     if (platformsNeedingMedia.length > 0 && !hasMedia) {
       const names = platformsNeedingMedia.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
-      setSubmitError(`${names} require${platformsNeedingMedia.length === 1 ? 's' : ''} a video or image.`);
+      setSubmitError(`${names} require${platformsNeedingMedia.length === 1 ? 's' : ''} a video or image. Add media using the buttons above.`);
       return;
     }
-    const VIDEO_ONLY = new Set(['youtube', 'tiktok']);
-    const videoOnlySelected = selectedPlatformIds.filter(p => VIDEO_ONLY.has(p));
+    const VIDEO_ONLY_PLATFORMS = new Set(['youtube', 'tiktok']);
+    const videoOnlySelected = selectedPlatformIds.filter(p => VIDEO_ONLY_PLATFORMS.has(p));
     const hasVideo = videoUpload.status === 'done';
     const hasImagesOnly = !hasVideo && imageUploads.some(u => u.status === 'done');
     if (videoOnlySelected.length > 0 && hasImagesOnly) {
-      setSubmitError(`${videoOnlySelected.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ')} only accept video files.`);
+      const names = videoOnlySelected.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
+      setSubmitError(`${names} only accept video files, not images. Please upload a video instead.`);
       return;
     }
-
     setSubmitting(true); setSubmitError(null);
     try {
       const mediaUrls: string[] = [];
@@ -1324,24 +1366,39 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
 
       if (captionType === 'manual') {
-        const platforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; }).filter(Boolean);
+        const platforms = selectedIntegrations
+          .map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; })
+          .filter(Boolean);
         const isYT = platforms.includes('youtube');
-        await ayrsharePost({ platforms, post: content, mediaUrls, scheduleDate: sd, ...(isYT ? { youTubeTitle: youTubeTitle || content.slice(0, 100), youTubeShorts: true } : {}) });
+        await ayrsharePost({
+          platforms, post: content, mediaUrls, scheduleDate: sd,
+          ...(isYT ? { youTubeTitle: youTubeTitle || content.slice(0, 100), youTubeShorts: true } : {}),
+        });
       } else {
-        await Promise.all(selectedIntegrations.map(async integId => {
-          const integ = integrations.find(i => i.id === integId); if (!integ) return;
+        const postPromises = selectedIntegrations.map(async (integId) => {
+          const integ = integrations.find(i => i.id === integId);
+          if (!integ) return;
           const platformId = integ.identifier || integ.id || '';
-          const caption = generatedCaptions![platformId] ?? generatedCaptions![platformId.toLowerCase()] ?? Object.values(generatedCaptions!)[0] ?? '';
+          const caption = generatedCaptions![platformId]
+            ?? generatedCaptions![platformId.toLowerCase()]
+            ?? Object.values(generatedCaptions!)[0]
+            ?? '';
           if (!caption) return;
           const isYT = platformId === 'youtube';
-          await ayrsharePost({ platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd, ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}) });
-        }));
+          await ayrsharePost({
+            platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd,
+            ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}),
+          });
+        });
+        await Promise.all(postPromises);
       }
 
       setSubmitOk(true);
       setTimeout(() => {
-        setSubmitOk(false); setContent(''); setVideoFile(null); setVideoObjectUrl(null);
-        setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]); setGeneratedCaptions(null); setSelectedIntegrations([]);
+        setSubmitOk(false);
+        setContent(''); setVideoFile(null); setVideoObjectUrl(null);
+        setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]);
+        setGeneratedCaptions(null); setSelectedIntegrations([]);
         onSuccess?.();
       }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
@@ -1350,15 +1407,19 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
 
   const handleTextSubmit = async () => {
     const text = editingIdx ? aiEditText : xText;
-    if (!text.trim())                    { setSubmitError('Write something first.'); return; }
-    if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account.'); return; }
+    if (!text.trim()) { setSubmitError('Write something first.'); return; }
+    if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account to post to.'); return; }
     setSubmitting(true); setSubmitError(null);
     try {
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      const platformIds = selectedTextAccounts.map(id => { const a = textPostAccounts.find(a => a.integ.id === id); return a?.integ.identifier || a?.platform || ''; }).filter(Boolean);
+      const platformIds = selectedTextAccounts.map(id => {
+        const acct = textPostAccounts.find(a => a.integ.id === id);
+        return acct?.integ.identifier || acct?.platform || '';
+      }).filter(Boolean);
       await ayrsharePost({ platforms: platformIds, post: text, scheduleDate: sd });
       setSubmitOk(true);
-      setXText(''); setAiEditText(''); setEditingIdx(null); setSelectedTextAccounts([]);
+      setXText(''); setLinkedinText('');
+      setAiEditText(''); setEditingIdx(null); setSelectedTextAccounts([]);
       setTimeout(() => setSubmitOk(false), 3000);
     } catch (e: any) { setSubmitError(e.message || 'Post failed'); }
     finally { setSubmitting(false); }
@@ -1416,7 +1477,10 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                   const p = PLATFORMS[int.identifier as PlatformId];
                   return (
                     <button key={int.id}
-                      onClick={() => { setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]); setGeneratedCaptions(null); }}
+                      onClick={() => {
+                        setSelectedIntegrations(prev => prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]);
+                        setGeneratedCaptions(null);
+                      }}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
                       style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
                       <PlatformIcon id={int.profile || int.identifier} size="sm" />
@@ -1436,7 +1500,8 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
               <input type="file" accept="image/*" multiple className="hidden"
                 onChange={e => {
                   const files = Array.from(e.target.files || []);
-                  setImageFiles(files); setImageUploads(files.map(() => ({ status: 'idle' })));
+                  setImageFiles(files);
+                  setImageUploads(files.map(() => ({ status: 'idle' })));
                   files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
                 }} />
             </label>
@@ -1448,7 +1513,8 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                   if (f) {
                     if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
                     const url = URL.createObjectURL(f);
-                    setVideoFile(f); setVideoObjectUrl(url); setVideoUpload({ status: 'preparing' });
+                    setVideoFile(f); setVideoObjectUrl(url);
+                    setVideoUpload({ status: 'preparing' });
                     setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
                   }
                 }} />
@@ -1461,10 +1527,16 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                 <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl} uploadState={videoUpload}
                   onRemove={() => { URL.revokeObjectURL(videoObjectUrl); setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' }); }} />
               )}
-              {imageFiles.length === 1 && <ImagePreviewCard file={imageFiles[0]} uploadState={imageUploads[0] ?? { status: 'idle' }} onRemove={() => { setImageFiles([]); setImageUploads([]); }} />}
+              {imageFiles.length === 1 && (
+                <ImagePreviewCard file={imageFiles[0]} uploadState={imageUploads[0] ?? { status: 'idle' }}
+                  onRemove={() => { setImageFiles([]); setImageUploads([]); }} />
+              )}
               {imageFiles.length > 1 && (
                 <div className="grid grid-cols-2 gap-2">
-                  {imageFiles.map((f, i) => <ImagePreviewCard key={i} file={f} uploadState={imageUploads[i] ?? { status: 'idle' }} onRemove={() => { setImageFiles(prev => prev.filter((_, xi) => xi !== i)); setImageUploads(prev => prev.filter((_, xi) => xi !== i)); }} />)}
+                  {imageFiles.map((f, i) => (
+                    <ImagePreviewCard key={i} file={f} uploadState={imageUploads[i] ?? { status: 'idle' }}
+                      onRemove={() => { setImageFiles(prev => prev.filter((_, xi) => xi !== i)); setImageUploads(prev => prev.filter((_, xi) => xi !== i)); }} />
+                  ))}
                 </div>
               )}
             </div>
@@ -1496,8 +1568,17 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
               {isYouTubeSelected && (
                 <div className="space-y-2">
                   <div className="text-xs font-bold text-white/30 uppercase tracking-wider">YouTube Title <span className="text-red-400">*</span></div>
-                  <input value={youTubeTitle} onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))} placeholder="Video title (required for YouTube)…" maxLength={100}
-                    className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none" style={{ borderColor: youTubeTitle ? `${GOLD}50` : BORDER }} />
+                  <input
+                    value={youTubeTitle}
+                    onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))}
+                    placeholder="Video title (required for YouTube, max 100 chars)…"
+                    maxLength={100}
+                    className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
+                    style={{ borderColor: youTubeTitle ? `${GOLD}50` : BORDER }}
+                  />
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-white/25">{youTubeTitle.length}/100</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -1514,45 +1595,68 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                     </button>
                   ))}
                 </div>
-                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first</div>}
+                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first. AI will transcribe it to write captions</div>}
+                {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
+                {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready. Click Generate below</div>}
                 {captionMode === 'from_description' && (
-                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)} placeholder="Describe your video or content…" rows={3}
+                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
+                    placeholder="Describe your video or content. Topic, key points, your offer…" rows={3}
                     className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
                 )}
-                <input value={aiTone} onChange={e => setAiTone(e.target.value)} placeholder="Tone (optional): casual, alex hormozi, luxury…"
+                <input value={aiTone} onChange={e => setAiTone(e.target.value)}
+                  placeholder="Tone (optional): casual, alex hormozi, luxury, funny…"
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+                {selectedIntegrations.length === 0 && <div className="text-xs text-amber-400/70 px-1">⚠️ Select at least one channel above to generate captions for those platforms</div>}
                 <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
-                  {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Generating…</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions</>}
+                  {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
                 {transcript && <TranscriptViewer transcript={transcript} />}
               </div>
+
               {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                 <div className="border-t px-4 pb-4 pt-3 space-y-3" style={{ borderColor: BORDER }}>
-                  <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-green-400" /><span className="text-xs font-bold text-white/40 uppercase tracking-wider">Captions ready — edit then post</span></div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
+                    <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Captions generated. Edit if needed, then post</span>
+                  </div>
                   {isYouTubeSelected && (
                     <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${PLATFORMS.youtube.color}30` }}>
                       <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: `${PLATFORMS.youtube.color}20`, background: PLATFORMS.youtube.bg }}>
                         <PlatformIcon id="youtube" size="sm" />
-                        <span className="text-xs font-bold" style={{ color: PLATFORMS.youtube.color }}>YouTube Title</span>
+                        <span className="text-xs font-bold" style={{ color: PLATFORMS.youtube.color }}>YouTube, Title</span>
+                        <span className="ml-auto text-[10px] text-white/25">{youTubeTitle.length}/100</span>
                       </div>
-                      <input value={youTubeTitle} onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))} placeholder="Video title (required)…" maxLength={100}
-                        className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none" style={{ background: 'rgba(0,0,0,0.15)' }} />
+                      <input
+                        value={youTubeTitle}
+                        onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))}
+                        placeholder="Video title (required)…"
+                        maxLength={100}
+                        className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none"
+                        style={{ background: 'rgba(0,0,0,0.15)' }}
+                      />
                     </div>
                   )}
                   {Object.entries(generatedCaptions).map(([platform, caption]) => {
+                    const integ = integrations.find(i => i.identifier === platform || i.identifier === platform.toLowerCase());
                     const p = PLATFORMS[platform as PlatformId];
+                    const label = platform === 'youtube' ? 'YouTube Description' : (p?.label || integ?.name || platform);
                     return (
                       <div key={platform} className="rounded-xl border overflow-hidden" style={{ borderColor: p?.color ? `${p.color}30` : BORDER }}>
                         <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: p?.color ? `${p.color}20` : BORDER, background: p?.bg || 'rgba(0,0,0,0.2)' }}>
                           <PlatformIcon id={platform} size="sm" />
-                          <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{p?.label || platform}</span>
+                          <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
                           <span className="ml-auto text-[10px] text-white/25">{(caption as string).length} chars</span>
                         </div>
-                        <textarea value={caption as string} onChange={e => setGeneratedCaptions(prev => prev ? { ...prev, [platform]: e.target.value } : prev)} rows={4}
-                          className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none resize-none" style={{ background: 'rgba(0,0,0,0.15)' }} />
+                        <textarea
+                          value={caption as string}
+                          onChange={e => setGeneratedCaptions(prev => prev ? { ...prev, [platform]: e.target.value } : prev)}
+                          rows={platform === 'youtube' ? 3 : 4}
+                          className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none resize-none placeholder-white/20"
+                          style={{ background: 'rgba(0,0,0,0.15)' }}
+                        />
                       </div>
                     );
                   })}
@@ -1560,23 +1664,28 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
               )}
             </div>
           )}
+
           {scheduleSectionJsx}
         </>
       )}
 
       {postType === 'text' && (
         <>
+          {/* ── Step 1: Choose which accounts to post to ── */}
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
             {textPostAccounts.length === 0 ? (
-              <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>No X, LinkedIn, or Threads account connected.</div>
+              <div className="text-sm text-white/30 py-2 px-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                No X, LinkedIn, or Threads account connected yet.
+              </div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {textPostAccounts.map(({ integ, platform }) => {
                   const selected = selectedTextAccounts.includes(integ.id);
                   const p = PLATFORMS[platform];
                   return (
-                    <button key={integ.id} onClick={() => { toggleTextAccount(integ.id); setSubmitError(null); }}
+                    <button key={integ.id}
+                      onClick={() => { toggleTextAccount(integ.id); setSubmitError(null); }}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border font-semibold transition"
                       style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
                       <PlatformIcon id={platform} size="sm" />
@@ -1589,24 +1698,36 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
             )}
           </div>
 
+          {/* ── Step 2: Write manually OR use AI ── */}
+
+          {/* Manual compose — always visible unless AI panel is open */}
           {!showTextAi && (
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-              <textarea value={xText} onChange={e => setXText(e.target.value)} placeholder="Write your post here…" rows={6}
-                className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none" />
+              <textarea
+                value={xText}
+                onChange={e => setXText(e.target.value)}
+                placeholder="Write your post here. It will be sent to all selected accounts above."
+                rows={6}
+                className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+              />
               <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
                 <span className="text-xs text-white/20">{xText.length} chars</span>
                 <div className="flex items-center gap-2">
-                  {xText.length > 280 && <span className="text-xs text-amber-400/80 font-bold">⚠ Over X's 280 limit</span>}
-                  <button onClick={() => { savePost(xText, 'Manual'); setXText(''); }} disabled={!xText.trim()}
+                  {xText.length > 280 && <span className="text-xs text-amber-400/80 font-bold">⚠ Over X's 280 char limit</span>}
+                  <button onClick={() => { savePost(xText, 'Manual'); setXText(''); }}
+                    disabled={!xText.trim()}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-30 hover:bg-white/8"
-                    style={{ color: GOLD_L, border: `1px solid ${GOLD}30` }}>🔖 Save</button>
+                    style={{ color: GOLD_L, border: `1px solid ${GOLD}30` }}>
+                    🔖 Save
+                  </button>
                 </div>
               </div>
             </div>
           )}
 
+          {/* AI Generate section */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
-            <button onClick={() => setShowTextAi(v => !v)} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
+            <button onClick={() => { setShowTextAi(v => !v); }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
@@ -1617,7 +1738,11 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
             </button>
             {showTextAi && (
               <div className="border-t px-4 pb-4 space-y-3" style={{ borderColor: BORDER }}>
-                <p className="text-xs text-white/35 pt-3">Generates <strong className="text-white/50">10 X posts</strong> &amp; <strong className="text-white/50">10 LinkedIn posts</strong>.</p>
+                <p className="text-xs text-white/35 pt-3">
+                  Generates <strong className="text-white/50">10 X posts</strong> &amp; <strong className="text-white/50">10 LinkedIn posts</strong>. Pick one, edit it, then post to your selected accounts above.
+                </p>
+
+                {/* Source mode */}
                 <div className="flex gap-2">
                   {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                     <button key={m} onClick={() => setTextAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
@@ -1626,86 +1751,133 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                     </button>
                   ))}
                 </div>
-                {textAiMode === 'from_video' && (!textAiVideo ? (
-                  <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
-                    <Video className="w-6 h-6 text-white/25" /><span className="text-xs text-white/40">Click to select video</span>
-                    <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setTextAiVideo(f); }} />
-                  </label>
-                ) : (
-                  <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                    <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                    <span className="text-white/60 truncate flex-1">{textAiVideo.name}</span>
-                    <button onClick={() => setTextAiVideo(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
-                  </div>
-                ))}
+
+                {textAiMode === 'from_video' && (
+                  !textAiVideo ? (
+                    <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                      <Video className="w-6 h-6 text-white/25" />
+                      <span className="text-xs text-white/40">Click to select your talking video</span>
+                      <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setTextAiVideo(f); }} />
+                    </label>
+                  ) : (
+                    <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                      <span className="text-white/60 truncate flex-1">{textAiVideo.name}</span>
+                      <button onClick={() => setTextAiVideo(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+                    </div>
+                  )
+                )}
                 {textAiMode === 'from_description' && (
-                  <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)} placeholder="Describe what you want to post about…" rows={3}
+                  <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
+                    placeholder="Describe what you want to post about. Topic, key points, your offer…" rows={3}
                     className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
                 )}
-                <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)} placeholder="Tone (optional): casual, alex hormozi, luxury…"
+                <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
+                  placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
                 {textAiError && <div className="text-xs text-red-300 px-1">{textAiError}</div>}
                 <button onClick={handleTextAiGenerate} disabled={textAiLoading}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
-                  {textAiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Generating…</> : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
+                  {textAiLoading
+                    ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Transcribing…' : 'Generating…'}</>
+                    : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
                 </button>
 
                 {textAiPosts && (
                   <div className="space-y-3 pt-1">
+                    {/* Tab: X posts vs LinkedIn posts */}
                     <div className="flex gap-2">
-                      {([['twitter', 'x'], ['linkedin', 'linkedin']] as [string, PlatformId][]).map(([key, iconId]) => (
+                      {([['twitter', 'x'] , ['linkedin', 'linkedin']] as [string, PlatformId][]).map(([key, iconId]) => (
                         <button key={key} onClick={() => { setTextTab(key as any); setEditingIdx(null); }}
                           className="flex-1 py-2 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5"
                           style={{ borderColor: textTab === key ? GOLD : BORDER, background: textTab === key ? `${GOLD}15` : 'transparent', color: textTab === key ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
                           <PlatformIcon id={iconId} size="sm" />
-                          {key === 'twitter' ? `X Posts (${textAiPosts.twitter.length})` : `LinkedIn Posts (${textAiPosts.linkedin.length})`}
+                          {key === 'twitter'
+                            ? `X Posts (${textAiPosts.twitter.length})`
+                            : `LinkedIn Posts (${textAiPosts.linkedin.length})`}
                         </button>
                       ))}
                     </div>
-                    <div className="text-xs text-white/25">Click a post to select · ✏️ to edit</div>
-                    <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+
+                    <div className="text-xs text-white/25">Click a post to select it · click ✏️ to edit inline</div>
+
+                    <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1">
                       {(textTab === 'twitter' ? textAiPosts.twitter : textAiPosts.linkedin).map((post, idx) => {
                         const platform = textTab as 'twitter' | 'linkedin';
                         const isSel     = textAiSelected[platform] === idx;
                         const isEditing = editingIdx?.tab === platform && editingIdx?.idx === idx;
                         const liveText  = isEditing ? aiEditText : post;
+
                         return (
                           <div key={idx} className="relative rounded-xl border overflow-hidden transition"
                             style={{ borderColor: isSel ? GOLD : BORDER, background: isSel ? `${GOLD}08` : 'rgba(0,0,0,0.2)' }}>
-                            <button onClick={e => {
-                              e.stopPropagation();
-                              if (isEditing) {
-                                if (textAiPosts) {
-                                  const updated = { ...textAiPosts };
-                                  updated[platform] = [...updated[platform]];
-                                  updated[platform][idx] = aiEditText;
-                                  setTextAiPosts(updated);
+
+                            {/* Edit button — top right */}
+                            <button
+                              onClick={e => {
+                                e.stopPropagation();
+                                if (isEditing) {
+                                  // save edits back into the post list
+                                  if (textAiPosts) {
+                                    const updated = { ...textAiPosts };
+                                    updated[platform] = [...updated[platform]];
+                                    updated[platform][idx] = aiEditText;
+                                    setTextAiPosts(updated);
+                                  }
+                                  setEditingIdx(null);
+                                  // re-select with edited text if this was selected
+                                  if (isSel) {
+                                    if (platform === 'twitter') setXText(aiEditText); else setLinkedinText(aiEditText);
+                                    setAiEditText(aiEditText);
+                                  }
+                                } else {
+                                  setAiEditText(post);
+                                  setEditingIdx({ tab: platform, idx });
                                 }
-                                setEditingIdx(null);
-                                if (isSel) { if (platform === 'twitter') setXText(aiEditText); }
-                              } else { setAiEditText(post); setEditingIdx({ tab: platform, idx }); }
-                            }}
+                              }}
                               className="absolute top-2 right-2 z-10 w-6 h-6 rounded-md flex items-center justify-center transition hover:bg-white/10"
-                              style={{ color: isEditing ? GOLD : 'rgba(255,255,255,0.25)' }}>
+                              style={{ color: isEditing ? GOLD : 'rgba(255,255,255,0.25)' }}
+                              title={isEditing ? 'Done editing' : 'Edit this post'}>
                               {isEditing ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Edit3 className="w-3 h-3" />}
                             </button>
+
+                            {/* Card body — click to select */}
                             {isEditing ? (
-                              <textarea value={aiEditText} onChange={e => setAiEditText(e.target.value)} autoFocus rows={5} onClick={e => e.stopPropagation()}
-                                className="w-full bg-transparent px-3 pt-3 pb-2 pr-8 text-xs text-white outline-none resize-none leading-relaxed" />
+                              <textarea
+                                value={aiEditText}
+                                onChange={e => setAiEditText(e.target.value)}
+                                autoFocus
+                                rows={5}
+                                onClick={e => e.stopPropagation()}
+                                className="w-full bg-transparent px-3 pt-3 pb-2 pr-8 text-xs text-white outline-none resize-none leading-relaxed"
+                              />
                             ) : (
-                              <div onClick={() => useTextAiPost(platform, idx)} className="px-3 pt-3 pb-2 pr-8 text-xs leading-relaxed cursor-pointer"
+                              <div
+                                onClick={() => useTextAiPost(platform, idx)}
+                                className="px-3 pt-3 pb-2 pr-8 text-xs leading-relaxed cursor-pointer"
                                 style={{ color: isSel ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
                                 {liveText}
                               </div>
                             )}
+
+                            {/* Footer */}
                             <div className="flex items-center gap-2 px-3 py-1.5 border-t" style={{ borderColor: BORDER }}>
                               <span className="text-[10px] text-white/20 font-bold">#{idx + 1}</span>
                               <span className="text-[10px] text-white/15">{liveText.length}c</span>
-                              {isSel && !isEditing && <span className="text-[10px] font-bold" style={{ color: GOLD }}>✓ Selected</span>}
-                              <button onClick={e => { e.stopPropagation(); savePost(liveText, textTab === 'twitter' ? 'X Post' : 'LinkedIn Post'); }}
+                              {isSel && !isEditing && (
+                                <span className="text-[10px] font-bold" style={{ color: GOLD }}>✓ Selected</span>
+                              )}
+                              {isEditing && (
+                                <span className="text-[10px] font-bold text-amber-400/70">editing…</span>
+                              )}
+                              <button
+                                onClick={e => { e.stopPropagation(); savePost(liveText, textTab === 'twitter' ? 'X Post' : 'LinkedIn Post'); }}
                                 className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition hover:bg-white/8"
-                                style={{ color: GOLD_L, border: `1px solid ${GOLD}25` }}>🔖 Save</button>
+                                style={{ color: GOLD_L, border: `1px solid ${GOLD}25` }}
+                                title="Save for later">
+                                🔖 Save
+                              </button>
                             </div>
                           </div>
                         );
@@ -1716,6 +1888,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
               </div>
             )}
           </div>
+
           {scheduleSectionJsx}
         </>
       )}
@@ -1726,75 +1899,109 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
             <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
               <span className="text-4xl">🔖</span>
               <div className="text-sm font-bold text-white/30">No saved posts yet</div>
-              <div className="text-xs text-white/20">Save any post using the 🔖 Save button</div>
+              <div className="text-xs text-white/20">Save any manual or AI-generated post using the 🔖 Save button</div>
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">{savedPosts.length} Saved Post{savedPosts.length !== 1 ? 's' : ''}</div>
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">
+                {savedPosts.length} Saved Post{savedPosts.length !== 1 ? 's' : ''}
+              </div>
+
               {savedPosts.map(p => (
-                <SavedPostCard key={p.id} post={p} textPostAccounts={textPostAccounts}
-                  isEditing={savedEditId === p.id} editText={savedEditText}
+                <SavedPostCard
+                  key={p.id}
+                  post={p}
+                  textPostAccounts={textPostAccounts}
+                  isEditing={savedEditId === p.id}
+                  editText={savedEditText}
                   onEditStart={() => { setSavedEditId(p.id); setSavedEditText(p.text); }}
                   onEditChange={setSavedEditText}
-                  onEditSave={() => { persistSaved(savedPosts.map(x => x.id === p.id ? { ...x, text: savedEditText } : x)); setSavedEditId(null); }}
+                  onEditSave={() => {
+                    persistSaved(savedPosts.map(x => x.id === p.id ? { ...x, text: savedEditText } : x));
+                    setSavedEditId(null);
+                  }}
                   onEditCancel={() => setSavedEditId(null)}
-                  onDelete={() => deleteSavedPost(p.id)} />
+                  onDelete={() => deleteSavedPost(p.id)}
+                />
               ))}
             </div>
           )}
         </>
       )}
-
       {submitError && (
         <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {submitError}
         </div>
       )}
 
-      <button onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
+      {/* Submit button */}
+      <button
+        onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
         disabled={submitting || (postType === 'media' && submitOk)}
         className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
         {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
           : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
-          : postType === 'media' ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
-          : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
+          : postType === 'media'
+            ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
+            : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
       </button>
     </div>
   );
 }
 
-// ─── InlineContentIdeas ────────────────────────────────────────────────────────
+// ─── InlineContentIdeas ───────────────────────────────────────────────────────
+// Inline content ideas panel with AI/manual toggle and save-to-planner
 
 function InlineContentIdeas({ userId, onAddToPlanner }: {
   userId: string | null;
   onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
 }) {
-  const [mode, setMode]                   = useState<'manual' | 'ai'>('manual');
-  const [manualTitle, setManualTitle]     = useState('');
-  const [manualNotes, setManualNotes]     = useState('');
-  const [manualCategory, setManualCategory] = useState('idea');
-  const [manualSaved, setManualSaved]     = useState(false);
-  const [captionMode, setCaptionMode]     = useState<'from_video' | 'from_description'>('from_description');
-  const [description, setDescription]     = useState('');
-  const [tone, setTone]                   = useState('');
-  const [videoFile, setVideoFile]         = useState<File | null>(null);
-  const [loading, setLoading]             = useState(false);
-  const [error, setError]                 = useState<string | null>(null);
-  const [ideas, setIdeas]                 = useState<any | null>(null);
-  const [added, setAdded]                 = useState<Set<string>>(new Set());
+  const [mode, setMode] = useState<'manual' | 'ai'>('manual');
 
-  const CATEGORY_COLORS: Record<string, string> = { idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c' };
+  // Manual entry state
+  const [manualTitle, setManualTitle]   = useState('');
+  const [manualNotes, setManualNotes]   = useState('');
+  const [manualCategory, setManualCategory] = useState('idea');
+  const [manualSaved, setManualSaved]   = useState(false);
+
+  // AI state
+  const [captionMode, setCaptionMode]   = useState<'from_video' | 'from_description'>('from_description');
+  const [description, setDescription]   = useState('');
+  const [tone, setTone]                 = useState('');
+  const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [loading, setLoading]           = useState(false);
+  const [error, setError]               = useState<string | null>(null);
+  const [ideas, setIdeas]               = useState<any | null>(null);
+  const [added, setAdded]               = useState<Set<string>>(new Set());
+
+  const CATEGORY_COLORS: Record<string, string> = {
+    idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c',
+  };
+
   const CATEGORY_OPTIONS = [
-    { value: 'idea', label: '💡 General Idea' }, { value: 'short_clip', label: '🎬 Short Clip' },
-    { value: 'hook', label: '🪝 Hook' }, { value: 'blog', label: '✍️ Blog/Article' }, { value: 'other', label: '📦 Other' },
+    { value: 'idea', label: '💡 General Idea' },
+    { value: 'short_clip', label: '🎬 Short Clip' },
+    { value: 'hook', label: '🪝 Hook' },
+    { value: 'blog', label: '✍️ Blog/Article' },
+    { value: 'other', label: '📦 Other' },
   ];
 
   const handleManualSave = () => {
     if (!manualTitle.trim()) return;
-    onAddToPlanner?.({ title: manualTitle.trim(), notes: manualNotes.trim() || undefined, category: manualCategory, sourceLabel: 'Manual' });
+    onAddToPlanner?.({
+      title: manualTitle.trim(),
+      notes: manualNotes.trim() || undefined,
+      category: manualCategory,
+      sourceLabel: 'Manual',
+    });
     setManualSaved(true);
-    setTimeout(() => { setManualSaved(false); setManualTitle(''); setManualNotes(''); setManualCategory('idea'); }, 1500);
+    setTimeout(() => {
+      setManualSaved(false);
+      setManualTitle('');
+      setManualNotes('');
+      setManualCategory('idea');
+    }, 1500);
   };
 
   const handleAiGenerate = async () => {
@@ -1805,7 +2012,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
         if (!videoFile) throw new Error('Select a video first');
         source = await transcribeVideo(videoFile);
       } else {
-        if (!description.trim()) throw new Error('Enter a description');
+        if (!description.trim()) throw new Error('Enter a description of your video');
         source = description;
       }
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
@@ -1825,32 +2032,49 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
     setAdded(prev => new Set([...prev, key]));
   };
 
-  const reset = () => { setDescription(''); setTone(''); setVideoFile(null); setIdeas(null); setError(null); setAdded(new Set()); };
+  const reset = () => {
+    setDescription(''); setTone(''); setVideoFile(null); setIdeas(null); setError(null); setAdded(new Set());
+  };
 
   return (
     <div className="space-y-4">
+      {/* Mode toggle */}
       <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
-        <button onClick={() => setMode('manual')} className="flex-1 py-2 rounded-lg text-xs font-bold transition"
+        <button onClick={() => setMode('manual')}
+          className="flex-1 py-2 rounded-lg text-xs font-bold transition"
           style={{ background: mode === 'manual' ? `${GOLD}18` : 'transparent', border: `1px solid ${mode === 'manual' ? GOLD : 'transparent'}`, color: mode === 'manual' ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
           ✏️ Manual Entry
         </button>
-        <button onClick={() => setMode('ai')} className="flex-1 py-2 rounded-lg text-xs font-bold transition"
+        <button onClick={() => setMode('ai')}
+          className="flex-1 py-2 rounded-lg text-xs font-bold transition"
           style={{ background: mode === 'ai' ? `${GOLD}18` : 'transparent', border: `1px solid ${mode === 'ai' ? GOLD : 'transparent'}`, color: mode === 'ai' ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
           ✨ AI Generate
         </button>
       </div>
 
+      {/* ── Manual Entry ── */}
       {mode === 'manual' && (
         <div className="space-y-3">
           <div>
             <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Idea Title</label>
-            <input value={manualTitle} onChange={e => setManualTitle(e.target.value)} placeholder="What's the content idea?"
-              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
+            <input
+              value={manualTitle}
+              onChange={e => setManualTitle(e.target.value)}
+              placeholder="What's the content idea?"
+              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
+              style={{ borderColor: BORDER }}
+            />
           </div>
           <div>
             <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
-            <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Any angles, references…" rows={3}
-              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+            <textarea
+              value={manualNotes}
+              onChange={e => setManualNotes(e.target.value)}
+              placeholder="Any angles, references, key points…"
+              rows={3}
+              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none"
+              style={{ borderColor: BORDER }}
+            />
           </div>
           <div>
             <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Category</label>
@@ -1858,22 +2082,33 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               {CATEGORY_OPTIONS.map(cat => {
                 const col = CATEGORY_COLORS[cat.value] || GOLD;
                 return (
-                  <button key={cat.value} onClick={() => setManualCategory(cat.value)} className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                    style={{ borderColor: manualCategory === cat.value ? col : BORDER, background: manualCategory === cat.value ? `${col}18` : 'transparent', color: manualCategory === cat.value ? col : 'rgba(255,255,255,0.35)' }}>
+                  <button key={cat.value} onClick={() => setManualCategory(cat.value)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                    style={{
+                      borderColor: manualCategory === cat.value ? col : BORDER,
+                      background: manualCategory === cat.value ? `${col}18` : 'transparent',
+                      color: manualCategory === cat.value ? col : 'rgba(255,255,255,0.35)',
+                    }}>
                     {cat.label}
                   </button>
                 );
               })}
             </div>
           </div>
-          <button onClick={handleManualSave} disabled={!manualTitle.trim() || manualSaved || !userId}
+          <button
+            onClick={handleManualSave}
+            disabled={!manualTitle.trim() || manualSaved || !userId}
             className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110 flex items-center justify-center gap-2"
             style={{ background: manualSaved ? '#22c55e' : GOLD, color: '#000' }}>
-            {manualSaved ? <><CheckCircle2 className="w-4 h-4" /> Saved to Planner!</> : <><Plus className="w-4 h-4" /> Save to Content Planner</>}
+            {manualSaved
+              ? <><CheckCircle2 className="w-4 h-4" /> Saved to Planner!</>
+              : <><Plus className="w-4 h-4" /> Save to Content Planner</>}
           </button>
+          {!userId && <p className="text-xs text-amber-400/70 text-center">Sign in to save ideas to the planner</p>}
         </div>
       )}
 
+      {/* ── AI Generate ── */}
       {mode === 'ai' && (
         <div className="space-y-3">
           <div className="flex gap-2">
@@ -1884,30 +2119,36 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               </button>
             ))}
           </div>
-          {captionMode === 'from_video' && (!videoFile ? (
-            <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
-              <Video className="w-6 h-6 text-white/25" /><span className="text-xs text-white/40">Click to select video</span>
-              <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
-            </label>
-          ) : (
-            <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-              <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-              <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
-              <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
-            </div>
-          ))}
+          {captionMode === 'from_video' && (
+            !videoFile ? (
+              <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                <Video className="w-6 h-6 text-white/25" />
+                <span className="text-xs text-white/40">Click to select your talking video</span>
+                <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
+              </label>
+            ) : (
+              <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
+                <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
+                <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
+                <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
+              </div>
+            )
+          )}
           {captionMode === 'from_description' && (
-            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe your video — main points, takeaways…" rows={4}
+            <textarea value={description} onChange={e => setDescription(e.target.value)}
+              placeholder="Describe your video. What you talked about, main points, key takeaways…" rows={4}
               className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
           )}
-          <input value={tone} onChange={e => setTone(e.target.value)} placeholder="Tone (optional): casual, luxury, professional…"
+          <input value={tone} onChange={e => setTone(e.target.value)}
+            placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
             className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
           {error && <div className="text-xs text-red-300">{error}</div>}
           {!ideas && (
             <button onClick={handleAiGenerate} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
               style={{ background: GOLD, color: '#000' }}>
-              {loading ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Generating…</span>
+              {loading
+                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Processing & Transcribing…' : 'Generating Ideas…'}</span>
                 : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
             </button>
           )}
@@ -2010,131 +2251,14 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                   </div>
                 </div>
               )}
-              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5" style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
                 ↺ Generate New Ideas
               </button>
             </div>
           )}
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── PlannerPanel helpers ─────────────────────────────────────────────────────
-
-function DayDetailModal({ day, month, year, items, onClose, onDelete, onAdd, categoryColors }: {
-  day: number; month: number; year: number; items: PlannerItem[];
-  onClose: () => void; onDelete: (id: string) => void; onAdd: () => void;
-  categoryColors: Record<string, string>;
-}) {
-  const dateLabel = new Date(year, month, day).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  return (
-    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]" style={{ background: SURFACE, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div>
-            <div className="text-sm font-black text-white">{dateLabel}</div>
-            <div className="text-xs text-white/35 mt-0.5">{items.length} idea{items.length !== 1 ? 's' : ''} planned</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={onAdd} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110" style={{ background: GOLD, color: '#000' }}><Plus className="w-3 h-3" /> Add</button>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2" style={{ WebkitOverflowScrolling: 'touch' }}>
-          {items.sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1).map(item => {
-            const col = categoryColors[item.category] || GOLD;
-            return (
-              <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
-                <div className="w-1 self-stretch rounded-full shrink-0 mt-0.5" style={{ background: col }} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-bold text-white leading-snug">{item.title}</span>
-                    {item.sourceLabel && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${col}18`, color: col }}>{item.sourceLabel}</span>}
-                  </div>
-                  {item.notes && <p className="text-xs text-white/40 mt-1 leading-relaxed">{item.notes}</p>}
-                  {item.plannedTime && <div className="flex items-center gap-1 mt-1.5 text-xs text-white/30"><Clock className="w-3 h-3" />{item.plannedTime.slice(0, 5)}</div>}
-                </div>
-                <button onClick={() => onDelete(item.id)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 text-white/20 hover:text-red-400 transition shrink-0"><Trash2 className="w-3.5 h-3.5" /></button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved }: {
-  userId: string | null; initialDate: string;
-  prefilled?: { title: string; notes?: string; category: string; sourceLabel: string };
-  onClose: () => void; onSaved: () => void;
-}) {
-  const [title, setTitle]   = useState(prefilled?.title || '');
-  const [notes, setNotes]   = useState(prefilled?.notes || '');
-  const [date, setDate]     = useState(initialDate);
-  const [time, setTime]     = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState<string | null>(null);
-  const category  = prefilled?.category || 'idea';
-  const sourceLabel = prefilled?.sourceLabel;
-
-  const handleSave = async () => {
-    if (!title.trim()) { setError('Add a title'); return; }
-    if (!date)         { setError('Pick a date'); return; }
-    if (!userId)       { setError('Not logged in'); return; }
-    setSaving(true); setError(null);
-    try {
-      const { error: dbErr } = await supabase.from('content_planner').insert({
-        supabase_user_id: userId, title: title.trim(), notes: notes.trim() || null,
-        planned_date: date, planned_time: time || null, category, source_label: sourceLabel || 'Manual',
-      });
-      if (dbErr) throw new Error(dbErr.message);
-      onSaved();
-    } catch (e: any) { setError(e.message || 'Save failed'); setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-sm rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col" style={{ background: SURFACE, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div className="text-sm font-black text-white">{prefilled ? `Add to Planner — ${prefilled.sourceLabel}` : 'Add Idea to Planner'}</div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="px-5 py-5 space-y-3">
-          <div>
-            <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Title</label>
-            <input value={title} onChange={e => setTitle(e.target.value)} placeholder="What's the idea?" autoFocus
-              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Details, angles…" rows={3}
-              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Date</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="mt-1.5 w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Time <span className="font-normal opacity-50">(opt)</span></label>
-              <input type="time" value={time} onChange={e => setTime(e.target.value)}
-                className="mt-1.5 w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-            </div>
-          </div>
-          {error && <div className="text-xs text-red-300">{error}</div>}
-          <button onClick={handleSave} disabled={saving}
-            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-            style={{ background: GOLD, color: '#000' }}>
-            {saving ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Saving…</span> : 'Save to Planner'}
-          </button>
-        </div>
-      </div>
     </div>
   );
 }
@@ -2158,17 +2282,23 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   const firstDay    = new Date(year, month, 1).getDay();
   const monthName   = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
   const today       = new Date();
-  const CATEGORY_COLORS: Record<string, string> = { idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c' };
 
   const loadItems = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase.from('content_planner').select('*').eq('supabase_user_id', userId)
+      const { data, error } = await supabase
+        .from('content_planner')
+        .select('*')
+        .eq('supabase_user_id', userId)
         .gte('planned_date', `${year}-${String(month + 1).padStart(2, '0')}-01`)
         .lte('planned_date', `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`);
       if (!error && data) {
-        setItems(data.map((r: any) => ({ id: r.id, title: r.title, notes: r.notes, plannedDate: r.planned_date, plannedTime: r.planned_time, category: r.category || 'idea', sourceLabel: r.source_label })));
+        setItems(data.map((r: any) => ({
+          id: r.id, title: r.title, notes: r.notes,
+          plannedDate: r.planned_date, plannedTime: r.planned_time,
+          category: r.category || 'idea', sourceLabel: r.source_label,
+        })));
       }
     } catch (e) {}
     finally { setLoading(false); }
@@ -2178,7 +2308,8 @@ function PlannerPanel({ userId }: { userId: string | null }) {
 
   const itemsOnDay = (day: number) => {
     const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    return items.filter(it => it.plannedDate === dateStr).sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1);
+    return items.filter(it => it.plannedDate === dateStr)
+      .sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1);
   };
 
   const deleteItem = async (id: string) => {
@@ -2187,25 +2318,52 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   };
 
   const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }) => {
-    setPendingItem(item); setAddDate(today.toISOString().split('T')[0]); setRepurposeOpen(false); setAddModalOpen(true);
+    setPendingItem(item);
+    setAddDate(today.toISOString().split('T')[0]);
+    setRepurposeOpen(false);
+    setAddModalOpen(true);
+  };
+
+  const CATEGORY_COLORS: Record<string, string> = {
+    idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c',
   };
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-2">
-          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><ChevronLeft className="w-4 h-4" /></button>
+          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
           <span className="text-sm md:text-base font-bold text-white w-32 md:w-44 text-center">{monthName}</span>
-          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><ChevronRight className="w-4 h-4" /></button>
-          <button onClick={() => setCurrentDate(new Date())} className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition" style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>Today</button>
+          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button onClick={() => setCurrentDate(new Date())}
+            className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition"
+            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+            Today
+          </button>
           {loading && <Loader className="w-4 h-4 animate-spin text-white/20" />}
         </div>
         <div className="flex items-center gap-1.5">
-          <button onClick={() => setRepurposeOpen(true)} className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition hover:bg-white/5" style={{ borderColor: `${GOLD}35`, color: GOLD }}><Sparkles className="w-3.5 h-3.5" /> AI Ideas</button>
-          <button onClick={() => setRepurposeOpen(true)} className="sm:hidden w-9 h-9 rounded-xl flex items-center justify-center border transition hover:bg-white/5" style={{ borderColor: `${GOLD}35`, color: GOLD }}><Sparkles className="w-4 h-4" /></button>
+          <button onClick={() => setRepurposeOpen(true)}
+            className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+            style={{ borderColor: `${GOLD}35`, color: GOLD }}>
+            <Sparkles className="w-3.5 h-3.5" /> AI Ideas
+          </button>
+          <button onClick={() => setRepurposeOpen(true)}
+            className="sm:hidden w-9 h-9 rounded-xl flex items-center justify-center border transition hover:bg-white/5"
+            style={{ borderColor: `${GOLD}35`, color: GOLD }}>
+            <Sparkles className="w-4 h-4" />
+          </button>
           <button onClick={() => { setAddDate(today.toISOString().split('T')[0]); setPendingItem(null); setAddModalOpen(true); }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition hover:brightness-110" style={{ background: GOLD, color: '#000' }}>
-            <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">Add Idea</span>
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Add Idea</span>
           </button>
         </div>
       </div>
@@ -2216,21 +2374,29 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)', WebkitOverflowScrolling: 'touch' }}>
-        {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />)}
+      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
+        {Array.from({ length: firstDay }).map((_, i) => (
+          <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
+        ))}
         {Array.from({ length: daysInMonth }).map((_, i) => {
-          const day       = i + 1;
-          const dayItems  = itemsOnDay(day);
-          const isToday   = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
+          const day      = i + 1;
+          const dayItems = itemsOnDay(day);
+          const isToday  = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
           const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
           const visibleItems = dayItems.slice(0, 2);
           const overflow     = dayItems.length - visibleItems.length;
+
           return (
-            <div key={day} className="border-r border-b p-1 cursor-pointer hover:bg-white/3 transition group relative"
+            <div key={day}
+              className="border-r border-b p-1 cursor-pointer hover:bg-white/3 transition group relative"
               style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
               onClick={() => {
-                if (dayItems.length > 0) { setSelectedDay(day); setDayModalOpen(true); }
-                else { setAddDate(`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`); setPendingItem(null); setAddModalOpen(true); }
+                if (dayItems.length > 0) {
+                  setSelectedDay(day); setDayModalOpen(true);
+                } else {
+                  setAddDate(`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`);
+                  setPendingItem(null); setAddModalOpen(true);
+                }
               }}>
               <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1 shrink-0"
                 style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }}>
@@ -2238,46 +2404,88 @@ function PlannerPanel({ userId }: { userId: string | null }) {
               </div>
               {dayItems.length > 0 && (
                 <div className="md:hidden flex items-center gap-0.5 flex-wrap">
-                  {dayItems.slice(0, 3).map(item => <span key={item.id} className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: CATEGORY_COLORS[item.category] || GOLD }} />)}
-                  {dayItems.length > 3 && <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.3)' }}>+{dayItems.length - 3}</span>}
+                  {dayItems.slice(0, 3).map(item => {
+                    const col = CATEGORY_COLORS[item.category] || GOLD;
+                    return <span key={item.id} className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: col }} />;
+                  })}
+                  {dayItems.length > 3 && (
+                    <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      +{dayItems.length - 3}
+                    </span>
+                  )}
                 </div>
               )}
               <div className="hidden md:block space-y-0.5">
                 {visibleItems.map(item => {
                   const col = CATEGORY_COLORS[item.category] || GOLD;
                   return (
-                    <div key={item.id} className="flex items-center gap-1 rounded px-1 py-0.5" style={{ background: `${col}18` }}>
-                      <span className="text-[9px] shrink-0" style={{ color: `${col}99` }}>{item.plannedTime ? item.plannedTime.slice(0, 5) : ''}</span>
-                      <span className="truncate text-[10px] font-medium leading-tight" style={{ color: col }}>{item.title}</span>
+                    <div key={item.id}
+                      className="flex items-center gap-1 rounded px-1 py-0.5"
+                      style={{ background: `${col}18` }}>
+                      <span className="text-[9px] shrink-0" style={{ color: `${col}99` }}>
+                        {item.plannedTime ? item.plannedTime.slice(0, 5) : ''}
+                      </span>
+                      <span className="truncate text-[10px] font-medium leading-tight" style={{ color: col }}>
+                        {item.title}
+                      </span>
                     </div>
                   );
                 })}
-                {overflow > 0 && <div className="text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>+{overflow} more</div>}
+                {overflow > 0 && (
+                  <div className="text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    +{overflow} more
+                  </div>
+                )}
               </div>
-              {dayItems.length === 0 && <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1"><Plus className="w-2.5 h-2.5 text-white/20" /></div>}
+              {dayItems.length === 0 && (
+                <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
+                  <Plus className="w-2.5 h-2.5 text-white/20" />
+                </div>
+              )}
             </div>
           );
         })}
       </div>
 
       {dayModalOpen && selectedDay !== null && (
-        <DayDetailModal day={selectedDay} month={month} year={year} items={itemsOnDay(selectedDay)} onClose={() => setDayModalOpen(false)} onDelete={deleteItem}
-          onAdd={() => { setAddDate(`${year}-${String(month+1).padStart(2,'0')}-${String(selectedDay).padStart(2,'0')}`); setPendingItem(null); setDayModalOpen(false); setAddModalOpen(true); }}
-          categoryColors={CATEGORY_COLORS} />
+        <DayDetailModal
+          day={selectedDay} month={month} year={year}
+          items={itemsOnDay(selectedDay)}
+          onClose={() => setDayModalOpen(false)}
+          onDelete={deleteItem}
+          onAdd={() => {
+            setAddDate(`${year}-${String(month+1).padStart(2,'0')}-${String(selectedDay).padStart(2,'0')}`);
+            setPendingItem(null); setDayModalOpen(false); setAddModalOpen(true);
+          }}
+          categoryColors={CATEGORY_COLORS}
+        />
       )}
+
       {addModalOpen && (
-        <AddPlannerItemModal userId={userId} initialDate={addDate} prefilled={pendingItem ?? undefined}
-          onClose={() => { setAddModalOpen(false); setPendingItem(null); }} onSaved={() => { setAddModalOpen(false); setPendingItem(null); loadItems(); }} />
+        <AddPlannerItemModal
+          userId={userId}
+          initialDate={addDate}
+          prefilled={pendingItem ?? undefined}
+          onClose={() => { setAddModalOpen(false); setPendingItem(null); }}
+          onSaved={() => { setAddModalOpen(false); setPendingItem(null); loadItems(); }}
+        />
       )}
+
       {repurposeOpen && (
         <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setRepurposeOpen(false)} />
-          <div className="relative w-full md:max-w-xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]" style={{ background: SURFACE, borderColor: BORDER }}>
+          <div className="relative w-full md:max-w-xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            style={{ background: SURFACE, borderColor: BORDER }}>
             <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
-              <div><h2 className="text-base font-bold text-white">♻️ Content Ideas</h2><p className="text-sm text-white/40 mt-0.5">Add directly to your planner</p></div>
+              <div>
+                <h2 className="text-base font-bold text-white">♻️ Content Ideas</h2>
+                <p className="text-sm text-white/40 mt-0.5">Find new angles, add directly to your planner</p>
+              </div>
               <button onClick={() => setRepurposeOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-5" style={{ WebkitOverflowScrolling: 'touch' }}><InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} /></div>
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} />
+            </div>
           </div>
         </div>
       )}
@@ -2285,16 +2493,180 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   );
 }
 
-// ─── ComposerPanel ─────────────────────────────────────────────────────────────
+// ─── DayDetailModal ───────────────────────────────────────────────────────────
+
+function DayDetailModal({ day, month, year, items, onClose, onDelete, onAdd, categoryColors }: {
+  day: number; month: number; year: number;
+  items: PlannerItem[];
+  onClose: () => void;
+  onDelete: (id: string) => void;
+  onAdd: () => void;
+  categoryColors: Record<string, string>;
+}) {
+  const dateLabel = new Date(year, month, day).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  return (
+    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <div className="text-sm font-black text-white">{dateLabel}</div>
+            <div className="text-xs text-white/35 mt-0.5">{items.length} idea{items.length !== 1 ? 's' : ''} planned</div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button onClick={onAdd}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
+              style={{ background: GOLD, color: '#000' }}>
+              <Plus className="w-3 h-3" /> Add
+            </button>
+            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+          {items
+            .sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1)
+            .map(item => {
+              const col = categoryColors[item.category] || GOLD;
+              return (
+                <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                  <div className="w-1 self-stretch rounded-full shrink-0 mt-0.5" style={{ background: col }} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-white leading-snug">{item.title}</span>
+                      {item.sourceLabel && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${col}18`, color: col }}>
+                          {item.sourceLabel}
+                        </span>
+                      )}
+                    </div>
+                    {item.notes && <p className="text-xs text-white/40 mt-1 leading-relaxed">{item.notes}</p>}
+                    {item.plannedTime && (
+                      <div className="flex items-center gap-1 mt-1.5 text-xs text-white/30">
+                        <Clock className="w-3 h-3" />
+                        {item.plannedTime.slice(0, 5)}
+                      </div>
+                    )}
+                  </div>
+                  <button onClick={() => onDelete(item.id)}
+                    className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 text-white/20 hover:text-red-400 transition shrink-0">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              );
+            })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── AddPlannerItemModal ──────────────────────────────────────────────────────
+
+function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved }: {
+  userId: string | null;
+  initialDate: string;
+  prefilled?: { title: string; notes?: string; category: string; sourceLabel: string };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle]       = useState(prefilled?.title || '');
+  const [notes, setNotes]       = useState(prefilled?.notes || '');
+  const [date, setDate]         = useState(initialDate);
+  const [time, setTime]         = useState('');
+  const [saving, setSaving]     = useState(false);
+  const [error, setError]       = useState<string | null>(null);
+  const category                = prefilled?.category || 'idea';
+  const sourceLabel             = prefilled?.sourceLabel;
+
+  const handleSave = async () => {
+    if (!title.trim()) { setError('Add a title for this idea'); return; }
+    if (!date)         { setError('Pick a date'); return; }
+    if (!userId)       { setError('Not logged in'); return; }
+    setSaving(true); setError(null);
+    try {
+      const { error: dbErr } = await supabase.from('content_planner').insert({
+        supabase_user_id: userId,
+        title: title.trim(),
+        notes: notes.trim() || null,
+        planned_date: date,
+        planned_time: time || null,
+        category,
+        source_label: sourceLabel || 'Manual',
+      });
+      if (dbErr) throw new Error(dbErr.message);
+      onSaved();
+    } catch (e: any) { setError(e.message || 'Save failed'); setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-sm rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div className="text-sm font-black text-white">
+            {prefilled ? `Add to Planner: ${prefilled.sourceLabel}` : 'Add Idea to Planner'}
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="px-5 py-5 space-y-3">
+          <div>
+            <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Title</label>
+            <input value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="What's the idea?" autoFocus
+              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
+              style={{ borderColor: BORDER }} />
+          </div>
+          <div>
+            <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)}
+              placeholder="Any details, angles, references…" rows={3}
+              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none"
+              style={{ borderColor: BORDER }} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Date</label>
+              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                className="mt-1.5 w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                style={{ borderColor: BORDER, colorScheme: 'dark' }} />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Time <span className="font-normal opacity-50">(optional)</span></label>
+              <input type="time" value={time} onChange={e => setTime(e.target.value)}
+                className="mt-1.5 w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                style={{ borderColor: BORDER, colorScheme: 'dark' }} />
+            </div>
+          </div>
+          {error && <div className="text-xs text-red-300">{error}</div>}
+          <button onClick={handleSave} disabled={saving}
+            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
+            {saving ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Saving…</span> : 'Save to Planner'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ComposerPanel ────────────────────────────────────────────────────────────
+// Two-column layout: Create Post (left) | Content Ideas (right)
+// No "Your Channels" section — that's in the sidebar.
 
 function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
-  const [logOpen, setLogOpen]           = useState(false);
-  const [logFilter, setLogFilter]       = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
-  const [posts, setPosts]               = useState<ScheduledPost[]>([]);
-  const [loading, setLoading]           = useState(false);
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [addDate]                       = useState(() => new Date().toISOString().split('T')[0]);
-  const [pendingItem, setPendingItem]   = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
+  const [logOpen, setLogOpen]             = useState(false);
+  const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
+  const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]             = useState(false);
+  const [addModalOpen, setAddModalOpen]   = useState(false);
+  const [addDate]                         = useState(() => new Date().toISOString().split('T')[0]);
+  const [pendingItem, setPendingItem]     = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
 
   const loadPosts = useCallback(async () => {
     if (!userId) return;
@@ -2305,7 +2677,10 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => { const scheduledAt = new Date(p.scheduledAt); return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) }; }));
+      setPosts(list.map((p: any) => {
+        const scheduledAt = new Date(p.scheduledAt);
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) };
+      }));
     } catch (e) {}
     finally { setLoading(false); }
   }, [userId]);
@@ -2319,53 +2694,80 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
   };
 
   const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }) => {
-    setPendingItem(item); setAddModalOpen(true);
+    setPendingItem(item);
+    setAddModalOpen(true);
   };
 
   return (
     <div className="flex flex-col h-full">
+
+      {/* ── Stat counters ── */}
       <div className="grid grid-cols-3 border-b shrink-0" style={{ borderColor: BORDER }}>
         {([
           { key: 'scheduled' as const, label: 'Scheduled', color: GOLD },
           { key: 'published' as const, label: 'Published',  color: '#22c55e' },
           { key: 'failed'    as const, label: 'Failed',     color: '#ef4444' },
         ]).map((s, i) => (
-          <button key={s.key} onClick={() => { setLogFilter(s.key); setLogOpen(true); }}
-            className={`flex flex-col items-center justify-center py-3 md:py-4 transition hover:bg-white/4 ${i < 2 ? 'border-r' : ''}`} style={{ borderColor: BORDER }}>
-            <div className="text-xl md:text-2xl font-black" style={{ color: s.color }}>{loading ? <Loader className="w-4 h-4 animate-spin opacity-30" /> : counts[s.key]}</div>
+          <button key={s.key}
+            onClick={() => { setLogFilter(s.key); setLogOpen(true); }}
+            className={`flex flex-col items-center justify-center py-3 md:py-4 transition hover:bg-white/4 ${i < 2 ? 'border-r' : ''}`}
+            style={{ borderColor: BORDER }}>
+            <div className="text-xl md:text-2xl font-black" style={{ color: s.color }}>
+              {loading ? <Loader className="w-4 h-4 animate-spin opacity-30" /> : counts[s.key]}
+            </div>
             <div className="text-[10px] md:text-xs font-semibold text-white/30 mt-0.5">{s.label}</div>
             <div className="text-[9px] text-white/20 mt-0.5">View log →</div>
           </button>
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+      {/* ── Main two-column layout ── */}
+      <div className="flex-1 overflow-y-auto">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x min-h-full" style={{ '--tw-divide-opacity': 1 } as any}>
+
+          {/* Left column: Create Post */}
           <div className="px-4 md:px-6 py-6 space-y-1" style={{ borderColor: BORDER }}>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
                 <Send className="w-4 h-4 text-black" />
               </div>
-              <div><div className="text-sm font-black text-white">Create Post</div><div className="text-xs text-white/35">Write, upload & schedule</div></div>
+              <div>
+                <div className="text-sm font-black text-white">Create Post</div>
+                <div className="text-xs text-white/35">Write, upload & schedule to your channels</div>
+              </div>
             </div>
             <InlinePostComposer integrations={integrations} userId={userId} onSuccess={loadPosts} />
           </div>
+
+          {/* Right column: Content Ideas */}
           <div className="px-4 md:px-6 py-6 border-t lg:border-t-0" style={{ borderColor: BORDER }}>
             <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'linear-gradient(135deg, #a78bfa, #7c3aed)' }}>
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: `linear-gradient(135deg, #a78bfa, #7c3aed)` }}>
                 <Sparkles className="w-4 h-4 text-white" />
               </div>
-              <div><div className="text-sm font-black text-white">Content Ideas</div><div className="text-xs text-white/35">Generate & save to planner</div></div>
+              <div>
+                <div className="text-sm font-black text-white">Content Ideas</div>
+                <div className="text-xs text-white/35">Generate or add ideas, save to your planner</div>
+              </div>
             </div>
             <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} />
           </div>
         </div>
       </div>
 
+      {/* Modals */}
       <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} />
+
       {addModalOpen && (
-        <AddPlannerItemModal userId={userId} initialDate={addDate} prefilled={pendingItem ?? undefined}
-          onClose={() => { setAddModalOpen(false); setPendingItem(null); }} onSaved={() => { setAddModalOpen(false); setPendingItem(null); }} />
+        <AddPlannerItemModal
+          userId={userId}
+          initialDate={addDate}
+          prefilled={pendingItem ?? undefined}
+          onClose={() => { setAddModalOpen(false); setPendingItem(null); }}
+          onSaved={() => { setAddModalOpen(false); setPendingItem(null); }}
+        />
       )}
     </div>
   );
@@ -2398,7 +2800,10 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
       const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
       const data  = res.ok ? await res.json() : { posts: [] };
       const list  = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => { const scheduledAt = new Date(p.scheduledAt); return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) }; }));
+      setPosts(list.map((p: any) => {
+        const scheduledAt = new Date(p.scheduledAt);
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) };
+      }));
     } catch (e) {}
     finally { setLoading(false); }
   }, [userId, year, month]);
@@ -2406,34 +2811,51 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
   const STATUS_COLOR = (s: string) => s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
-  const STATUS_BG    = (s: string) => s === 'published' ? 'rgba(34,197,94,0.12)' : s === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`;
 
   const postsOnDay = (day: number) =>
-    posts.filter(p => { const d = p.scheduledAt; return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day; })
-      .sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+    posts.filter(p => {
+      const d = p.scheduledAt;
+      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+    }).sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-1.5">
-          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><ChevronLeft className="w-4 h-4" /></button>
+          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <ChevronLeft className="w-4 h-4" />
+          </button>
           <span className="text-sm md:text-base font-bold text-white w-32 md:w-44 text-center">{monthName}</span>
-          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><ChevronRight className="w-4 h-4" /></button>
-          <button onClick={() => setCurrentDate(new Date())} className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition" style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>Today</button>
+          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
+            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button onClick={() => setCurrentDate(new Date())}
+            className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition"
+            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+            Today
+          </button>
           {loading && <Loader className="w-4 h-4 animate-spin text-white/20" />}
         </div>
         <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
-          className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold transition hover:brightness-110" style={{ background: GOLD, color: '#000' }}>
-          <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" /><span className="hidden sm:inline">New Post</span>
+          className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold transition hover:brightness-110"
+          style={{ background: GOLD, color: '#000' }}>
+          <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
+          <span className="hidden sm:inline">New Post</span>
         </button>
       </div>
 
       <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>)}
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
+        ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)', WebkitOverflowScrolling: 'touch' }}>
-        {Array.from({ length: firstDay }).map((_, i) => <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />)}
+      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
+        {Array.from({ length: firstDay }).map((_, i) => (
+          <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
+        ))}
         {Array.from({ length: daysInMonth }).map((_, i) => {
           const day       = i + 1;
           const dayPosts  = postsOnDay(day);
@@ -2441,22 +2863,41 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
           const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
           const dotPosts  = dayPosts.slice(0, 4);
           const overflow  = dayPosts.length - dotPosts.length;
+
           return (
-            <div key={day} className="border-r border-b p-1.5 transition hover:bg-white/3 group cursor-pointer relative"
+            <div key={day}
+              className="border-r border-b p-1.5 transition hover:bg-white/3 group cursor-pointer relative"
               style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
-              onClick={() => dayPosts.length > 0 ? (setSelectedDay(day), setDayLogOpen(true)) : (setComposerDate(new Date(year, month, day, 10, 0)), setComposerOpen(true))}>
+              onClick={() => dayPosts.length > 0
+                ? (setSelectedDay(day), setDayLogOpen(true))
+                : (setComposerDate(new Date(year, month, day, 10, 0)), setComposerOpen(true))}>
               <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1.5"
                 style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.55)' }}>
                 {day}
               </div>
               {dayPosts.length > 0 && (
                 <div className="flex flex-wrap gap-0.5 items-center">
-                  {dotPosts.map(post => <span key={post.id} className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: STATUS_COLOR(post.status) }} />)}
-                  {overflow > 0 && <span className="text-[8px] font-bold" style={{ color: 'rgba(255,255,255,0.3)', lineHeight: 1 }}>+{overflow}</span>}
+                  {dotPosts.map(post => (
+                    <span key={post.id} className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ background: STATUS_COLOR(post.status) }} />
+                  ))}
+                  {overflow > 0 && (
+                    <span className="text-[8px] font-bold" style={{ color: 'rgba(255,255,255,0.3)', lineHeight: 1 }}>
+                      +{overflow}
+                    </span>
+                  )}
                 </div>
               )}
-              {dayPosts.length > 0 && <div className="mt-1 text-[9px] font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</div>}
-              {dayPosts.length === 0 && <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1"><Plus className="w-2.5 h-2.5 text-white/20" /></div>}
+              {dayPosts.length > 0 && (
+                <div className="mt-1 text-[9px] font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>
+                  {dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}
+                </div>
+              )}
+              {dayPosts.length === 0 && (
+                <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
+                  <Plus className="w-2.5 h-2.5 text-white/20" />
+                </div>
+              )}
             </div>
           );
         })}
@@ -2464,30 +2905,51 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
 
       {dayLogOpen && selectedDay !== null && (() => {
         const dayPosts  = postsOnDay(selectedDay);
-        const dateLabel = new Date(year, month, selectedDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        const dateLabel = new Date(year, month, selectedDay)
+          .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        const STATUS_COLOR2 = (s: string) => s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
+        const STATUS_BG2    = (s: string) => s === 'published' ? 'rgba(34,197,94,0.12)' : s === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`;
         return (
           <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setDayLogOpen(false)} />
-            <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]" style={{ background: SURFACE, borderColor: BORDER }}>
+            <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+              style={{ background: SURFACE, borderColor: BORDER }}>
               <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-                <div><div className="text-sm font-black text-white">{dateLabel}</div><div className="text-xs text-white/35 mt-0.5">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</div></div>
+                <div>
+                  <div className="text-sm font-black text-white">{dateLabel}</div>
+                  <div className="text-xs text-white/35 mt-0.5">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</div>
+                </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => { setComposerDate(new Date(year, month, selectedDay, 10, 0)); setDayLogOpen(false); setComposerOpen(true); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition" style={{ background: GOLD, color: '#000' }}><Plus className="w-3 h-3" /> Add Post</button>
-                  <button onClick={() => setDayLogOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition"
+                    style={{ background: GOLD, color: '#000' }}>
+                    <Plus className="w-3 h-3" /> Add Post
+                  </button>
+                  <button onClick={() => setDayLogOpen(false)}
+                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2" style={{ WebkitOverflowScrolling: 'touch' }}>
+              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
                 {dayPosts.map(post => (
                   <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
                     <div className="flex -space-x-1 shrink-0 pt-0.5">
-                      {post.platforms.slice(0, 3).map((pid, i2) => <div key={i2} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>)}
+                      {post.platforms.slice(0, 3).map((pid, i2) => (
+                        <div key={i2} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
+                          <PlatformIcon id={pid} size="sm" />
+                        </div>
+                      ))}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
-                      <div className="flex items-center gap-1.5 mt-1 text-xs text-white/25"><Clock className="w-3 h-3" />{post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</div>
+                      <div className="flex items-center gap-1.5 mt-1 text-xs text-white/25">
+                        <Clock className="w-3 h-3" />
+                        {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </div>
                     </div>
-                    <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0" style={{ background: STATUS_BG(post.status), color: STATUS_COLOR(post.status) }}>
+                    <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
+                      style={{ background: STATUS_BG2(post.status), color: STATUS_COLOR2(post.status) }}>
                       {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
                     </span>
                   </div>
@@ -2498,15 +2960,17 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
         );
       })()}
 
+      {/* Calendar New Post modal — uses regular modal for calendar view */}
       {composerOpen && (
         <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setComposerOpen(false)} />
-          <div className="relative w-full md:max-w-2xl flex flex-col border overflow-hidden shadow-2xl rounded-t-2xl md:rounded-2xl max-h-[92vh]" style={{ background: SURFACE, borderColor: BORDER }}>
+          <div className="relative w-full md:max-w-2xl flex flex-col border overflow-hidden shadow-2xl rounded-t-2xl md:rounded-2xl max-h-[92vh] md:max-h-[90vh]"
+            style={{ background: SURFACE, borderColor: BORDER }}>
             <div className="flex items-center justify-between px-4 md:px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
               <h2 className="text-base font-bold text-white">Create Post</h2>
               <button onClick={() => setComposerOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 md:p-6" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="flex-1 overflow-y-auto p-4 md:p-6">
               <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); setComposerOpen(false); }} />
             </div>
           </div>
@@ -2533,10 +2997,14 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
       <aside className="hidden md:flex w-52 shrink-0 flex-col border-r h-full overflow-hidden" style={{ background: SURFACE, borderColor: BORDER }}>
         <div className="px-5 py-5 border-b" style={{ borderColor: BORDER }}>
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
               <Send className="w-4 h-4 text-black" />
             </div>
-            <div className="leading-none"><div className="text-xs font-black text-white">MEDIA</div><div className="text-xs font-bold mt-0.5" style={{ color: GOLD }}>MACHINE</div></div>
+            <div className="leading-none">
+              <div className="text-xs font-black text-white">MEDIA</div>
+              <div className="text-xs font-bold mt-0.5" style={{ color: GOLD }}>MACHINE</div>
+            </div>
           </div>
         </div>
         <nav className="px-3 py-4 space-y-0.5">
@@ -2551,17 +3019,27 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
         <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: BORDER }}>
           <div className="flex items-center justify-between px-1 mb-2">
             <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Channels</span>
-            <button onClick={onOpenConnect} className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><Plus className="w-3.5 h-3.5" /></button>
+            <button onClick={onOpenConnect} className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
+              <Plus className="w-3.5 h-3.5" />
+            </button>
           </div>
           {integrations.length === 0 ? (
-            <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5" style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}><Plus className="w-3.5 h-3.5" /> Add channels</button>
+            <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
+              style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
+              <Plus className="w-3.5 h-3.5" /> Add channels
+            </button>
           ) : (
-            <div className="space-y-0.5 max-h-44 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+            <div className="space-y-0.5 max-h-44 overflow-y-auto">
               {integrations.map(int => (
                 <div key={int.id} className="group flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/5 transition">
                   <PlatformIcon id={int.profile || int.identifier} size="sm" />
                   <span className="text-xs text-white/50 truncate flex-1">{int.name}</span>
-                  <button onClick={onOpenConnect} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition" title="Disconnect"><Link2Off className="w-3 h-3 text-red-400/60 hover:text-red-400" /></button>
+                  <button
+                    onClick={onOpenConnect}
+                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"
+                    title="Disconnect">
+                    <Link2Off className="w-3 h-3 text-red-400/60 hover:text-red-400" />
+                  </button>
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0 md:group-hover:hidden" />
                 </div>
               ))}
@@ -2576,14 +3054,21 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
           <button key={item.id} onClick={() => setView(item.id)}
             className="relative flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
             style={{ color: view === item.id ? GOLD : 'rgba(255,255,255,0.35)' }}>
-            {view === item.id && <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full" style={{ background: GOLD }} />}
-            {item.icon}<span className="text-[10px] font-bold tracking-wide">{item.label}</span>
+            {view === item.id && (
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full" style={{ background: GOLD }} />
+            )}
+            {item.icon}
+            <span className="text-[10px] font-bold tracking-wide">{item.label}</span>
           </button>
         ))}
-        <button onClick={onOpenConnect} className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
+
+        <button onClick={onOpenConnect}
+          className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
           style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
           <Link2 className="w-5 h-5" />
-          <span className="text-[10px] font-bold tracking-wide">{integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}</span>
+          <span className="text-[10px] font-bold tracking-wide">
+            {integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}
+          </span>
         </button>
       </nav>
     </>
@@ -2592,22 +3077,16 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
 
 // ─── UserMenu ─────────────────────────────────────────────────────────────────
 
-function UserMenu({ user, onSignOut, subscription, onManagePlan }: {
-  user: { email: string; fullName?: string }; onSignOut: () => void;
-  subscription?: { plan: string; status: string } | null;
-  onManagePlan?: () => void;
-}) {
+function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { email: string }; onSignOut: () => void; subscription?: { plan: string; status: string } | null; onManagePlan?: () => void }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
-  const initials = user.fullName ? user.fullName.split(' ').map((n: string) => n[0]).join('').slice(0,2).toUpperCase() : user.email.slice(0, 2).toUpperCase();
-
+  const initials = user.email.slice(0, 2).toUpperCase();
   React.useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
-
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button onClick={() => setOpen(v => !v)}
@@ -2615,13 +3094,14 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: {
         <div style={{ width: 26, height: 26, borderRadius: 7, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#0d0d0d', flexShrink: 0 }}>
           {initials}
         </div>
-        <span className="hidden sm:block" style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{(user as any).fullName || user.email}</span>
-        {subscription?.status === 'active' ? (
+        <span className="hidden sm:block" style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
+        {subscription?.status === 'active' && (
           <button onClick={onManagePlan} title="Manage subscription"
             style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', letterSpacing: '0.06em', textTransform: 'uppercase', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
             {subscription.plan}
           </button>
-        ) : (
+        )}
+        {(!subscription || subscription.status !== 'active') && user && (
           <button onClick={onManagePlan} title="Upgrade plan"
             style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em', textTransform: 'uppercase', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', flexShrink: 0 }}>
             upgrade
@@ -2630,31 +3110,32 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: {
         <ChevronDown className="w-3 h-3 hidden sm:block" style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, borderRadius: 12, background: 'linear-gradient(160deg, #1a1a1a, #161616)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 200 }}>
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, borderRadius: 12, background: 'linear-gradient(160deg, #1a1a1a, #161616)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 200, animation: 'dropIn 0.15s cubic-bezier(0.34,1.56,0.64,1)' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Signed in as</div>
-            {user.fullName && <div style={{ fontSize: 13, color: 'white', fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.fullName}</div>}
-            <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.45)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
+            <div style={{ fontSize: 13, color: 'white', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
           </div>
           <div style={{ padding: '6px' }}>
             <button onClick={() => { setOpen(false); onSignOut(); }}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fca5a5', background: 'transparent', border: 'none', cursor: 'pointer' }}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fca5a5', background: 'transparent', border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
               onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.12)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
               <LogOut className="w-3.5 h-3.5" /> Sign Out
             </button>
           </div>
         </div>
       )}
+      <style>{`@keyframes dropIn { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }`}</style>
     </div>
   );
 }
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
-function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, user, onSignOut, onSignIn, subscription, onManagePlan }: {
+function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect, user, onSignOut, onSignIn, subscription, onManagePlan }: {
   integrations: PostizIntegration[]; integrationsLoading: boolean;
-  onRefresh: (force?: boolean) => void; onOpenConnect: () => void;
+  onConnect: () => void; onDisconnect: () => void; onRefresh: (force?: boolean) => void; onOpenConnect: () => void;
   user: { email: string } | null; onSignOut: () => void; onSignIn: () => void;
   subscription?: { plan: string; status: string } | null;
   onManagePlan?: () => void;
@@ -2663,10 +3144,12 @@ function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, u
     <div className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
       <div className="flex items-center gap-3">
         <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-white transition">
-          <ArrowLeft className="w-3.5 h-3.5" /><span className="hidden sm:inline">Back</span>
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Back</span>
         </Link>
         <div className="flex md:hidden items-center gap-2">
-          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
+          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
             <Send className="w-3 h-3 text-black" />
           </div>
           <span className="text-xs font-black tracking-widest text-white">MEDIA <span style={{ color: GOLD }}>MACHINE</span></span>
@@ -2685,7 +3168,6 @@ function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, u
               className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition disabled:opacity-30">
               <RefreshCw className={`w-3.5 h-3.5 ${integrationsLoading ? 'animate-spin' : ''}`} />
             </button>
-            {/* ── THE FIX: Check subscription before opening connect modal ── */}
             <button onClick={onOpenConnect}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
               style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
@@ -2697,7 +3179,9 @@ function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, u
           <button onClick={onSignIn}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
-            Sign In
+            <Link2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Already have an account? Sign In to Connect</span>
+            <span className="sm:hidden">Sign In</span>
           </button>
         )}
       </div>
@@ -2705,7 +3189,7 @@ function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, u
   );
 }
 
-// ─── Main export ──────────────────────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
@@ -2724,7 +3208,7 @@ export function MediaDistributionPage() {
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [authModalOpen, setAuthModalOpen]       = useState(false);
   const { user: authUser, signOut }             = useAuth();
-  const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '', fullName: (authUser as any).user_metadata?.full_name ?? (authUser as any).user_metadata?.name ?? '' } : null;
+  const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
   useEffect(() => {
     if (window.location.hash.includes('access_token')) {
@@ -2764,10 +3248,25 @@ export function MediaDistributionPage() {
     }
   }, [currentUserId]);
 
-  // Detect return from Ayrshare social connect (popup closed or full redirect)
-  // Fires whenever currentUserId becomes available AND social return flag is set
   useEffect(() => {
-    if (!currentUserId) return;
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        const isSocialReturn = (() => {
+          try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1'; }
+          catch { return false; }
+        })();
+        if (isSocialReturn) {
+          try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+          setTimeout(() => loadIntegrations(true), 1500);
+          setConnectModalOpen(false);
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [loadIntegrations]);
+
+  useEffect(() => {
     const isSocialReturn = (() => {
       try {
         return (
@@ -2782,40 +3281,10 @@ export function MediaDistributionPage() {
         localStorage.removeItem('ayrshare_connected');
       } catch {}
       window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(() => loadIntegrations(true), 1500);
       setConnectModalOpen(false);
-      // Retry fetching channels several times to account for Ayrshare processing delay
-      let attempts = 0;
-      const retry = setInterval(() => {
-        attempts++;
-        loadIntegrations(true);
-        if (attempts >= 4) clearInterval(retry);
-      }, 2000);
     }
-  }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fallback: visibilitychange for cases where popup sets the flag without closing cleanly
-  useEffect(() => {
-    const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        const isSocialReturn = (() => {
-          try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1'; }
-          catch { return false; }
-        })();
-        if (isSocialReturn) {
-          try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
-          setConnectModalOpen(false);
-          let attempts = 0;
-          const retry = setInterval(() => {
-            attempts++;
-            loadIntegrations(true);
-            if (attempts >= 4) clearInterval(retry);
-          }, 2000);
-        }
-      }
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [loadIntegrations]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const openConnectModal = () => setConnectModalOpen(true);
 
@@ -2829,14 +3298,8 @@ export function MediaDistributionPage() {
 
   const handleDisconnect = () => {
     try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+    setIntegrations([]);
     setOauthError(null);
-    // Force-refresh channels from Ayrshare after disconnect with retries
-    let attempts = 0;
-    const retry = setInterval(() => {
-      attempts++;
-      loadIntegrations(true);
-      if (attempts >= 3) clearInterval(retry);
-    }, 2000);
   };
 
   const handleCheckout = async (plan: string) => {
@@ -2926,8 +3389,6 @@ export function MediaDistributionPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
         * { box-sizing: border-box; }
-* { -webkit-tap-highlight-color: transparent; }
-body { overscroll-behavior: none; touch-action: pan-y; }
         html, body {
           background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
           min-height: 100vh;
@@ -2974,7 +3435,7 @@ body { overscroll-behavior: none; touch-action: pan-y; }
 
       {/* ── STATE 1: Logged out — simple hero + sign in/up ── */}
       {!currentUser ? (
-        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative', WebkitOverflowScrolling: 'touch' }}>
+        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
           <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '35%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
           <div className="relative flex flex-col items-center justify-center min-h-full" style={{ padding: 'clamp(40px, 8vw, 80px) clamp(16px, 5vw, 32px)', animation: 'mmFadeUp 0.5s ease both' }}>
             {/* Logo */}
@@ -3011,11 +3472,11 @@ body { overscroll-behavior: none; touch-action: pan-y; }
 
       ) : (
         /* ── STATES 2 & 3: Logged in — always show dashboard ── */
-        <div className="flex flex-col flex-1 min-h-0">
+        <div className="flex flex-col flex-1 overflow-hidden">
           {/* Upgrade banner — only shown when no active subscription */}
           {subscription?.status !== 'active' && (
             <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>{currentUser?.fullName ? `✨ Welcome, ${currentUser.fullName.split(' ')[0]}!` : '✨ Free preview'}</span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
               <button onClick={() => setPricingOpen(true)}
                 style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
@@ -3023,14 +3484,15 @@ body { overscroll-behavior: none; touch-action: pan-y; }
               </button>
             </div>
           )}
-          <div className="flex flex-1 min-h-0">
-            <Sidebar view={view} setView={setView} integrations={integrations}
-              onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
-            <main className="flex-1 overflow-y-auto overflow-x-hidden pb-[60px] md:pb-0 md:overflow-hidden" style={{ position: 'relative' }}>
-              {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
-              {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
-              {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
-            </main>
+          <div className="flex flex-1 overflow-hidden">
+          <Sidebar view={view} setView={setView} integrations={integrations}
+            onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
+          <main className="flex-1 overflow-hidden pb-[60px] md:pb-0" style={{ position: 'relative' }}>
+
+            {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
+          </main>
           </div>
         </div>
       )}
@@ -3046,38 +3508,38 @@ body { overscroll-behavior: none; touch-action: pan-y; }
               <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Every plan includes full AI content generation, multi-platform scheduling, and the content strategy engine.</p>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
-              {[
-                { name: 'Starter', price: '$47', per: '/mo', features: ['1 social profile', 'AI captions', 'Scheduling', 'Calendar'], highlight: false },
-                { name: 'Creator', price: '$97', per: '/mo', features: ['5 social profiles', 'AI captions & ideas', 'Analytics', 'Repurposing'], highlight: true },
-                { name: 'Agency',  price: '$199', per: '/mo', features: ['15 social profiles', 'Everything in Creator', 'Client mgmt', 'Priority support'], highlight: false },
-              ].map(pkg => {
-                const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
-                const isLoading = checkoutLoading === pkg.name.toLowerCase();
-                return (
-                  <div key={pkg.name} style={{ borderRadius: 16, padding: 'clamp(12px, 3vw, 22px) clamp(10px, 2.5vw, 16px)', background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)', border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none' }}>
-                    {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
-                    {pkg.highlight && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 20, background: GOLD, color: '#000', textTransform: 'uppercase' }}>Popular</span>}
-                    <div style={{ fontSize: 9, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{pkg.name}</div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginBottom: 8 }}>
-                      <span style={{ fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em', lineHeight: 1 }}>{pkg.price}</span>
-                      <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+                {[
+                  { name: 'Starter', price: '$47', per: '/mo', features: ['1 social profile', 'AI captions', 'Scheduling', 'Calendar'], highlight: false },
+                  { name: 'Creator', price: '$97', per: '/mo', features: ['5 social profiles', 'AI captions & ideas', 'Analytics', 'Repurposing'], highlight: true },
+                  { name: 'Agency', price: '$199', per: '/mo', features: ['15 social profiles', 'Everything in Creator', 'Client mgmt', 'Priority support'], highlight: false },
+                ].map(pkg => {
+                  const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
+                  const isLoading = checkoutLoading === pkg.name.toLowerCase();
+                  return (
+                    <div key={pkg.name} style={{ borderRadius: 16, padding: 'clamp(12px, 3vw, 22px) clamp(10px, 2.5vw, 16px)', background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)', border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none' }}>
+                      {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
+                      {pkg.highlight && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 20, background: GOLD, color: '#000', textTransform: 'uppercase' }}>Popular</span>}
+                      <div style={{ fontSize: 9, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{pkg.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginBottom: 8 }}>
+                        <span style={{ fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em', lineHeight: 1 }}>{pkg.price}</span>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+                      </div>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {pkg.features.map(f => (
+                          <li key={f} style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                            <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>&#10003;</span>{f}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        onClick={() => isCurrentPlan ? handlePortal() : handleCheckout(pkg.name.toLowerCase())}
+                        disabled={isLoading || portalLoading}
+                        style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: isLoading ? 0.6 : 1 }}>
+                        {isLoading ? 'Loading...' : isCurrentPlan ? '&#10003; Current Plan' : 'Subscribe'}
+                      </button>
                     </div>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                      {pkg.features.map(f => (
-                        <li key={f} style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-                          <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>&#10003;</span>{f}
-                        </li>
-                      ))}
-                    </ul>
-                    <button
-                      onClick={() => isCurrentPlan ? handlePortal() : handleCheckout(pkg.name.toLowerCase())}
-                      disabled={isLoading || portalLoading}
-                      style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: isLoading ? 0.6 : 1 }}>
-                      {isLoading ? 'Loading...' : isCurrentPlan ? '✓ Current Plan' : 'Subscribe'}
-                    </button>
-                  </div>
-                );
-              })}
+                  );
+                })}
             </div>
 
             {/* Promo Code */}
@@ -3099,9 +3561,10 @@ body { overscroll-behavior: none; touch-action: pan-y; }
                   {promoLoading ? '...' : 'Apply'}
                 </button>
               </div>
-              {promoError   && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: '#f87171', textAlign: 'center' }}>{promoError}</div>}
+              {promoError && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: '#f87171', textAlign: 'center' }}>{promoError}</div>}
               {promoSuccess && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: 'rgb(74,222,128)', textAlign: 'center' }}>{promoSuccess}</div>}
             </div>
+
           </div>
         </div>
       )}
@@ -3117,7 +3580,9 @@ body { overscroll-behavior: none; touch-action: pan-y; }
       <MediaMachineAuthModal
         open={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
-        onSuccess={() => { setAuthModalOpen(false); }}
+        onSuccess={() => {
+          setAuthModalOpen(false);
+        }}
       />
     </div>
   );
