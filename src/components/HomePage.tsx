@@ -22,12 +22,12 @@ const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI, Alex speaking, ho
 
 const useCases = [
   {
-    scenario: 'A lead calls at midnight. Your AI agent answers, qualifies them, and books the appointment — without you lifting a finger.',
+    scenario: 'A lead calls at midnight. Your AI agent answers, qualifies them, and books the appointment without you lifting a finger.',
     service: 'AI Phone Agents',
     icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'Your sales rep is busy. AI dials the prospect list, handles objections, and hands off only the interested ones — warm and ready to close.',
+    scenario: 'Your sales rep is busy. AI dials the prospect list, handles objections, and hands off only the interested ones, warm and ready to close.',
     service: 'AI Phone Agents',
     icon: <Phone className="h-4 w-4" />,
   },
@@ -414,7 +414,7 @@ export function HomePage() {
             {submitStatus === 'success' ? (
               <div className="text-center py-12">
                 <div className="bg-green-400/10 w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle className="h-12 w-12 text-green-400" /></div>
-                <h4 className="text-3xl font-bold mb-6">You're In — Let's Build.</h4>
+                <h4 className="text-3xl font-bold mb-6">You're In. Let's Build.</h4>
                 <p className="text-lg text-gray-300 mb-8">Your custom AI agent is being built. Test it out here:</p>
                 <a href={createdSlug ? `https://infinitewealthsolutionsai.com/demo/${createdSlug}` : 'https://infinitewealthsolutionsai.com/demo'}
                   target="_blank" rel="noopener noreferrer"
@@ -560,7 +560,7 @@ export function HomePage() {
             </div>
             <div className="p-5">
               <div className="text-center min-h-[420px] flex flex-col items-center justify-center">
-                <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>Alex — AI Voice Agent</h3>
+                <h3 className="text-xl font-bold mb-2" style={{ color: GOLD_PRIMARY }}>Alex, AI Voice Agent</h3>
                 <p className="text-gray-300">
                   {voiceStatus === 'connecting' && 'Connecting…'}
                   {voiceStatus === 'live' && 'Live. Speak normally.'}
