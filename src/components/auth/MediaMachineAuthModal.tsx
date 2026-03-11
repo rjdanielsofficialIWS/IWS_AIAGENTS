@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, Sparkles } from 'lucide-react';
+import { X, Mail, Lock, Eye, EyeOff, Loader2, ArrowRight, Sparkles, User } from 'lucide-react';
 import { supabase } from '../../services/vapiAI';
 
 const GOLD   = '#D6B25E';
@@ -16,6 +16,7 @@ type Mode = 'signin' | 'signup' | 'forgot';
 
 export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
   const [mode, setMode]           = useState<Mode>('signin');
+  const [fullName, setFullName]   = useState('');
   const [email, setEmail]         = useState('');
   const [password, setPassword]   = useState('');
   const [confirm, setConfirm]     = useState('');
@@ -34,7 +35,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
   if (!open) return null;
 
   const reset = () => {
-    setEmail(''); setPassword(''); setConfirm('');
+    setFullName(''); setEmail(''); setPassword(''); setConfirm('');
     setError(null); setSuccess(null); setLoading(false);
   };
 
@@ -58,6 +59,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
       return;
     }
 
+    if (mode === 'signup' && !fullName.trim()) { setError('Please enter your full name.'); return; }
     if (mode === 'signup' && password !== confirm) { setError('Passwords do not match.'); return; }
     if (mode !== 'forgot' && password.length < 6) { setError('Password must be at least 6 characters.'); return; }
 
@@ -68,7 +70,11 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
         if (error) throw error;
         onSuccess();
       } else {
-        const { error } = await supabase.auth.signUp({ email, password });
+        const { error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { full_name: fullName.trim() } },
+        });
         if (error) throw error;
         setSuccess('Check your email to confirm your account, then sign in.');
         setMode('signin');
@@ -247,6 +253,15 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
 
           {/* Form */}
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+            {/* Full Name — signup only */}
+            {mode === 'signup' && (
+              <InputField
+                type="text" value={fullName} onChange={setFullName}
+                placeholder="Full name" icon={<User size={14} />}
+              />
+            )}
+
             <InputField
               type="email" value={email} onChange={setEmail}
               placeholder="Email address" icon={<Mail size={14} />}
@@ -349,7 +364,7 @@ function InputField({ type, value, onChange, placeholder, icon, suffix }: {
       </span>
       <input
         type={type} value={value} onChange={e => onChange(e.target.value)}
-        placeholder={placeholder} required
+        placeholder={placeholder}
         onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
         style={{
           flex: 1, paddingLeft: 36, paddingRight: suffix ? 36 : 14,
