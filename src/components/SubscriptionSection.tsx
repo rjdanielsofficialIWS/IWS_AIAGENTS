@@ -71,16 +71,28 @@ const plans: Plan[] = [
   },
 ];
 
-function PlanCTA({ cta, className }: { cta: Plan['cta']; className: string }) {
+const GOLD = '#C8A24A';
+const GOLD_L = '#E3C36A';
+const GOLD_D = '#8F6B1E';
+
+function PlanCTA({ cta, popular }: { cta: Plan['cta']; popular: boolean }) {
+  const className = popular
+    ? 'w-full py-3 rounded-xl font-bold text-sm text-center transition-all duration-300 transform hover:scale-[1.02] block text-black'
+    : 'w-full py-3 rounded-xl font-bold text-sm text-center transition-all duration-300 transform hover:scale-[1.02] block';
+
+  const style = popular
+    ? { background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000' }
+    : { background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.12)' };
+
   if (cta.external) {
     return (
-      <a href={cta.href} target="_blank" rel="noopener noreferrer" className={className}>
+      <a href={cta.href} target="_blank" rel="noopener noreferrer" className={className} style={style}>
         {cta.label}
       </a>
     );
   }
   return (
-    <Link to={cta.href} className={className}>
+    <Link to={cta.href} className={className} style={style}>
       {cta.label}
     </Link>
   );
@@ -104,28 +116,51 @@ export function SubscriptionSection() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
           {plans.map((plan) => {
-            const cardClass = plan.popular
-              ? 'relative rounded-2xl p-8 flex flex-col bg-gradient-to-br from-[#C8A24A]/15 to-gray-900/80 border-2 border-[#C8A24A]/60'
-              : 'relative rounded-2xl p-8 flex flex-col bg-gradient-to-br from-gray-800/50 to-gray-900/50 border border-gray-700/50';
-
-            const ctaClass = plan.popular
-              ? 'w-full py-3 rounded-xl font-bold text-sm text-center transition-all duration-300 transform hover:scale-[1.02] block bg-[#C8A24A] hover:bg-[#E3C36A] text-black'
-              : 'w-full py-3 rounded-xl font-bold text-sm text-center transition-all duration-300 transform hover:scale-[1.02] block border border-[#C8A24A]/40 text-[#C8A24A] hover:bg-[#C8A24A]/10';
+            const cardStyle = plan.popular
+              ? {
+                  background: `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)`,
+                  border: `1px solid ${GOLD}60`,
+                  boxShadow: `0 12px 48px ${GOLD}25`,
+                }
+              : {
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.09)',
+                };
 
             return (
-              <div key={plan.name} className={cardClass}>
+              <div
+                key={plan.name}
+                className="relative rounded-2xl p-8 flex flex-col overflow-hidden"
+                style={cardStyle}
+              >
+                {/* Popular gold top line */}
+                {plan.popular && (
+                  <div
+                    className="absolute top-0 left-0 right-0 h-[2px]"
+                    style={{ background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }}
+                  />
+                )}
+
                 {plan.popular && (
                   <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-[#C8A24A] text-black text-xs font-black px-4 py-1 rounded-full whitespace-nowrap">
+                    <span className="text-xs font-black px-4 py-1 rounded-full whitespace-nowrap" style={{ background: GOLD, color: '#000' }}>
                       MOST POPULAR
                     </span>
                   </div>
                 )}
 
                 <div className="mb-6">
-                  <h3 className="text-xl font-bold mb-3 text-white">{plan.name}</h3>
+                  <h3
+                    className="text-sm font-bold mb-3 uppercase tracking-widest"
+                    style={{ color: plan.popular ? GOLD_L : 'rgba(255,255,255,0.4)' }}
+                  >
+                    {plan.name}
+                  </h3>
                   <div className="flex items-baseline gap-1">
-                    <span className={`font-black text-[#C8A24A] ${plan.price.startsWith('From') ? 'text-3xl' : 'text-4xl'}`}>
+                    <span
+                      className={`font-black ${plan.price.startsWith('From') ? 'text-3xl' : 'text-4xl'}`}
+                      style={{ color: plan.popular ? GOLD_L : 'white' }}
+                    >
                       {plan.price}
                     </span>
                     {plan.period && (
@@ -137,13 +172,13 @@ export function SubscriptionSection() {
                 <ul className="space-y-3 mb-8 flex-1">
                   {plan.features.map((feature) => (
                     <li key={feature} className="flex items-start gap-3">
-                      <Check className="h-4 w-4 text-[#C8A24A] mt-0.5 shrink-0" />
-                      <span className="text-gray-300 text-sm">{feature}</span>
+                      <span className="mt-0.5 shrink-0 text-sm" style={{ color: plan.popular ? GOLD : 'rgba(255,255,255,0.3)' }}>✓</span>
+                      <span className="text-sm" style={{ color: 'rgba(255,255,255,0.6)' }}>{feature}</span>
                     </li>
                   ))}
                 </ul>
 
-                <PlanCTA cta={plan.cta} className={ctaClass} />
+                <PlanCTA cta={plan.cta} popular={plan.popular} />
               </div>
             );
           })}
