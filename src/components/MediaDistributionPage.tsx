@@ -27,10 +27,10 @@ const VIRAL_ANGLES = [
   'bold contrarian take that challenges common wisdom',
   'personal story with a surprising or emotional twist',
   'specific number or stat that stops the scroll',
-  'open loop hook \u2014 tease the payoff without giving it away',
+  'open loop hook — tease the payoff without giving it away',
   'relatable pain point that makes the reader feel seen',
   'before/after transformation framing',
-  'curiosity gap \u2014 what most people get wrong about X',
+  'curiosity gap — what most people get wrong about X',
   'social proof or authority positioning',
   'direct call-to-action with urgency or scarcity',
   'listicle with an unexpected final item',
@@ -196,7 +196,7 @@ async function uploadViaNativeXHR(
             resolve(data.url);
           } catch (e: any) { reject(new Error('Invalid upload response: ' + e.message)); }
         } else {
-          reject(new Error(`Upload failed: ${xhr.status} \u2014 ${xhr.responseText.slice(0, 200)}`));
+          reject(new Error(`Upload failed: ${xhr.status} — ${xhr.responseText.slice(0, 200)}`));
         }
       };
       xhr.onerror = () => reject(new Error('Network error during upload'));
@@ -500,7 +500,7 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
       </div>
       <div className="px-3 py-2.5">
         <p className="text-xs text-white/50 leading-relaxed whitespace-pre-wrap break-words">
-          {expanded || !isLong ? transcript : transcript.slice(0, PREVIEW_LENGTH) + '\u2026'}
+          {expanded || !isLong ? transcript : transcript.slice(0, PREVIEW_LENGTH) + '…'}
         </p>
         {isLong && (
           <button onClick={() => setExpanded(v => !v)} className="mt-2 flex items-center gap-1 text-xs font-bold transition hover:brightness-125" style={{ color: GOLD }}>
@@ -738,7 +738,7 @@ function ConnectAccountsModal({
           <button onClick={handleConnect} disabled={connecting}
             className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110 disabled:opacity-50"
             style={{ background: GOLD, color: '#000' }}>
-            {connecting ? <><Loader className="w-4 h-4 animate-spin" /> Opening\u2026</> : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
+            {connecting ? <><Loader className="w-4 h-4 animate-spin" /> Opening…</> : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
           </button>
           <p className="text-xs text-white/30 text-center">Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more</p>
         </div>
@@ -810,7 +810,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
           {loading && posts.length === 0 ? (
-            <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading\u2026</div>
+            <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading…</div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-center">
               <div className="text-sm font-bold text-white/25">No {filter === 'all' ? '' : filter} posts found</div>
@@ -961,13 +961,13 @@ function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: Fi
       </div>
       {(uploadState.status === 'preparing' || uploadState.status === 'uploading') && (
         <div className="px-3 py-2 border-t" style={{ borderColor: BORDER }}>
-          {uploadState.status === 'preparing' && <div className="flex items-center gap-2 text-xs text-white/40"><Loader className="w-3 h-3 animate-spin shrink-0" /> Preparing\u2026</div>}
+          {uploadState.status === 'preparing' && <div className="flex items-center gap-2 text-xs text-white/40"><Loader className="w-3 h-3 animate-spin shrink-0" /> Preparing…</div>}
           {uploadState.status === 'uploading' && (
             <div className="space-y-1">
               <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                 <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(uploadState as any).progress ?? 0}%` }} />
               </div>
-              <div className="text-[10px] text-white/30">Uploading\u2026 {(uploadState as any).progress ?? 0}%</div>
+              <div className="text-[10px] text-white/30">Uploading… {(uploadState as any).progress ?? 0}%</div>
             </div>
           )}
         </div>
@@ -979,7 +979,7 @@ function VideoPreviewCard({ file, objectUrl, uploadState, onRemove }: { file: Fi
       )}
       {uploadState.status === 'done' && (
         <div className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] text-green-400 border-t" style={{ borderColor: BORDER }}>
-          <CheckCircle2 className="w-3 h-3" /> Uploaded \u2014 ready to post
+          <CheckCircle2 className="w-3 h-3" /> Uploaded — ready to post
         </div>
       )}
     </div>
@@ -1135,7 +1135,7 @@ function SavedPostCard({ post, textPostAccounts, isEditing, editText, onEditStar
         <button onClick={handlePost} disabled={posting || selectedAccounts.length === 0}
           className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition disabled:opacity-40 hover:brightness-110 shrink-0"
           style={{ background: postOk ? '#22c55e' : GOLD, color: '#000' }}>
-          {posting ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Posting\u2026</>
+          {posting ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Posting…</>
             : postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Done!</>
             : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
         </button>
@@ -1488,7 +1488,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
             <div className="space-y-3">
               <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
                 <textarea value={content} onChange={e => setContent(e.target.value)}
-                  placeholder={isYouTubeSelected ? 'Write your YouTube description here\u2026' : 'Write your caption here\u2026'} rows={5}
+                  placeholder={isYouTubeSelected ? 'Write your YouTube description here…' : 'Write your caption here…'} rows={5}
                   className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
                 <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
                   <span className="text-xs" style={{ color: content.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length} chars</span>
@@ -1497,7 +1497,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
               {isYouTubeSelected && (
                 <div className="space-y-2">
                   <div className="text-xs font-bold text-white/30 uppercase tracking-wider">YouTube Title <span className="text-red-400">*</span></div>
-                  <input value={youTubeTitle} onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))} placeholder="Video title (required for YouTube)\u2026" maxLength={100}
+                  <input value={youTubeTitle} onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))} placeholder="Video title (required for YouTube)…" maxLength={100}
                     className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none" style={{ borderColor: youTubeTitle ? `${GOLD}50` : BORDER }} />
                 </div>
               )}
@@ -1517,29 +1517,29 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                 </div>
                 {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">\u26a0\ufe0f Add a video above first</div>}
                 {captionMode === 'from_description' && (
-                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)} placeholder="Describe your video or content\u2026" rows={3}
+                  <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)} placeholder="Describe your video or content…" rows={3}
                     className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
                 )}
-                <input value={aiTone} onChange={e => setAiTone(e.target.value)} placeholder="Tone (optional): casual, alex hormozi, luxury\u2026"
+                <input value={aiTone} onChange={e => setAiTone(e.target.value)} placeholder="Tone (optional): casual, alex hormozi, luxury…"
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
                 <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
-                  {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Generating\u2026</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions</>}
+                  {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Generating…</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions</>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
                 {transcript && <TranscriptViewer transcript={transcript} />}
               </div>
               {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
                 <div className="border-t px-4 pb-4 pt-3 space-y-3" style={{ borderColor: BORDER }}>
-                  <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-green-400" /><span className="text-xs font-bold text-white/40 uppercase tracking-wider">Captions ready \u2014 edit then post</span></div>
+                  <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 text-green-400" /><span className="text-xs font-bold text-white/40 uppercase tracking-wider">Captions ready — edit then post</span></div>
                   {isYouTubeSelected && (
                     <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${PLATFORMS.youtube.color}30` }}>
                       <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: `${PLATFORMS.youtube.color}20`, background: PLATFORMS.youtube.bg }}>
                         <PlatformIcon id="youtube" size="sm" />
                         <span className="text-xs font-bold" style={{ color: PLATFORMS.youtube.color }}>YouTube Title</span>
                       </div>
-                      <input value={youTubeTitle} onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))} placeholder="Video title (required)\u2026" maxLength={100}
+                      <input value={youTubeTitle} onChange={e => setYouTubeTitle(e.target.value.slice(0, 100))} placeholder="Video title (required)…" maxLength={100}
                         className="w-full bg-transparent px-3 py-2.5 text-xs text-white/80 outline-none" style={{ background: 'rgba(0,0,0,0.15)' }} />
                     </div>
                   )}
@@ -1592,7 +1592,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
 
           {!showTextAi && (
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-              <textarea value={xText} onChange={e => setXText(e.target.value)} placeholder="Write your post here\u2026" rows={6}
+              <textarea value={xText} onChange={e => setXText(e.target.value)} placeholder="Write your post here…" rows={6}
                 className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none" />
               <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
                 <span className="text-xs text-white/20">{xText.length} chars</span>
@@ -1640,16 +1640,16 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
                   </div>
                 ))}
                 {textAiMode === 'from_description' && (
-                  <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)} placeholder="Describe what you want to post about\u2026" rows={3}
+                  <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)} placeholder="Describe what you want to post about…" rows={3}
                     className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
                 )}
-                <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)} placeholder="Tone (optional): casual, alex hormozi, luxury\u2026"
+                <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)} placeholder="Tone (optional): casual, alex hormozi, luxury…"
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
                 {textAiError && <div className="text-xs text-red-300 px-1">{textAiError}</div>}
                 <button onClick={handleTextAiGenerate} disabled={textAiLoading}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
-                  {textAiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Generating\u2026</> : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
+                  {textAiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Generating…</> : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
                 </button>
 
                 {textAiPosts && (
@@ -1756,7 +1756,7 @@ function InlinePostComposer({ integrations, userId, onSuccess }: {
         disabled={submitting || (postType === 'media' && submitOk)}
         className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-        {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting\u2026</>
+        {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
           : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
           : postType === 'media' ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
           : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
@@ -1850,7 +1850,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
           </div>
           <div>
             <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
-            <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Any angles, references\u2026" rows={3}
+            <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)} placeholder="Any angles, references…" rows={3}
               className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
           </div>
           <div>
@@ -1898,17 +1898,17 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
             </div>
           ))}
           {captionMode === 'from_description' && (
-            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe your video \u2014 main points, takeaways\u2026" rows={4}
+            <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe your video — main points, takeaways…" rows={4}
               className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
           )}
-          <input value={tone} onChange={e => setTone(e.target.value)} placeholder="Tone (optional): casual, luxury, professional\u2026"
+          <input value={tone} onChange={e => setTone(e.target.value)} placeholder="Tone (optional): casual, luxury, professional…"
             className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
           {error && <div className="text-xs text-red-300">{error}</div>}
           {!ideas && (
             <button onClick={handleAiGenerate} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
               style={{ background: GOLD, color: '#000' }}>
-              {loading ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Generating\u2026</span>
+              {loading ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Generating…</span>
                 : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
             </button>
           )}
@@ -2102,7 +2102,7 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full md:max-w-sm rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col" style={{ background: SURFACE, borderColor: BORDER }}>
         <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div className="text-sm font-black text-white">{prefilled ? `Add to Planner \u2014 ${prefilled.sourceLabel}` : 'Add Idea to Planner'}</div>
+          <div className="text-sm font-black text-white">{prefilled ? `Add to Planner — ${prefilled.sourceLabel}` : 'Add Idea to Planner'}</div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
         <div className="px-5 py-5 space-y-3">
@@ -2113,7 +2113,7 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
           </div>
           <div>
             <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Details, angles\u2026" rows={3}
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Details, angles…" rows={3}
               className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -2132,7 +2132,7 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
           <button onClick={handleSave} disabled={saving}
             className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
-            {saving ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Saving\u2026</span> : 'Save to Planner'}
+            {saving ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Saving…</span> : 'Save to Planner'}
           </button>
         </div>
       </div>
@@ -2679,7 +2679,7 @@ function TopBar({ integrations, integrationsLoading, onRefresh, onOpenConnect, u
             {integrations.length > 0 && (
               <div className="hidden sm:flex items-center gap-1.5 text-xs text-green-400 font-semibold mr-1">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                <span>{integrationsLoading ? 'Syncing\u2026' : `${integrations.length} channel${integrations.length !== 1 ? 's' : ''}`}</span>
+                <span>{integrationsLoading ? 'Syncing…' : `${integrations.length} channel${integrations.length !== 1 ? 's' : ''}`}</span>
               </div>
             )}
             <button onClick={() => onRefresh()} disabled={integrationsLoading}
