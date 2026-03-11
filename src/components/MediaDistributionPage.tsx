@@ -1597,7 +1597,7 @@ function InlinePostComposer({
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready — click Generate below</div>}
                 {captionMode === 'from_description' && (
                   <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
-                    placeholder="Describe your video or content — topic, key points, your offer…" rows={3}
+                    placeholder="Describe your video or content. Topic, key points, your offer…" rows={3}
                     className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
                 )}
                 <input value={aiTone} onChange={e => setAiTone(e.target.value)}
@@ -1703,7 +1703,7 @@ function InlinePostComposer({
               <textarea
                 value={xText}
                 onChange={e => setXText(e.target.value)}
-                placeholder="Write your post here — will be sent to all selected accounts above…"
+                placeholder="Write your post here. It will be sent to all selected accounts above."
                 rows={6}
                 className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
               />
@@ -1766,7 +1766,7 @@ function InlinePostComposer({
                 )}
                 {textAiMode === 'from_description' && (
                   <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
-                    placeholder="Describe what you want to post about — topic, key points, your offer…" rows={3}
+                    placeholder="Describe what you want to post about. Topic, key points, your offer…" rows={3}
                     className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
                 )}
                 <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
@@ -2133,7 +2133,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
           )}
           {captionMode === 'from_description' && (
             <textarea value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="Describe your video — what you talked about, main points, key takeaways…" rows={4}
+              placeholder="Describe your video. What you talked about, main points, key takeaways…" rows={4}
               className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
           )}
           <input value={tone} onChange={e => setTone(e.target.value)}
@@ -3445,7 +3445,7 @@ export function MediaDistributionPage() {
               One video. Thirty pieces of content. Every platform.
             </p>
             <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', margin: '0 0 36px', lineHeight: 1.6, textAlign: 'center', maxWidth: 380 }}>
-              Upload a video and Media Machine handles the rest — transcript extraction, AI caption generation, platform scheduling, and future content strategy. All automatic.
+              Upload a video and Media Machine handles the rest. Transcript extraction, AI caption generation, platform scheduling, and future content strategy. All automatic.
             </p>
             {/* Feature pills */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 40, maxWidth: 440 }}>
