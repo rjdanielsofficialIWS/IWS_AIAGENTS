@@ -3372,7 +3372,7 @@ export function MediaDistributionPage() {
         integrations={integrations} integrationsLoading={integrationsLoading}
         onConnect={handleConnect} onDisconnect={handleDisconnect}
         onRefresh={(force) => loadIntegrations(force)}
-        onOpenConnect={() => setConnectModalOpen(true)}
+        onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)}
         user={currentUser}
         onSignOut={handleSignOut}
         onSignIn={() => setAuthModalOpen(true)}
