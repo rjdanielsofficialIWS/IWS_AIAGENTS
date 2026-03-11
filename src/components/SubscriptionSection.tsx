@@ -18,7 +18,7 @@ const plans: Plan[] = [
     period: '/mo',
     popular: false,
     features: [
-      'Answers calls 24/7 — after-hours & while busy',
+      'Answers calls 24/7, after-hours and while busy',
       'Books jobs & captures lead details',
       'Transfers urgent calls when needed',
       'Call summaries + basic analytics',
@@ -57,7 +57,7 @@ const plans: Plan[] = [
     popular: false,
     features: [
       'Modern, high-converting design',
-      'Built from scratch — no templates',
+      'Built from scratch, no templates',
       'Mobile-optimized & SEO-friendly',
       'Fast loading & performance tuned',
       'Custom integrations & automations',
