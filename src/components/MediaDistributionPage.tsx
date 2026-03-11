@@ -3130,10 +3130,12 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { ema
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
-function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect, user, onSignOut, onSignIn }: {
+function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect, user, onSignOut, onSignIn, subscription, onManagePlan }: {
   integrations: PostizIntegration[]; integrationsLoading: boolean;
   onConnect: () => void; onDisconnect: () => void; onRefresh: (force?: boolean) => void; onOpenConnect: () => void;
   user: { email: string } | null; onSignOut: () => void; onSignIn: () => void;
+  subscription?: { plan: string; status: string } | null;
+  onManagePlan?: () => void;
 }) {
   return (
     <div className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
