@@ -2329,7 +2329,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-2">
           <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
@@ -2374,7 +2374,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-0 grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
         ))}
@@ -2699,7 +2699,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
 
       {/* ── Stat counters ── */}
       <div className="grid grid-cols-3 border-b shrink-0" style={{ borderColor: BORDER }}>
@@ -2722,7 +2722,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
       </div>
 
       {/* ── Main two-column layout ── */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x min-h-full" style={{ '--tw-divide-opacity': 1 } as any}>
 
           {/* Left column: Create Post */}
@@ -2819,7 +2819,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
     }).sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-1.5">
           <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
@@ -2852,7 +2852,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-0 grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
         ))}
@@ -3770,7 +3770,7 @@ export function MediaDistributionPage() {
           <div className="flex flex-1 overflow-hidden">
           <Sidebar view={view} setView={setView} integrations={integrations}
             onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
-          <main className="flex-1 overflow-hidden pb-[60px] md:pb-0" style={{ position: 'relative' }}>
+          <main className="flex-1 flex flex-col min-h-0" style={{ position: 'relative' }}>
 
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
