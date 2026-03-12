@@ -393,24 +393,25 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
   });
 }
 
-async function transcribeVideo(videoFile: File): Promise<string> {
+async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
   let transcribeRes: Response;
+  const authHeaders = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
 
   if (videoFile.size <= 5 * 1024 * 1024) {
     const form = new FormData();
     form.append('file', videoFile, videoFile.name);
-    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', headers: authHeaders, body: form });
   } else {
     const audioBlob = await extractAudioFromVideo(videoFile);
     if (audioBlob.size <= 5 * 1024 * 1024) {
       const form = new FormData();
       form.append('file', audioBlob, 'audio.wav');
-      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', body: form });
+      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', headers: authHeaders, body: form });
     } else {
       const videoUrl = await uploadViaNativeXHR(audioBlob, 'video');
       transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ videoUrl }),
       });
     }
@@ -418,7 +419,8 @@ async function transcribeVideo(videoFile: File): Promise<string> {
 
   if (!transcribeRes.ok) {
     const err = await transcribeRes.json().catch(() => ({}));
-    throw new Error(err.error || 'Transcription failed');
+    if (err.error === 'limit_reached') throw new Error(err.message);
+    throw new Error(err.error || 'AI analysis failed');
   }
   const { transcript } = await transcribeRes.json();
   return transcript;
@@ -499,7 +501,7 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}20`, background: 'rgba(0,0,0,0.25)' }}>
       <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: BORDER }}>
-        <span className="text-xs font-bold text-white/30 uppercase tracking-wider">Transcript</span>
+        <span className="text-xs font-bold text-white/30 uppercase tracking-wider">AI Analysis</span>
         <span className="text-xs text-white/20">{transcript.length} chars</span>
       </div>
       <div className="px-3 py-2.5">
@@ -514,7 +516,7 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
           >
             {expanded
               ? <><ChevronUp className="w-3.5 h-3.5" /> Show less</>
-              : <><ChevronDown className="w-3.5 h-3.5" /> Read full transcript</>}
+              : <><ChevronDown className="w-3.5 h-3.5" /> View full analysis</>}
           </button>
         )}
       </div>
@@ -661,6 +663,7 @@ function ConnectAccountsModal({
               ? <><Loader className="w-4 h-4 animate-spin" /> Opening…</>
               : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
           </button>
+          {connecting && <p className="text-xs text-white/25 text-center -mt-1">May take up to 30 seconds</p>}
 
           <p className="text-xs text-white/30 text-center">
             Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
@@ -1153,13 +1156,16 @@ function SavedPostCard({
           {postOk  && <p className="text-xs text-green-400 font-bold">✓ {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</p>}
           <span className="text-[10px] text-white/20">{activeText.length} chars</span>
         </div>
-        <button onClick={handlePost} disabled={posting || selectedAccounts.length === 0}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition disabled:opacity-40 hover:brightness-110 shrink-0"
-          style={{ background: postOk ? '#22c55e' : GOLD, color: '#000' }}>
-          {posting ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Posting…</>
-            : postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Done!</>
-            : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
-        </button>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <button onClick={handlePost} disabled={posting || selectedAccounts.length === 0}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition disabled:opacity-40 hover:brightness-110"
+            style={{ background: postOk ? '#22c55e' : GOLD, color: '#000' }}>
+            {posting ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Posting…</>
+              : postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Done!</>
+              : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
+          </button>
+          {posting && <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>May take up to 30 seconds</p>}
+        </div>
       </div>
 
     </div>
@@ -1222,6 +1228,29 @@ function InlinePostComposer({
   const [transcript, setTranscript]     = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
   const [youTubeTitle, setYouTubeTitle] = useState('');
+  const [usageData, setUsageData]       = useState<{ used: number; limit: number; postsUsed: number; postsLimit: number; plan: string } | null>(null);
+
+  React.useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.ok) {
+          const d = await res.json();
+          setUsageData({
+            used: d.usage?.ai_analyses_used ?? 0,
+            limit: d.limits?.ai_analyses_per_month ?? 0,
+            postsUsed: d.usage?.posts_scheduled ?? 0,
+            postsLimit: d.limits?.posts_per_month ?? 0,
+            plan: d.plan ?? 'free',
+          });
+        }
+      } catch (e) { /* silent */ }
+    })();
+  }, [userId]);
 
   const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
   const [xText, setXText]               = useState('');
@@ -1274,16 +1303,18 @@ function InlinePostComposer({
       let sourceText = '';
       if (captionMode === 'from_video') {
         if (!videoFile) throw new Error('Add a video using the Video button above first');
-        sourceText = await transcribeVideo(videoFile);
+        const { data: { session: txSession } } = await supabase.auth.getSession();
+        sourceText = await transcribeVideo(videoFile, txSession?.access_token ?? '');
         setTranscript(sourceText);
       } else {
         if (!aiDescription.trim()) throw new Error('Enter a description of your video');
         sourceText = aiDescription;
       }
       const mode = captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description';
+      const { data: { session: capSession } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone, viralAngles: VIRAL_ANGLES }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession?.access_token ?? ''}` },
+        body: JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
       });
       if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
@@ -1300,17 +1331,23 @@ function InlinePostComposer({
       let source = '';
       if (textAiMode === 'from_video') {
         if (!textAiVideo) throw new Error('Select a video first');
-        source = await transcribeVideo(textAiVideo);
+        const { data: { session: txSession2 } } = await supabase.auth.getSession();
+        source = await transcribeVideo(textAiVideo, txSession2?.access_token ?? '');
       } else {
         if (!textAiDesc.trim()) throw new Error('Enter a description');
         source = textAiDesc;
       }
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone, viralAngles: VIRAL_ANGLES }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone }),
       });
-      if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
+      if (data.error === 'upgrade_required') {
+        setTextAiError('upgrade_required');
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || 'Generation failed');
       if (!data.posts) throw new Error('No posts returned');
       setTextAiPosts(data.posts);
     } catch (e: any) { setTextAiError(e.message || 'Something went wrong'); }
@@ -1588,14 +1625,14 @@ function InlinePostComposer({
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
               <div className="px-4 pt-4 pb-3 space-y-3">
                 <div className="flex gap-2">
-                  {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                  {([['from_video', '🎙 Analyze Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                     <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
                       style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}12` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
                       {label}
                     </button>
                   ))}
                 </div>
-                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first. AI will transcribe it to write captions</div>}
+                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first. AI will analyze it to write captions</div>}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready. Click Generate below</div>}
                 {captionMode === 'from_description' && (
@@ -1607,10 +1644,22 @@ function InlinePostComposer({
                   placeholder="Tone (optional): casual, alex hormozi, luxury, funny…"
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
                 {selectedIntegrations.length === 0 && <div className="text-xs text-amber-400/70 px-1">⚠️ Select at least one channel above to generate captions for those platforms</div>}
+                {usageData && usageData.plan !== 'free' && usageData.limit !== -1 && (
+                  <div className="flex items-center gap-2 px-1">
+                    <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                      <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (usageData.used / usageData.limit) * 100)}%`, background: usageData.used >= usageData.limit ? '#ef4444' : usageData.used / usageData.limit > 0.8 ? '#f59e0b' : GOLD }} />
+                    </div>
+                    <span style={{ fontSize: 10, color: usageData.used >= usageData.limit ? '#ef4444' : 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap' }}>
+                      {usageData.used}/{usageData.limit} analyses
+                    </span>
+                  </div>
+                )}
                 <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
-                  {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Transcribing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
+                  {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Analyzing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
+                </button>
+                {aiLoading && <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>This may take up to 30 seconds</p>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
                 {transcript && <TranscriptViewer transcript={transcript} />}
@@ -1744,7 +1793,7 @@ function InlinePostComposer({
 
                 {/* Source mode */}
                 <div className="flex gap-2">
-                  {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+                  {([['from_video', '🎙 Analyze Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                     <button key={m} onClick={() => setTextAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
                       style={{ borderColor: textAiMode === m ? GOLD : BORDER, background: textAiMode === m ? `${GOLD}12` : 'transparent', color: textAiMode === m ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
                       {label}
@@ -1775,14 +1824,23 @@ function InlinePostComposer({
                 <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
                   placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-                {textAiError && <div className="text-xs text-red-300 px-1">{textAiError}</div>}
+                {textAiError && textAiError === 'upgrade_required' ? (
+                  <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator & Agency Feature</div>
+                    <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>The Content Repurposing Engine is available on Creator and Agency plans.</p>
+                    <button onClick={() => setPricingOpen(true)} className="px-4 py-2 rounded-lg text-xs font-bold transition hover:brightness-110" style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>Upgrade to Unlock</button>
+                  </div>
+                ) : textAiError ? (
+                  <div className="text-xs text-red-300 px-1">{textAiError}</div>
+                ) : null}
                 <button onClick={handleTextAiGenerate} disabled={textAiLoading}
                   className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
                   {textAiLoading
-                    ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Transcribing…' : 'Generating…'}</>
+                    ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Analyzing…' : 'Generating…'}</>
                     : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
                 </button>
+                {textAiLoading && <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: -4 }}>May take up to 30 seconds</p>}
 
                 {textAiPosts && (
                   <div className="space-y-3 pt-1">
@@ -1946,6 +2004,7 @@ function InlinePostComposer({
             ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
             : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
       </button>
+      {submitting && <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: -4 }}>May take up to 30 seconds</p>}
     </div>
   );
 }
@@ -2010,17 +2069,20 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
       let source = '';
       if (captionMode === 'from_video') {
         if (!videoFile) throw new Error('Select a video first');
-        source = await transcribeVideo(videoFile);
+        const { data: { session: txSession3 } } = await supabase.auth.getSession();
+        source = await transcribeVideo(videoFile, txSession3?.access_token ?? '');
       } else {
         if (!description.trim()) throw new Error('Enter a description of your video');
         source = description;
       }
+      const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone, viralAngles: VIRAL_ANGLES }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone }),
       });
-      if (!res.ok) throw new Error('Generation failed');
       const data = await res.json();
+      if (data.error === 'upgrade_required') { setError('upgrade_required'); return; }
+      if (!res.ok) throw new Error(data.error || 'Generation failed');
       setIdeas(data.ideas);
     } catch (e: any) { setError(e.message || 'Something went wrong'); }
     finally { setLoading(false); }
@@ -2112,7 +2174,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
       {mode === 'ai' && (
         <div className="space-y-3">
           <div className="flex gap-2">
-            {([['from_video', '🎙 From Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
+            {([['from_video', '🎙 Analyze Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
               <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
                 style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
                 {label}
@@ -2142,14 +2204,18 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
           <input value={tone} onChange={e => setTone(e.target.value)}
             placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
             className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-          {error && <div className="text-xs text-red-300">{error}</div>}
+          {error && error === 'upgrade_required' ? (<div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}><div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator &amp; Agency Feature</div><p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>The Content Repurposing Engine is available on Creator and Agency plans.</p><button onClick={() => setPricingOpen(true)} className="px-4 py-2 rounded-lg text-xs font-bold" style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>Upgrade to Unlock</button></div>) : error ? (<div className="text-xs text-red-300">{error}</div>) : null}
           {!ideas && (
             <button onClick={handleAiGenerate} disabled={loading}
               className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
               style={{ background: GOLD, color: '#000' }}>
               {loading
-                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Processing & Transcribing…' : 'Generating Ideas…'}</span>
+                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Analyzing Video…' : 'Generating Ideas…'}</span>
                 : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
+              </button>
+              {/* 30s fine print shown during loading */}
+              <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 3, minHeight: 14 }}>
+                {captionMode === 'from_video' ? 'May take up to 30 seconds' : ''}
             </button>
           )}
 
@@ -3722,11 +3788,11 @@ export function MediaDistributionPage() {
               One video. Thirty pieces of content. Every platform.
             </p>
             <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', margin: '0 0 36px', lineHeight: 1.6, textAlign: 'center', maxWidth: 380 }}>
-              Upload a video and Media Machine handles the rest. Transcript extraction, AI caption generation, platform scheduling, and future content strategy. All automatic.
+              Upload a video and Media Machine handles the rest. AI video analysis, caption generation, platform scheduling, and content strategy. All automatic.
             </p>
             {/* Feature pills */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 40, maxWidth: 440 }}>
-              {['📅 Auto-Schedule', '🤖 AI Captions', '♻️ Content Repurposing', '💡 Strategy AI'].map(f => (
+              {['🤖 AI Video Analysis', '✍️ Platform Captions', '♻️ Content Repurposing', '📅 Smart Scheduling', '💡 Strategy Planner'].map(f => (
                 <span key={f} style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{f}</span>
               ))}
             </div>
@@ -3788,14 +3854,14 @@ export function MediaDistributionPage() {
           <div className="mm-pricing-sheet" style={{ width: '100%', maxWidth: 820, background: '#111', borderRadius: '20px 20px 0 0', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', padding: 'clamp(20px, 5vw, 36px) clamp(16px, 5vw, 36px)', position: 'relative', maxHeight: '92dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
             <button onClick={() => setPricingOpen(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&#10005;</button>
             <div style={{ textAlign: 'center', marginBottom: 28 }}>
-              <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 6, letterSpacing: '-0.02em' }}>Choose Your Growth Plan</div>
-              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Every plan includes full AI content generation, multi-platform scheduling, and the content strategy engine.</p>
+              <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 6, letterSpacing: '-0.02em' }}>Choose Your Plan</div>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Every plan includes AI video analysis, caption generation, content repurposing, scheduling, and the content planner.</p>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
                 {[
-                  { name: 'Starter', price: '$47', per: '/mo', features: ['1 social profile', 'AI captions', 'Scheduling', 'Calendar'], highlight: false },
-                  { name: 'Creator', price: '$97', per: '/mo', features: ['5 social profiles', 'AI captions & ideas', 'Analytics', 'Repurposing'], highlight: true },
-                  { name: 'Agency', price: '$199', per: '/mo', features: ['15 social profiles', 'Everything in Creator', 'Client mgmt', 'Priority support'], highlight: false },
+                  { name: 'Starter', price: '$47', per: '/mo', features: ['10 AI video analyses/mo', '30 scheduled posts/mo', 'Up to 3 platforms per post', 'AI caption generation', 'Content calendar'], highlight: false },
+                  { name: 'Creator', price: '$97', per: '/mo', features: ['40 AI video analyses/mo', '150 scheduled posts/mo', 'All platforms, no limits', 'AI captions + repurposing engine', 'Content planner + strategy AI'], highlight: true },
+                  { name: 'Agency', price: '$199', per: '/mo', features: ['Unlimited AI video analyses', 'Unlimited scheduled posts', 'All platforms, no limits', 'Everything in Creator', 'Priority support + onboarding call'], highlight: false },
                 ].map(pkg => {
                   const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
                   const isLoading = checkoutLoading === pkg.name.toLowerCase();
@@ -3821,6 +3887,7 @@ export function MediaDistributionPage() {
                         style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: isLoading ? 0.6 : 1 }}>
                         {isLoading ? 'Loading...' : isCurrentPlan ? '&#10003; Current Plan' : 'Subscribe'}
                       </button>
+                      {isLoading && <p style={{ textAlign: 'center', fontSize: 9, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>May take up to 30 seconds</p>}
                     </div>
                   );
                 })}
