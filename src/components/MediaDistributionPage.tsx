@@ -656,14 +656,16 @@ function ConnectAccountsModal({
           <button
             onClick={handleConnect}
             disabled={connecting}
-            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110 disabled:opacity-50"
+            className="w-full flex flex-col items-center justify-center gap-0.5 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110 disabled:opacity-50"
             style={{ background: GOLD, color: '#000' }}
           >
-            {connecting
-              ? <><Loader className="w-4 h-4 animate-spin" /> Opening…</>
-              : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
+            <span className="flex items-center gap-2">
+              {connecting
+                ? <><Loader className="w-4 h-4 animate-spin" /> Opening…</>
+                : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
+            </span>
+            {connecting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
           </button>
-          {connecting && <p className="text-xs text-white/25 text-center -mt-1">May take up to 30 seconds</p>}
 
           {/* Manual refresh — shown after connecting so user can force a sync */}
           {integrations.length === 0 && !connecting && (
@@ -1178,13 +1180,15 @@ function SavedPostCard({
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <button onClick={handlePost} disabled={posting || selectedAccounts.length === 0}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition disabled:opacity-40 hover:brightness-110"
+            className="flex flex-col items-center gap-0.5 px-4 py-2 rounded-xl text-sm font-bold transition disabled:opacity-40 hover:brightness-110"
             style={{ background: postOk ? '#22c55e' : GOLD, color: '#000' }}>
-            {posting ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Posting…</>
-              : postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Done!</>
-              : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
+            <span className="flex items-center gap-2">
+              {posting ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Posting…</>
+                : postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Done!</>
+                : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
+            </span>
+            {posting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
           </button>
-          {posting && <p style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>May take up to 30 seconds</p>}
         </div>
       </div>
 
@@ -1652,7 +1656,7 @@ function InlinePostComposer({
                     </button>
                   ))}
                 </div>
-                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a video above first. AI will analyze it to write captions</div>}
+                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above — AI will analyze the spoken content to write captions</div>}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready. Click Generate below</div>}
                 {captionMode === 'from_description' && (
@@ -1675,13 +1679,14 @@ function InlinePostComposer({
                   </div>
                 )}
                 <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                  className="w-full flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
-                  {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Analyzing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
+                  <span className="flex items-center gap-2">
+                    {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Analyzing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
+                  </span>
+                  {aiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
                 </button>
-                {aiLoading && <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>This may take up to 30 seconds</p>}
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
-                {transcript && <TranscriptViewer transcript={transcript} />}
               </div>
 
               {generatedCaptions && Object.keys(generatedCaptions).length > 0 && (
@@ -1853,13 +1858,15 @@ function InlinePostComposer({
                   <div className="text-xs text-red-300 px-1">{textAiError}</div>
                 ) : null}
                 <button onClick={handleTextAiGenerate} disabled={textAiLoading}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                  className="w-full flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
-                  {textAiLoading
-                    ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Analyzing…' : 'Generating…'}</>
-                    : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
+                  <span className="flex items-center gap-2">
+                    {textAiLoading
+                      ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Analyzing…' : 'Generating…'}</>
+                      : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
+                  </span>
+                  {textAiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
                 </button>
-                {textAiLoading && <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: -4 }}>May take up to 30 seconds</p>}
 
                 {textAiPosts && (
                   <div className="space-y-3 pt-1">
@@ -2015,15 +2022,17 @@ function InlinePostComposer({
       <button
         onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
         disabled={submitting || (postType === 'media' && submitOk)}
-        className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+        className="w-full flex flex-col items-center justify-center gap-0.5 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-        {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
-          : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
-          : postType === 'media'
-            ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
-            : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
+        <span className="flex items-center gap-2">
+          {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
+            : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
+            : postType === 'media'
+              ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
+              : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
+        </span>
+        {submitting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
       </button>
-      {submitting && <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: -4 }}>May take up to 30 seconds</p>}
     </div>
   );
 }
@@ -2227,15 +2236,15 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
           {!ideas && (
             <>
               <button onClick={handleAiGenerate} disabled={loading}
-                className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+                className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
                 style={{ background: GOLD, color: '#000' }}>
-                {loading
-                  ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Analyzing Video…' : 'Generating Ideas…'}</span>
-                  : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
+                <span className="flex items-center justify-center gap-2">
+                  {loading
+                    ? <><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Analyzing Video…' : 'Generating Ideas…'}</>
+                    : <><Sparkles className="w-4 h-4" /> Generate Ideas</>}
+                </span>
+                {loading && captionMode === 'from_video' && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
               </button>
-              <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 3, minHeight: 14 }}>
-                {loading && captionMode === 'from_video' ? 'May take up to 30 seconds' : ''}
-              </p>
             </>
           )}
 
@@ -3935,10 +3944,10 @@ export function MediaDistributionPage() {
                       <button
                         onClick={() => isCurrentPlan ? handlePortal() : handleCheckout(pkg.name.toLowerCase())}
                         disabled={isLoading || portalLoading}
-                        style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: isLoading ? 0.6 : 1 }}>
-                        {isLoading ? 'Loading...' : isCurrentPlan ? '&#10003; Current Plan' : 'Subscribe'}
+                        style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: isLoading ? 0.6 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                        <span>{isLoading ? 'Loading...' : isCurrentPlan ? '✓ Current Plan' : 'Subscribe'}</span>
+                        {isLoading && <span style={{ fontSize: 8, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
                       </button>
-                      {isLoading && <p style={{ textAlign: 'center', fontSize: 9, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>May take up to 30 seconds</p>}
                     </div>
                   );
                 })}
