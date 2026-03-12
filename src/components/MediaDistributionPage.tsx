@@ -536,7 +536,7 @@ function ConnectAccountsModal({
   currentUser: { id: string; email: string } | null;
 }) {
   const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id being disconnected
+  const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id navigating to Ayrshare
   const [error, setError] = useState<string | null>(null);
   const [liveEmail, setLiveEmail] = useState<string>('');
 
@@ -644,9 +644,23 @@ function ConnectAccountsModal({
                         setDisconnecting(platformId);
                         setError(null);
                         try {
-                          await onDisconnectPlatform(platformId);
+                          const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+                          if (sessionErr || !session) throw new Error('Not signed in');
+                          const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                          const popup = isMobile ? null : window.open('', '_blank');
+                          const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+                          });
+                          if (!res.ok) { popup?.close(); throw new Error('Could not open account manager'); }
+                          const { connectUrl } = await res.json();
+                          if (!connectUrl) { popup?.close(); throw new Error('No URL returned'); }
+                          // Set the return flag so pollForChannels fires on return
+                          localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+                          if (popup) { popup.location.href = connectUrl; }
+                          else { window.location.href = connectUrl; }
                         } catch (e: any) {
-                          setError(e.message || 'Failed to disconnect');
+                          setError(e.message || 'Failed to open account manager');
                         } finally {
                           setDisconnecting(null);
                         }
@@ -656,7 +670,7 @@ function ConnectAccountsModal({
                       style={{ color: 'rgba(239,68,68,0.7)', border: '1px solid rgba(239,68,68,0.2)' }}
                       title="Disconnect account">
                       {disconnecting === (int.profile || int.id)
-                        ? <><Loader className="w-3 h-3 animate-spin" /> Removing…</>
+                        ? <><Loader className="w-3 h-3 animate-spin" /> Opening…</>
                         : <><Link2Off className="w-3 h-3" /> Disconnect</>}
                     </button>
                     <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 group-hover:hidden" />
