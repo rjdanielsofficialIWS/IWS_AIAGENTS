@@ -2205,17 +2205,18 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
             className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
           {error && error === 'upgrade_required' ? (<div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}><div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator &amp; Agency Feature</div><p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>The Content Repurposing Engine is available on Creator and Agency plans.</p><button onClick={() => setPricingOpen(true)} className="px-4 py-2 rounded-lg text-xs font-bold" style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>Upgrade to Unlock</button></div>) : error ? (<div className="text-xs text-red-300">{error}</div>) : null}
           {!ideas && (
-            <button onClick={handleAiGenerate} disabled={loading}
-              className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-              style={{ background: GOLD, color: '#000' }}>
-              {loading
-                ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Analyzing Video…' : 'Generating Ideas…'}</span>
-                : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
+            <>
+              <button onClick={handleAiGenerate} disabled={loading}
+                className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+                style={{ background: GOLD, color: '#000' }}>
+                {loading
+                  ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Analyzing Video…' : 'Generating Ideas…'}</span>
+                  : <span className="flex items-center justify-center gap-2"><Sparkles className="w-4 h-4" /> Generate Ideas</span>}
               </button>
-              {/* 30s fine print shown during loading */}
               <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 3, minHeight: 14 }}>
-                {captionMode === 'from_video' ? 'May take up to 30 seconds' : ''}
+                {loading && captionMode === 'from_video' ? 'May take up to 30 seconds' : ''}
               </p>
+            </>
           )}
 
           {ideas && (
