@@ -1660,7 +1660,6 @@ function InlinePostComposer({
                   {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Analyzing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
                 </button>
                 {aiLoading && <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 4 }}>This may take up to 30 seconds</p>}
-                </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
                 {transcript && <TranscriptViewer transcript={transcript} />}
               </div>
@@ -2216,7 +2215,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               {/* 30s fine print shown during loading */}
               <p className="text-center" style={{ fontSize: 10, color: 'rgba(255,255,255,0.2)', marginTop: 3, minHeight: 14 }}>
                 {captionMode === 'from_video' ? 'May take up to 30 seconds' : ''}
-            </button>
+              </p>
           )}
 
           {ideas && (
