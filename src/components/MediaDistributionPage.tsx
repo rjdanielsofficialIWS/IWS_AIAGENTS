@@ -3064,7 +3064,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
   const effectiveCode = data?.referralCode ?? '';
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5" style={{ background: BG }}>
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-8 space-y-5" style={{ background: BG }}>
 
       {/* Header */}
       <div>
