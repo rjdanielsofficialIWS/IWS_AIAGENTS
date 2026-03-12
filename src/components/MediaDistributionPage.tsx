@@ -665,6 +665,26 @@ function ConnectAccountsModal({
           </button>
           {connecting && <p className="text-xs text-white/25 text-center -mt-1">May take up to 30 seconds</p>}
 
+          {/* Manual refresh — shown after connecting so user can force a sync */}
+          {integrations.length === 0 && !connecting && (
+            <button
+              onClick={() => onRefresh(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-xl text-xs font-semibold transition hover:bg-white/8"
+              style={{ color: 'rgba(255,255,255,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Already connected? Tap to refresh
+            </button>
+          )}
+          {integrations.length > 0 && (
+            <button
+              onClick={() => onRefresh(true)}
+              className="w-full flex items-center justify-center gap-2 py-1.5 rounded-xl text-xs font-semibold transition hover:bg-white/5"
+              style={{ color: 'rgba(255,255,255,0.2)' }}
+            >
+              <RefreshCw className="w-3 h-3" /> Refresh accounts
+            </button>
+          )}
+
           <p className="text-xs text-white/30 text-center">
             Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
           </p>
@@ -3588,43 +3608,74 @@ export function MediaDistributionPage() {
     }
   }, [currentUserId]);
 
+  // ── Social account return detection ──────────────────────────────────────
+  // Three signals, any one is enough: URL ?connected=1, localStorage flag, visibilitychange.
+  // On mobile the page fully reloads after OAuth so visibilitychange never fires —
+  // the URL param is the only reliable signal in that case.
+  // We poll with retries because Ayrshare can take a few seconds to register the connection.
+  const pollForChannels = useCallback(async () => {
+    if (!currentUserId) return;
+    // Poll up to 6 times, 3s apart (18s total window)
+    let found = false;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await new Promise(r => setTimeout(r, attempt === 0 ? 1500 : 3000));
+      try {
+        const channels = await fetchChannels(currentUserId, true);
+        if (channels.length > 0) {
+          setIntegrations(channels);
+          found = true;
+          break;
+        }
+        // Keep updating even with empty result so UI stays fresh
+        setIntegrations(channels);
+      } catch { /* keep polling */ }
+    }
+    if (!found) {
+      // Final load attempt without force (uses any cached value)
+      try { setIntegrations(await fetchChannels(currentUserId, false)); } catch {}
+    }
+  }, [currentUserId]);
+
+  // Signal 1: URL param ?connected=1 — works after full page reload (mobile)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected') === '1') {
+      // Clean the URL immediately so refresh doesn't re-trigger
+      window.history.replaceState({}, '', window.location.pathname);
+      try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+      setConnectModalOpen(false);
+      pollForChannels();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Signal 2: localStorage flag — works when popup closes or tab regains focus on desktop
+  useEffect(() => {
+    const isSocialReturn = (() => {
+      try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1' || !!localStorage.getItem('ayrshare_connected'); }
+      catch { return false; }
+    })();
+    if (isSocialReturn) {
+      try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); localStorage.removeItem('ayrshare_connected'); } catch {}
+      window.history.replaceState({}, '', window.location.pathname);
+      setConnectModalOpen(false);
+      pollForChannels();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Signal 3: visibilitychange — works on desktop when popup tab closes
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        const isSocialReturn = (() => {
-          try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1'; }
-          catch { return false; }
-        })();
-        if (isSocialReturn) {
-          try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
-          setTimeout(() => loadIntegrations(true), 1500);
-          setConnectModalOpen(false);
-        }
+      if (document.visibilityState !== 'visible') return;
+      const flag = (() => { try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1'; } catch { return false; } })();
+      if (flag) {
+        try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+        setConnectModalOpen(false);
+        pollForChannels();
       }
     };
     document.addEventListener('visibilitychange', onVisible);
     return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [loadIntegrations]);
-
-  useEffect(() => {
-    const isSocialReturn = (() => {
-      try {
-        return (
-          localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1' ||
-          !!localStorage.getItem('ayrshare_connected')
-        );
-      } catch { return false; }
-    })();
-    if (isSocialReturn) {
-      try {
-        localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
-        localStorage.removeItem('ayrshare_connected');
-      } catch {}
-      window.history.replaceState({}, '', window.location.pathname);
-      setTimeout(() => loadIntegrations(true), 1500);
-      setConnectModalOpen(false);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [pollForChannels]);
 
   const openConnectModal = () => setConnectModalOpen(true);
 
