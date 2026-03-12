@@ -527,14 +527,16 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 // ─── ConnectAccountsModal ─────────────────────────────────────────────────────
 
 function ConnectAccountsModal({
-  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser,
+  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser, onDisconnectPlatform,
 }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   onConnectPostiz: () => void; integrationsLoading: boolean;
   onRefresh: (force?: boolean) => void;
+  onDisconnectPlatform: (platformId: string) => Promise<void>;
   currentUser: { id: string; email: string } | null;
 }) {
   const [connecting, setConnecting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id being disconnected
   const [error, setError] = useState<string | null>(null);
   const [liveEmail, setLiveEmail] = useState<string>('');
 
@@ -608,9 +610,12 @@ function ConnectAccountsModal({
       >
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
-            <h2 className="text-base font-bold text-white">Connect Channels</h2>
+            <h2 className="text-base font-bold text-white flex items-center gap-2">
+              Connect Channels
+              {integrationsLoading && <Loader className="w-3.5 h-3.5 animate-spin" style={{ color: GOLD }} />}
+            </h2>
             <p className="text-sm text-white/40 mt-0.5">
-              {liveEmail ? `Account: ${liveEmail}` : 'Link your social accounts to start scheduling'}
+              {integrationsLoading ? 'Syncing your accounts…' : liveEmail ? `Account: ${liveEmail}` : 'Link your social accounts to start scheduling'}
             </p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
@@ -634,11 +639,25 @@ function ConnectAccountsModal({
                       <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
                     </div>
                     <button
-                      onClick={handleConnect}
-                      className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition hover:bg-red-500/15"
+                      onClick={async () => {
+                        const platformId = int.profile || int.id;
+                        setDisconnecting(platformId);
+                        setError(null);
+                        try {
+                          await onDisconnectPlatform(platformId);
+                        } catch (e: any) {
+                          setError(e.message || 'Failed to disconnect');
+                        } finally {
+                          setDisconnecting(null);
+                        }
+                      }}
+                      disabled={disconnecting === (int.profile || int.id)}
+                      className="opacity-0 group-hover:opacity-100 flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-bold transition hover:bg-red-500/15 disabled:opacity-40"
                       style={{ color: 'rgba(239,68,68,0.7)', border: '1px solid rgba(239,68,68,0.2)' }}
                       title="Disconnect account">
-                      <Link2Off className="w-3 h-3" /> Disconnect
+                      {disconnecting === (int.profile || int.id)
+                        ? <><Loader className="w-3 h-3 animate-spin" /> Removing…</>
+                        : <><Link2Off className="w-3 h-3" /> Disconnect</>}
                     </button>
                     <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0 group-hover:hidden" />
                   </div>
@@ -3385,7 +3404,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
                   <button
                     onClick={onOpenConnect}
                     className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"
-                    title="Disconnect">
+                    title="Manage / Disconnect">
                     <Link2Off className="w-3 h-3 text-red-400/60 hover:text-red-400" />
                   </button>
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0 md:group-hover:hidden" />
@@ -3624,25 +3643,27 @@ export function MediaDistributionPage() {
   // We poll with retries because Ayrshare can take a few seconds to register the connection.
   const pollForChannels = useCallback(async () => {
     if (!currentUserId) return;
-    // Poll up to 6 times, 3s apart (18s total window)
+    setIntegrationsLoading(true);
     let found = false;
-    for (let attempt = 0; attempt < 6; attempt++) {
-      await new Promise(r => setTimeout(r, attempt === 0 ? 1500 : 3000));
-      try {
-        const channels = await fetchChannels(currentUserId, true);
-        if (channels.length > 0) {
-          setIntegrations(channels);
-          found = true;
-          break;
-        }
-        // Keep updating even with empty result so UI stays fresh
-        setIntegrations(channels);
-      } catch { /* keep polling */ }
-    }
+    // Attempt 1: immediate (no delay) — catches cases where Ayrshare already has the account
+    try {
+      const channels = await fetchChannels(currentUserId, true);
+      setIntegrations(channels);
+      if (channels.length > 0) found = true;
+    } catch { /* keep going */ }
+
+    // If first attempt returned empty, poll with retries
     if (!found) {
-      // Final load attempt without force (uses any cached value)
-      try { setIntegrations(await fetchChannels(currentUserId, false)); } catch {}
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise(r => setTimeout(r, 2500));
+        try {
+          const channels = await fetchChannels(currentUserId, true);
+          setIntegrations(channels);
+          if (channels.length > 0) { found = true; break; }
+        } catch { /* keep polling */ }
+      }
     }
+    setIntegrationsLoading(false);
   }, [currentUserId]);
 
   // Signal 1: URL param ?connected=1 — works after full page reload (mobile)
@@ -3700,6 +3721,32 @@ export function MediaDistributionPage() {
     try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
     setIntegrations([]);
     setOauthError(null);
+  };
+
+  const handleDisconnectPlatform = async (platformId: string) => {
+    // Optimistic: remove from UI immediately
+    setIntegrations(prev => prev.filter(i => (i.profile || i.id) !== platformId));
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-disconnect`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ platform: platformId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        // Revert optimistic update on failure
+        loadIntegrations(true);
+        throw new Error(err.error || 'Failed to disconnect');
+      }
+    } catch (err) {
+      // Revert on network error too
+      loadIntegrations(true);
+      throw err;
+    }
   };
 
   const handleCheckout = async (plan: string) => {
@@ -3985,6 +4032,7 @@ export function MediaDistributionPage() {
         integrations={integrations} onConnectPostiz={handleConnect}
         integrationsLoading={integrationsLoading}
         onRefresh={(force) => loadIntegrations(force)}
+        onDisconnectPlatform={handleDisconnectPlatform}
         currentUser={currentUser}
       />
 
