@@ -3767,10 +3767,10 @@ export function MediaDistributionPage() {
               </button>
             </div>
           )}
-          <div className="flex flex-1 overflow-hidden">
+          <div className="flex flex-1 overflow-hidden min-h-0">
           <Sidebar view={view} setView={setView} integrations={integrations}
             onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
-          <main className="flex-1 flex flex-col min-h-0" style={{ position: 'relative' }}>
+          <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
 
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
