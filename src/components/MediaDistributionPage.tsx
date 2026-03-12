@@ -5,7 +5,7 @@ import {
   Plus, ChevronLeft, ChevronRight, Calendar, Clock,
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
-  ClipboardList, FileText, Trash2, BookOpen,
+  ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -109,7 +109,7 @@ type PostizIntegration = {
   picture?: string; profile?: string; disabled?: boolean;
 };
 
-type ViewMode = 'composer' | 'calendar' | 'planner';
+type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner';
 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
@@ -2980,6 +2980,183 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
   );
 }
 
+// ─── PartnerDashboard ─────────────────────────────────────────────────────────
+
+function PartnerDashboard({ userId, userEmail }: { userId: string | null; userEmail: string | null }) {
+  const [data, setData] = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+  const [copied, setCopied] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      setLoading(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.ok) setData(await res.json());
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    })();
+  }, [userId]);
+
+  const copyLink = () => {
+    if (!data?.referralLink) return;
+    navigator.clipboard.writeText(data.referralLink).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  if (!userId) return (
+    <div className="flex-1 flex items-center justify-center" style={{ color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>
+      Sign in to access the Partner Program
+    </div>
+  );
+
+  if (loading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: `${GOLD}40`, borderTopColor: GOLD }} />
+    </div>
+  );
+
+  const totalEarned = ((data?.totalEarnedCents ?? 0) / 100).toFixed(2);
+  const pendingPayout = ((data?.pendingCents ?? 0) / 100).toFixed(2);
+
+  return (
+    <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5" style={{ background: BG }}>
+
+      {/* Header */}
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Gift className="w-5 h-5" style={{ color: GOLD }} />
+          <h2 className="text-lg font-black text-white">2 for 20 Partner Program</h2>
+        </div>
+        <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
+          Share your link. You earn 20% recurring commission every month they stay subscribed. They get 20% off their first month.
+        </p>
+      </div>
+
+      {/* Stats row */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Total Earned', value: `$${totalEarned}`, icon: <DollarSign className="w-4 h-4" /> },
+          { label: 'Pending Payout', value: `$${pendingPayout}`, icon: <TrendingUp className="w-4 h-4" /> },
+          { label: 'Active Referrals', value: data?.activeReferrals ?? 0, icon: <Users className="w-4 h-4" /> },
+        ].map(s => (
+          <div key={s.label} className="rounded-xl p-4 flex flex-col gap-1" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center gap-1.5" style={{ color: GOLD }}>{s.icon}</div>
+            <div className="text-xl font-black text-white">{s.value}</div>
+            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Referral link card */}
+      <div className="rounded-xl p-5 space-y-3" style={{ background: `linear-gradient(135deg, ${GOLD}12, rgba(255,255,255,0.02))`, border: `1px solid ${GOLD}30` }}>
+        <div className="flex items-center gap-2 mb-1">
+          <span style={{ fontSize: 12, fontWeight: 700, color: GOLD_L, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Referral Link</span>
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1 rounded-lg px-3 py-2.5 text-xs font-mono truncate" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>
+            {data?.referralLink ?? 'Generating...'}
+          </div>
+          <button onClick={copyLink}
+            className="flex items-center gap-1.5 px-3 py-2.5 rounded-lg text-xs font-bold transition"
+            style={{ background: copied ? 'rgba(74,222,128,0.15)' : `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: copied ? 'rgb(74,222,128)' : '#000', border: copied ? '1px solid rgba(74,222,128,0.3)' : 'none', whiteSpace: 'nowrap' }}>
+            {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
+          </button>
+        </div>
+        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+          Code: <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.1em' }}>{data?.referralCode}</span>
+        </p>
+      </div>
+
+      {/* How it works */}
+      <div className="rounded-xl p-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
+        <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>How It Works</p>
+        <div className="space-y-3">
+          {[
+            { step: '1', text: 'Share your personal link with anyone' },
+            { step: '2', text: 'They sign up and get 20% off their first month automatically' },
+            { step: '3', text: 'You earn 20% of every payment they make, every month, for as long as they stay subscribed' },
+            { step: '4', text: 'Payouts processed monthly via bank transfer or PayPal once you hit $25' },
+          ].map(s => (
+            <div key={s.step} className="flex items-start gap-3">
+              <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-black" style={{ background: `${GOLD}25`, color: GOLD }}>{s.step}</div>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.55)', lineHeight: 1.5 }}>{s.text}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Referrals table */}
+      {(data?.referrals?.length ?? 0) > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="px-4 py-3" style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Referrals ({data.referrals.length})</span>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+            {data.referrals.map((r: any) => (
+              <div key={r.id} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', fontWeight: 500 }}>{r.referred_email ?? 'Unknown'}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{new Date(r.created_at).toLocaleDateString()}</div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold"
+                  style={{
+                    background: r.status === 'active' ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.06)',
+                    color: r.status === 'active' ? 'rgb(74,222,128)' : 'rgba(255,255,255,0.35)',
+                    border: `1px solid ${r.status === 'active' ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.1)'}`,
+                  }}>
+                  {r.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Commission history */}
+      {(data?.commissions?.length ?? 0) > 0 && (
+        <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
+          <div className="px-4 py-3" style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Commission History</span>
+          </div>
+          <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+            {data.commissions.map((c: any, i: number) => (
+              <div key={i} className="flex items-center justify-between px-4 py-3">
+                <div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)', fontWeight: 600 }}>${(c.amount_cents / 100).toFixed(2)}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{c.period_start ? new Date(c.period_start).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : new Date(c.created_at).toLocaleDateString()}</div>
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold"
+                  style={{
+                    background: c.status === 'paid' ? 'rgba(74,222,128,0.1)' : `${GOLD}15`,
+                    color: c.status === 'paid' ? 'rgb(74,222,128)' : GOLD,
+                    border: `1px solid ${c.status === 'paid' ? 'rgba(74,222,128,0.25)' : `${GOLD}30`}`,
+                  }}>
+                  {c.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {(data?.referrals?.length ?? 0) === 0 && (
+        <div className="rounded-xl p-8 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
+          <Users className="w-8 h-8 mx-auto mb-3" style={{ color: 'rgba(255,255,255,0.15)' }} />
+          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 500 }}>No referrals yet</p>
+          <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>Share your link above to start earning</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function Sidebar({ view, setView, integrations, onOpenConnect }: {
@@ -2990,6 +3167,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
     { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
     { id: 'calendar' as ViewMode, label: 'Calendar', icon: <Calendar className="w-5 h-5" /> },
     { id: 'planner'  as ViewMode, label: 'Planner',  icon: <BookOpen className="w-5 h-5" /> },
+    { id: 'partner'  as ViewMode, label: 'Earn',     icon: <DollarSign className="w-5 h-5" /> },
   ];
 
   return (
@@ -3214,6 +3392,9 @@ export function MediaDistributionPage() {
     if (window.location.hash.includes('access_token')) {
       window.history.replaceState(null, '', window.location.pathname);
     }
+    // Persist ?ref= code before sign-up so it survives the auth flow
+    const refParam = new URLSearchParams(window.location.search).get('ref');
+    if (refParam) localStorage.setItem('mm_ref_code', refParam);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentUserId = currentUser?.id ?? null;
@@ -3245,6 +3426,24 @@ export function MediaDistributionPage() {
         const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
       }, 2500);
+    }
+    // Handle ?ref= referral code — record it when user is logged in
+    const refCode = params.get('ref') || localStorage.getItem('mm_ref_code');
+    if (refCode) {
+      localStorage.removeItem('mm_ref_code');
+      window.history.replaceState({}, '', window.location.pathname);
+      (async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            await fetch(`${SUPABASE_URL}/functions/v1/referral-record`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({ referralCode: refCode }),
+            });
+          }
+        } catch (_) {}
+      })();
     }
   }, [currentUserId]);
 
@@ -3467,6 +3666,15 @@ export function MediaDistributionPage() {
                 Already have an account? Sign In
               </button>
             </div>
+            {/* Subtle referral nudge */}
+            <div style={{ marginTop: 32, padding: '12px 20px', borderRadius: 12, background: 'rgba(200,162,74,0.06)', border: '1px solid rgba(200,162,74,0.15)', textAlign: 'center', maxWidth: 320 }}>
+              <span style={{ fontSize: 11, color: 'rgba(200,162,74,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>
+                💸 2 for 20 Partner Program
+              </span>
+              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '4px 0 0', lineHeight: 1.5 }}>
+                Sign up and earn 20% recurring commission for every person you refer. They get 20% off their first month.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -3492,6 +3700,7 @@ export function MediaDistributionPage() {
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
+            {view === 'partner'  && <PartnerDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} />}
           </main>
           </div>
         </div>
