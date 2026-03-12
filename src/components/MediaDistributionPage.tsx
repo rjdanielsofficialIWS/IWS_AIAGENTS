@@ -3069,7 +3069,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
       {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
-          <Gift className="w-5 h-5" style={{ color: GOLD }} />
+          <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ color: GOLD }}><rect x="1" y="4" width="22" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M1 9h3M20 9h3M1 15h3M20 15h3"/></svg>
           <h2 className="text-lg font-black text-white">2 for 20 Partner Program</h2>
         </div>
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
@@ -3242,7 +3242,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
     { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
     { id: 'calendar' as ViewMode, label: 'Calendar', icon: <Calendar className="w-5 h-5" /> },
     { id: 'planner'  as ViewMode, label: 'Planner',  icon: <BookOpen className="w-5 h-5" /> },
-    { id: 'partner'  as ViewMode, label: 'Earn',     icon: <DollarSign className="w-5 h-5" /> },
+    { id: 'partner'  as ViewMode, label: 'Earn',     icon: <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
   ];
 
   return (
