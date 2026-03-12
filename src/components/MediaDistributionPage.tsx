@@ -2986,21 +2986,29 @@ function PartnerDashboard({ userId, userEmail }: { userId: string | null; userEm
   const [data, setData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
+  const [customCodeInput, setCustomCodeInput] = React.useState('');
+  const [codeStatus, setCodeStatus] = React.useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [codeError, setCodeError] = React.useState('');
+  const [showCodeEditor, setShowCodeEditor] = React.useState(false);
 
-  React.useEffect(() => {
+  const fetchStats = async () => {
     if (!userId) return;
-    (async () => {
-      setLoading(true);
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-        });
-        if (res.ok) setData(await res.json());
-      } catch (e) { console.error(e); }
-      setLoading(false);
-    })();
-  }, [userId]);
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
+        headers: { Authorization: `Bearer ${session?.access_token}` },
+      });
+      if (res.ok) {
+        const json = await res.json();
+        setData(json);
+        setCustomCodeInput(json.customCode ?? '');
+      }
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+
+  React.useEffect(() => { fetchStats(); }, [userId]);
 
   const copyLink = () => {
     if (!data?.referralLink) return;
@@ -3008,6 +3016,28 @@ function PartnerDashboard({ userId, userEmail }: { userId: string | null; userEm
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const saveCustomCode = async () => {
+    const trimmed = customCodeInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!trimmed || trimmed.length < 3) { setCodeError('Must be at least 3 characters'); return; }
+    if (trimmed.length > 16) { setCodeError('Max 16 characters'); return; }
+    setCodeStatus('saving');
+    setCodeError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customCode: trimmed }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setCodeError(json.error ?? 'Failed to save'); setCodeStatus('error'); return; }
+      setCodeStatus('success');
+      setShowCodeEditor(false);
+      await fetchStats();
+      setTimeout(() => setCodeStatus('idle'), 2000);
+    } catch (e: any) { setCodeError(e.message); setCodeStatus('error'); }
   };
 
   if (!userId) return (
@@ -3024,6 +3054,7 @@ function PartnerDashboard({ userId, userEmail }: { userId: string | null; userEm
 
   const totalEarned = ((data?.totalEarnedCents ?? 0) / 100).toFixed(2);
   const pendingPayout = ((data?.pendingCents ?? 0) / 100).toFixed(2);
+  const effectiveCode = data?.referralCode ?? '';
 
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5" style={{ background: BG }}>
@@ -3035,7 +3066,7 @@ function PartnerDashboard({ userId, userEmail }: { userId: string | null; userEm
           <h2 className="text-lg font-black text-white">2 for 20 Partner Program</h2>
         </div>
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
-          Share your link. You earn 20% recurring commission every month they stay subscribed. They get 20% off their first month.
+          Share your link. You earn 20% recurring commission every month they stay subscribed. They get 20% off their first month, automatically.
         </p>
       </div>
 
@@ -3056,8 +3087,13 @@ function PartnerDashboard({ userId, userEmail }: { userId: string | null; userEm
 
       {/* Referral link card */}
       <div className="rounded-xl p-5 space-y-3" style={{ background: `linear-gradient(135deg, ${GOLD}12, rgba(255,255,255,0.02))`, border: `1px solid ${GOLD}30` }}>
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center justify-between mb-1">
           <span style={{ fontSize: 12, fontWeight: 700, color: GOLD_L, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Referral Link</span>
+          <button onClick={() => setShowCodeEditor(!showCodeEditor)}
+            className="text-xs px-2.5 py-1 rounded-lg transition"
+            style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
+            {data?.customCode ? 'Edit Code' : 'Custom Code'}
+          </button>
         </div>
         <div className="flex gap-2">
           <div className="flex-1 rounded-lg px-3 py-2.5 text-xs font-mono truncate" style={{ background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}>
@@ -3069,8 +3105,48 @@ function PartnerDashboard({ userId, userEmail }: { userId: string | null; userEm
             {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
           </button>
         </div>
-        <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-          Code: <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.1em' }}>{data?.referralCode}</span>
+
+        {/* Code display */}
+        <div className="flex items-center gap-2">
+          <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+            Code: <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.1em' }}>
+              {effectiveCode || '—'}
+            </span>
+          </p>
+          {data?.customCode && (
+            <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: `${GOLD}20`, color: GOLD, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Custom</span>
+          )}
+        </div>
+
+        {/* Custom code editor */}
+        {showCodeEditor && (
+          <div className="rounded-lg p-3 space-y-2 mt-1" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Set a custom code (3-16 letters/numbers). This replaces your link code.</p>
+            <div className="flex gap-2">
+              <input
+                value={customCodeInput}
+                onChange={e => setCustomCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                placeholder={data?.systemCode ?? 'e.g. JOHN20'}
+                maxLength={16}
+                className="flex-1 rounded-lg px-3 py-2 text-sm font-mono"
+                style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${codeStatus === 'error' ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.12)'}`, color: '#fff', outline: 'none' }}
+              />
+              <button onClick={saveCustomCode} disabled={codeStatus === 'saving'}
+                className="px-4 py-2 rounded-lg text-xs font-bold"
+                style={{ background: codeStatus === 'success' ? 'rgba(74,222,128,0.2)' : `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: codeStatus === 'success' ? 'rgb(74,222,128)' : '#000', opacity: codeStatus === 'saving' ? 0.6 : 1 }}>
+                {codeStatus === 'saving' ? 'Saving...' : codeStatus === 'success' ? '✓ Saved' : 'Save'}
+              </button>
+            </div>
+            {codeError && <p style={{ fontSize: 11, color: 'rgb(239,68,68)' }}>{codeError}</p>}
+          </div>
+        )}
+      </div>
+
+      {/* How the discount works */}
+      <div className="rounded-xl p-4 flex gap-3" style={{ background: 'rgba(74,222,128,0.06)', border: '1px solid rgba(74,222,128,0.15)' }}>
+        <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" style={{ color: 'rgb(74,222,128)' }} />
+        <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', lineHeight: 1.6 }}>
+          <span style={{ color: 'rgb(74,222,128)', fontWeight: 700 }}>No code needed.</span> When someone signs up through your link, their 20% discount is applied automatically at checkout. They don't need to enter anything.
         </p>
       </div>
 
@@ -3079,10 +3155,10 @@ function PartnerDashboard({ userId, userEmail }: { userId: string | null; userEm
         <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>How It Works</p>
         <div className="space-y-3">
           {[
-            { step: '1', text: 'Share your personal link with anyone' },
-            { step: '2', text: 'They sign up and get 20% off their first month automatically' },
-            { step: '3', text: 'You earn 20% of every payment they make, every month, for as long as they stay subscribed' },
-            { step: '4', text: 'Payouts processed monthly via bank transfer or PayPal once you hit $25' },
+            { step: '1', text: 'Share your link. Anyone who clicks it gets tagged as your referral.' },
+            { step: '2', text: 'They sign up and their 20% first-month discount is applied automatically at checkout — no code entry needed.' },
+            { step: '3', text: 'You earn 20% of every payment they make, every month, for as long as they stay subscribed.' },
+            { step: '4', text: 'Payouts processed monthly via bank transfer or PayPal once you hit $25.' },
           ].map(s => (
             <div key={s.step} className="flex items-start gap-3">
               <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-black" style={{ background: `${GOLD}25`, color: GOLD }}>{s.step}</div>
