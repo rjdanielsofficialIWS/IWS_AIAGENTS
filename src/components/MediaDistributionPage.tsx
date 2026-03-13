@@ -3369,8 +3369,6 @@ type GeneratedFrame = { id: string; promptText: string; imageUrl: string | null;
 type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; };
 type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl: string; thumbnailUrl?: string; };
 
-const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
-
 function AIVideoStudio({ userId }: { userId: string | null }) {
   const [step, setStep]               = React.useState<VideoStudioStep>('brief');
   const [brief, setBrief]             = React.useState('');
