@@ -3462,6 +3462,7 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
 
   const handleGeneratePrompts = async () => {
     if (!brief.trim()) { setGlobalError('Enter a brief first'); return; }
+    if (!userId) { setGlobalError('Sign in to generate AI video'); return; }
     setGeneratingPrompts(true); setGlobalError(null);
     try {
       const headers = await getAuthHeaders();
