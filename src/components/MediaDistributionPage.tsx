@@ -6,7 +6,6 @@ import {
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
   ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
-  Film, Upload, Download, RefreshCcw, Wand2,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -19,11 +18,13 @@ const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)'
 const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
+// Resolve a raw API status against current time — if scheduled but past-due, treat as published
 const resolveStatus = (raw: string, scheduledAt: Date): 'scheduled' | 'published' | 'failed' => {
   if (raw === 'scheduled' && scheduledAt < new Date()) return 'published';
   return (raw as any) || 'scheduled';
 };
 
+// Viral content angles injected into every AI generation call
 const VIRAL_ANGLES = [
   'bold contrarian take that challenges common wisdom',
   'personal story with a surprising or emotional twist',
@@ -108,7 +109,7 @@ type PostizIntegration = {
   picture?: string; profile?: string; disabled?: boolean;
 };
 
-type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner' | 'video';
+type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner';
 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
@@ -123,45 +124,6 @@ type PlannerItem = {
   plannedTime?: string;
   category: string;
   sourceLabel?: string;
-};
-
-// ─── AI Video Studio Types ────────────────────────────────────────────────────
-
-type VideoStudioStep = 'brief' | 'prompts' | 'frames' | 'video' | 'done';
-
-type VideoPrompt = {
-  id: string;
-  text: string;
-  selected: boolean;
-  edited: boolean;
-};
-
-type GeneratedFrame = {
-  id: string;
-  promptId: string;
-  promptText: string;
-  imageUrl: string | null;
-  taskId: string | null;
-  status: 'idle' | 'generating' | 'done' | 'error';
-  error?: string;
-};
-
-type GeneratedVideo = {
-  id: string;
-  frameUrl: string;
-  promptText: string;
-  videoUrl: string | null;
-  taskId: string | null;
-  status: 'idle' | 'generating' | 'polling' | 'done' | 'error';
-  error?: string;
-};
-
-type VideoHistoryItem = {
-  id: string;
-  createdAt: string;
-  brief: string;
-  videoUrl: string;
-  thumbnailUrl?: string;
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -562,822 +524,7 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
   );
 }
 
-// ─── AIVideoStudio ────────────────────────────────────────────────────────────
-
-function AIVideoStudio({ userId }: { userId: string | null }) {
-  const [step, setStep] = useState<VideoStudioStep>('brief');
-  const [brief, setBrief] = useState('');
-  const [style, setStyle] = useState('cinematic');
-  const [aspectRatio, setAspectRatio] = useState<'16:9' | '9:16' | '1:1'>('16:9');
-  const [duration, setDuration] = useState<5 | 10>(5);
-  const [prompts, setPrompts] = useState<VideoPrompt[]>([]);
-  const [promptsLoading, setPromptsLoading] = useState(false);
-  const [promptsError, setPromptsError] = useState<string | null>(null);
-  const [frames, setFrames] = useState<GeneratedFrame[]>([]);
-  const [videos, setVideos] = useState<GeneratedVideo[]>([]);
-  const [history, setHistory] = useState<VideoHistoryItem[]>([]);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [globalError, setGlobalError] = useState<string | null>(null);
-  const pollTimers = useRef<Record<string, ReturnType<typeof setInterval>>>({});
-
-  // Load history from localStorage
-  useEffect(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem('mm_video_history') || '[]');
-      setHistory(stored);
-    } catch { /* ignore */ }
-  }, []);
-
-  const persistHistory = (items: VideoHistoryItem[]) => {
-    setHistory(items);
-    try { localStorage.setItem('mm_video_history', JSON.stringify(items.slice(0, 20))); } catch {}
-  };
-
-  const addToHistory = (videoUrl: string, thumbnailUrl?: string) => {
-    const item: VideoHistoryItem = {
-      id: Date.now().toString(),
-      createdAt: new Date().toISOString(),
-      brief: brief.slice(0, 120),
-      videoUrl,
-      thumbnailUrl,
-    };
-    persistHistory([item, ...history]);
-  };
-
-  // Cleanup poll timers on unmount
-  useEffect(() => {
-    return () => {
-      Object.values(pollTimers.current).forEach(t => clearInterval(t));
-    };
-  }, []);
-
-  const getAuthHeaders = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    return session?.access_token
-      ? { 'Authorization': `Bearer ${session.access_token}`, 'Content-Type': 'application/json' }
-      : { 'Content-Type': 'application/json' };
-  };
-
-  // ── Step 1 → 2: Generate prompts ──────────────────────────────────────────
-  const handleGeneratePrompts = async () => {
-    if (!brief.trim()) return;
-    setPromptsLoading(true);
-    setPromptsError(null);
-    setPrompts([]);
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ brief: brief.trim(), style, aspectRatio, duration }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || `Failed to generate prompts (${res.status})`);
-      const raw: string[] = Array.isArray(data.prompts) ? data.prompts : [];
-      setPrompts(raw.map((text, i) => ({
-        id: `p${i}-${Date.now()}`,
-        text,
-        selected: i < 4,
-        edited: false,
-      })));
-      setStep('prompts');
-    } catch (e: any) {
-      setPromptsError(e.message || 'Something went wrong');
-    } finally {
-      setPromptsLoading(false);
-    }
-  };
-
-  // ── Step 2 → 3: Generate frames (images) for selected prompts ─────────────
-  const handleGenerateFrames = async () => {
-    const selected = prompts.filter(p => p.selected);
-    if (selected.length === 0) return;
-    setGlobalError(null);
-
-    const initialFrames: GeneratedFrame[] = selected.map(p => ({
-      id: `f${p.id}`,
-      promptId: p.id,
-      promptText: p.text,
-      imageUrl: null,
-      taskId: null,
-      status: 'generating',
-      error: undefined,
-    }));
-    setFrames(initialFrames);
-    setStep('frames');
-
-    await Promise.all(selected.map(async (prompt, idx) => {
-      try {
-        const headers = await getAuthHeaders();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-image`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ prompt: prompt.text, aspectRatio }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `Image generation failed (${res.status})`);
-
-        const imageUrl: string = data.imageUrl || data.url || '';
-        const taskId: string   = data.taskId || data.task_id || '';
-
-        if (imageUrl) {
-          // Synchronous result
-          setFrames(prev => prev.map(f =>
-            f.promptId === prompt.id ? { ...f, imageUrl, taskId, status: 'done' } : f
-          ));
-        } else if (taskId) {
-          // Async: poll for result
-          setFrames(prev => prev.map(f =>
-            f.promptId === prompt.id ? { ...f, taskId, status: 'generating' } : f
-          ));
-          await pollFrameTask(prompt.id, taskId);
-        } else {
-          throw new Error('No image URL or task ID returned');
-        }
-      } catch (e: any) {
-        setFrames(prev => prev.map(f =>
-          f.promptId === prompt.id ? { ...f, status: 'error', error: e.message } : f
-        ));
-      }
-    }));
-  };
-
-  const pollFrameTask = (promptId: string, taskId: string): Promise<void> => {
-    return new Promise((resolve) => {
-      let attempts = 0;
-      const maxAttempts = 60;
-      const timer = setInterval(async () => {
-        attempts++;
-        if (attempts > maxAttempts) {
-          clearInterval(timer);
-          delete pollTimers.current[taskId];
-          setFrames(prev => prev.map(f =>
-            f.promptId === promptId ? { ...f, status: 'error', error: 'Timed out waiting for image' } : f
-          ));
-          resolve();
-          return;
-        }
-        try {
-          const headers = await getAuthHeaders();
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ taskId, type: 'image' }),
-          });
-          const data = await res.json();
-          if (data.status === 'completed' || data.status === 'succeed') {
-            const imageUrl = data.imageUrl || data.url || data.output?.images?.[0]?.url || '';
-            clearInterval(timer);
-            delete pollTimers.current[taskId];
-            setFrames(prev => prev.map(f =>
-              f.promptId === promptId ? { ...f, imageUrl, status: imageUrl ? 'done' : 'error', error: imageUrl ? undefined : 'No image in response' } : f
-            ));
-            resolve();
-          } else if (data.status === 'failed' || data.status === 'error') {
-            clearInterval(timer);
-            delete pollTimers.current[taskId];
-            setFrames(prev => prev.map(f =>
-              f.promptId === promptId ? { ...f, status: 'error', error: data.error || 'Image generation failed' } : f
-            ));
-            resolve();
-          }
-        } catch { /* keep polling */ }
-      }, 3000);
-      pollTimers.current[taskId] = timer;
-    });
-  };
-
-  // ── Step 3 → 4: Generate videos from frames ───────────────────────────────
-  const handleGenerateVideos = async () => {
-    const doneFranes = frames.filter(f => f.status === 'done' && f.imageUrl);
-    if (doneFranes.length === 0) return;
-    setGlobalError(null);
-
-    const initialVideos: GeneratedVideo[] = doneFranes.map(f => ({
-      id: `v${f.id}`,
-      frameUrl: f.imageUrl!,
-      promptText: f.promptText,
-      videoUrl: null,
-      taskId: null,
-      status: 'generating',
-      error: undefined,
-    }));
-    setVideos(initialVideos);
-    setStep('video');
-
-    await Promise.all(doneFranes.map(async (frame) => {
-      const videoId = `v${frame.id}`;
-      try {
-        const headers = await getAuthHeaders();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-video`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            imageUrl: frame.imageUrl,
-            prompt: frame.promptText,
-            duration,
-            aspectRatio,
-          }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || `Video generation failed (${res.status})`);
-
-        const videoUrl: string = data.videoUrl || data.url || '';
-        const taskId: string   = data.taskId || data.task_id || '';
-
-        if (videoUrl) {
-          setVideos(prev => prev.map(v =>
-            v.id === videoId ? { ...v, videoUrl, taskId, status: 'done' } : v
-          ));
-          addToHistory(videoUrl, frame.imageUrl || undefined);
-        } else if (taskId) {
-          setVideos(prev => prev.map(v =>
-            v.id === videoId ? { ...v, taskId, status: 'polling' } : v
-          ));
-          await pollVideoTask(videoId, taskId, frame.imageUrl || undefined);
-        } else {
-          throw new Error('No video URL or task ID returned');
-        }
-      } catch (e: any) {
-        setVideos(prev => prev.map(v =>
-          v.id === videoId ? { ...v, status: 'error', error: e.message } : v
-        ));
-      }
-    }));
-
-    setStep('done');
-  };
-
-  const pollVideoTask = (videoId: string, taskId: string, thumbnailUrl?: string): Promise<void> => {
-    return new Promise((resolve) => {
-      let attempts = 0;
-      const maxAttempts = 120;
-      const timer = setInterval(async () => {
-        attempts++;
-        if (attempts > maxAttempts) {
-          clearInterval(timer);
-          delete pollTimers.current[taskId];
-          setVideos(prev => prev.map(v =>
-            v.id === videoId ? { ...v, status: 'error', error: 'Timed out waiting for video' } : v
-          ));
-          resolve();
-          return;
-        }
-        try {
-          const headers = await getAuthHeaders();
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ taskId, type: 'video' }),
-          });
-          const data = await res.json();
-          if (data.status === 'completed' || data.status === 'succeed') {
-            const videoUrl = data.videoUrl || data.url || data.output?.video?.url || '';
-            clearInterval(timer);
-            delete pollTimers.current[taskId];
-            setVideos(prev => prev.map(v =>
-              v.id === videoId ? { ...v, videoUrl, status: videoUrl ? 'done' : 'error', error: videoUrl ? undefined : 'No video URL in response' } : v
-            ));
-            if (videoUrl) addToHistory(videoUrl, thumbnailUrl);
-            resolve();
-          } else if (data.status === 'failed' || data.status === 'error') {
-            clearInterval(timer);
-            delete pollTimers.current[taskId];
-            setVideos(prev => prev.map(v =>
-              v.id === videoId ? { ...v, status: 'error', error: data.error || 'Video generation failed' } : v
-            ));
-            resolve();
-          }
-        } catch { /* keep polling */ }
-      }, 5000);
-      pollTimers.current[taskId] = timer;
-    });
-  };
-
-  const resetStudio = () => {
-    Object.values(pollTimers.current).forEach(t => clearInterval(t));
-    pollTimers.current = {};
-    setStep('brief');
-    setBrief('');
-    setPrompts([]);
-    setFrames([]);
-    setVideos([]);
-    setGlobalError(null);
-    setPromptsError(null);
-  };
-
-  // ── Step indicators ───────────────────────────────────────────────────────
-  const STEPS: { id: VideoStudioStep; label: string }[] = [
-    { id: 'brief',   label: 'Brief'   },
-    { id: 'prompts', label: 'Prompts' },
-    { id: 'frames',  label: 'Frames'  },
-    { id: 'video',   label: 'Video'   },
-    { id: 'done',    label: 'Done'    },
-  ];
-  const stepIdx = STEPS.findIndex(s => s.id === step);
-
-  const STYLE_OPTIONS = [
-    { value: 'cinematic',    label: '🎬 Cinematic'    },
-    { value: 'documentary',  label: '📽 Documentary'  },
-    { value: 'commercial',   label: '💼 Commercial'   },
-    { value: 'anime',        label: '🌸 Anime'        },
-    { value: 'realistic',    label: '📸 Realistic'    },
-    { value: 'fantasy',      label: '🧙 Fantasy'      },
-    { value: 'noir',         label: '🌑 Noir'         },
-    { value: 'vibrant',      label: '🌈 Vibrant'      },
-  ];
-
-  return (
-    <div className="flex flex-col flex-1 min-h-0" style={{ background: BG }}>
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between px-4 md:px-8 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-            style={{ background: `linear-gradient(135deg, #7c3aed, #a78bfa)` }}>
-            <Film className="w-4 h-4 text-white" />
-          </div>
-          <div>
-            <div className="text-sm font-black text-white">AI Video Studio</div>
-            <div className="text-xs text-white/35">Text → cinematic video in minutes</div>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-          {history.length > 0 && (
-            <button
-              onClick={() => setHistoryOpen(v => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
-              style={{ borderColor: BORDER, color: historyOpen ? GOLD_L : 'rgba(255,255,255,0.4)', background: historyOpen ? `${GOLD}10` : 'transparent' }}>
-              <ClipboardList className="w-3.5 h-3.5" /> History ({history.length})
-            </button>
-          )}
-          {step !== 'brief' && (
-            <button onClick={resetStudio}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
-              style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-              <RefreshCcw className="w-3.5 h-3.5" /> New Video
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* ── Step progress bar ── */}
-      <div className="flex items-center gap-0 px-4 md:px-8 py-3 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
-        {STEPS.map((s, i) => {
-          const isActive   = s.id === step;
-          const isPast     = i < stepIdx;
-          const isFuture   = i > stepIdx;
-          return (
-            <React.Fragment key={s.id}>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black transition"
-                  style={{
-                    background: isActive ? GOLD : isPast ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.08)',
-                    color: isActive ? '#000' : isPast ? '#86efac' : 'rgba(255,255,255,0.3)',
-                    border: isActive ? 'none' : isPast ? '1px solid rgba(34,197,94,0.3)' : '1px solid rgba(255,255,255,0.1)',
-                  }}>
-                  {isPast ? '✓' : i + 1}
-                </div>
-                <span className="text-xs font-bold transition"
-                  style={{ color: isActive ? GOLD_L : isPast ? 'rgba(134,239,172,0.8)' : 'rgba(255,255,255,0.25)' }}>
-                  {s.label}
-                </span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className="w-6 md:w-10 h-px mx-1 shrink-0 transition"
-                  style={{ background: isPast ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)' }} />
-              )}
-            </React.Fragment>
-          );
-        })}
-      </div>
-
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* ── Main content area ── */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 pb-24 md:pb-8">
-
-          {globalError && (
-            <div className="flex items-center gap-2 p-3 rounded-xl border text-sm text-red-300 mb-4"
-              style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
-              <AlertCircle className="w-4 h-4 shrink-0" /> {globalError}
-              <button onClick={() => setGlobalError(null)} className="ml-auto text-red-300/50 hover:text-red-200"><X className="w-3.5 h-3.5" /></button>
-            </div>
-          )}
-
-          {/* ═══ STEP 1: Brief ═════════════════════════════════════════════ */}
-          {step === 'brief' && (
-            <div className="max-w-2xl mx-auto space-y-6">
-              <div>
-                <h2 className="text-xl font-black text-white mb-1">Describe Your Video</h2>
-                <p className="text-sm text-white/40">Tell the AI what you want to create. Be as specific or abstract as you like — the more vivid, the better.</p>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Your Brief</label>
-                <textarea
-                  value={brief}
-                  onChange={e => setBrief(e.target.value)}
-                  placeholder="e.g. A lone astronaut walks across a barren red planet at sunset. The sky shifts from amber to deep violet. Dramatic, slow motion, cinematic score."
-                  rows={5}
-                  className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none transition focus:border-opacity-60"
-                  style={{ borderColor: brief ? `${GOLD}50` : BORDER }}
-                />
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-white/20">{brief.length} chars</span>
-                  {brief.length < 20 && brief.length > 0 && (
-                    <span className="text-xs text-amber-400/60">Add more detail for better results</span>
-                  )}
-                </div>
-              </div>
-
-              {/* Style */}
-              <div className="space-y-2">
-                <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Visual Style</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {STYLE_OPTIONS.map(opt => (
-                    <button key={opt.value} onClick={() => setStyle(opt.value)}
-                      className="px-3 py-2 rounded-xl border text-xs font-bold transition"
-                      style={{
-                        borderColor: style === opt.value ? GOLD : BORDER,
-                        background: style === opt.value ? `${GOLD}15` : 'rgba(0,0,0,0.2)',
-                        color: style === opt.value ? GOLD_L : 'rgba(255,255,255,0.4)',
-                      }}>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Aspect ratio + duration */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Aspect Ratio</label>
-                  <div className="flex gap-2">
-                    {(['16:9', '9:16', '1:1'] as const).map(ar => (
-                      <button key={ar} onClick={() => setAspectRatio(ar)}
-                        className="flex-1 py-2 rounded-lg border text-xs font-bold transition"
-                        style={{
-                          borderColor: aspectRatio === ar ? GOLD : BORDER,
-                          background: aspectRatio === ar ? `${GOLD}15` : 'rgba(0,0,0,0.2)',
-                          color: aspectRatio === ar ? GOLD_L : 'rgba(255,255,255,0.4)',
-                        }}>
-                        {ar}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Duration</label>
-                  <div className="flex gap-2">
-                    {([5, 10] as const).map(d => (
-                      <button key={d} onClick={() => setDuration(d)}
-                        className="flex-1 py-2 rounded-lg border text-xs font-bold transition"
-                        style={{
-                          borderColor: duration === d ? GOLD : BORDER,
-                          background: duration === d ? `${GOLD}15` : 'rgba(0,0,0,0.2)',
-                          color: duration === d ? GOLD_L : 'rgba(255,255,255,0.4)',
-                        }}>
-                        {d}s
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {promptsError && (
-                <div className="flex items-center gap-2 p-3 rounded-xl border text-sm text-red-300"
-                  style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
-                  <AlertCircle className="w-4 h-4 shrink-0" /> {promptsError}
-                </div>
-              )}
-
-              <button
-                onClick={handleGeneratePrompts}
-                disabled={promptsLoading || brief.trim().length < 10}
-                className="w-full flex flex-col items-center justify-center gap-0.5 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-                style={{ background: `linear-gradient(135deg, #7c3aed, #a78bfa)`, color: '#fff' }}>
-                <span className="flex items-center gap-2">
-                  {promptsLoading
-                    ? <><Loader className="w-4 h-4 animate-spin" /> Generating prompts…</>
-                    : <><Wand2 className="w-4 h-4" /> Generate Scene Prompts</>}
-                </span>
-                {promptsLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>AI is crafting visual prompts from your brief…</span>}
-              </button>
-            </div>
-          )}
-
-          {/* ═══ STEP 2: Prompts ═══════════════════════════════════════════ */}
-          {step === 'prompts' && (
-            <div className="max-w-2xl mx-auto space-y-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-black text-white mb-1">Scene Prompts</h2>
-                  <p className="text-sm text-white/40">Select the scenes you want to turn into frames. Edit any prompt to customize it.</p>
-                </div>
-                <button onClick={() => setStep('brief')}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold hover:bg-white/5 transition"
-                  style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-                  <ChevronLeft className="w-3.5 h-3.5" /> Back
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-white/30">{prompts.filter(p => p.selected).length} of {prompts.length} selected</span>
-                <div className="flex gap-2">
-                  <button onClick={() => setPrompts(prev => prev.map(p => ({ ...p, selected: true })))}
-                    className="text-xs px-2 py-1 rounded-lg border hover:bg-white/5 transition"
-                    style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
-                    All
-                  </button>
-                  <button onClick={() => setPrompts(prev => prev.map(p => ({ ...p, selected: false })))}
-                    className="text-xs px-2 py-1 rounded-lg border hover:bg-white/5 transition"
-                    style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
-                    None
-                  </button>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                {prompts.map((prompt, idx) => (
-                  <div key={prompt.id}
-                    className="rounded-xl border overflow-hidden transition"
-                    style={{
-                      borderColor: prompt.selected ? `${GOLD}50` : BORDER,
-                      background: prompt.selected ? `${GOLD}05` : 'rgba(0,0,0,0.2)',
-                    }}>
-                    <div className="flex items-center gap-3 px-4 py-2.5 border-b" style={{ borderColor: prompt.selected ? `${GOLD}20` : BORDER }}>
-                      <button
-                        onClick={() => setPrompts(prev => prev.map(p => p.id === prompt.id ? { ...p, selected: !p.selected } : p))}
-                        className="w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition"
-                        style={{
-                          borderColor: prompt.selected ? GOLD : 'rgba(255,255,255,0.2)',
-                          background: prompt.selected ? GOLD : 'transparent',
-                        }}>
-                        {prompt.selected && <span className="text-[10px] font-black text-black">✓</span>}
-                      </button>
-                      <span className="text-xs font-bold text-white/30">Scene {idx + 1}</span>
-                      {prompt.edited && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}20`, color: GOLD }}>edited</span>}
-                      <div className="ml-auto flex items-center gap-1">
-                        <button
-                          onClick={() => setPrompts(prev => prev.map(p => p.id === prompt.id ? { ...p, selected: !p.selected } : p))}
-                          className="text-xs px-2 py-1 rounded-lg transition hover:bg-white/8"
-                          style={{ color: prompt.selected ? GOLD : 'rgba(255,255,255,0.3)' }}>
-                          {prompt.selected ? '✓ Selected' : 'Select'}
-                        </button>
-                      </div>
-                    </div>
-                    <textarea
-                      value={prompt.text}
-                      onChange={e => setPrompts(prev => prev.map(p => p.id === prompt.id ? { ...p, text: e.target.value, edited: true } : p))}
-                      rows={3}
-                      className="w-full bg-transparent px-4 py-3 text-sm text-white/75 outline-none resize-none placeholder-white/20"
-                    />
-                  </div>
-                ))}
-              </div>
-
-              <button
-                onClick={handleGenerateFrames}
-                disabled={prompts.filter(p => p.selected).length === 0}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-                style={{ background: `linear-gradient(135deg, #7c3aed, #a78bfa)`, color: '#fff' }}>
-                <Image className="w-4 h-4" />
-                Generate {prompts.filter(p => p.selected).length} Frame{prompts.filter(p => p.selected).length !== 1 ? 's' : ''}
-              </button>
-            </div>
-          )}
-
-          {/* ═══ STEP 3: Frames ════════════════════════════════════════════ */}
-          {step === 'frames' && (
-            <div className="max-w-3xl mx-auto space-y-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-black text-white mb-1">Generated Frames</h2>
-                  <p className="text-sm text-white/40">
-                    {frames.filter(f => f.status === 'done').length} of {frames.length} frames ready.
-                    {frames.some(f => f.status === 'generating') && ' Generating…'}
-                  </p>
-                </div>
-                <button onClick={() => setStep('prompts')}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold hover:bg-white/5 transition"
-                  style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-                  <ChevronLeft className="w-3.5 h-3.5" /> Back
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {frames.map(frame => (
-                  <div key={frame.id} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.3)' }}>
-                    {/* Image area */}
-                    <div className="relative bg-black" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : aspectRatio === '1:1' ? '1/1' : '16/9', maxHeight: 280 }}>
-                      {frame.status === 'done' && frame.imageUrl ? (
-                        <img src={frame.imageUrl} alt={frame.promptText} className="w-full h-full object-cover" />
-                      ) : frame.status === 'error' ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                          <AlertCircle className="w-6 h-6 text-red-400" />
-                          <span className="text-xs text-red-300 text-center px-3">{frame.error}</span>
-                        </div>
-                      ) : (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                          <div className="w-8 h-8 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: `${GOLD}40`, borderTopColor: GOLD }} />
-                          <span className="text-xs text-white/30">Generating frame…</span>
-                        </div>
-                      )}
-                      {frame.status === 'done' && frame.imageUrl && (
-                        
-                          href={frame.imageUrl}
-                          download
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center transition hover:scale-110"
-                          style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                          <Download className="w-3.5 h-3.5 text-white/70" />
-                        </a>
-                      )}
-                    </div>
-                    {/* Prompt text */}
-                    <div className="px-3 py-2.5">
-                      <p className="text-xs text-white/40 leading-relaxed line-clamp-2">{frame.promptText}</p>
-                      <div className="flex items-center gap-1.5 mt-1.5">
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded`}
-                          style={{
-                            background: frame.status === 'done' ? 'rgba(34,197,94,0.15)' : frame.status === 'error' ? 'rgba(239,68,68,0.15)' : `${GOLD}15`,
-                            color: frame.status === 'done' ? '#86efac' : frame.status === 'error' ? '#fca5a5' : GOLD_L,
-                          }}>
-                          {frame.status === 'done' ? '✓ Ready' : frame.status === 'error' ? '✗ Failed' : '⏳ Generating'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {frames.every(f => f.status !== 'generating') && (
-                <button
-                  onClick={handleGenerateVideos}
-                  disabled={frames.filter(f => f.status === 'done').length === 0}
-                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-                  style={{ background: `linear-gradient(135deg, #7c3aed, #a78bfa)`, color: '#fff' }}>
-                  <Film className="w-4 h-4" />
-                  Generate {frames.filter(f => f.status === 'done').length} Video{frames.filter(f => f.status === 'done').length !== 1 ? 's' : ''}
-                </button>
-              )}
-              {frames.some(f => f.status === 'generating') && (
-                <div className="flex items-center justify-center gap-3 py-4 text-sm text-white/40">
-                  <Loader className="w-4 h-4 animate-spin" style={{ color: GOLD }} />
-                  Waiting for all frames to complete…
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ═══ STEP 4 + 5: Video & Done ══════════════════════════════════ */}
-          {(step === 'video' || step === 'done') && (
-            <div className="max-w-3xl mx-auto space-y-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h2 className="text-xl font-black text-white mb-1">
-                    {step === 'done' ? '🎉 Videos Ready!' : 'Generating Videos…'}
-                  </h2>
-                  <p className="text-sm text-white/40">
-                    {step === 'done'
-                      ? `${videos.filter(v => v.status === 'done').length} video${videos.filter(v => v.status === 'done').length !== 1 ? 's' : ''} generated successfully.`
-                      : `${videos.filter(v => v.status === 'done').length} of ${videos.length} complete. This may take a few minutes.`}
-                  </p>
-                </div>
-                {step === 'done' && (
-                  <button onClick={resetStudio}
-                    className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-bold hover:bg-white/5 transition"
-                    style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
-                    <RefreshCcw className="w-3.5 h-3.5" /> Create Another
-                  </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {videos.map(video => (
-                  <div key={video.id} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.3)' }}>
-                    {/* Video area */}
-                    <div className="relative bg-black" style={{ aspectRatio: aspectRatio === '9:16' ? '9/16' : aspectRatio === '1:1' ? '1/1' : '16/9', maxHeight: 320 }}>
-                      {video.status === 'done' && video.videoUrl ? (
-                        <video
-                          src={video.videoUrl}
-                          poster={video.frameUrl}
-                          controls
-                          playsInline
-                          className="w-full h-full object-contain"
-                        />
-                      ) : video.status === 'error' ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-                          <AlertCircle className="w-6 h-6 text-red-400" />
-                          <span className="text-xs text-red-300 text-center px-3">{video.error}</span>
-                        </div>
-                      ) : (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3"
-                          style={{ background: `url(${video.frameUrl}) center/cover no-repeat` }}>
-                          <div className="absolute inset-0" style={{ background: 'rgba(0,0,0,0.6)' }} />
-                          <div className="relative flex flex-col items-center gap-2">
-                            <div className="w-10 h-10 rounded-full border-2 border-t-transparent animate-spin" style={{ borderColor: `${GOLD}40`, borderTopColor: GOLD }} />
-                            <span className="text-xs text-white/50">
-                              {video.status === 'polling' ? 'Processing video…' : 'Submitting…'}
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                      {video.status === 'done' && video.videoUrl && (
-                        
-                          href={video.videoUrl}
-                          download
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="absolute top-2 right-2 w-7 h-7 rounded-lg flex items-center justify-center transition hover:scale-110 z-10"
-                          style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
-                          <Download className="w-3.5 h-3.5 text-white/70" />
-                        </a>
-                      )}
-                    </div>
-                    {/* Info row */}
-                    <div className="px-3 py-2.5">
-                      <p className="text-xs text-white/40 leading-relaxed line-clamp-2">{video.promptText}</p>
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                          style={{
-                            background: video.status === 'done' ? 'rgba(34,197,94,0.15)' : video.status === 'error' ? 'rgba(239,68,68,0.15)' : `${GOLD}15`,
-                            color: video.status === 'done' ? '#86efac' : video.status === 'error' ? '#fca5a5' : GOLD_L,
-                          }}>
-                          {video.status === 'done' ? '✓ Ready' : video.status === 'error' ? '✗ Failed' : '⏳ Processing'}
-                        </span>
-                        {video.status === 'done' && (
-                          <span className="text-[10px] text-white/25">{duration}s · {aspectRatio}</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {step === 'video' && videos.some(v => v.status === 'polling' || v.status === 'generating') && (
-                <div className="rounded-xl border p-4 text-center space-y-2" style={{ borderColor: `${GOLD}20`, background: `${GOLD}05` }}>
-                  <div className="flex items-center justify-center gap-2 text-sm font-bold" style={{ color: GOLD_L }}>
-                    <Loader className="w-4 h-4 animate-spin" /> Video generation in progress
-                  </div>
-                  <p className="text-xs text-white/35">Kling AI typically takes 2–5 minutes per video. Feel free to leave this page open — results will appear when ready.</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* ── History side panel ── */}
-        {historyOpen && history.length > 0 && (
-          <div className="w-72 shrink-0 border-l flex flex-col overflow-hidden hidden lg:flex" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-            <div className="flex items-center justify-between px-4 py-3 border-b shrink-0" style={{ borderColor: BORDER }}>
-              <span className="text-xs font-bold text-white/40 uppercase tracking-wider">History</span>
-              <button onClick={() => setHistoryOpen(false)} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2">
-              {history.map(item => (
-                <div key={item.id} className="rounded-lg border overflow-hidden" style={{ borderColor: BORDER }}>
-                  {item.thumbnailUrl ? (
-                    <img src={item.thumbnailUrl} alt="" className="w-full object-cover" style={{ aspectRatio: '16/9' }} />
-                  ) : (
-                    <div className="w-full flex items-center justify-center" style={{ aspectRatio: '16/9', background: 'rgba(255,255,255,0.04)' }}>
-                      <Film className="w-5 h-5 text-white/20" />
-                    </div>
-                  )}
-                  <div className="px-2 py-2">
-                    <p className="text-xs text-white/50 truncate">{item.brief}</p>
-                    <div className="flex items-center justify-between mt-1.5">
-                      <span className="text-[10px] text-white/25">
-                        {new Date(item.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                      </span>
-                      <a href={item.videoUrl} download target="_blank" rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-[10px] font-bold transition hover:brightness-125"
-                        style={{ color: GOLD }}>
-                        <Download className="w-2.5 h-2.5" /> Download
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {history.length > 0 && (
-                <button
-                  onClick={() => {
-                    if (window.confirm('Clear all video history?')) persistHistory([]);
-                  }}
-                  className="w-full py-2 rounded-lg text-xs font-bold border transition hover:bg-white/5"
-                  style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.25)' }}>
-                  Clear History
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}// ─── ConnectAccountsModal ─────────────────────────────────────────────────────
+// ─── ConnectAccountsModal ─────────────────────────────────────────────────────
 
 function ConnectAccountsModal({
   open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser, onDisconnectPlatform,
@@ -1389,7 +536,7 @@ function ConnectAccountsModal({
   currentUser: { id: string; email: string } | null;
 }) {
   const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState<string | null>(null);
+  const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id navigating to Ayrshare
   const [error, setError] = useState<string | null>(null);
   const [liveEmail, setLiveEmail] = useState<string>('');
 
@@ -1408,13 +555,19 @@ function ConnectAccountsModal({
     setConnecting(true); setError(null);
     try {
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
+
       if (sessionErr || !session) {
         setConnecting(false);
         onConnectPostiz();
         return;
       }
+
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+      // On desktop: open popup first (before async) so browser doesn't block it
+      // On mobile: popup is unreliable — we'll navigate the current tab instead
       const popup = isMobile ? null : window.open('', '_blank');
+
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
         method: 'POST',
         headers: {
@@ -1422,17 +575,21 @@ function ConnectAccountsModal({
           'Authorization': `Bearer ${session.access_token}`,
         },
       });
+
       if (!res.ok) {
         popup?.close();
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || `Server error ${res.status}`);
       }
+
       const { connectUrl } = await res.json();
       if (!connectUrl) { popup?.close(); throw new Error('No connect URL returned'); }
+
       localStorage.setItem('postiz_social_return', '1');
       if (popup) {
         popup.location.href = connectUrl;
       } else {
+        // Mobile: navigate current tab directly — always works
         window.location.href = connectUrl;
       }
       setConnecting(false);
@@ -1498,6 +655,7 @@ function ConnectAccountsModal({
                           if (!res.ok) { popup?.close(); throw new Error('Could not open account manager'); }
                           const { connectUrl } = await res.json();
                           if (!connectUrl) { popup?.close(); throw new Error('No URL returned'); }
+                          // Set the return flag so pollForChannels fires on return
                           localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
                           if (popup) { popup.location.href = connectUrl; }
                           else { window.location.href = connectUrl; }
@@ -1542,6 +700,7 @@ function ConnectAccountsModal({
             {connecting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
           </button>
 
+          {/* Manual refresh — shown after connecting so user can force a sync */}
           {integrations.length === 0 && !connecting && (
             <button
               onClick={() => onRefresh(true)}
@@ -1562,7 +721,7 @@ function ConnectAccountsModal({
           )}
 
           <p className="text-xs text-white/30 text-center">
-            Instagram, TikTok, YouTube, LinkedIn, X, Facebook &amp; more
+            Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
           </p>
         </div>
       </div>
@@ -1589,6 +748,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
       const data = res.ok ? await res.json() : { posts: [] };
+      const now = new Date();
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
@@ -1951,6 +1111,8 @@ function SavedPostCard({
 
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+
+      {/* ── Header ── */}
       <div className="flex items-center gap-2 px-4 py-2.5 border-b" style={{ borderColor: BORDER }}>
         <span className="text-xs font-bold" style={{ color: GOLD_L }}>🔖 {post.label}</span>
         <span className="text-[10px] text-white/25 ml-1">
@@ -1983,6 +1145,8 @@ function SavedPostCard({
           </button>
         </div>
       </div>
+
+      {/* ── Post body ── */}
       {isEditing ? (
         <textarea
           value={editText}
@@ -1997,6 +1161,8 @@ function SavedPostCard({
           {post.text}
         </div>
       )}
+
+      {/* ── Account selector ── */}
       <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
         <div className="text-[10px] font-bold text-white/25 uppercase tracking-wider mb-2">Post to</div>
         {textPostAccounts.length === 0 ? (
@@ -2019,6 +1185,8 @@ function SavedPostCard({
           </div>
         )}
       </div>
+
+      {/* ── Schedule / post now toggle ── */}
       <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
         <div className="flex gap-2 mb-2">
           {(['now', 'schedule'] as const).map(t => (
@@ -2035,6 +1203,8 @@ function SavedPostCard({
             style={{ borderColor: BORDER }} />
         )}
       </div>
+
+      {/* ── Footer: error + post button ── */}
       <div className="px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex-1">
           {postErr && <p className="text-xs text-red-400">{postErr}</p>}
@@ -2054,11 +1224,13 @@ function SavedPostCard({
           </button>
         </div>
       </div>
+
     </div>
   );
 }
 
 // ─── InlinePostComposer ────────────────────────────────────────────────────────
+// Inline version of PostComposerModal (no modal wrapper)
 
 function InlinePostComposer({
   integrations, userId, onSuccess,
@@ -2154,9 +1326,11 @@ function InlinePostComposer({
   const liInteg      = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
   const threadsInteg = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('threads'));
 
+  // Multi-select for text post accounts
   const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
   const toggleTextAccount = (id: string) => setSelectedTextAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
 
+  // AI edit state
   const [aiEditText, setAiEditText] = useState('');
   const [editingIdx, setEditingIdx] = useState<{ tab: 'twitter' | 'linkedin'; idx: number } | null>(null);
 
@@ -2243,6 +1417,7 @@ function InlinePostComposer({
     setTextAiSelected(prev => ({ ...prev, [platform]: idx }));
     setTextTab(platform);
     setAiEditText(text);
+    
     setEditingIdx(null);
   };
 
@@ -2364,6 +1539,7 @@ function InlinePostComposer({
 
   return (
     <div className="space-y-4 md:space-y-5">
+      {/* Post type toggle */}
       <div className="grid grid-cols-3 gap-2 p-1 rounded-2xl" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
         {([
           ['media', '📎', 'Media Post',  'Video & images'],
@@ -2601,6 +1777,7 @@ function InlinePostComposer({
 
       {postType === 'text' && (
         <>
+          {/* ── Step 1: Choose which accounts to post to ── */}
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
             {textPostAccounts.length === 0 ? (
@@ -2627,6 +1804,9 @@ function InlinePostComposer({
             )}
           </div>
 
+          {/* ── Step 2: Write manually OR use AI ── */}
+
+          {/* Manual compose — always visible unless AI panel is open */}
           {!showTextAi && (
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
               <textarea
@@ -2651,6 +1831,7 @@ function InlinePostComposer({
             </div>
           )}
 
+          {/* AI Generate section */}
           <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
             <button onClick={() => { setShowTextAi(v => !v); }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
@@ -2666,6 +1847,8 @@ function InlinePostComposer({
                 <p className="text-xs text-white/35 pt-3">
                   Generates <strong className="text-white/50">10 X posts</strong> &amp; <strong className="text-white/50">10 LinkedIn posts</strong>. Pick one, edit it, then post to your selected accounts above.
                 </p>
+
+                {/* Source mode */}
                 <div className="flex gap-2">
                   {([['from_video', '🎙 Analyze Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
                     <button key={m} onClick={() => setTextAiMode(m as any)} className="flex-1 py-1.5 rounded-lg text-xs font-semibold border transition"
@@ -2674,6 +1857,7 @@ function InlinePostComposer({
                     </button>
                   ))}
                 </div>
+
                 {textAiMode === 'from_video' && (
                   !textAiVideo ? (
                     <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
@@ -2699,8 +1883,9 @@ function InlinePostComposer({
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
                 {textAiError && textAiError === 'upgrade_required' ? (
                   <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator &amp; Agency Feature</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator & Agency Feature</div>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>The Content Repurposing Engine is available on Creator and Agency plans.</p>
+                    <button onClick={() => setPricingOpen(true)} className="px-4 py-2 rounded-lg text-xs font-bold transition hover:brightness-110" style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>Upgrade to Unlock</button>
                   </div>
                 ) : textAiError ? (
                   <div className="text-xs text-red-300 px-1">{textAiError}</div>
@@ -2718,6 +1903,7 @@ function InlinePostComposer({
 
                 {textAiPosts && (
                   <div className="space-y-3 pt-1">
+                    {/* Tab: X posts vs LinkedIn posts */}
                     <div className="flex gap-2">
                       {([['twitter', 'x'] , ['linkedin', 'linkedin']] as [string, PlatformId][]).map(([key, iconId]) => (
                         <button key={key} onClick={() => { setTextTab(key as any); setEditingIdx(null); }}
@@ -2730,20 +1916,26 @@ function InlinePostComposer({
                         </button>
                       ))}
                     </div>
+
                     <div className="text-xs text-white/25">Click a post to select it · click ✏️ to edit inline</div>
+
                     <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1">
                       {(textTab === 'twitter' ? textAiPosts.twitter : textAiPosts.linkedin).map((post, idx) => {
                         const platform = textTab as 'twitter' | 'linkedin';
                         const isSel     = textAiSelected[platform] === idx;
                         const isEditing = editingIdx?.tab === platform && editingIdx?.idx === idx;
                         const liveText  = isEditing ? aiEditText : post;
+
                         return (
                           <div key={idx} className="relative rounded-xl border overflow-hidden transition"
                             style={{ borderColor: isSel ? GOLD : BORDER, background: isSel ? `${GOLD}08` : 'rgba(0,0,0,0.2)' }}>
+
+                            {/* Edit button — top right */}
                             <button
                               onClick={e => {
                                 e.stopPropagation();
                                 if (isEditing) {
+                                  // save edits back into the post list
                                   if (textAiPosts) {
                                     const updated = { ...textAiPosts };
                                     updated[platform] = [...updated[platform]];
@@ -2751,6 +1943,7 @@ function InlinePostComposer({
                                     setTextAiPosts(updated);
                                   }
                                   setEditingIdx(null);
+                                  // re-select with edited text if this was selected
                                   if (isSel) {
                                     if (platform === 'twitter') setXText(aiEditText); else setLinkedinText(aiEditText);
                                     setAiEditText(aiEditText);
@@ -2765,11 +1958,14 @@ function InlinePostComposer({
                               title={isEditing ? 'Done editing' : 'Edit this post'}>
                               {isEditing ? <CheckCircle2 className="w-3.5 h-3.5" /> : <Edit3 className="w-3 h-3" />}
                             </button>
+
+                            {/* Card body — click to select */}
                             {isEditing ? (
                               <textarea
                                 value={aiEditText}
                                 onChange={e => setAiEditText(e.target.value)}
-                                autoFocus rows={5}
+                                autoFocus
+                                rows={5}
                                 onClick={e => e.stopPropagation()}
                                 className="w-full bg-transparent px-3 pt-3 pb-2 pr-8 text-xs text-white outline-none resize-none leading-relaxed"
                               />
@@ -2781,6 +1977,8 @@ function InlinePostComposer({
                                 {liveText}
                               </div>
                             )}
+
+                            {/* Footer */}
                             <div className="flex items-center gap-2 px-3 py-1.5 border-t" style={{ borderColor: BORDER }}>
                               <span className="text-[10px] text-white/20 font-bold">#{idx + 1}</span>
                               <span className="text-[10px] text-white/15">{liveText.length}c</span>
@@ -2825,6 +2023,7 @@ function InlinePostComposer({
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider">
                 {savedPosts.length} Saved Post{savedPosts.length !== 1 ? 's' : ''}
               </div>
+
               {savedPosts.map(p => (
                 <SavedPostCard
                   key={p.id}
@@ -2846,13 +2045,13 @@ function InlinePostComposer({
           )}
         </>
       )}
-
       {submitError && (
         <div className="flex items-start gap-2 p-3 rounded-xl border text-sm text-red-200" style={{ borderColor: 'rgba(239,68,68,0.3)', background: 'rgba(239,68,68,0.08)' }}>
           <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" /> {submitError}
         </div>
       )}
 
+      {/* Submit button */}
       <button
         onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
         disabled={submitting || (postType === 'media' && submitOk)}
@@ -2872,16 +2071,21 @@ function InlinePostComposer({
 }
 
 // ─── InlineContentIdeas ───────────────────────────────────────────────────────
+// Inline content ideas panel with AI/manual toggle and save-to-planner
 
 function InlineContentIdeas({ userId, onAddToPlanner }: {
   userId: string | null;
   onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
 }) {
   const [mode, setMode] = useState<'manual' | 'ai'>('manual');
+
+  // Manual entry state
   const [manualTitle, setManualTitle]   = useState('');
   const [manualNotes, setManualNotes]   = useState('');
   const [manualCategory, setManualCategory] = useState('idea');
   const [manualSaved, setManualSaved]   = useState(false);
+
+  // AI state
   const [captionMode, setCaptionMode]   = useState<'from_video' | 'from_description'>('from_description');
   const [description, setDescription]   = useState('');
   const [tone, setTone]                 = useState('');
@@ -2957,6 +2161,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
 
   return (
     <div className="space-y-4">
+      {/* Mode toggle */}
       <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
         <button onClick={() => setMode('manual')}
           className="flex-1 py-2 rounded-lg text-xs font-bold transition"
@@ -2970,21 +2175,29 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
         </button>
       </div>
 
+      {/* ── Manual Entry ── */}
       {mode === 'manual' && (
         <div className="space-y-3">
           <div>
             <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Idea Title</label>
-            <input value={manualTitle} onChange={e => setManualTitle(e.target.value)}
+            <input
+              value={manualTitle}
+              onChange={e => setManualTitle(e.target.value)}
               placeholder="What's the content idea?"
               className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
-              style={{ borderColor: BORDER }} />
+              style={{ borderColor: BORDER }}
+            />
           </div>
           <div>
             <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
-            <textarea value={manualNotes} onChange={e => setManualNotes(e.target.value)}
-              placeholder="Any angles, references, key points…" rows={3}
+            <textarea
+              value={manualNotes}
+              onChange={e => setManualNotes(e.target.value)}
+              placeholder="Any angles, references, key points…"
+              rows={3}
               className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none"
-              style={{ borderColor: BORDER }} />
+              style={{ borderColor: BORDER }}
+            />
           </div>
           <div>
             <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Category</label>
@@ -3005,7 +2218,9 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               })}
             </div>
           </div>
-          <button onClick={handleManualSave} disabled={!manualTitle.trim() || manualSaved || !userId}
+          <button
+            onClick={handleManualSave}
+            disabled={!manualTitle.trim() || manualSaved || !userId}
             className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110 flex items-center justify-center gap-2"
             style={{ background: manualSaved ? '#22c55e' : GOLD, color: '#000' }}>
             {manualSaved
@@ -3016,6 +2231,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
         </div>
       )}
 
+      {/* ── AI Generate ── */}
       {mode === 'ai' && (
         <div className="space-y-3">
           <div className="flex gap-2">
@@ -3049,25 +2265,20 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
           <input value={tone} onChange={e => setTone(e.target.value)}
             placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
             className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-          {error && error === 'upgrade_required' ? (
-            <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator &amp; Agency Feature</div>
-              <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>The Content Repurposing Engine is available on Creator and Agency plans.</p>
-            </div>
-          ) : error ? (
-            <div className="text-xs text-red-300">{error}</div>
-          ) : null}
+          {error && error === 'upgrade_required' ? (<div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}><div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator &amp; Agency Feature</div><p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>The Content Repurposing Engine is available on Creator and Agency plans.</p><button onClick={() => setPricingOpen(true)} className="px-4 py-2 rounded-lg text-xs font-bold" style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>Upgrade to Unlock</button></div>) : error ? (<div className="text-xs text-red-300">{error}</div>) : null}
           {!ideas && (
-            <button onClick={handleAiGenerate} disabled={loading}
-              className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-              style={{ background: GOLD, color: '#000' }}>
-              <span className="flex items-center justify-center gap-2">
-                {loading
-                  ? <><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Analyzing Video…' : 'Generating Ideas…'}</>
-                  : <><Sparkles className="w-4 h-4" /> Generate Ideas</>}
-              </span>
-              {loading && captionMode === 'from_video' && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
-            </button>
+            <>
+              <button onClick={handleAiGenerate} disabled={loading}
+                className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+                style={{ background: GOLD, color: '#000' }}>
+                <span className="flex items-center justify-center gap-2">
+                  {loading
+                    ? <><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Analyzing Video…' : 'Generating Ideas…'}</>
+                    : <><Sparkles className="w-4 h-4" /> Generate Ideas</>}
+                </span>
+                {loading && captionMode === 'from_video' && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
+              </button>
+            </>
           )}
 
           {ideas && (
@@ -3336,7 +2547,9 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                 {visibleItems.map(item => {
                   const col = CATEGORY_COLORS[item.category] || GOLD;
                   return (
-                    <div key={item.id} className="flex items-center gap-1 rounded px-1 py-0.5" style={{ background: `${col}18` }}>
+                    <div key={item.id}
+                      className="flex items-center gap-1 rounded px-1 py-0.5"
+                      style={{ background: `${col}18` }}>
                       <span className="text-[9px] shrink-0" style={{ color: `${col}99` }}>
                         {item.plannedTime ? item.plannedTime.slice(0, 5) : ''}
                       </span>
@@ -3571,6 +2784,8 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
 }
 
 // ─── ComposerPanel ────────────────────────────────────────────────────────────
+// Two-column layout: Create Post (left) | Content Ideas (right)
+// No "Your Channels" section — that's in the sidebar.
 
 function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
   const [logOpen, setLogOpen]             = useState(false);
@@ -3613,6 +2828,8 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+
+      {/* ── Stat counters ── */}
       <div className="grid grid-cols-3 border-b shrink-0" style={{ borderColor: BORDER }}>
         {([
           { key: 'scheduled' as const, label: 'Scheduled', color: GOLD },
@@ -3632,8 +2849,11 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
         ))}
       </div>
 
+      {/* ── Main two-column layout ── */}
       <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x min-h-full" style={{ '--tw-divide-opacity': 1 } as any}>
+
+          {/* Left column: Create Post */}
           <div className="px-4 md:px-6 py-6 space-y-1" style={{ borderColor: BORDER }}>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
@@ -3642,11 +2862,13 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
               </div>
               <div>
                 <div className="text-sm font-black text-white">Create Post</div>
-                <div className="text-xs text-white/35">Write, upload &amp; schedule to your channels</div>
+                <div className="text-xs text-white/35">Write, upload & schedule to your channels</div>
               </div>
             </div>
             <InlinePostComposer integrations={integrations} userId={userId} onSuccess={loadPosts} />
           </div>
+
+          {/* Right column: Content Ideas */}
           <div className="px-4 md:px-6 py-6 border-t lg:border-t-0" style={{ borderColor: BORDER }}>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
@@ -3663,6 +2885,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
         </div>
       </div>
 
+      {/* Modals */}
       <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} />
 
       {addModalOpen && (
@@ -3865,6 +3088,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
         );
       })()}
 
+      {/* Calendar New Post modal — uses regular modal for calendar view */}
       {composerOpen && (
         <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setComposerOpen(false)} />
@@ -3895,6 +3119,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
   const [codeError, setCodeError] = React.useState('');
   const [showCodeEditor, setShowCodeEditor] = React.useState(false);
 
+  // Derive a default code from the user's name or email prefix
   const defaultCode = React.useMemo(() => {
     const raw = userName || (userEmail ? userEmail.split('@')[0] : '');
     return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16) || '';
@@ -3911,6 +3136,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
       if (res.ok) {
         const json = await res.json();
         setData(json);
+        // Pre-fill editor with existing custom code, or default to name-based code
         setCustomCodeInput(json.customCode ?? defaultCode);
       }
     } catch (e) { console.error(e); }
@@ -3967,6 +3193,8 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
 
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-8 space-y-5" style={{ background: BG }}>
+
+      {/* Header */}
       <div>
         <div className="flex items-center gap-2 mb-1">
           <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ color: GOLD }}><rect x="1" y="4" width="22" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M1 9h3M20 9h3M1 15h3M20 15h3"/></svg>
@@ -3977,6 +3205,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
         </p>
       </div>
 
+      {/* Stats row */}
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Total Earned', value: `$${totalEarned}`, icon: <DollarSign className="w-4 h-4" /> },
@@ -3991,6 +3220,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
         ))}
       </div>
 
+      {/* Referral link card */}
       <div className="rounded-xl p-5 space-y-3" style={{ background: `linear-gradient(135deg, ${GOLD}12, rgba(255,255,255,0.02))`, border: `1px solid ${GOLD}30` }}>
         <div className="flex items-center justify-between mb-1">
           <span style={{ fontSize: 12, fontWeight: 700, color: GOLD_L, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Referral Link</span>
@@ -4010,6 +3240,8 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
             {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
           </button>
         </div>
+
+        {/* Code display */}
         <div className="flex items-center gap-2">
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
             Code: <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.1em' }}>
@@ -4020,6 +3252,8 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
             <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: `${GOLD}20`, color: GOLD, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Custom</span>
           )}
         </div>
+
+        {/* Custom code editor */}
         {showCodeEditor && (
           <div className="rounded-lg p-3 space-y-2 mt-1" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Set a custom code (3-16 letters/numbers). This replaces your link code.</p>
@@ -4043,6 +3277,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
         )}
       </div>
 
+      {/* How it works */}
       <div className="rounded-xl p-5" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>How It Works</p>
         <div className="space-y-3">
@@ -4060,6 +3295,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
         </div>
       </div>
 
+      {/* Referrals table */}
       {(data?.referrals?.length ?? 0) > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="px-4 py-3" style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -4086,6 +3322,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
         </div>
       )}
 
+      {/* Commission history */}
       {(data?.commissions?.length ?? 0) > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="px-4 py-3" style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -4133,7 +3370,6 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
     { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
     { id: 'calendar' as ViewMode, label: 'Calendar', icon: <Calendar className="w-5 h-5" /> },
     { id: 'planner'  as ViewMode, label: 'Planner',  icon: <BookOpen className="w-5 h-5" /> },
-    { id: 'video'    as ViewMode, label: 'AI Video', icon: <Film className="w-5 h-5" /> },
     { id: 'partner'  as ViewMode, label: 'Earn',     icon: <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
   ];
 
@@ -4179,7 +3415,10 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
                 <div key={int.id} className="group flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/5 transition">
                   <PlatformIcon id={int.profile || int.identifier} size="sm" />
                   <span className="text-xs text-white/50 truncate flex-1">{int.name}</span>
-                  <button onClick={onOpenConnect} className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition" title="Manage / Disconnect">
+                  <button
+                    onClick={onOpenConnect}
+                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"
+                    title="Manage / Disconnect">
                     <Link2Off className="w-3 h-3 text-red-400/60 hover:text-red-400" />
                   </button>
                   <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0 md:group-hover:hidden" />
@@ -4310,19 +3549,20 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
               className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition disabled:opacity-30">
               <RefreshCw className={`w-3.5 h-3.5 ${integrationsLoading ? 'animate-spin' : ''}`} />
             </button>
-            <buttonon onClick={onOpenConnect}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/8"
-              style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-              <Link2 className="w-3 h-3" />
-              {integrations.length === 0 ? 'Connect' : 'Manage'}
+            <button onClick={onOpenConnect}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
+              style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
+              <Plus className="w-3 h-3" /> {integrations.length > 0 ? 'Add Channel' : 'Connect'}
             </button>
             <UserMenu user={user} onSignOut={onSignOut} subscription={subscription} onManagePlan={onManagePlan} />
           </>
         ) : (
           <button onClick={onSignIn}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
-            Sign In
+            <Link2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Already have an account? Sign In to Connect</span>
+            <span className="sm:hidden">Sign In</span>
           </button>
         )}
       </div>
@@ -4330,231 +3570,492 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
   );
 }
 
-// ─── MediaDistributionPage ────────────────────────────────────────────────────
+// ─── Main page ────────────────────────────────────────────────────────────────
 
-export default function MediaDistributionPage() {
-  const [view, setView]                   = useState<ViewMode>('composer');
+export function MediaDistributionPage() {
+  const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
-  const [integrations, setIntegrations]   = useState<PostizIntegration[]>([]);
+  const [oauthLoading, setOauthLoading]         = useState(false);
+  const [oauthError, setOauthError]             = useState<string | null>(null);
+  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string } | null>(null);
+  const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
+  const [portalLoading, setPortalLoading]       = useState(false);
+  const [pricingOpen, setPricingOpen]           = useState(false);
+  const [promoCode, setPromoCode]               = useState('');
+  const [promoLoading, setPromoLoading]         = useState(false);
+  const [promoError, setPromoError]             = useState('');
+  const [promoSuccess, setPromoSuccess]         = useState('');
+  const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
-  const [currentUser, setCurrentUser]     = useState<{ id: string; email: string } | null>(null);
-  const [authLoading, setAuthLoading]     = useState(true);
-  const [subscription, setSubscription]   = useState<{ plan: string; status: string } | null>(null);
+  const [authModalOpen, setAuthModalOpen]       = useState(false);
+  const { user: authUser, signOut }             = useAuth();
+  const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
-  // ── Auth ──────────────────────────────────────────────────────────────────
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        setCurrentUser({ id: session.user.id, email: session.user.email ?? '' });
-      }
-      setAuthLoading(false);
-    });
-    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setCurrentUser({ id: session.user.id, email: session.user.email ?? '' });
-      } else {
-        setCurrentUser(null);
-        setIntegrations([]);
-      }
-    });
-    return () => authSub.unsubscribe();
-  }, []);
+    if (window.location.hash.includes('access_token')) {
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    // Persist ?ref= code before sign-up so it survives the auth flow
+    const refParam = new URLSearchParams(window.location.search).get('ref');
+    if (refParam) localStorage.setItem('mm_ref_code', refParam);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Subscription ──────────────────────────────────────────────────────────
+  const currentUserId = currentUser?.id ?? null;
+
+  const loadIntegrations = useCallback(async (force = false) => {
+    if (!currentUserId) return;
+    setIntegrationsLoading(true);
+    const safetyTimer = setTimeout(() => setIntegrationsLoading(false), 10000);
+    try { setIntegrations(await fetchChannels(currentUserId, force)); }
+    catch { setIntegrations([]); }
+    finally { clearTimeout(safetyTimer); setIntegrationsLoading(false); }
+  }, [currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    if (!currentUser) { setSubscription(null); return; }
+    if (!currentUserId) return;
+    loadIntegrations();
+    // Load subscription
     (async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
-        });
-        if (res.ok) {
-          const d = await res.json();
-          setSubscription({ plan: d.plan ?? 'free', status: d.subscriptionStatus ?? 'inactive' });
-        }
-      } catch (e) {}
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+        if (data) setSubscription(data);
+      } catch (_) {}
     })();
-  }, [currentUser]);
-
-  // ── Integrations ──────────────────────────────────────────────────────────
-  const loadIntegrations = useCallback(async (force = false) => {
-    if (!currentUser) return;
-    setIntegrationsLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const url = `${SUPABASE_URL}/functions/v1/ayrshare-integrations${force ? '?refresh=true' : ''}`;
-      const res = await fetch(url, {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const list: PostizIntegration[] = Array.isArray(data?.integrations)
-          ? data.integrations.map((i: any) => ({
-              id: i.id || i.identifier || Math.random().toString(),
-              name: i.displayName || i.name || i.identifier,
-              identifier: i.identifier || i.id,
-              profile: i.profileName || i.profile || '',
-              picture: i.picture || '',
-            }))
-          : [];
-        setIntegrations(list);
-      }
-    } catch (e) {}
-    finally { setIntegrationsLoading(false); }
-  }, [currentUser]);
-
-  useEffect(() => { loadIntegrations(); }, [loadIntegrations]);
-
-  // ── Social return detection ───────────────────────────────────────────────
-  useEffect(() => {
-    if (localStorage.getItem(LS_SOCIAL_RETURN_KEY)) {
-      localStorage.removeItem(LS_SOCIAL_RETURN_KEY);
-      setTimeout(() => loadIntegrations(true), 1500);
+    // Handle ?checkout=success return
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout') === 'success') {
+      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(async () => {
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+        if (data) setSubscription(data);
+      }, 2500);
     }
-  }, [loadIntegrations]);
+    // Handle ?ref= referral code — record it when user is logged in
+    const refCode = params.get('ref') || localStorage.getItem('mm_ref_code');
+    if (refCode) {
+      localStorage.removeItem('mm_ref_code');
+      window.history.replaceState({}, '', window.location.pathname);
+      (async () => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            await fetch(`${SUPABASE_URL}/functions/v1/referral-record`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+              body: JSON.stringify({ referralCode: refCode }),
+            });
+          }
+        } catch (_) {}
+      })();
+    }
+  }, [currentUserId]);
 
-  // ── Sign in ───────────────────────────────────────────────────────────────
-  const handleSignIn = async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.href },
-    });
-    if (error) console.error(error);
+  // ── Social account return detection ──────────────────────────────────────
+  // Three signals, any one is enough: URL ?connected=1, localStorage flag, visibilitychange.
+  // On mobile the page fully reloads after OAuth so visibilitychange never fires —
+  // the URL param is the only reliable signal in that case.
+  // We poll with retries because Ayrshare can take a few seconds to register the connection.
+  const pollForChannels = useCallback(async () => {
+    if (!currentUserId) return;
+    setIntegrationsLoading(true);
+    let found = false;
+    // Attempt 1: immediate (no delay) — catches cases where Ayrshare already has the account
+    try {
+      const channels = await fetchChannels(currentUserId, true);
+      setIntegrations(channels);
+      if (channels.length > 0) found = true;
+    } catch { /* keep going */ }
+
+    // If first attempt returned empty, poll with retries
+    if (!found) {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        await new Promise(r => setTimeout(r, 2500));
+        try {
+          const channels = await fetchChannels(currentUserId, true);
+          setIntegrations(channels);
+          if (channels.length > 0) { found = true; break; }
+        } catch { /* keep polling */ }
+      }
+    }
+    setIntegrationsLoading(false);
+  }, [currentUserId]);
+
+  // Signal 1: URL param ?connected=1 — works after full page reload (mobile)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('connected') === '1') {
+      // Clean the URL immediately so refresh doesn't re-trigger
+      window.history.replaceState({}, '', window.location.pathname);
+      try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+      setConnectModalOpen(false);
+      pollForChannels();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Signal 2: localStorage flag — works when popup closes or tab regains focus on desktop
+  useEffect(() => {
+    const isSocialReturn = (() => {
+      try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1' || !!localStorage.getItem('ayrshare_connected'); }
+      catch { return false; }
+    })();
+    if (isSocialReturn) {
+      try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); localStorage.removeItem('ayrshare_connected'); } catch {}
+      window.history.replaceState({}, '', window.location.pathname);
+      setConnectModalOpen(false);
+      pollForChannels();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Signal 3: visibilitychange — works on desktop when popup tab closes
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      const flag = (() => { try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1'; } catch { return false; } })();
+      if (flag) {
+        try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+        setConnectModalOpen(false);
+        pollForChannels();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [pollForChannels]);
+
+  const openConnectModal = () => setConnectModalOpen(true);
+
+  const handleConnect = () => {
+    if (!currentUser) {
+      setAuthModalOpen(true);
+    } else {
+      openConnectModal();
+    }
   };
 
-  // ── Sign out ──────────────────────────────────────────────────────────────
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    setCurrentUser(null);
+  const handleDisconnect = () => {
+    try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
     setIntegrations([]);
-    setSubscription(null);
+    setOauthError(null);
   };
 
-  // ── Disconnect platform ───────────────────────────────────────────────────
   const handleDisconnectPlatform = async (platformId: string) => {
+    // Optimistic: remove from UI immediately
+    setIntegrations(prev => prev.filter(i => (i.profile || i.id) !== platformId));
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-disconnect`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-disconnect`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
-        body: JSON.stringify({ platformId }),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+        },
+        body: JSON.stringify({ platform: platformId }),
       });
-      await loadIntegrations(true);
-    } catch (e) {}
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        // Revert optimistic update on failure
+        loadIntegrations(true);
+        throw new Error(err.error || 'Failed to disconnect');
+      }
+    } catch (err) {
+      // Revert on network error too
+      loadIntegrations(true);
+      throw err;
+    }
   };
 
-  // ── Manage plan ───────────────────────────────────────────────────────────
-  const handleManagePlan = async () => {
+  const handleCheckout = async (plan: string) => {
+    if (!currentUser) { setAuthModalOpen(true); return; }
+    setCheckoutLoading(plan);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ plan, successUrl: window.location.href + '?checkout=success', cancelUrl: window.location.href }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else throw new Error(data.error || 'Checkout failed');
+    } catch (e: any) { setOauthError(e.message); }
+    finally { setCheckoutLoading(null); }
+  };
+
+  const handlePortal = async () => {
+    // Promo users don't have a real Stripe customer — show a friendly message instead
+    if (subscription?.stripe_customer_id?.startsWith('promo_')) {
+      setOauthError('Your account was activated with a promo code. No billing to manage.');
+      return;
+    }
+    setPortalLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
       const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-portal`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ returnUrl: window.location.href }),
       });
-      if (res.ok) {
-        const { url } = await res.json();
-        if (url) window.location.href = url;
+      const data = await res.json();
+      if (data.promo) {
+        setOauthError('Your account was activated with a promo code. No billing to manage.');
+        return;
       }
-    } catch (e) {}
+      if (data.url) window.location.href = data.url;
+      else throw new Error(data.error || 'Portal failed');
+    } catch (e: any) { setOauthError(e.message); }
+    finally { setPortalLoading(false); }
   };
 
-  if (authLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: BG }}>
-        <div className="w-8 h-8 border-2 rounded-full animate-spin"
-          style={{ borderColor: `${GOLD}40`, borderTopColor: GOLD }} />
-      </div>
-    );
-  }
+  const handlePromoRedeem = async () => {
+    if (!promoCode.trim()) return;
+    setPromoLoading(true);
+    setPromoError('');
+    setPromoSuccess('');
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/redeem-promo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ code: promoCode.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPromoError(data.error || 'Invalid promo code'); return; }
+      setPromoSuccess('🎉 Promo applied! Unlocking your account...');
+      setTimeout(async () => {
+        // Reload subscription from DB
+        if (currentUser) {
+          const { data: sub } = await supabase.from('subscriptions').select('*').eq('supabase_user_id', currentUser.id).single();
+          if (sub) setSubscription(sub);
+        }
+        setPricingOpen(false);
+        setPromoCode('');
+        setPromoSuccess('');
+      }, 1500);
+    } catch {
+      setPromoError('Something went wrong. Please try again.');
+    } finally {
+      setPromoLoading(false);
+    }
+  };
 
-  if (!currentUser) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-8 px-4" style={{ background: BG }}>
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
-            <Send className="w-6 h-6 text-black" />
-          </div>
-          <div>
-            <div className="text-xl font-black text-white tracking-wide">MEDIA MACHINE</div>
-            <div className="text-xs font-semibold mt-0.5" style={{ color: GOLD }}>Social Media Studio</div>
-          </div>
-        </div>
-        <div className="w-full max-w-sm rounded-2xl border p-8 space-y-6 text-center"
-          style={{ background: SURFACE, borderColor: BORDER }}>
-          <div>
-            <h1 className="text-xl font-black text-white mb-2">Welcome back</h1>
-            <p className="text-sm text-white/40">Sign in to manage your social channels, schedule posts, and grow your audience.</p>
-          </div>
-          <button onClick={handleSignIn}
-            className="w-full flex items-center justify-center gap-3 py-3 rounded-xl font-bold text-sm transition hover:brightness-105"
-            style={{ background: GOLD, color: '#000' }}>
-            <svg className="w-4 h-4" viewBox="0 0 24 24"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
-            Continue with Google
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const handleSignOut = async () => {
+    handleDisconnect();
+    await signOut();
+  };
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: BG, color: '#fff' }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: BG, backgroundAttachment: 'fixed', fontFamily: "'DM Sans', sans-serif" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
+        * { box-sizing: border-box; }
+        html, body {
+          background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
+          min-height: 100vh;
+        }
+        @keyframes mmFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+        @keyframes mmPulse  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
+        @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        @media (min-width: 640px) {
+          .mm-pricing-backdrop { align-items: center !important; padding: 16px !important; }
+          .mm-pricing-sheet { border-radius: 24px !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; max-height: 90vh !important; }
+        }
+        .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
+        .lg\\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
+      `}</style>
+
+      {oauthLoading && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center" style={{ background: 'rgba(10,10,10,0.95)' }}>
+          <div className="flex flex-col items-center gap-4">
+            <Loader className="w-8 h-8 animate-spin" style={{ color: GOLD }} />
+            <div className="text-sm font-bold text-white/60">Completing authorization…</div>
+          </div>
+        </div>
+      )}
+
+      {oauthError && (
+        <div className="flex items-center gap-3 px-6 py-3 text-sm text-red-200 shrink-0 z-50"
+          style={{ background: 'rgba(239,68,68,0.08)', borderBottom: '1px solid rgba(239,68,68,0.18)' }}>
+          <AlertCircle className="w-4 h-4 shrink-0 text-red-300" /> {oauthError}
+          <button onClick={() => setOauthError(null)} className="ml-auto text-red-300/60 hover:text-red-200 transition"><X className="w-4 h-4" /></button>
+        </div>
+      )}
+
       <TopBar
-        integrations={integrations}
-        integrationsLoading={integrationsLoading}
-        onConnect={() => setConnectModalOpen(true)}
-        onDisconnect={() => loadIntegrations(true)}
-        onRefresh={loadIntegrations}
-        onOpenConnect={() => setConnectModalOpen(true)}
+        integrations={integrations} integrationsLoading={integrationsLoading}
+        onConnect={handleConnect} onDisconnect={handleDisconnect}
+        onRefresh={(force) => loadIntegrations(force)}
+        onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)}
         user={currentUser}
         onSignOut={handleSignOut}
-        onSignIn={handleSignIn}
+        onSignIn={() => setAuthModalOpen(true)}
         subscription={subscription}
-        onManagePlan={handleManagePlan}
+        onManagePlan={currentUser ? (subscription?.status === 'active' ? handlePortal : () => setPricingOpen(true)) : () => setAuthModalOpen(true)}
       />
 
-      <div className="flex flex-1 min-h-0 overflow-hidden">
-        <Sidebar
-          view={view}
-          setView={setView}
-          integrations={integrations}
-          onOpenConnect={() => setConnectModalOpen(true)}
-        />
+      {/* ── STATE 1: Logged out — simple hero + sign in/up ── */}
+      {!currentUser ? (
+        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
+          <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '35%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
+          <div className="relative flex flex-col items-center justify-center min-h-full" style={{ padding: 'clamp(40px, 8vw, 80px) clamp(16px, 5vw, 32px)', animation: 'mmFadeUp 0.5s ease both' }}>
+            {/* Logo */}
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, boxShadow: `0 16px 48px ${GOLD}35`, flexShrink: 0 }}>
+              <Send size={26} color="#000" />
+            </div>
+            <span className="mm-gold-shimmer" style={{ display: 'block', fontSize: 'clamp(32px, 8vw, 56px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.0, marginBottom: 8, textAlign: 'center' }}>Media Machine</span>
+            <span style={{ display: 'block', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 16, textAlign: 'center' }}>By Infinite Wealth Solutions AI</span>
+            <p style={{ fontSize: 'clamp(14px, 3vw, 17px)', color: 'rgba(255,255,255,0.55)', marginBottom: 12, lineHeight: 1.6, textAlign: 'center', maxWidth: 420, fontWeight: 500 }}>
+              One video. Thirty pieces of content. Every platform.
+            </p>
+            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', margin: '0 0 36px', lineHeight: 1.6, textAlign: 'center', maxWidth: 380 }}>
+              Upload a video and Media Machine handles the rest. AI video analysis, caption generation, platform scheduling, and content strategy. All automatic.
+            </p>
+            {/* Feature pills */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 40, maxWidth: 440 }}>
+              {['🤖 AI Video Analysis', '✍️ Platform Captions', '♻️ Content Repurposing', '📅 Smart Scheduling', '💡 Strategy Planner'].map(f => (
+                <span key={f} style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{f}</span>
+              ))}
+            </div>
+            {/* CTA buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, width: '100%', maxWidth: 320 }}>
+              <button onClick={() => setAuthModalOpen(true)}
+                style={{ width: '100%', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}40`, letterSpacing: '-0.01em' }}>
+                Start Multiplying Your Content
+              </button>
+              <button onClick={() => setAuthModalOpen(true)}
+                style={{ width: '100%', padding: '12px 0', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
+                Already have an account? Sign In
+              </button>
+            </div>
+            {/* Subtle referral nudge */}
+            <div style={{ marginTop: 32, padding: '12px 20px', borderRadius: 12, background: 'rgba(200,162,74,0.06)', border: '1px solid rgba(200,162,74,0.15)', textAlign: 'center', maxWidth: 320 }}>
+              <span style={{ fontSize: 11, color: 'rgba(200,162,74,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>
+                💸 2 for 20 Partner Program
+              </span>
+              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '4px 0 0', lineHeight: 1.5 }}>
+                Sign up and earn 20% recurring commission for every person you refer. They get 20% off their first month.
+              </p>
+            </div>
+          </div>
+        </div>
 
-        <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
-          {view === 'composer' && (
-            <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />
+      ) : (
+        /* ── STATES 2 & 3: Logged in — always show dashboard ── */
+        <div className="flex flex-col flex-1 overflow-hidden">
+          {/* Upgrade banner — only shown when no active subscription */}
+          {subscription?.status !== 'active' && (
+            <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
+              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
+              <button onClick={() => setPricingOpen(true)}
+                style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
+                Upgrade to start multiplying your content
+              </button>
+            </div>
           )}
-          {view === 'calendar' && (
-            <CalendarView integrations={integrations} userId={currentUser?.id ?? null} />
-          )}
-          {view === 'planner' && (
-            <PlannerPanel userId={currentUser?.id ?? null} />
-          )}
-          {view === 'video' && (
-            <AIVideoStudio userId={currentUser?.id ?? null} />
-          )}
-          {view === 'partner' && (
-            <PartnerDashboard
-              userId={currentUser?.id ?? null}
-              userEmail={currentUser?.email ?? null}
-              userName={currentUser?.email?.split('@')[0] ?? null}
-            />
-          )}
-        </main>
-      </div>
+          <div className="flex flex-1 overflow-hidden min-h-0">
+          <Sidebar view={view} setView={setView} integrations={integrations}
+            onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
+          <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
+
+            {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
+            {view === 'partner'  && <PartnerDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
+          </main>
+          </div>
+        </div>
+      )}
+
+      {/* ── Pricing Modal ── */}
+      {pricingOpen && (
+        <div className="mm-pricing-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0, animation: 'mmFadeUp 0.2s ease both' }}
+          onClick={e => { if (e.target === e.currentTarget) setPricingOpen(false); }}>
+          <div className="mm-pricing-sheet" style={{ width: '100%', maxWidth: 820, background: '#111', borderRadius: '20px 20px 0 0', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', padding: 'clamp(20px, 5vw, 36px) clamp(16px, 5vw, 36px)', position: 'relative', maxHeight: '92dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+            <button onClick={() => setPricingOpen(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&#10005;</button>
+            <div style={{ textAlign: 'center', marginBottom: 28 }}>
+              <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 6, letterSpacing: '-0.02em' }}>Choose Your Plan</div>
+              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Every plan includes AI video analysis, caption generation, content repurposing, scheduling, and the content planner.</p>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
+                {[
+                  { name: 'Starter', price: '$47', per: '/mo', features: ['10 AI video analyses/mo', '30 scheduled posts/mo', 'Up to 3 platforms per post', 'AI caption generation', 'Content calendar'], highlight: false },
+                  { name: 'Creator', price: '$97', per: '/mo', features: ['40 AI video analyses/mo', '150 scheduled posts/mo', 'All platforms, no limits', 'AI captions + repurposing engine', 'Content planner + strategy AI'], highlight: true },
+                  { name: 'Agency', price: '$199', per: '/mo', features: ['Unlimited AI video analyses', 'Unlimited scheduled posts', 'All platforms, no limits', 'Everything in Creator', 'Priority support + onboarding call'], highlight: false },
+                ].map(pkg => {
+                  const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
+                  const isLoading = checkoutLoading === pkg.name.toLowerCase();
+                  return (
+                    <div key={pkg.name} style={{ borderRadius: 16, padding: 'clamp(12px, 3vw, 22px) clamp(10px, 2.5vw, 16px)', background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)', border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none' }}>
+                      {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
+                      {pkg.highlight && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 20, background: GOLD, color: '#000', textTransform: 'uppercase' }}>Popular</span>}
+                      <div style={{ fontSize: 9, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{pkg.name}</div>
+                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginBottom: 8 }}>
+                        <span style={{ fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em', lineHeight: 1 }}>{pkg.price}</span>
+                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+                      </div>
+                      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                        {pkg.features.map(f => (
+                          <li key={f} style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                            <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>&#10003;</span>{f}
+                          </li>
+                        ))}
+                      </ul>
+                      <button
+                        onClick={() => isCurrentPlan ? handlePortal() : handleCheckout(pkg.name.toLowerCase())}
+                        disabled={isLoading || portalLoading}
+                        style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: isLoading ? 0.6 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                        <span>{isLoading ? 'Loading...' : isCurrentPlan ? '✓ Current Plan' : 'Subscribe'}</span>
+                        {isLoading && <span style={{ fontSize: 8, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
+                      </button>
+                    </div>
+                  );
+                })}
+            </div>
+
+            {/* Promo Code */}
+            <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', fontWeight: 500, whiteSpace: 'nowrap' }}>Have a promo code?</span>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input
+                  type="text"
+                  value={promoCode}
+                  onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoError(''); setPromoSuccess(''); }}
+                  onKeyDown={e => e.key === 'Enter' && handlePromoRedeem()}
+                  placeholder="Enter code"
+                  style={{ width: 110, padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', outline: 'none', letterSpacing: '0.08em' }}
+                />
+                <button
+                  onClick={handlePromoRedeem}
+                  disabled={promoLoading || !promoCode.trim()}
+                  style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', border: 'none', opacity: promoLoading || !promoCode.trim() ? 0.5 : 1, whiteSpace: 'nowrap' }}>
+                  {promoLoading ? '...' : 'Apply'}
+                </button>
+              </div>
+              {promoError && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: '#f87171', textAlign: 'center' }}>{promoError}</div>}
+              {promoSuccess && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: 'rgb(74,222,128)', textAlign: 'center' }}>{promoSuccess}</div>}
+            </div>
+
+          </div>
+        </div>
+      )}
 
       <ConnectAccountsModal
-        open={connectModalOpen}
-        onClose={() => setConnectModalOpen(false)}
-        integrations={integrations}
-        onConnectPostiz={handleSignIn}
+        open={connectModalOpen} onClose={() => setConnectModalOpen(false)}
+        integrations={integrations} onConnectPostiz={handleConnect}
         integrationsLoading={integrationsLoading}
-        onRefresh={loadIntegrations}
-        currentUser={currentUser}
+        onRefresh={(force) => loadIntegrations(force)}
         onDisconnectPlatform={handleDisconnectPlatform}
+        currentUser={currentUser}
+      />
+
+      <MediaMachineAuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={() => {
+          setAuthModalOpen(false);
+        }}
       />
     </div>
   );
