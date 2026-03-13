@@ -6,6 +6,7 @@ import {
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
   ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
+  Film, Upload, Download, RefreshCcw, Wand2,
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
@@ -109,7 +110,7 @@ type PostizIntegration = {
   picture?: string; profile?: string; disabled?: boolean;
 };
 
-type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner';
+type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner' | 'video';
 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
@@ -3360,6 +3361,434 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
   );
 }
 
+// ─── AIVideoStudio ───────────────────────────────────────────────────────────
+
+type VideoStudioStep = 'brief' | 'prompts' | 'frames' | 'video' | 'done';
+type VideoPrompt = { id: string; text: string; selected: boolean; };
+type GeneratedFrame = { id: string; promptText: string; imageUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'done'|'error'; error?: string; };
+type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; };
+type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl: string; thumbnailUrl?: string; };
+
+const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
+
+function AIVideoStudio({ userId }: { userId: string | null }) {
+  const [step, setStep]               = React.useState<VideoStudioStep>('brief');
+  const [brief, setBrief]             = React.useState('');
+  const [style, setStyle]             = React.useState('cinematic');
+  const [aspectRatio, setAspectRatio] = React.useState('16:9');
+  const [duration, setDuration]       = React.useState('5');
+  const [prompts, setPrompts]         = React.useState<VideoPrompt[]>([]);
+  const [frames, setFrames]           = React.useState<GeneratedFrame[]>([]);
+  const [videos, setVideos]           = React.useState<GeneratedVideo[]>([]);
+  const [history, setHistory]         = React.useState<VideoHistoryItem[]>(() => {
+    try { return JSON.parse(localStorage.getItem('mm_video_history') || '[]'); } catch { return []; }
+  });
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [globalError, setGlobalError] = React.useState<string | null>(null);
+  const [generatingPrompts, setGeneratingPrompts] = React.useState(false);
+  const pollTimers = React.useRef<Record<string, ReturnType<typeof setInterval>>>({});
+
+  React.useEffect(() => { return () => { Object.values(pollTimers.current).forEach(clearInterval); }; }, []);
+
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  };
+
+  const addToHistory = (brief: string, videoUrl: string, thumbnailUrl?: string) => {
+    const item: VideoHistoryItem = { id: Date.now().toString(), createdAt: new Date().toISOString(), brief, videoUrl, thumbnailUrl };
+    setHistory(prev => {
+      const next = [item, ...prev].slice(0, 20);
+      try { localStorage.setItem('mm_video_history', JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const pollFrameTask = (frameId: string, taskId: string) => {
+    let attempts = 0;
+    const iv = setInterval(async () => {
+      attempts++;
+      if (attempts > 60) {
+        clearInterval(iv); delete pollTimers.current[frameId];
+        setFrames(prev => prev.map(f => f.id === frameId ? { ...f, status: 'error', error: 'Timed out' } : f));
+        return;
+      }
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ taskId, type: 'image' }),
+        });
+        const data = await res.json();
+        if (data.status === 'succeed' && data.imageUrl) {
+          clearInterval(iv); delete pollTimers.current[frameId];
+          setFrames(prev => prev.map(f => f.id === frameId ? { ...f, status: 'done', imageUrl: data.imageUrl } : f));
+        } else if (data.status === 'failed') {
+          clearInterval(iv); delete pollTimers.current[frameId];
+          setFrames(prev => prev.map(f => f.id === frameId ? { ...f, status: 'error', error: data.error || 'Failed' } : f));
+        }
+      } catch {}
+    }, 3000);
+    pollTimers.current[frameId] = iv;
+  };
+
+  const pollVideoTask = (videoId: string, taskId: string, brief: string, thumbnailUrl?: string) => {
+    let attempts = 0;
+    const iv = setInterval(async () => {
+      attempts++;
+      if (attempts > 120) {
+        clearInterval(iv); delete pollTimers.current[videoId];
+        setVideos(prev => prev.map(v => v.id === videoId ? { ...v, status: 'error', error: 'Timed out' } : v));
+        return;
+      }
+      try {
+        const headers = await getAuthHeaders();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ taskId, type: 'video' }),
+        });
+        const data = await res.json();
+        if (data.status === 'succeed' && data.videoUrl) {
+          clearInterval(iv); delete pollTimers.current[videoId];
+          setVideos(prev => prev.map(v => v.id === videoId ? { ...v, status: 'done', videoUrl: data.videoUrl } : v));
+          addToHistory(brief, data.videoUrl, thumbnailUrl);
+          setStep('done');
+        } else if (data.status === 'failed') {
+          clearInterval(iv); delete pollTimers.current[videoId];
+          setVideos(prev => prev.map(v => v.id === videoId ? { ...v, status: 'error', error: data.error || 'Failed' } : v));
+        }
+      } catch {}
+    }, 5000);
+    pollTimers.current[videoId] = iv;
+  };
+
+  const handleGeneratePrompts = async () => {
+    if (!brief.trim()) { setGlobalError('Enter a brief first'); return; }
+    setGeneratingPrompts(true); setGlobalError(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ brief, style, aspectRatio, duration }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate prompts');
+      const generated: VideoPrompt[] = (data.prompts || []).map((text: string, i: number) => ({ id: `p${i}`, text, selected: true }));
+      setPrompts(generated);
+      setStep('prompts');
+    } catch (e: any) { setGlobalError(e.message); }
+    finally { setGeneratingPrompts(false); }
+  };
+
+  const handleGenerateFrames = async () => {
+    const selected = prompts.filter(p => p.selected);
+    if (!selected.length) { setGlobalError('Select at least one prompt'); return; }
+    setGlobalError(null);
+    const newFrames: GeneratedFrame[] = selected.map(p => ({ id: `f${Date.now()}-${p.id}`, promptText: p.text, imageUrl: null, taskId: null, status: 'generating' }));
+    setFrames(newFrames); setStep('frames');
+    const headers = await getAuthHeaders();
+    for (const frame of newFrames) {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-image`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ prompt: frame.promptText, aspectRatio }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        if (data.imageUrl) {
+          setFrames(prev => prev.map(f => f.id === frame.id ? { ...f, status: 'done', imageUrl: data.imageUrl } : f));
+        } else if (data.taskId) {
+          setFrames(prev => prev.map(f => f.id === frame.id ? { ...f, taskId: data.taskId } : f));
+          pollFrameTask(frame.id, data.taskId);
+        }
+      } catch (e: any) {
+        setFrames(prev => prev.map(f => f.id === frame.id ? { ...f, status: 'error', error: e.message } : f));
+      }
+    }
+  };
+
+  const handleGenerateVideos = async () => {
+    const doneFr = frames.filter(f => f.status === 'done' && f.imageUrl);
+    if (!doneFr.length) { setGlobalError('No completed frames'); return; }
+    setGlobalError(null);
+    const newVideos: GeneratedVideo[] = doneFr.map(f => ({ id: `v${Date.now()}-${f.id}`, frameUrl: f.imageUrl!, promptText: f.promptText, videoUrl: null, taskId: null, status: 'generating' }));
+    setVideos(newVideos); setStep('video');
+    const headers = await getAuthHeaders();
+    for (const vid of newVideos) {
+      try {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-video`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ imageUrl: vid.frameUrl, prompt: vid.promptText, duration, aspectRatio }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed');
+        if (data.videoUrl) {
+          setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, status: 'done', videoUrl: data.videoUrl } : v));
+          addToHistory(brief, data.videoUrl, vid.frameUrl);
+          setStep('done');
+        } else if (data.taskId) {
+          setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, taskId: data.taskId, status: 'polling' } : v));
+          pollVideoTask(vid.id, data.taskId, brief, vid.frameUrl);
+        }
+      } catch (e: any) {
+        setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, status: 'error', error: e.message } : v));
+      }
+    }
+  };
+
+  const resetStudio = () => {
+    Object.values(pollTimers.current).forEach(clearInterval);
+    pollTimers.current = {};
+    setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null);
+  };
+
+  const STYLES = ['cinematic','documentary','commercial','anime','realistic','fantasy','noir','vibrant'];
+  const allFramesDone = frames.length > 0 && frames.every(f => f.status === 'done' || f.status === 'error');
+
+  return (
+    <div className="flex flex-1 min-h-0 overflow-hidden">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-8">
+        <div className="max-w-2xl mx-auto space-y-6">
+
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-black text-white flex items-center gap-2">
+                <Film className="w-5 h-5" style={{ color: GOLD }} /> AI Video Studio
+              </h2>
+              <p className="text-xs text-white/40 mt-0.5">Turn a brief into AI-generated videos in minutes</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setHistoryOpen(v => !v)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
+                style={{ borderColor: BORDER, color: historyOpen ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                <Clock className="w-3.5 h-3.5" /> History ({history.length})
+              </button>
+              {step !== 'brief' && (
+                <button onClick={resetStudio}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
+                  style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+                  <RefreshCcw className="w-3.5 h-3.5" /> Reset
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {(['brief','prompts','frames','video','done'] as VideoStudioStep[]).map((s, i) => (
+              <React.Fragment key={s}>
+                <div className="flex items-center gap-1.5">
+                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black"
+                    style={{ background: step === s ? GOLD : (['brief','prompts','frames','video','done'].indexOf(step) > i ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'), color: step === s ? '#000' : 'rgba(255,255,255,0.4)' }}>
+                    {(['brief','prompts','frames','video','done'].indexOf(step) > i) ? '✓' : i + 1}
+                  </div>
+                  <span className="text-[10px] font-bold capitalize hidden sm:block" style={{ color: step === s ? GOLD_L : 'rgba(255,255,255,0.25)' }}>{s}</span>
+                </div>
+                {i < 4 && <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />}
+              </React.Fragment>
+            ))}
+          </div>
+
+          {globalError && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {globalError}
+              <button onClick={() => setGlobalError(null)} className="ml-auto"><X className="w-3.5 h-3.5" /></button>
+            </div>
+          )}
+
+          {step === 'brief' && (
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Video Brief</label>
+                <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={4}
+                  placeholder="Describe the video you want. E.g. 'A cinematic shot of a lone wolf running through a misty forest at dawn…'"
+                  className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                  style={{ borderColor: BORDER }} />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Style</label>
+                <div className="flex flex-wrap gap-2">
+                  {STYLES.map(s => (
+                    <button key={s} onClick={() => setStyle(s)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
+                      style={{ borderColor: style === s ? GOLD : BORDER, background: style === s ? `${GOLD}18` : 'transparent', color: style === s ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Aspect Ratio</label>
+                  <div className="flex gap-2">
+                    {['16:9','9:16','1:1'].map(r => (
+                      <button key={r} onClick={() => setAspectRatio(r)}
+                        className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
+                        style={{ borderColor: aspectRatio === r ? GOLD : BORDER, background: aspectRatio === r ? `${GOLD}18` : 'transparent', color: aspectRatio === r ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Duration</label>
+                  <div className="flex gap-2">
+                    {['5','10'].map(d => (
+                      <button key={d} onClick={() => setDuration(d)}
+                        className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
+                        style={{ borderColor: duration === d ? GOLD : BORDER, background: duration === d ? `${GOLD}18` : 'transparent', color: duration === d ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                        {d}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <button onClick={handleGeneratePrompts} disabled={generatingPrompts || !brief.trim()}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
+                style={{ background: GOLD, color: '#000' }}>
+                {generatingPrompts ? <><Loader className="w-4 h-4 animate-spin" /> Generating…</> : <><Wand2 className="w-4 h-4" /> Generate Scene Prompts</>}
+              </button>
+            </div>
+          )}
+
+          {step === 'prompts' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white/30 uppercase tracking-wider">Scene Prompts</span>
+                <div className="flex gap-3">
+                  <button onClick={() => setPrompts(prev => prev.map(p => ({ ...p, selected: true })))} className="text-xs font-bold" style={{ color: GOLD_L }}>All</button>
+                  <button onClick={() => setPrompts(prev => prev.map(p => ({ ...p, selected: false })))} className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.3)' }}>None</button>
+                </div>
+              </div>
+              <div className="space-y-2">
+                {prompts.map(p => (
+                  <div key={p.id} className="flex items-start gap-3 p-3 rounded-xl border"
+                    style={{ borderColor: p.selected ? `${GOLD}40` : BORDER, background: p.selected ? `${GOLD}06` : 'rgba(0,0,0,0.2)' }}>
+                    <button onClick={() => setPrompts(prev => prev.map(x => x.id === p.id ? { ...x, selected: !x.selected } : x))}
+                      className="w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5"
+                      style={{ borderColor: p.selected ? GOLD : BORDER, background: p.selected ? GOLD : 'transparent' }}>
+                      {p.selected && <CheckCircle2 className="w-3 h-3 text-black" />}
+                    </button>
+                    <p className="text-xs text-white/70 leading-relaxed">{p.text}</p>
+                  </div>
+                ))}
+              </div>
+              <button onClick={handleGenerateFrames} disabled={prompts.filter(p => p.selected).length === 0}
+                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
+                style={{ background: GOLD, color: '#000' }}>
+                <Image className="w-4 h-4" /> Generate {prompts.filter(p => p.selected).length} Frame{prompts.filter(p => p.selected).length !== 1 ? 's' : ''}
+              </button>
+            </div>
+          )}
+
+          {step === 'frames' && (
+            <div className="space-y-4">
+              <span className="text-xs font-bold text-white/30 uppercase tracking-wider block">Generated Frames</span>
+              <div className="grid grid-cols-2 gap-3">
+                {frames.map(frame => (
+                  <div key={frame.id} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                    <div className="relative bg-black/40" style={{ aspectRatio: '16/9' }}>
+                      {frame.status === 'done' && frame.imageUrl
+                        ? <img src={frame.imageUrl} className="w-full h-full object-cover" alt="" />
+                        : frame.status === 'error'
+                        ? <div className="absolute inset-0 flex items-center justify-center"><AlertCircle className="w-5 h-5 text-red-400" /></div>
+                        : <div className="absolute inset-0 flex items-center justify-center"><Loader className="w-5 h-5 animate-spin" style={{ color: GOLD }} /></div>
+                      }
+                    </div>
+                    <div className="p-2">
+                      <p className="text-[10px] text-white/40 line-clamp-2">{frame.promptText}</p>
+                      {frame.status === 'done' && frame.imageUrl && (
+                        <a href={frame.imageUrl} download target="_blank" rel="noreferrer" className="mt-1 flex items-center gap-1 text-[10px] font-bold" style={{ color: GOLD }}>
+                          <Download className="w-3 h-3" /> Download
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {allFramesDone && (
+                <button onClick={handleGenerateVideos} disabled={frames.filter(f => f.status === 'done').length === 0}
+                  className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
+                  style={{ background: GOLD, color: '#000' }}>
+                  <Film className="w-4 h-4" /> Generate Videos
+                </button>
+              )}
+            </div>
+          )}
+
+          {(step === 'video' || step === 'done') && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-white/30 uppercase tracking-wider">
+                  {step === 'done' ? '✅ Videos Ready' : '⏳ Generating Videos…'}
+                </span>
+                {step === 'done' && (
+                  <button onClick={resetStudio} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition" style={{ background: GOLD, color: '#000' }}>
+                    <Plus className="w-3.5 h-3.5" /> New Video
+                  </button>
+                )}
+              </div>
+              {step === 'video' && (
+                <div className="p-3 rounded-xl text-xs text-amber-300/80 border border-amber-400/20 bg-amber-400/5 flex items-center gap-2">
+                  <Loader className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  AI video generation takes 2–5 minutes. Page will update automatically.
+                </div>
+              )}
+              <div className="space-y-4">
+                {videos.map(vid => (
+                  <div key={vid.id} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                    <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
+                      {vid.status === 'done' && vid.videoUrl
+                        ? <video src={vid.videoUrl} controls poster={vid.frameUrl} className="w-full h-full object-contain" playsInline />
+                        : vid.status === 'error'
+                        ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"><AlertCircle className="w-5 h-5 text-red-400" /><span className="text-xs text-red-300">{vid.error}</span></div>
+                        : <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"><Loader className="w-6 h-6 animate-spin" style={{ color: GOLD }} /><span className="text-xs text-white/40">{vid.status === 'polling' ? 'Processing…' : 'Submitting…'}</span></div>
+                      }
+                    </div>
+                    {vid.status === 'done' && vid.videoUrl && (
+                      <div className="p-3">
+                        <a href={vid.videoUrl} download target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold" style={{ color: GOLD }}>
+                          <Download className="w-3.5 h-3.5" /> Download Video
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+        </div>
+      </div>
+
+      {historyOpen && (
+        <div className="hidden lg:flex w-64 shrink-0 flex-col border-l" style={{ borderColor: BORDER }}>
+          <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+            <span className="text-xs font-bold text-white/40 uppercase tracking-wider">History</span>
+            <button onClick={() => { setHistory([]); try { localStorage.removeItem('mm_video_history'); } catch {} }} className="text-xs text-red-400/60 hover:text-red-400">Clear</button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            {history.length === 0
+              ? <div className="flex items-center justify-center h-32 text-xs text-white/25">No history yet</div>
+              : history.map(item => (
+                <div key={item.id} className="p-3 border-b" style={{ borderColor: BORDER }}>
+                  {item.thumbnailUrl && <img src={item.thumbnailUrl} className="w-full rounded-lg mb-2 object-cover" style={{ aspectRatio: '16/9' }} alt="" />}
+                  <p className="text-xs text-white/50 line-clamp-2 mb-1">{item.brief}</p>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-white/25">{new Date(item.createdAt).toLocaleDateString()}</span>
+                    <a href={item.videoUrl} download target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[10px] font-bold" style={{ color: GOLD }}>
+                      <Download className="w-3 h-3" /> Download
+                    </a>
+                  </div>
+                </div>
+              ))
+            }
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function Sidebar({ view, setView, integrations, onOpenConnect }: {
@@ -3370,6 +3799,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
     { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
     { id: 'calendar' as ViewMode, label: 'Calendar', icon: <Calendar className="w-5 h-5" /> },
     { id: 'planner'  as ViewMode, label: 'Planner',  icon: <BookOpen className="w-5 h-5" /> },
+    { id: 'video'    as ViewMode, label: 'AI Video', icon: <Film className="w-5 h-5" /> },
     { id: 'partner'  as ViewMode, label: 'Earn',     icon: <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
   ];
 
@@ -3962,6 +4392,7 @@ export function MediaDistributionPage() {
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
+            {view === 'video'    && <AIVideoStudio userId={currentUser?.id ?? null} />}
             {view === 'partner'  && <PartnerDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
           </main>
           </div>
