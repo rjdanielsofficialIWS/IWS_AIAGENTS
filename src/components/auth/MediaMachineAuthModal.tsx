@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
   ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
 } from 'lucide-react';
-import { supabase } from '../services/vapiAI';
+import { supabase } from '../../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
 
