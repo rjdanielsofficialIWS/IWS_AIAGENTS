@@ -8,8 +8,7 @@ import {
   ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
 } from 'lucide-react';
 import { supabase } from '../../services/vapiAI';
-import { useAuth } from '../contexts/AuthContext';
-import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
+import { useAuth } from '../../contexts/AuthContext';
 
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
