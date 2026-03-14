@@ -3202,7 +3202,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
           <h2 className="text-lg font-black text-white">2 for 20 Partner Program</h2>
         </div>
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
-          Share your link. You earn 20% recurring commission every month they stay subscribed. They get 20% off their first month, automatically.
+          Share your link. You earn 20% recurring commission every month they stay subscribed — forever. They get 20% off their first month, automatically applied at checkout.
         </p>
       </div>
 
@@ -3286,7 +3286,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
             { step: '1', text: 'Share your link. Anyone who clicks it gets tagged as your referral.' },
             { step: '2', text: 'They sign up and their 20% first-month discount is applied automatically at checkout — no code entry needed.' },
             { step: '3', text: 'You earn 20% of every payment they make, every month, for as long as they stay subscribed.' },
-            { step: '4', text: 'Payouts processed monthly via bank transfer or PayPal once you hit $25.' },
+            { step: '4', text: 'Payouts processed monthly via bank transfer or PayPal once you reach the $25 minimum. Commissions are tracked in real time in your dashboard.' },
           ].map(s => (
             <div key={s.step} className="flex items-start gap-3">
               <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-black" style={{ background: `${GOLD}25`, color: GOLD }}>{s.step}</div>
@@ -4610,7 +4610,7 @@ export function MediaDistributionPage() {
               <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
               <button onClick={() => setPricingOpen(true)}
                 style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
-                Upgrade to start multiplying your content
+                Upgrade to unlock AI video, scheduling & content repurposing
               </button>
             </div>
           )}
@@ -4641,9 +4641,9 @@ export function MediaDistributionPage() {
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
                 {[
-                  { name: 'Starter', price: '$47', per: '/mo', features: ['10 AI video analyses/mo', '30 scheduled posts/mo', 'Up to 3 platforms per post', 'AI caption generation', 'Content calendar'], highlight: false },
-                  { name: 'Creator', price: '$97', per: '/mo', features: ['40 AI video analyses/mo', '150 scheduled posts/mo', 'All platforms, no limits', 'AI captions + repurposing engine', 'Content planner + strategy AI'], highlight: true },
-                  { name: 'Agency', price: '$199', per: '/mo', features: ['Unlimited AI video analyses', 'Unlimited scheduled posts', 'All platforms, no limits', 'Everything in Creator', 'Priority support + onboarding call'], highlight: false },
+                  { name: 'Starter', price: '$67', per: '/mo', features: ['10 AI caption analyses/mo', '30 scheduled posts/mo', 'Up to 3 platforms per post', 'AI caption generation', '2 AI videos/mo (up to 15s)', 'Content planner'], highlight: false },
+                  { name: 'Creator', price: '$127', per: '/mo', features: ['40 AI caption analyses/mo', '150 scheduled posts/mo', 'All platforms, no limits', '8 AI videos/mo (up to 30s)', 'Clip stitching up to 30s', 'AI captions + repurposing engine', 'Content planner + strategy AI'], highlight: true },
+                  { name: 'Agency', price: '$297', per: '/mo', features: ['Unlimited AI caption analyses', 'Unlimited scheduled posts', 'All platforms, no limits', '25 AI videos/mo (up to 60s)', 'Full clip stitching (30s + 60s)', 'Start/end frame video control', 'Everything in Creator', 'Priority support + onboarding call'], highlight: false },
                 ].map(pkg => {
                   const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
                   const isLoading = checkoutLoading === pkg.name.toLowerCase();
