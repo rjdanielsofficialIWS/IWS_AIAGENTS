@@ -3373,6 +3373,10 @@ type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl
 
 function AIVideoStudio({ userId }: { userId: string | null }) {
   const [step, setStep]               = React.useState<VideoStudioStep>('brief');
+  const [startFrameUrl, setStartFrameUrl] = React.useState<string | null>(null);
+  const [endFrameUrl, setEndFrameUrl]     = React.useState<string | null>(null);
+  const startFrameRef = React.useRef<HTMLInputElement>(null);
+  const endFrameRef   = React.useRef<HTMLInputElement>(null);
   const [brief, setBrief]             = React.useState('');
   const [style, setStyle]             = React.useState('cinematic');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
@@ -3480,6 +3484,15 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
       const generated: VideoPrompt[] = [{ id: 'p0', text: promptText, selected: true }];
       setPrompts(generated);
 
+      // Step 2: If user uploaded a start frame, skip image generation
+      if (startFrameUrl) {
+        const frameId = `f${Date.now()}-p0`;
+        setFrames([{ id: frameId, promptText, imageUrl: startFrameUrl, taskId: null, status: 'done' }]);
+        setStep('frames');
+        await autoGenerateVideo(frameId, startFrameUrl, promptText, headers);
+        return;
+      }
+
       // Step 2: Auto-generate frame (image) immediately
       setStep('frames');
       const frameId = `f${Date.now()}-p0`;
@@ -3505,15 +3518,18 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
     finally { setGeneratingPrompts(false); }
   };
 
-  const autoGenerateVideo = async (frameId: string, imageUrl: string, promptText: string, headers: Record<string, string>) => {
+  const autoGenerateVideo = async (frameId: string, imageUrl: string, promptText: string, headers: Record<string, string>, overrideStartUrl?: string | null, tailUrl?: string | null) => {
+    const effectiveImageUrl = overrideStartUrl || imageUrl;
     setStep('video');
     const vidId = `v${Date.now()}-${frameId}`;
-    const newVideo: GeneratedVideo = { id: vidId, frameUrl: imageUrl, promptText, videoUrl: null, taskId: null, status: 'generating' };
+    const newVideo: GeneratedVideo = { id: vidId, frameUrl: effectiveImageUrl, promptText, videoUrl: null, taskId: null, status: 'generating' };
     setVideos([newVideo]);
     try {
+      const falBody: Record<string, unknown> = { imageUrl: effectiveImageUrl, prompt: promptText, duration, aspectRatio, quality: 'high' };
+      if (tailUrl) falBody.tailImageUrl = tailUrl;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ imageUrl, prompt: promptText, duration, aspectRatio, quality: 'high' }),
+        body: JSON.stringify(falBody),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate video');
@@ -3690,10 +3706,20 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
     pollTimers.current[vidId] = interval;
   };
 
-    const resetStudio = () => {
+    const handleFrameUpload = (type: 'start' | 'end', file: File) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (type === 'start') setStartFrameUrl(dataUrl);
+      else setEndFrameUrl(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const resetStudio = () => {
     Object.values(pollTimers.current).forEach(clearInterval);
     pollTimers.current = {};
-    setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null);
+    setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null); setStartFrameUrl(null); setEndFrameUrl(null);
   };
 
   const STYLES = ['cinematic','documentary','commercial','anime','realistic','fantasy','noir','vibrant'];
@@ -3796,6 +3822,55 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
                   </div>
                 </div>
               </div>
+              {/* Optional start/end frame uploads */}
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Reference Frames</label>
+                  <span className="text-[10px] text-white/20 font-normal normal-case">optional</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Start Frame */}
+                  <div>
+                    <input ref={startFrameRef} type="file" accept="image/*" className="hidden"
+                      onChange={e => e.target.files?.[0] && handleFrameUpload('start', e.target.files[0])} />
+                    <button onClick={() => startFrameRef.current?.click()}
+                      className="w-full rounded-xl border overflow-hidden transition hover:border-white/20"
+                      style={{ borderColor: startFrameUrl ? GOLD + '60' : BORDER, aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
+                      {startFrameUrl
+                        ? <img src={startFrameUrl} className="w-full h-full object-cover" alt="Start frame" />
+                        : <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                            <Upload className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                            <span className="text-[10px] text-white/20">Start Frame</span>
+                          </div>
+                      }
+                    </button>
+                    {startFrameUrl && (
+                      <button onClick={() => setStartFrameUrl(null)} className="mt-1 text-[10px] text-white/25 hover:text-white/50 w-full text-center">remove</button>
+                    )}
+                  </div>
+                  {/* End Frame */}
+                  <div>
+                    <input ref={endFrameRef} type="file" accept="image/*" className="hidden"
+                      onChange={e => e.target.files?.[0] && handleFrameUpload('end', e.target.files[0])} />
+                    <button onClick={() => endFrameRef.current?.click()}
+                      className="w-full rounded-xl border overflow-hidden transition hover:border-white/20"
+                      style={{ borderColor: endFrameUrl ? GOLD + '60' : BORDER, aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
+                      {endFrameUrl
+                        ? <img src={endFrameUrl} className="w-full h-full object-cover" alt="End frame" />
+                        : <div className="w-full h-full flex flex-col items-center justify-center gap-1">
+                            <Upload className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                            <span className="text-[10px] text-white/20">End Frame</span>
+                          </div>
+                      }
+                    </button>
+                    {endFrameUrl && (
+                      <button onClick={() => setEndFrameUrl(null)} className="mt-1 text-[10px] text-white/25 hover:text-white/50 w-full text-center">remove</button>
+                    )}
+                  </div>
+                </div>
+                <p className="text-[10px] text-white/20 mt-1.5">Upload images to control how the video starts and ends</p>
+              </div>
+
               <button onClick={handleGeneratePrompts} disabled={generatingPrompts || !brief.trim()}
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
