@@ -3679,7 +3679,7 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
           clearInterval(interval);
           setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: pd.videoUrl } : v));
           addToHistory(brief, pd.videoUrl, frameUrl);
-          setStep('done');
+          setStep('done'); // Audio already baked into video by Kling 3.0 Pro
         } else if (pd.status === 'failed') {
           clearInterval(interval);
           setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: pd.error || 'Failed' } : v));
