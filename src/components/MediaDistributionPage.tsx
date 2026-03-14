@@ -3519,8 +3519,7 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
       if (!res.ok) throw new Error(data.error || 'Failed to generate video');
       if (data.videoUrl) {
         setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: data.videoUrl } : v));
-        addToHistory(brief, data.videoUrl, imageUrl);
-        setStep('done');
+        autoGenerateAudio(vidId, data.videoUrl, brief, imageUrl, headers);
       } else if (data.taskId) {
         setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.taskId, status: 'polling' } : v));
         pollVideoTask(vidId, data.taskId, brief, imageUrl);
@@ -3528,6 +3527,56 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
     } catch (e: any) {
       setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: e.message } : v));
       setGlobalError(e.message);
+    }
+  };
+
+  const autoGenerateAudio = async (vidId: string, videoUrl: string, briefText: string, frameUrl: string, headers: Record<string, string>) => {
+    setStep('done'); // show done step while audio generates in background
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-audio`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ videoUrl }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        // Audio failed - still save the silent video, don't block the user
+        console.warn('Audio generation failed:', data.error);
+        addToHistory(briefText, videoUrl, frameUrl);
+        return;
+      }
+      if (data.taskId) {
+        // Poll for audio completion
+        let attempts = 0;
+        const interval = setInterval(async () => {
+          attempts++;
+          if (attempts > 60) {
+            clearInterval(interval);
+            // Timed out - save silent video anyway
+            addToHistory(briefText, videoUrl, frameUrl);
+            return;
+          }
+          try {
+            const pr = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({ taskId: data.taskId, type: 'audio' }),
+            });
+            const pd = await pr.json();
+            if (pd.status === 'succeed' && pd.videoUrl) {
+              clearInterval(interval);
+              // Replace silent video with audio version
+              setVideos(prev => prev.map(v => v.id === vidId ? { ...v, videoUrl: pd.videoUrl } : v));
+              addToHistory(briefText, pd.videoUrl, frameUrl);
+            } else if (pd.status === 'failed') {
+              clearInterval(interval);
+              // Audio failed - save silent video
+              addToHistory(briefText, videoUrl, frameUrl);
+            }
+          } catch {}
+        }, 3000);
+      }
+    } catch (e) {
+      // Audio error - save silent video anyway
+      addToHistory(briefText, videoUrl, frameUrl);
     }
   };
 
