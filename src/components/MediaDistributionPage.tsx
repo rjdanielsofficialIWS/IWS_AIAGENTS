@@ -3468,17 +3468,97 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
     setGeneratingPrompts(true); setGlobalError(null);
     try {
       const headers = await getAuthHeaders();
+
+      // Step 1: Generate single best prompt
       const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({ brief, style, aspectRatio, duration }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate prompts');
-      const generated: VideoPrompt[] = (data.prompts || []).map((text: string, i: number) => ({ id: `p${i}`, text, selected: true }));
+      if (!res.ok) throw new Error(data.error || 'Failed to generate prompt');
+      const promptText: string = (data.prompts || [])[0] ?? brief;
+      const generated: VideoPrompt[] = [{ id: 'p0', text: promptText, selected: true }];
       setPrompts(generated);
-      setStep('prompts');
-    } catch (e: any) { setGlobalError(e.message); }
+
+      // Step 2: Auto-generate frame (image) immediately
+      setStep('frames');
+      const frameId = `f${Date.now()}-p0`;
+      const newFrame: GeneratedFrame = { id: frameId, promptText, imageUrl: null, taskId: null, status: 'generating' };
+      setFrames([newFrame]);
+
+      const imgRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-image`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ prompt: promptText, aspectRatio }),
+      });
+      const imgData = await imgRes.json();
+      if (!imgRes.ok) throw new Error(imgData.error || 'Failed to generate frame');
+
+      if (imgData.imageUrl) {
+        // Image returned immediately — go straight to video
+        setFrames([{ id: frameId, promptText, imageUrl: imgData.imageUrl, taskId: null, status: 'done' }]);
+        await autoGenerateVideo(frameId, imgData.imageUrl, promptText, headers);
+      } else if (imgData.taskId) {
+        setFrames([{ id: frameId, promptText, imageUrl: null, taskId: imgData.taskId, status: 'generating' }]);
+        pollFrameTaskAuto(frameId, imgData.taskId, promptText, headers);
+      }
+    } catch (e: any) { setGlobalError(e.message); setStep('brief'); }
     finally { setGeneratingPrompts(false); }
+  };
+
+  const autoGenerateVideo = async (frameId: string, imageUrl: string, promptText: string, headers: Record<string, string>) => {
+    setStep('video');
+    const vidId = `v${Date.now()}-${frameId}`;
+    const newVideo: GeneratedVideo = { id: vidId, frameUrl: imageUrl, promptText, videoUrl: null, taskId: null, status: 'generating' };
+    setVideos([newVideo]);
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-video`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ imageUrl, prompt: promptText, duration, aspectRatio }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to generate video');
+      if (data.videoUrl) {
+        setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: data.videoUrl } : v));
+        addToHistory(brief, data.videoUrl, imageUrl);
+        setStep('done');
+      } else if (data.taskId) {
+        setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.taskId, status: 'polling' } : v));
+        pollVideoTask(vidId, data.taskId, brief, imageUrl);
+      }
+    } catch (e: any) {
+      setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: e.message } : v));
+      setGlobalError(e.message);
+    }
+  };
+
+  const pollFrameTaskAuto = (frameId: string, taskId: string, promptText: string, headers: Record<string, string>) => {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > 60) {
+        clearInterval(interval);
+        setFrames(prev => prev.map(f => f.id === frameId ? { ...f, status: 'error', error: 'Timed out' } : f));
+        setGlobalError('Frame generation timed out');
+        return;
+      }
+      try {
+        const pr = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ taskId, type: 'image' }),
+        });
+        const pd = await pr.json();
+        if (pd.status === 'succeed' && pd.imageUrl) {
+          clearInterval(interval);
+          setFrames(prev => prev.map(f => f.id === frameId ? { ...f, status: 'done', imageUrl: pd.imageUrl } : f));
+          await autoGenerateVideo(frameId, pd.imageUrl, promptText, headers);
+        } else if (pd.status === 'failed') {
+          clearInterval(interval);
+          setFrames(prev => prev.map(f => f.id === frameId ? { ...f, status: 'error', error: 'Generation failed' } : f));
+          setGlobalError('Frame generation failed');
+        }
+      } catch {}
+    }, 3000);
+    pollTimers.current[frameId] = interval;
   };
 
   const handleGenerateFrames = async () => {
