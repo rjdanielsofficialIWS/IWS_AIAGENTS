@@ -537,7 +537,7 @@ function ConnectAccountsModal({
   currentUser: { id: string; email: string } | null;
 }) {
   const [connecting, setConnecting] = useState(false);
-  const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id navigating to Ayrshare
+  const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id being connected via Late
   const [error, setError] = useState<string | null>(null);
   const [liveEmail, setLiveEmail] = useState<string>('');
 
@@ -4314,12 +4314,12 @@ export function MediaDistributionPage() {
   // Three signals, any one is enough: URL ?connected=1, localStorage flag, visibilitychange.
   // On mobile the page fully reloads after OAuth so visibilitychange never fires —
   // the URL param is the only reliable signal in that case.
-  // We poll with retries because Ayrshare can take a few seconds to register the connection.
+  // We poll with retries because Late can take a few seconds to register the connection.
   const pollForChannels = useCallback(async () => {
     if (!currentUserId) return;
     setIntegrationsLoading(true);
     let found = false;
-    // Attempt 1: immediate (no delay) — catches cases where Ayrshare already has the account
+    // Attempt 1: immediate (no delay) — catches cases where Late already has the account
     try {
       const channels = await fetchChannels(currentUserId, true);
       setIntegrations(channels);
@@ -4355,11 +4355,11 @@ export function MediaDistributionPage() {
   // Signal 2: localStorage flag — works when popup closes or tab regains focus on desktop
   useEffect(() => {
     const isSocialReturn = (() => {
-      try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1' || !!localStorage.getItem('ayrshare_connected'); }
+      try { return localStorage.getItem(LS_SOCIAL_RETURN_KEY) === '1' || !!localStorage.getItem('late_connected'); }
       catch { return false; }
     })();
     if (isSocialReturn) {
-      try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); localStorage.removeItem('ayrshare_connected'); } catch {}
+      try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); localStorage.removeItem('late_connected'); } catch {}
       window.history.replaceState({}, '', window.location.pathname);
       setConnectModalOpen(false);
       pollForChannels();
