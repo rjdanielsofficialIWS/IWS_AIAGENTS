@@ -3511,18 +3511,15 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
     const newVideo: GeneratedVideo = { id: vidId, frameUrl: imageUrl, promptText, videoUrl: null, taskId: null, status: 'generating' };
     setVideos([newVideo]);
     try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-video`, {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ imageUrl, prompt: promptText, duration, aspectRatio }),
+        body: JSON.stringify({ imageUrl, prompt: promptText, duration, aspectRatio, quality: 'high' }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate video');
-      if (data.videoUrl) {
-        setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: data.videoUrl } : v));
-        autoGenerateAudio(vidId, data.videoUrl, brief, imageUrl, headers);
-      } else if (data.taskId) {
-        setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.taskId, status: 'polling' } : v));
-        pollVideoTask(vidId, data.taskId, brief, imageUrl);
+      if (data.requestId) {
+        setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.requestId, status: 'polling' } : v));
+        pollFalVideoTask(vidId, data.requestId, data.model, promptText, frameUrl, headers);
       }
     } catch (e: any) {
       setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: e.message } : v));
@@ -3646,19 +3643,15 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
     const headers = await getAuthHeaders();
     for (const vid of newVideos) {
       try {
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-video`, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ imageUrl: vid.frameUrl, prompt: vid.promptText, duration, aspectRatio }),
+          body: JSON.stringify({ imageUrl: vid.frameUrl, prompt: vid.promptText, duration, aspectRatio, quality: 'high' }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed');
-        if (data.videoUrl) {
-          setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, status: 'done', videoUrl: data.videoUrl } : v));
-          addToHistory(brief, data.videoUrl, vid.frameUrl);
-          setStep('done');
-        } else if (data.taskId) {
-          setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, taskId: data.taskId, status: 'polling' } : v));
-          pollVideoTask(vid.id, data.taskId, brief, vid.frameUrl);
+        if (data.requestId) {
+          setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, taskId: data.requestId, status: 'polling' } : v));
+          pollFalVideoTask(vid.id, data.requestId, data.model, vid.promptText, vid.frameUrl, await getAuthHeaders());
         }
       } catch (e: any) {
         setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, status: 'error', error: e.message } : v));
