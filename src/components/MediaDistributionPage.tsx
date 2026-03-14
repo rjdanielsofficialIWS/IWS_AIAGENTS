@@ -3519,7 +3519,7 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
       if (!res.ok) throw new Error(data.error || 'Failed to generate video');
       if (data.requestId) {
         setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.requestId, status: 'polling' } : v));
-        pollFalVideoTask(vidId, data.requestId, data.model, promptText, imageUrl, headers);
+        pollFalVideoTask(vidId, data.requestId, data.model, promptText, imageUrl, headers, data.statusUrl, data.responseUrl);
       }
     } catch (e: any) {
       setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: e.message } : v));
@@ -3659,7 +3659,7 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
     }
   };
 
-  const pollFalVideoTask = (vidId: string, requestId: string, modelEndpoint: string, promptText: string, frameUrl: string, headers: Record<string, string>) => {
+  const pollFalVideoTask = (vidId: string, requestId: string, modelEndpoint: string, promptText: string, frameUrl: string, headers: Record<string, string>, statusUrl?: string, responseUrl?: string) => {
     let attempts = 0;
     const interval = setInterval(async () => {
       attempts++;
@@ -3672,7 +3672,7 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
       try {
         const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ requestId, modelEndpoint }),
+          body: JSON.stringify({ requestId, modelEndpoint, statusUrl, responseUrl }),
         });
         const pd = await pr.json();
         if (pd.status === 'succeed' && pd.videoUrl) {
