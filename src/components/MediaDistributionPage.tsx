@@ -3659,7 +3659,38 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
     }
   };
 
-  const resetStudio = () => {
+  const pollFalVideoTask = (vidId: string, requestId: string, modelEndpoint: string, promptText: string, frameUrl: string, headers: Record<string, string>) => {
+    let attempts = 0;
+    const interval = setInterval(async () => {
+      attempts++;
+      if (attempts > 120) {
+        clearInterval(interval);
+        setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: 'Timed out' } : v));
+        setGlobalError('Video generation timed out');
+        return;
+      }
+      try {
+        const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ requestId, modelEndpoint }),
+        });
+        const pd = await pr.json();
+        if (pd.status === 'succeed' && pd.videoUrl) {
+          clearInterval(interval);
+          setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: pd.videoUrl } : v));
+          addToHistory(brief, pd.videoUrl, frameUrl);
+          setStep('done');
+        } else if (pd.status === 'failed') {
+          clearInterval(interval);
+          setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: pd.error || 'Failed' } : v));
+          setGlobalError(pd.error || 'Video generation failed');
+        }
+      } catch {}
+    }, 5000);
+    pollTimers.current[vidId] = interval;
+  };
+
+    const resetStudio = () => {
     Object.values(pollTimers.current).forEach(clearInterval);
     pollTimers.current = {};
     setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null);
