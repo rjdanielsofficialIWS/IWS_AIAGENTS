@@ -3519,7 +3519,7 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
       if (!res.ok) throw new Error(data.error || 'Failed to generate video');
       if (data.requestId) {
         setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.requestId, status: 'polling' } : v));
-        pollFalVideoTask(vidId, data.requestId, data.model, promptText, frameUrl, headers);
+        pollFalVideoTask(vidId, data.requestId, data.model, promptText, imageUrl, headers);
       }
     } catch (e: any) {
       setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: e.message } : v));
