@@ -1353,6 +1353,7 @@ function InlinePostComposer({
   const [textAiDesc, setTextAiDesc]     = useState('');
   const [textAiTone, setTextAiTone]     = useState('');
   const [textAiVideo, setTextAiVideo]   = useState<File | null>(null);
+  const [textAiVideoObjectUrl, setTextAiVideoObjectUrl] = useState<string | null>(null);
   const [textAiLoading, setTextAiLoading] = useState(false);
   const [textAiError, setTextAiError]   = useState<string | null>(null);
   const [textAiPosts, setTextAiPosts]   = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
@@ -1899,14 +1900,27 @@ function InlinePostComposer({
                     <label className="flex flex-col items-center justify-center gap-2 p-5 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
                       <Video className="w-6 h-6 text-white/25" />
                       <span className="text-xs text-white/40">Click to select your talking video</span>
-                      <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setTextAiVideo(f); }} />
+                      <input type="file" accept="video/*" className="hidden" onChange={e => {
+                        const f = e.target.files?.[0];
+                        if (f) {
+                          if (textAiVideoObjectUrl) URL.revokeObjectURL(textAiVideoObjectUrl);
+                          const url = URL.createObjectURL(f);
+                          setTextAiVideo(f);
+                          setTextAiVideoObjectUrl(url);
+                        }
+                      }} />
                     </label>
                   ) : (
-                    <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                      <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                      <span className="text-white/60 truncate flex-1">{textAiVideo.name}</span>
-                      <button onClick={() => setTextAiVideo(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
-                    </div>
+                    <VideoPreviewCard
+                      file={textAiVideo}
+                      objectUrl={textAiVideoObjectUrl!}
+                      uploadState={{ status: 'idle' }}
+                      onRemove={() => {
+                        if (textAiVideoObjectUrl) URL.revokeObjectURL(textAiVideoObjectUrl);
+                        setTextAiVideo(null);
+                        setTextAiVideoObjectUrl(null);
+                      }}
+                    />
                   )
                 )}
                 {textAiMode === 'from_description' && (
@@ -2126,6 +2140,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
   const [description, setDescription]   = useState('');
   const [tone, setTone]                 = useState('');
   const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
   const [ideas, setIdeas]               = useState<any | null>(null);
@@ -2192,7 +2207,9 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
   };
 
   const reset = () => {
-    setDescription(''); setTone(''); setVideoFile(null); setIdeas(null); setError(null); setAdded(new Set());
+    setDescription(''); setTone('');
+    if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+    setVideoFile(null); setVideoObjectUrl(null); setIdeas(null); setError(null); setAdded(new Set());
   };
 
   return (
@@ -2283,14 +2300,27 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
                 <Video className="w-6 h-6 text-white/25" />
                 <span className="text-xs text-white/40">Click to select your talking video</span>
-                <input type="file" accept="video/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) setVideoFile(f); }} />
+                <input type="file" accept="video/*" className="hidden" onChange={e => {
+                  const f = e.target.files?.[0];
+                  if (f) {
+                    if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+                    const url = URL.createObjectURL(f);
+                    setVideoFile(f);
+                    setVideoObjectUrl(url);
+                  }
+                }} />
               </label>
             ) : (
-              <div className="flex items-center gap-2 p-3 rounded-xl border text-xs" style={{ borderColor: BORDER }}>
-                <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                <span className="text-white/60 truncate flex-1">{videoFile.name}</span>
-                <button onClick={() => setVideoFile(null)} className="text-white/30 hover:text-white transition shrink-0"><X className="w-3.5 h-3.5" /></button>
-              </div>
+              <VideoPreviewCard
+                file={videoFile}
+                objectUrl={videoObjectUrl!}
+                uploadState={{ status: 'idle' }}
+                onRemove={() => {
+                  if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+                  setVideoFile(null);
+                  setVideoObjectUrl(null);
+                }}
+              />
             )
           )}
           {captionMode === 'from_description' && (
