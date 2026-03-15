@@ -536,10 +536,23 @@ function ConnectAccountsModal({
   onDisconnectPlatform: (platformId: string) => Promise<void>;
   currentUser: { id: string; email: string } | null;
 }) {
-  const [connecting, setConnecting] = useState(false);
+  const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id being connected via Late
   const [error, setError] = useState<string | null>(null);
   const [liveEmail, setLiveEmail] = useState<string>('');
+
+  const CONNECTABLE_PLATFORMS: { id: string; label: string; color: string; bg: string }[] = [
+    { id: 'instagram',  label: 'Instagram',   color: '#E1306C', bg: 'rgba(225,48,108,0.12)' },
+    { id: 'facebook',   label: 'Facebook',    color: '#1877F2', bg: 'rgba(24,119,242,0.12)' },
+    { id: 'twitter',    label: 'X (Twitter)', color: '#ffffff', bg: 'rgba(255,255,255,0.08)' },
+    { id: 'linkedin',   label: 'LinkedIn',    color: '#0A66C2', bg: 'rgba(10,102,194,0.12)' },
+    { id: 'tiktok',     label: 'TikTok',      color: '#ffffff', bg: 'rgba(255,255,255,0.08)' },
+    { id: 'youtube',    label: 'YouTube',     color: '#FF0000', bg: 'rgba(255,0,0,0.12)' },
+    { id: 'threads',    label: 'Threads',     color: '#ffffff', bg: 'rgba(255,255,255,0.08)' },
+    { id: 'bluesky',    label: 'Bluesky',     color: '#0085ff', bg: 'rgba(0,133,255,0.12)' },
+    { id: 'pinterest',  label: 'Pinterest',   color: '#E60023', bg: 'rgba(230,0,35,0.12)' },
+  ];
+
 
   useEffect(() => {
     if (open) {
@@ -547,34 +560,24 @@ function ConnectAccountsModal({
         setLiveEmail(user?.email ?? '');
       });
     } else {
-      setConnecting(false);
+      setConnecting(null);
       setError(null);
     }
   }, [open]);
 
-  const handleConnect = async () => {
-    setConnecting(true); setError(null);
+  const handleConnectPlatform = async (platformId: string) => {
+    setConnecting(platformId); setError(null);
     try {
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-
-      if (sessionErr || !session) {
-        setConnecting(false);
-        onConnectPostiz();
-        return;
-      }
+      if (sessionErr || !session) { setConnecting(null); onConnectPostiz(); return; }
 
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-
-      // On desktop: open popup first (before async) so browser doesn't block it
-      // On mobile: popup is unreliable — we'll navigate the current tab instead
       const popup = isMobile ? null : window.open('', '_blank');
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ platform: platformId }),
       });
 
       if (!res.ok) {
@@ -586,17 +589,13 @@ function ConnectAccountsModal({
       const { connectUrl } = await res.json();
       if (!connectUrl) { popup?.close(); throw new Error('No connect URL returned'); }
 
-      localStorage.setItem('postiz_social_return', '1');
-      if (popup) {
-        popup.location.href = connectUrl;
-      } else {
-        // Mobile: navigate current tab directly — always works
-        window.location.href = connectUrl;
-      }
-      setConnecting(false);
+      localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+      if (popup) { popup.location.href = connectUrl; }
+      else { window.location.href = connectUrl; }
+      setConnecting(null);
     } catch (err: any) {
-      setError(err instanceof Error ? err.message : 'Failed to open connection manager. Please try again.');
-      setConnecting(false);
+      setError(err instanceof Error ? err.message : 'Failed to open connection. Please try again.');
+      setConnecting(null);
     }
   };
 
@@ -687,19 +686,48 @@ function ConnectAccountsModal({
             </div>
           )}
 
-          <button
-            onClick={handleConnect}
-            disabled={connecting}
-            className="w-full flex flex-col items-center justify-center gap-0.5 py-3.5 rounded-xl text-sm font-bold transition hover:brightness-110 disabled:opacity-50"
-            style={{ background: GOLD, color: '#000' }}
-          >
-            <span className="flex items-center gap-2">
-              {connecting
-                ? <><Loader className="w-4 h-4 animate-spin" /> Opening…</>
-                : <><Link2 className="w-4 h-4" />{integrations.length > 0 ? 'Add Another Channel' : 'Connect a Social Account'}</>}
-            </span>
-            {connecting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
-          </button>
+          <div>
+            <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
+              {integrations.length > 0 ? 'Add Another Platform' : 'Choose a Platform to Connect'}
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {CONNECTABLE_PLATFORMS.map(p => {
+                const isConnecting = connecting === p.id;
+                const isConnected = integrations.some(i =>
+                  (i.profile || i.identifier || '').toLowerCase().includes(p.id) ||
+                  (i.name || '').toLowerCase().includes(p.label.toLowerCase().split(' ')[0])
+                );
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => handleConnectPlatform(p.id)}
+                    disabled={!!connecting}
+                    className="flex flex-col items-center gap-2 p-3 rounded-xl border transition hover:brightness-110 disabled:opacity-40 relative"
+                    style={{
+                      borderColor: isConnected ? 'rgba(34,197,94,0.35)' : isConnecting ? `${p.color}60` : BORDER,
+                      background: isConnected ? 'rgba(34,197,94,0.06)' : isConnecting ? p.bg : 'rgba(255,255,255,0.03)',
+                    }}>
+                    {isConnected && (
+                      <div className="absolute top-1.5 right-1.5 w-3 h-3 rounded-full bg-green-400 flex items-center justify-center">
+                        <CheckCircle2 className="w-2.5 h-2.5 text-black" />
+                      </div>
+                    )}
+                    {isConnecting
+                      ? <Loader className="w-6 h-6 animate-spin" style={{ color: p.color }} />
+                      : <PlatformIcon id={p.id} size="md" />
+                    }
+                    <span className="text-[10px] font-bold text-center leading-tight"
+                      style={{ color: isConnecting ? p.color : isConnected ? '#86efac' : 'rgba(255,255,255,0.5)' }}>
+                      {isConnecting ? 'Opening\u2026' : p.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {connecting && (
+              <p className="text-[10px] text-white/30 text-center mt-2">Opening OAuth window\u2026 may take a moment</p>
+            )}
+          </div>
 
           {/* Manual refresh — shown after connecting so user can force a sync */}
           {integrations.length === 0 && !connecting && (
@@ -721,9 +749,7 @@ function ConnectAccountsModal({
             </button>
           )}
 
-          <p className="text-xs text-white/30 text-center">
-            Instagram, TikTok, YouTube, LinkedIn, X, Facebook & more
-          </p>
+
         </div>
       </div>
     </div>
