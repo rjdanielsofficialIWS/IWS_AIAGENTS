@@ -1257,15 +1257,17 @@ function SavedPostCard({
 // Inline version of PostComposerModal (no modal wrapper)
 
 function InlinePostComposer({
-  integrations, userId, onSuccess,
+  integrations, userId, onSuccess, initialVideoUrl, initialMode,
 }: {
   integrations: PostizIntegration[];
   userId: string | null;
   onSuccess?: () => void;
+  initialVideoUrl?: string | null;
+  initialMode?: 'media' | 'text' | 'saved';
 }) {
   type PostType = 'media' | 'text' | 'saved';
   type SavedPost = { id: string; text: string; label: string; savedAt: Date };
-  const [postType, setPostType]         = useState<PostType>('media');
+  const [postType, setPostType]         = useState<PostType>(initialMode || 'media');
   const [savedPosts, setSavedPosts]     = useState<SavedPost[]>(() => {
     try { return JSON.parse(localStorage.getItem('mm_saved_posts') || '[]').map((p: any) => ({ ...p, savedAt: new Date(p.savedAt) })); }
     catch { return []; }
@@ -1296,6 +1298,16 @@ function InlinePostComposer({
   const [videoFile, setVideoFile]       = useState<File | null>(null);
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
   const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
+
+  // Pre-populate with AI-generated video URL if provided
+  React.useEffect(() => {
+    if (!initialVideoUrl) return;
+    setPostType('media');
+    setVideoUpload({ status: 'done', path: '', url: initialVideoUrl, fileName: 'ai-video.mp4', mime: 'video/mp4', size: 0 });
+    // Also pre-fill AI caption mode pointed at the video URL
+    setCaptionMode('from_description');
+    setAiDescription('AI-generated video — write captions describing this content');
+  }, [initialVideoUrl]);
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
   type CaptionType = 'manual' | 'ai';
@@ -2811,7 +2823,13 @@ function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved 
 // Two-column layout: Create Post (left) | Content Ideas (right)
 // No "Your Channels" section — that's in the sidebar.
 
-function ComposerPanel({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
+function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed }: {
+  integrations: PostizIntegration[];
+  userId: string | null;
+  initialVideoUrl?: string | null;
+  initialComposerMode?: 'media' | 'text' | 'saved';
+  onVideoConsumed?: () => void;
+}) {
   const [logOpen, setLogOpen]             = useState(false);
   const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
@@ -2889,7 +2907,7 @@ function ComposerPanel({ integrations, userId }: { integrations: PostizIntegrati
                 <div className="text-xs text-white/35">Write, upload & schedule to your channels</div>
               </div>
             </div>
-            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={loadPosts} />
+            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} />
           </div>
 
           {/* Right column: Content Ideas */}
@@ -3394,7 +3412,7 @@ type GeneratedFrame = { id: string; promptText: string; imageUrl: string | null;
 type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; };
 type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl: string; thumbnailUrl?: string; };
 
-function AIVideoStudio({ userId }: { userId: string | null }) {
+function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVideo?: (videoUrl: string) => void }) {
   const [step, setStep]               = React.useState<VideoStudioStep>('brief');
   const [startFrameUrl, setStartFrameUrl] = React.useState<string | null>(null);
   const [endFrameUrl, setEndFrameUrl]     = React.useState<string | null>(null);
@@ -3997,9 +4015,35 @@ function AIVideoStudio({ userId }: { userId: string | null }) {
                       }
                     </div>
                     {vid.status === 'done' && vid.videoUrl && (
-                      <div className="p-3">
-                        <a href={vid.videoUrl} download target="_blank" rel="noreferrer" className="flex items-center gap-1.5 text-xs font-bold" style={{ color: GOLD }}>
-                          <Download className="w-3.5 h-3.5" /> Download Video
+                      <div className="p-3 space-y-2">
+                        {/* Action buttons */}
+                        <div className="grid grid-cols-3 gap-2">
+                          <button
+                            onClick={() => onUseVideo?.(vid.videoUrl!)}
+                            className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:brightness-110"
+                            style={{ background: GOLD, color: '#000' }}>
+                            <Send className="w-3.5 h-3.5" />
+                            Post to Social
+                          </button>
+                          <button
+                            onClick={() => onUseVideo?.('repurpose:' + vid.videoUrl!)}
+                            className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:bg-white/8"
+                            style={{ border: `1px solid ${GOLD}40`, color: GOLD_L }}>
+                            <Sparkles className="w-3.5 h-3.5" />
+                            Text Posts
+                          </button>
+                          <button
+                            onClick={() => onUseVideo?.('ideas:' + vid.videoUrl!)}
+                            className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:bg-white/8"
+                            style={{ border: `1px solid rgba(167,139,250,0.4)`, color: '#a78bfa' }}>
+                            <Wand2 className="w-3.5 h-3.5" />
+                            Content Ideas
+                          </button>
+                        </div>
+                        <a href={vid.videoUrl} download target="_blank" rel="noreferrer"
+                          className="flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[10px] font-semibold transition hover:bg-white/5"
+                          style={{ color: 'rgba(255,255,255,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
+                          <Download className="w-3 h-3" /> Download Video
                         </a>
                       </div>
                     )}
@@ -4258,6 +4302,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
 export function MediaDistributionPage() {
   const [view, setView]                         = useState<ViewMode>('composer');
   const [connectModalOpen, setConnectModalOpen] = useState(false);
+  const [videoHandoff, setVideoHandoff]         = useState<{ url: string; mode: 'media' | 'text' | 'saved' } | null>(null);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
   const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string } | null>(null);
@@ -4642,10 +4687,19 @@ export function MediaDistributionPage() {
             onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
 
-            {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
-            {view === 'video'    && <AIVideoStudio userId={currentUser?.id ?? null} />}
+            {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} onUseVideo={(url) => {
+              if (url.startsWith('repurpose:')) {
+                setVideoHandoff({ url: url.replace('repurpose:', ''), mode: 'text' });
+              } else if (url.startsWith('ideas:')) {
+                setVideoHandoff({ url: url.replace('ideas:', ''), mode: 'media' });
+              } else {
+                setVideoHandoff({ url, mode: 'media' });
+              }
+              setView('composer');
+            }} />}
             {view === 'partner'  && <PartnerDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
           </main>
           </div>
