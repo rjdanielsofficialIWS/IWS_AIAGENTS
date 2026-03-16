@@ -5000,49 +5000,103 @@ export function MediaDistributionPage() {
         onManagePlan={currentUser ? (subscription?.status === 'active' ? handlePortal : () => setPricingOpen(true)) : () => setAuthModalOpen(true)}
       />
 
-      {/* ── STATE 1: Logged out — simple hero + sign in/up ── */}
+      {/* ── STATE 1: Logged out — hero ── */}
       {!currentUser ? (
         <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
-          <div style={{ position: 'absolute', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}08 0%, transparent 65%)`, top: '35%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
-          <div className="relative flex flex-col items-center justify-center min-h-full" style={{ padding: 'clamp(40px, 8vw, 80px) clamp(16px, 5vw, 32px)', animation: 'mmFadeUp 0.5s ease both' }}>
-            {/* Logo */}
-            <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 24, boxShadow: `0 16px 48px ${GOLD}35`, flexShrink: 0 }}>
+          {/* Background glows */}
+          <div style={{ position: 'absolute', width: 640, height: 640, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}07 0%, transparent 65%)`, top: '40%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
+          <div style={{ position: 'absolute', width: 260, height: 260, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}05 0%, transparent 65%)`, top: '8%', right: '4%', pointerEvents: 'none', animation: 'mmPulse 9s ease-in-out 2s infinite' }} />
+
+          <div className="relative flex flex-col items-center" style={{ padding: 'clamp(36px,7vw,64px) clamp(16px,5vw,32px)', animation: 'mmFadeUp 0.5s ease both', maxWidth: 620, margin: '0 auto' }}>
+
+            {/* Logo icon */}
+            <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, boxShadow: `0 16px 48px ${GOLD}40`, flexShrink: 0 }}>
               <Send size={26} color="#000" />
             </div>
-            <span className="mm-gold-shimmer" style={{ display: 'block', fontSize: 'clamp(32px, 8vw, 56px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.0, marginBottom: 8, textAlign: 'center' }}>Media Machine</span>
-            <span style={{ display: 'block', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', marginBottom: 16, textAlign: 'center' }}>By Infinite Wealth Solutions AI</span>
-            <p style={{ fontSize: 'clamp(14px, 3vw, 17px)', color: 'rgba(255,255,255,0.55)', marginBottom: 12, lineHeight: 1.6, textAlign: 'center', maxWidth: 420, fontWeight: 500 }}>
+
+            {/* Live badge */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${GOLD}10`, border: `1px solid ${GOLD}22`, borderRadius: 999, padding: '4px 14px', marginBottom: 18 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, display: 'inline-block', animation: 'mmPulse 2s ease-in-out infinite' }} />
+              <span style={{ color: GOLD, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em' }}>AI-Powered Content Engine</span>
+            </div>
+
+            {/* Headline */}
+            <span className="mm-gold-shimmer" style={{ display: 'block', fontSize: 'clamp(30px, 7vw, 52px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 6, textAlign: 'center' }}>Media Machine</span>
+            <span style={{ display: 'block', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 18, textAlign: 'center' }}>By Infinite Wealth Solutions AI</span>
+
+            {/* Tagline */}
+            <p style={{ fontSize: 'clamp(15px, 3vw, 18px)', color: 'rgba(255,255,255,0.72)', marginBottom: 10, lineHeight: 1.5, textAlign: 'center', maxWidth: 440, fontWeight: 600, letterSpacing: '-0.01em' }}>
               One video. Thirty pieces of content. Every platform.
             </p>
-            <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.35)', margin: '0 0 36px', lineHeight: 1.6, textAlign: 'center', maxWidth: 380 }}>
-              Upload a video and Media Machine handles the rest. AI video analysis, caption generation, platform scheduling, and content strategy. All automatic.
+            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.38)', margin: '0 0 38px', lineHeight: 1.75, textAlign: 'center', maxWidth: 420 }}>
+              Stop posting once and hoping for the best. MediaMachine turns a single video into a complete content system — captions written, platforms scheduled, strategy built. All on autopilot.
             </p>
-            {/* Feature pills */}
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 40, maxWidth: 440 }}>
-              {['🤖 AI Video Analysis', '✍️ Platform Captions', '♻️ Content Repurposing', '📅 Smart Scheduling', '💡 Strategy Planner'].map(f => (
-                <span key={f} style={{ padding: '5px 12px', borderRadius: 20, fontSize: 11, fontWeight: 600, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.5)', whiteSpace: 'nowrap' }}>{f}</span>
+
+            {/* Feature cards grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, width: '100%', marginBottom: 36 }}>
+              {[
+                { icon: <Video size={15} />,        title: 'AI Video Generation',      desc: 'Cinematic AI video from a single image. No editing required.' },
+                { icon: <Sparkles size={15} />,     title: 'AI Caption Generator',     desc: 'Platform-specific captions engineered to stop the scroll.' },
+                { icon: <Calendar size={15} />,     title: 'AI Content Strategist',    desc: '30-day content calendars and hook libraries for your niche.' },
+                { icon: <TrendingUp size={15} />,   title: 'Multi-Platform Publishing', desc: 'Auto-publish to Instagram, TikTok, LinkedIn, YouTube & more.' },
+                { icon: <Film size={15} />,         title: 'Content Repurposing',       desc: 'Extract clips, tweets, blogs and threads from any video.' },
+                { icon: <Users size={15} />,        title: 'AI Voice Agents',           desc: '24/7 automated conversations that qualify and close leads.' },
+              ].map(f => (
+                <div
+                  key={f.title}
+                  style={{ padding: '14px', borderRadius: 14, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 9, transition: 'border-color 0.2s, background 0.2s', cursor: 'default' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${GOLD}35`; (e.currentTarget as HTMLElement).style.background = `${GOLD}07`; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
+                >
+                  <div style={{ width: 32, height: 32, borderRadius: 9, background: `${GOLD}14`, border: `1px solid ${GOLD}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD }}>
+                    {f.icon}
+                  </div>
+                  <div>
+                    <div style={{ color: 'white', fontWeight: 700, fontSize: 12, marginBottom: 3 }}>{f.title}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.32)', fontSize: 11, lineHeight: 1.55 }}>{f.desc}</div>
+                  </div>
+                </div>
               ))}
             </div>
+
+            {/* Stats bar */}
+            <div style={{ display: 'flex', width: '100%', maxWidth: 400, marginBottom: 36, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden' }}>
+              {[{ v: '10+', l: 'Platforms' }, { v: '30-Day', l: 'Calendars' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
+                <div key={s.l} style={{ flex: 1, padding: '14px 8px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                  <div style={{ color: GOLD, fontWeight: 900, fontSize: 17, letterSpacing: '-0.02em' }}>{s.v}</div>
+                  <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, marginTop: 2 }}>{s.l}</div>
+                </div>
+              ))}
+            </div>
+
             {/* CTA buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, width: '100%', maxWidth: 320 }}>
-              <button onClick={() => setAuthModalOpen(true)}
-                style={{ width: '100%', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}40`, letterSpacing: '-0.01em' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, width: '100%', maxWidth: 320, marginBottom: 28 }}>
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                style={{ width: '100%', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}40`, letterSpacing: '-0.01em', transition: 'filter 0.15s' }}
+                onMouseEnter={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'}
+                onMouseLeave={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'}
+              >
                 Start Multiplying Your Content
               </button>
-              <button onClick={() => setAuthModalOpen(true)}
-                style={{ width: '100%', padding: '12px 0', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}>
+              <button
+                onClick={() => setAuthModalOpen(true)}
+                style={{ width: '100%', padding: '12px 0', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)', transition: 'border-color 0.15s, color 0.15s' }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.22)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.75)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}
+              >
                 Already have an account? Sign In
               </button>
             </div>
-            {/* Subtle referral nudge */}
-            <div style={{ marginTop: 32, padding: '12px 20px', borderRadius: 12, background: 'rgba(200,162,74,0.06)', border: '1px solid rgba(200,162,74,0.15)', textAlign: 'center', maxWidth: 320 }}>
-              <span style={{ fontSize: 11, color: 'rgba(200,162,74,0.7)', fontWeight: 600, letterSpacing: '0.04em' }}>
-                💸 2 for 20 Partner Program
-              </span>
-              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)', margin: '4px 0 0', lineHeight: 1.5 }}>
-                Sign up and earn 20% recurring commission for every person you refer. They get 20% off their first month.
+
+            {/* Referral nudge */}
+            <div style={{ padding: '14px 20px', borderRadius: 14, background: `${GOLD}07`, border: `1px solid ${GOLD}18`, textAlign: 'center', maxWidth: 340 }}>
+              <span style={{ fontSize: 12, color: GOLD_L, fontWeight: 700 }}>💸 2-for-20 Partner Program</span>
+              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.32)', margin: '5px 0 0', lineHeight: 1.65 }}>
+                Earn 20% recurring commission for every referral. Your audience gets 20% off their first month.
               </p>
             </div>
+
           </div>
         </div>
 
