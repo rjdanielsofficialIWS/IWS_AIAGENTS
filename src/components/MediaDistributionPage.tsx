@@ -4756,20 +4756,65 @@ export function MediaDistributionPage() {
       )}
 
       {/* ── Pricing Modal ── */}
-            {pricingOpen && (
-        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center md:p-4"
-          style={{background:"rgba(0,0,0,0.88)",backdropFilter:"blur(10px)"}}
+                  {pricingOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center"
+          style={{background:"rgba(0,0,0,0.92)",backdropFilter:"blur(10px)"}}
           onClick={e=>{if(e.target===e.currentTarget)setPricingOpen(false);}}>
           <div className="w-full md:max-w-4xl rounded-t-2xl md:rounded-2xl border flex flex-col"
-            style={{background:"#0f0f0f",borderColor:"rgba(255,255,255,0.1)",maxHeight:"92dvh",overflowY:"auto"}}>
-            <div className="flex items-center justify-between px-6 py-5 border-b" style={{borderColor:"rgba(255,255,255,0.07)"}}>
+            style={{background:"#0f0f0f",borderColor:"rgba(255,255,255,0.1)",maxHeight:"95dvh",overflowY:"auto"}}>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div>
-                <div className="text-lg font-black text-white">Choose Your Plan</div>
-                <div className="text-sm text-white/40 mt-0.5">7-day money-back guarantee on all plans</div>
+                <div className="text-base font-black text-white">Choose Your Plan</div>
+                <div className="text-xs text-white/40 mt-0.5">7-day money-back guarantee</div>
               </div>
               <button onClick={()=>setPricingOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4"/></button>
             </div>
-            <div className="overflow-x-auto">
+
+            {/* ── Mobile: stacked cards ── */}
+            <div className="md:hidden px-4 py-4 space-y-3">
+              {([
+                {key:"starter",name:"Starter",price:"$47",highlight:false,features:["30 scheduled posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"]},
+                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 scheduled posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","AI content ideas"]},
+                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","3 client workspaces","Priority support + onboarding"]},
+              ] as const).map(plan=>{
+                const isCurrent=subscription?.status==="active"&&subscription?.plan===plan.key;
+                const isLoading=checkoutLoading===plan.key;
+                return(
+                  <div key={plan.key} className="rounded-2xl border p-4 relative" style={{borderColor:plan.highlight?`${GOLD}60`:"rgba(255,255,255,0.1)",background:plan.highlight?`linear-gradient(160deg,${GOLD}10,rgba(0,0,0,0.4))`:"rgba(255,255,255,0.03)"}}>
+                    {plan.highlight&&<div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{background:`linear-gradient(90deg,transparent,${GOLD},transparent)`}}/>}
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base font-black text-white">{plan.name}</span>
+                        {plan.highlight&&<span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase" style={{background:GOLD,color:"#000"}}>Popular</span>}
+                        {isCurrent&&<span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase" style={{background:"rgba(34,197,94,0.2)",color:"#86efac",border:"1px solid rgba(34,197,94,0.3)"}}>Current</span>}
+                      </div>
+                      <div className="flex items-baseline gap-0.5">
+                        <span className="text-2xl font-black text-white">{plan.price}</span>
+                        <span className="text-xs text-white/35">/mo</span>
+                      </div>
+                    </div>
+                    <ul className="space-y-1.5 mb-4">
+                      {plan.features.map(f=>(
+                        <li key={f} className="flex items-center gap-2 text-xs" style={{color:"rgba(255,255,255,0.6)"}}>
+                          <CheckCircle2 className="w-3.5 h-3.5 shrink-0" style={{color:plan.highlight?GOLD:"rgba(255,255,255,0.3)"}}/>
+                          {f}
+                        </li>
+                      ))}
+                    </ul>
+                    <button onClick={()=>isCurrent?handlePortal():handleCheckout(plan.key)} disabled={isLoading||portalLoading}
+                      className="w-full py-2.5 rounded-xl text-sm font-black transition disabled:opacity-50"
+                      style={{background:isCurrent?"rgba(34,197,94,0.15)":plan.highlight?`linear-gradient(135deg,${GOLD_D},${GOLD})`:"rgba(255,255,255,0.08)",color:isCurrent?"#86efac":plan.highlight?"#000":"rgba(255,255,255,0.7)",border:isCurrent?"1px solid rgba(34,197,94,0.3)":"none"}}>
+                      {isLoading?"Loading...":isCurrent?"✓ Current Plan":"Subscribe"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Desktop: comparison table ── */}
+            <div className="hidden md:block overflow-x-auto">
               <div className="grid grid-cols-4 min-w-[580px]">
                 <div className="px-5 py-5 border-b border-r" style={{borderColor:"rgba(255,255,255,0.07)"}}/>
                 {([{key:"starter",name:"Starter",price:"$47",highlight:false},{key:"viral",name:"Viral",price:"$97",highlight:true},{key:"agency",name:"Agency",price:"$297",highlight:false}] as const).map((plan,i)=>{
@@ -4798,8 +4843,8 @@ export function MediaDistributionPage() {
               </div>
               {([
                 ["AI Captions / mo",["15","100","Unlimited"]],
-                ["Scheduled Posts / mo",["100","100","Unlimited"]],
-                ["Platforms per Post",["3","All","All"]],
+                ["Scheduled Posts / mo",["30","100","Unlimited"]],
+                ["Social Media Accounts",["3","All","All"]],
                 ["AI Video / mo",["60s","180s","540s"]],
                 ["Content Repurposing",[false,true,true]],
                 ["AI Content Ideas",[false,true,true]],
@@ -4820,10 +4865,12 @@ export function MediaDistributionPage() {
                 </div>
               ))}
             </div>
-            <div className="px-6 py-5 border-t" style={{borderColor:"rgba(255,255,255,0.07)"}}>
+
+            {/* Add-ons */}
+            <div className="px-4 md:px-6 py-4 md:py-5 border-t" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">💳 Add-On Credits — One-Time Purchase</div>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-                {([{key:"video_60s",label:"+ 60 Video Seconds",price:"$10"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$25"},{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}] as const).map(addon=>(
+              <div className="grid grid-cols-2 gap-2">
+                {([{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"},{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}] as const).map(addon=>(
                   <button key={addon.key} onClick={()=>handleAddonCheckout(addon.key)}
                     className="flex items-center justify-between px-3 py-2.5 rounded-xl border transition hover:brightness-110"
                     style={{background:`${GOLD}0a`,borderColor:`${GOLD}30`}}>
@@ -4832,9 +4879,11 @@ export function MediaDistributionPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-xs text-white/20 mt-2">Credits are added instantly after purchase.</p>
+              <p className="text-[10px] text-white/20 mt-2">Credits are added instantly after purchase.</p>
             </div>
-            <div className="px-6 pb-6 border-t pt-4" style={{borderColor:"rgba(255,255,255,0.07)"}}>
+
+            {/* Promo code */}
+            <div className="px-4 md:px-6 pb-6 border-t pt-4" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-white/25">Have a promo code?</span>
                 <div className="flex gap-2">
@@ -4866,7 +4915,7 @@ export function MediaDistributionPage() {
             </div>
             <div className="px-6 py-5 space-y-3">
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Get More — One-Time Purchase</div>
-              {(addonFeature==="video_seconds"?[{key:"video_60s",label:"+ 60 Video Seconds",price:"$10"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$25"}]:addonFeature==="captions"?[{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}]:[]).map(addon=>(
+              {(addonFeature==="video_seconds"?[{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"}]:addonFeature==="captions"?[{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}]:[]).map(addon=>(
                 <button key={addon.key} onClick={()=>{setAddonModalOpen(false);handleAddonCheckout(addon.key);}}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-xl border transition hover:brightness-110"
                   style={{background:`${GOLD}12`,borderColor:`${GOLD}40`}}>
