@@ -4157,20 +4157,16 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
-            {(['brief','prompts','frames','video','done'] as VideoStudioStep[]).map((s, i) => (
-              <React.Fragment key={s}>
-                <div className="flex items-center gap-1.5">
-                  <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black"
-                    style={{ background: step === s ? GOLD : (['brief','prompts','frames','video','done'].indexOf(step) > i ? 'rgba(34,197,94,0.3)' : 'rgba(255,255,255,0.08)'), color: step === s ? '#000' : 'rgba(255,255,255,0.4)' }}>
-                    {(['brief','prompts','frames','video','done'].indexOf(step) > i) ? '✓' : i + 1}
-                  </div>
-                  <span className="text-[10px] font-bold capitalize hidden sm:block" style={{ color: step === s ? GOLD_L : 'rgba(255,255,255,0.25)' }}>{s}</span>
-                </div>
-                {i < 4 && <div className="flex-1 h-px" style={{ background: 'rgba(255,255,255,0.08)' }} />}
-              </React.Fragment>
-            ))}
-          </div>
+          {step !== 'brief' && step !== 'done' && (
+            <div className="space-y-1.5">
+              <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                <div className="h-full rounded-full animate-pulse" style={{ background: `linear-gradient(90deg, ${GOLD}, ${GOLD_L})`, width: step === 'prompts' ? '25%' : step === 'frames' ? '55%' : '85%', transition: 'width 0.8s ease' }} />
+              </div>
+              <p className="text-[10px] text-white/30 text-center">
+                {step === 'prompts' ? 'Crafting your scene…' : step === 'frames' ? 'Generating image frame…' : 'Rendering your video…'}
+              </p>
+            </div>
+          )}
 
           {globalError && (
             <div className="flex items-center gap-2 p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">
@@ -4278,7 +4274,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
               <button onClick={handleGeneratePrompts} disabled={generatingPrompts || !brief.trim()}
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
-                {generatingPrompts ? <><Loader className="w-4 h-4 animate-spin" /> Generating…</> : <><Wand2 className="w-4 h-4" /> Generate Scene Prompts</>}
+                {generatingPrompts ? <><Loader className="w-4 h-4 animate-spin" /> Generating…</> : <><Wand2 className="w-4 h-4" /> Generate Video</>}
               </button>
             </div>
           )}
