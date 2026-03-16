@@ -4338,6 +4338,10 @@ export function MediaDistributionPage() {
   const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string } | null>(null);
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
+  const [addonModalOpen, setAddonModalOpen] = useState(false);
+  const [addonFeature, setAddonFeature] = useState('captions');
+  const [addonUsed, setAddonUsed] = useState(0);
+  const [addonLimit, setAddonLimit] = useState(0);
   const [pricingOpen, setPricingOpen]           = useState(false);
   const [promoCode, setPromoCode]               = useState('');
   const [promoLoading, setPromoLoading]         = useState(false);
@@ -4565,6 +4569,21 @@ export function MediaDistributionPage() {
     finally { setPortalLoading(false); }
   };
 
+  const handleAddonCheckout = async (addonKey) => {
+    if (!currentUser) { setAuthModalOpen(true); return; }
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-checkout`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ addon: addonKey, successUrl: window.location.href + '?addon_success=' + addonKey, cancelUrl: window.location.href }),
+      });
+      const data = await res.json();
+      if (data.url) window.location.href = data.url;
+      else throw new Error(data.error || 'Checkout failed');
+    } catch (e) { setOauthError(e.message); }
+  };
+
   const handlePromoRedeem = async () => {
     if (!promoCode.trim()) return;
     setPromoLoading(true);
@@ -4737,78 +4756,135 @@ export function MediaDistributionPage() {
       )}
 
       {/* ── Pricing Modal ── */}
-      {pricingOpen && (
-        <div className="mm-pricing-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 100, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 0, animation: 'mmFadeUp 0.2s ease both' }}
-          onClick={e => { if (e.target === e.currentTarget) setPricingOpen(false); }}>
-          <div className="mm-pricing-sheet" style={{ width: '100%', maxWidth: 820, background: '#111', borderRadius: '20px 20px 0 0', border: '1px solid rgba(255,255,255,0.1)', borderBottom: 'none', padding: 'clamp(20px, 5vw, 36px) clamp(16px, 5vw, 36px)', position: 'relative', maxHeight: '92dvh', overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
-            <button onClick={() => setPricingOpen(false)} style={{ position: 'absolute', top: 16, right: 16, background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 8, width: 30, height: 30, cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>&#10005;</button>
-            <div style={{ textAlign: 'center', marginBottom: 28 }}>
-              <div style={{ fontSize: 'clamp(18px, 4vw, 24px)', fontWeight: 900, color: 'white', marginBottom: 6, letterSpacing: '-0.02em' }}>Choose Your Plan</div>
-              <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)' }}>Every plan includes AI video analysis, caption generation, content repurposing, scheduling, and the content planner.</p>
+            {pricingOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center md:p-4"
+          style={{background:"rgba(0,0,0,0.88)",backdropFilter:"blur(10px)"}}
+          onClick={e=>{if(e.target===e.currentTarget)setPricingOpen(false);}}>
+          <div className="w-full md:max-w-4xl rounded-t-2xl md:rounded-2xl border flex flex-col"
+            style={{background:"#0f0f0f",borderColor:"rgba(255,255,255,0.1)",maxHeight:"92dvh",overflowY:"auto"}}>
+            <div className="flex items-center justify-between px-6 py-5 border-b" style={{borderColor:"rgba(255,255,255,0.07)"}}>
+              <div>
+                <div className="text-lg font-black text-white">Choose Your Plan</div>
+                <div className="text-sm text-white/40 mt-0.5">7-day money-back guarantee on all plans</div>
+              </div>
+              <button onClick={()=>setPricingOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4"/></button>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 200px), 1fr))', gap: 'clamp(8px, 2vw, 14px)' }}>
-                {[
-                  { name: 'Starter', price: '$67', per: '/mo', features: ['10 AI caption analyses/mo', '30 scheduled posts/mo', 'Up to 3 platforms per post', 'AI caption generation', '2 AI videos/mo (up to 15s)', 'Content planner'], highlight: false },
-                  { name: 'Creator', price: '$127', per: '/mo', features: ['40 AI caption analyses/mo', '150 scheduled posts/mo', 'All platforms, no limits', '8 AI videos/mo (up to 30s)', 'Clip stitching up to 30s', 'AI captions + repurposing engine', 'Content planner + strategy AI'], highlight: true },
-                  { name: 'Agency', price: '$297', per: '/mo', features: ['Unlimited AI caption analyses', 'Unlimited scheduled posts', 'All platforms, no limits', '25 AI videos/mo (up to 60s)', 'Full clip stitching (30s + 60s)', 'Start/end frame video control', 'Everything in Creator', 'Priority support + onboarding call'], highlight: false },
-                ].map(pkg => {
-                  const isCurrentPlan = subscription?.status === 'active' && subscription?.plan === pkg.name.toLowerCase();
-                  const isLoading = checkoutLoading === pkg.name.toLowerCase();
-                  return (
-                    <div key={pkg.name} style={{ borderRadius: 16, padding: 'clamp(12px, 3vw, 22px) clamp(10px, 2.5vw, 16px)', background: pkg.highlight ? `linear-gradient(160deg, ${GOLD}1a, ${GOLD}0a)` : 'rgba(255,255,255,0.03)', border: `1px solid ${pkg.highlight ? GOLD + '60' : 'rgba(255,255,255,0.09)'}`, display: 'flex', flexDirection: 'column', position: 'relative', overflow: 'hidden', boxShadow: pkg.highlight ? `0 12px 48px ${GOLD}25` : 'none' }}>
-                      {pkg.highlight && <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 2, background: `linear-gradient(90deg, transparent, ${GOLD}, transparent)` }} />}
-                      {pkg.highlight && <span style={{ position: 'absolute', top: 8, right: 8, fontSize: 7, fontWeight: 800, padding: '2px 6px', borderRadius: 20, background: GOLD, color: '#000', textTransform: 'uppercase' }}>Popular</span>}
-                      <div style={{ fontSize: 9, fontWeight: 700, color: pkg.highlight ? GOLD_L : 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 5 }}>{pkg.name}</div>
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: 2, marginBottom: 8 }}>
-                        <span style={{ fontSize: 'clamp(20px, 5vw, 32px)', fontWeight: 900, color: pkg.highlight ? GOLD_L : 'white', letterSpacing: '-0.03em', lineHeight: 1 }}>{pkg.price}</span>
-                        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.35)', fontWeight: 600 }}>{pkg.per}</span>
+            <div className="overflow-x-auto">
+              <div className="grid grid-cols-4 min-w-[580px]">
+                <div className="px-5 py-5 border-b border-r" style={{borderColor:"rgba(255,255,255,0.07)"}}/>
+                {([{key:"starter",name:"Starter",price:"$47",highlight:false},{key:"viral",name:"Viral",price:"$97",highlight:true},{key:"agency",name:"Agency",price:"$297",highlight:false}] as const).map((plan,i)=>{
+                  const isCurrent=subscription?.status==="active"&&subscription?.plan===plan.key;
+                  const isLoading=checkoutLoading===plan.key;
+                  return(
+                    <div key={plan.key} className={`px-5 py-5 border-b ${i<2?"border-r":""} relative`} style={{borderColor:"rgba(255,255,255,0.07)",background:plan.highlight?`linear-gradient(160deg,${GOLD}0d,transparent)`:"transparent"}}>
+                      {plan.highlight&&<div className="absolute top-0 left-0 right-0 h-0.5" style={{background:`linear-gradient(90deg,transparent,${GOLD},transparent)`}}/>}
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-sm font-black text-white">{plan.name}</span>
+                        {plan.highlight&&<span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase" style={{background:GOLD,color:"#000"}}>Popular</span>}
+                        {isCurrent&&<span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase" style={{background:"rgba(34,197,94,0.2)",color:"#86efac",border:"1px solid rgba(34,197,94,0.3)"}}>Current</span>}
                       </div>
-                      <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 12px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {pkg.features.map(f => (
-                          <li key={f} style={{ fontSize: 'clamp(9px, 2vw, 11px)', color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'flex-start', gap: 4 }}>
-                            <span style={{ color: pkg.highlight ? GOLD : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>&#10003;</span>{f}
-                          </li>
-                        ))}
-                      </ul>
-                      <button
-                        onClick={() => isCurrentPlan ? handlePortal() : handleCheckout(pkg.name.toLowerCase())}
-                        disabled={isLoading || portalLoading}
-                        style={{ marginTop: 'auto', width: '100%', padding: 'clamp(7px, 1.5vw, 10px) 0', borderRadius: 9, fontSize: 'clamp(10px, 2vw, 12px)', fontWeight: 800, cursor: 'pointer', background: isCurrentPlan ? 'rgba(74,222,128,0.15)' : pkg.highlight ? `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})` : 'rgba(255,255,255,0.07)', color: isCurrentPlan ? 'rgb(74,222,128)' : pkg.highlight ? '#000' : 'rgba(255,255,255,0.7)', border: isCurrentPlan ? '1px solid rgba(74,222,128,0.4)' : pkg.highlight ? 'none' : '1px solid rgba(255,255,255,0.12)', opacity: isLoading ? 0.6 : 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                        <span>{isLoading ? 'Loading...' : isCurrentPlan ? '✓ Current Plan' : 'Subscribe'}</span>
-                        {isLoading && <span style={{ fontSize: 8, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
+                      <div className="flex items-baseline gap-1 mb-3">
+                        <span className="text-2xl font-black text-white">{plan.price}</span>
+                        <span className="text-xs text-white/35">/mo</span>
+                      </div>
+                      <button onClick={()=>isCurrent?handlePortal():handleCheckout(plan.key)} disabled={isLoading||portalLoading}
+                        className="w-full py-2 rounded-lg text-xs font-black transition disabled:opacity-50 hover:brightness-110"
+                        style={{background:isCurrent?"rgba(34,197,94,0.15)":plan.highlight?`linear-gradient(135deg,${GOLD_D},${GOLD})`:"rgba(255,255,255,0.08)",color:isCurrent?"#86efac":plan.highlight?"#000":"rgba(255,255,255,0.7)",border:isCurrent?"1px solid rgba(34,197,94,0.3)":"none"}}>
+                        {isLoading?"Loading...":isCurrent?"✓ Current Plan":"Subscribe"}
                       </button>
                     </div>
                   );
                 })}
-            </div>
-
-            {/* Promo Code */}
-            <div style={{ marginTop: 16, borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)', fontWeight: 500, whiteSpace: 'nowrap' }}>Have a promo code?</span>
-              <div style={{ display: 'flex', gap: 6 }}>
-                <input
-                  type="text"
-                  value={promoCode}
-                  onChange={e => { setPromoCode(e.target.value.toUpperCase()); setPromoError(''); setPromoSuccess(''); }}
-                  onKeyDown={e => e.key === 'Enter' && handlePromoRedeem()}
-                  placeholder="Enter code"
-                  style={{ width: 110, padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', outline: 'none', letterSpacing: '0.08em' }}
-                />
-                <button
-                  onClick={handlePromoRedeem}
-                  disabled={promoLoading || !promoCode.trim()}
-                  style={{ padding: '6px 14px', borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', border: 'none', opacity: promoLoading || !promoCode.trim() ? 0.5 : 1, whiteSpace: 'nowrap' }}>
-                  {promoLoading ? '...' : 'Apply'}
-                </button>
               </div>
-              {promoError && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: '#f87171', textAlign: 'center' }}>{promoError}</div>}
-              {promoSuccess && <div style={{ width: '100%', marginTop: 4, fontSize: 11, color: 'rgb(74,222,128)', textAlign: 'center' }}>{promoSuccess}</div>}
+              {([
+                ["AI Captions / mo",["15","100","Unlimited"]],
+                ["Scheduled Posts / mo",["100","100","Unlimited"]],
+                ["Platforms per Post",["3","All","All"]],
+                ["AI Video / mo",["60s","180s","540s"]],
+                ["Content Repurposing",[false,true,true]],
+                ["AI Content Ideas",[false,true,true]],
+                ["Client Workspaces",["1","1","3 (+$49/ea)"]],
+                ["Priority Support",[false,false,true]],
+                ["Onboarding Call",[false,false,true]],
+              ] as const).map(([feature,vals],rowIdx)=>(
+                <div key={String(feature)} className="grid grid-cols-4 min-w-[580px]" style={{background:rowIdx%2===0?"transparent":"rgba(255,255,255,0.018)"}}>
+                  <div className="px-5 py-3 text-sm text-white/55 font-medium border-r flex items-center" style={{borderColor:"rgba(255,255,255,0.07)"}}>{feature}</div>
+                  {([{key:"starter",highlight:false},{key:"viral",highlight:true},{key:"agency",highlight:false}] as const).map((plan,i)=>{
+                    const val=vals[i];
+                    return(
+                      <div key={plan.key} className={`px-5 py-3 flex items-center justify-center ${i<2?"border-r":""}`} style={{borderColor:"rgba(255,255,255,0.07)",background:plan.highlight?`${GOLD}05`:"transparent"}}>
+                        {typeof val==="boolean"?val?<CheckCircle2 className="w-4 h-4 text-green-400"/>:<span className="text-white/15 text-base font-bold">—</span>:<span className="text-sm font-semibold" style={{color:plan.highlight?GOLD_L:"rgba(255,255,255,0.7)"}}>{val}</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
-
+            <div className="px-6 py-5 border-t" style={{borderColor:"rgba(255,255,255,0.07)"}}>
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">💳 Add-On Credits — One-Time Purchase</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {([{key:"video_60s",label:"+ 60 Video Seconds",price:"$10"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$25"},{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}] as const).map(addon=>(
+                  <button key={addon.key} onClick={()=>handleAddonCheckout(addon.key)}
+                    className="flex items-center justify-between px-3 py-2.5 rounded-xl border transition hover:brightness-110"
+                    style={{background:`${GOLD}0a`,borderColor:`${GOLD}30`}}>
+                    <span className="text-xs font-bold text-white/60">{addon.label}</span>
+                    <span className="text-sm font-black ml-2" style={{color:GOLD}}>{addon.price}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-white/20 mt-2">Credits are added instantly after purchase.</p>
+            </div>
+            <div className="px-6 pb-6 border-t pt-4" style={{borderColor:"rgba(255,255,255,0.07)"}}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs text-white/25">Have a promo code?</span>
+                <div className="flex gap-2">
+                  <input type="text" value={promoCode} onChange={e=>{setPromoCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''));setPromoError('');setPromoSuccess('');}}
+                    onKeyDown={e=>e.key==='Enter'&&handlePromoRedeem()} placeholder="Enter code"
+                    className="rounded-lg px-3 py-1.5 text-xs font-bold font-mono outline-none"
+                    style={{width:110,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#fff"}}/>
+                  <button onClick={handlePromoRedeem} disabled={promoLoading||!promoCode.trim()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold transition disabled:opacity-50"
+                    style={{background:`linear-gradient(135deg,${GOLD_D},${GOLD})`,color:"#000"}}>
+                    {promoLoading?"...":"Apply"}
+                  </button>
+                </div>
+                {promoError&&<div style={{fontSize:11,color:"#f87171"}}>{promoError}</div>}
+                {promoSuccess&&<div style={{fontSize:11,color:"rgb(74,222,128)"}}>{promoSuccess}</div>}
+              </div>
+            </div>
           </div>
         </div>
       )}
-
+      {addonModalOpen&&(
+        <div className="fixed inset-0 z-[1100] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/85 backdrop-blur-sm" onClick={()=>setAddonModalOpen(false)}/>
+          <div className="relative w-full max-w-sm rounded-2xl border overflow-hidden shadow-2xl" style={{background:"linear-gradient(160deg,#1a1a1a,#111)",borderColor:"rgba(255,255,255,0.1)"}}>
+            <div className="px-6 pt-6 pb-4 text-center border-b" style={{borderColor:"rgba(255,255,255,0.07)"}}>
+              <div className="text-3xl mb-3">{addonFeature==="video_seconds"?"🎬":addonFeature==="captions"?"✨":"📅"}</div>
+              <div className="text-base font-black text-white mb-1">{addonFeature==="video_seconds"?"Video Seconds Limit Reached":addonFeature==="captions"?"AI Caption Limit Reached":"Post Limit Reached"}</div>
+              <div className="text-sm text-white/45">{addonFeature==="video_seconds"?`You have used ${addonUsed}s of your ${addonLimit}s monthly allowance.`:`You have used ${addonUsed} of ${addonLimit} this month.`}</div>
+            </div>
+            <div className="px-6 py-5 space-y-3">
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Get More — One-Time Purchase</div>
+              {(addonFeature==="video_seconds"?[{key:"video_60s",label:"+ 60 Video Seconds",price:"$10"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$25"}]:addonFeature==="captions"?[{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}]:[]).map(addon=>(
+                <button key={addon.key} onClick={()=>{setAddonModalOpen(false);handleAddonCheckout(addon.key);}}
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-xl border transition hover:brightness-110"
+                  style={{background:`${GOLD}12`,borderColor:`${GOLD}40`}}>
+                  <span className="text-sm font-bold" style={{color:GOLD_L}}>{addon.label}</span>
+                  <span className="text-lg font-black" style={{color:GOLD}}>{addon.price}</span>
+                </button>
+              ))}
+              <div className="flex items-center gap-3 py-1">
+                <div className="flex-1 h-px" style={{background:"rgba(255,255,255,0.07)"}}/>
+                <span className="text-xs text-white/25 font-semibold">OR</span>
+                <div className="flex-1 h-px" style={{background:"rgba(255,255,255,0.07)"}}/>
+              </div>
+              <button onClick={()=>{setAddonModalOpen(false);setPricingOpen(true);}} className="w-full py-3 rounded-xl text-sm font-bold transition hover:brightness-110" style={{background:`linear-gradient(135deg,${GOLD_D},${GOLD},${GOLD_L})`,color:"#000"}}>↑ Upgrade Your Plan for More</button>
+              <button onClick={()=>setAddonModalOpen(false)} className="w-full py-2 rounded-xl text-xs text-white/25 hover:text-white/50 transition">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       <ConnectAccountsModal
         open={connectModalOpen} onClose={() => setConnectModalOpen(false)}
         integrations={integrations} onConnectPostiz={handleConnect}
