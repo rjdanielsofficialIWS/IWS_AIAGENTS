@@ -65,17 +65,7 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: authErr } = await supabase.auth.getUser(auth.replace("Bearer ", "").trim());
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-  // Plan check
-  const { data: sub } = await supabase
-    .from("subscriptions")
-    .select("plan,status,stripe_customer_id")
-    .eq("supabase_user_id", user.id)
-    .maybeSingle();
-  const isPromo = sub?.stripe_customer_id?.startsWith("promo_");
-  const plan = ((sub?.status === "active" || isPromo) && sub?.plan) ? sub.plan.toLowerCase() : "free";
-  if (!["viral", "agency"].includes(plan)) {
-    return json({ error: "upgrade_required", message: "AI Strategist requires Viral or Agency plan.", plan }, 403);
-  }
+  // Plan check temporarily disabled
 
   if (!ANTHROPIC_KEY) return json({ error: "Server configuration error" }, 500);
 

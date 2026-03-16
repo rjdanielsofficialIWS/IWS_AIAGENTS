@@ -1,6 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 const CORS_ORIGINS=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"];
-const VIDEO_LIMITS={starter:60,viral:180,agency:540,free:0};
+const VIDEO_LIMITS={starter:60,viral:180,agency:540,free:60};
 function getPeriod(){const d=new Date();return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}
 Deno.serve(async(req)=>{
   const _o=req.headers.get("Origin")??"";const cors={"Access-Control-Allow-Origin":CORS_ORIGINS.includes(_o)?_o:CORS_ORIGINS[0],"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
@@ -14,7 +14,7 @@ Deno.serve(async(req)=>{
     const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id").eq("supabase_user_id",user.id).maybeSingle();
     const isPromo=sub?.stripe_customer_id?.startsWith("promo_");
     const plan=((sub?.status==="active"||isPromo)&&sub?.plan)?sub.plan.toLowerCase():"free";
-    if(plan==="free")return new Response(JSON.stringify({error:"upgrade_required",message:"Upgrade to generate AI videos.",plan}),{status:403,headers:{...cors,"Content-Type":"application/json"}});
+    // Plan check temporarily disabled
     const{imageUrl,tailImageUrl,prompt,duration,aspectRatio}=await req.json();
     if(!imageUrl||!prompt)return new Response(JSON.stringify({error:"imageUrl and prompt required"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     const secs=parseInt(String(duration??5),10);
