@@ -3947,7 +3947,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
         if (!res.ok) throw new Error(data.error || 'Failed');
         if (data.requestId) {
           setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, taskId: data.requestId, status: 'polling' } : v));
-          pollFalVideoTask(vid.id, data.requestId, data.model, vid.promptText, vid.frameUrl, await getAuthHeaders());
+          pollFalVideoTask(vid.id, data.requestId, data.model, vid.promptText, vid.frameUrl, await getAuthHeaders(), data.statusUrl, data.responseUrl);
         }
       } catch (e: any) {
         setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, status: 'error', error: e.message } : v));
