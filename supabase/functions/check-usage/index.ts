@@ -1,8 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, content-type"};
+const CORS_ORIGINS=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"];
 const PLAN_LIMITS={starter:{ai_captions_per_month:15,posts_per_month:100,platforms_allowed:3,video_seconds_per_month:60,repurpose_allowed:false,ai_ideas_allowed:false},viral:{ai_captions_per_month:100,posts_per_month:100,platforms_allowed:-1,video_seconds_per_month:180,repurpose_allowed:true,ai_ideas_allowed:true},agency:{ai_captions_per_month:-1,posts_per_month:-1,platforms_allowed:-1,video_seconds_per_month:540,repurpose_allowed:true,ai_ideas_allowed:true}};
 function getPeriod(){const d=new Date();return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}
 Deno.serve(async(req)=>{
+  const _o=req.headers.get("Origin")??"";const cors={"Access-Control-Allow-Origin":CORS_ORIGINS.includes(_o)?_o:CORS_ORIGINS[0],"Access-Control-Allow-Headers":"authorization, content-type"};
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   const supabase=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"");
   const token=(req.headers.get("Authorization")??"").replace("Bearer ","").trim();

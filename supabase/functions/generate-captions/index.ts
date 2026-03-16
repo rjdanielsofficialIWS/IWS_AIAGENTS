@@ -2,15 +2,36 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const ANTHROPIC_API_KEY=Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL=Deno.env.get("SUPABASE_URL");
 const SERVICE_KEY=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type"};
+const CORS_ORIGINS=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"];
+const corsFor=(req:Request)=>{const o=req.headers.get("Origin")??"";return{"Access-Control-Allow-Origin":CORS_ORIGINS.includes(o)?o:CORS_ORIGINS[0],"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type"};};
+let cors:Record<string,string>={};// defined per-request inside handler
 const REPURPOSE_PLANS=new Set(["viral","agency"]);
 const CAPTION_LIMITS={starter:15,viral:100,agency:-1,free:0};
 function getPeriod(){const d=new Date();return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}
 function buildTone(tone){const t=(tone||"").toLowerCase();if(t.includes("alex hormozi"))return"Short punchy sentences. No fluff. ROI-focused.";if(t.includes("gary vee"))return"High energy. Conversational. Light emojis ok.";if(t.includes("luxury"))return"Calm confidence. Premium. No hype.";if(t.includes("casual"))return"Normal person talking. Warm and conversational.";if(t.includes("professional"))return"Clear, credible, polished.";if(t.includes("funny"))return"Genuinely funny. Dry wit.";return tone||"Natural and genuine. Not an AI.";}
-const SYS="You are a social media ghostwriter. Sound completely human.\nNever use: game-changer, leverage, synergy, unlock, empower, transformative.\nNo fake urgency. Use contractions. Short sentences.\nReturn ONLY valid JSON, no markdown.\nFor YouTube: keys youtube_title (max 100 chars) and youtube (description).";
-const PR={tiktok:"TikTok: 1-2 punchy lines. 2-4 hashtags.",instagram:"Instagram: Scroll-stopping first line. 3-8 lines. 3-6 hashtags.",facebook:"Facebook: Conversational. 2-4 sentences. 0-2 hashtags.",linkedin:"LinkedIn: Professional but human. 2-3 hashtags.",x:"X/Twitter: Under 270 chars. Sharp. 0-1 hashtags.",youtube:"YouTube: youtube_title (under 100 chars) and youtube (2-3 sentence description).",threads:"Threads: Casual. 1-3 sentences.",bluesky:"Bluesky: Thoughtful, direct. Under 200 chars."};
+const SYS=`You are an elite social media ghostwriter with a proven track record of writing viral content for 7-figure creators and brands. Your captions convert scrollers into followers and followers into buyers.
+
+Core rules (non-negotiable):
+- Sound like a real human being talking — never like a marketing bot or AI
+- Never use: game-changer, leverage, synergy, unlock, empower, transformative, elevate, cutting-edge, dive deep, journey, landscape, streamline, it's important to note, in today's fast-paced world
+- No fake urgency or hype. No emojis unless the platform expects them
+- Use contractions (I'm, we'll, that's, you're). Short punchy sentences
+- Every first line must make the reader physically unable to scroll past
+- Return ONLY valid JSON, no markdown, no code fences
+- For YouTube: keys youtube_title (max 100 chars) and youtube (description, 2-3 sentences)`;
+const PR={
+  tiktok:"TikTok caption: 1-2 lines max. Spoken casual tone. Strong hook in first 5 words. 3-5 relevant hashtags. End with 'follow for part 2' or 'watch till the end' style CTA.",
+  instagram:"Instagram caption: FIRST LINE must be a scroll-stopping hook (no more than 10 words, leaves a curiosity gap). Then line break. Then 3-6 short punchy paragraphs or bullet points. Relatable and specific. 3-6 strategic hashtags at end. End with an engagement CTA (comment, save, or share).",
+  facebook:"Facebook caption: Open with a relatable scenario or bold statement. 2-4 conversational sentences. Tell a micro-story or share a specific insight. End with a question that sparks comments. 0-2 hashtags max.",
+  linkedin:"LinkedIn post: Professional but human — not corporate. Hook in first line (must make people click 'see more'). Then line breaks between short paragraphs. Share a specific insight, lesson, or story. 3-4 paragraphs. End with a clear CTA or thought-provoking question. 2-3 relevant hashtags.",
+  x:"X/Twitter: Under 270 chars. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
+  youtube:"YouTube: youtube_title under 100 chars (curiosity-driven, specific, no clickbait) and youtube description (2-3 sentences, what the video covers, natural keyword inclusion).",
+  threads:"Threads: Casual, conversational. 1-3 sentences. Feels like a text to a friend. No hashtags needed.",
+  bluesky:"Bluesky: Thoughtful and direct. Under 200 chars. Intellectual but approachable tone."
+};
 async function callClaude(sys,usr,max=3000){const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:max,system:sys,messages:[{role:"user",content:usr}]})});if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();return(d.content?.[0]?.text||"{}").replace(/```json|```/g,"").trim();}
 Deno.serve(async(req)=>{
+  cors=corsFor(req);
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   try{
     const supabase=createClient(SUPABASE_URL,SERVICE_KEY);

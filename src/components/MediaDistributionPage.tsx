@@ -42,7 +42,7 @@ const VIRAL_ANGLES = [
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ORG_ID = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
 
-const SUPABASE_URL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
 
@@ -2151,7 +2151,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
   const [videoTone, setVideoTone]       = useState('');
   const [added, setAdded]               = useState<Set<string>>(new Set());
 
-  const SUPABASE_URL_LOCAL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
+  const SUPABASE_URL_LOCAL = import.meta.env.VITE_SUPABASE_URL as string;
 
   const PLATFORM_OPTIONS = ['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky'];
   const GOAL_OPTIONS = ['grow audience','generate leads','drive sales','build authority','grow email list','get speaking gigs','launch a product'];
@@ -2818,6 +2818,130 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function AddPlannerItemModal({
+  userId, initialDate, prefilled, onClose, onSaved,
+}: {
+  userId: string | null;
+  initialDate: string;
+  prefilled?: { title: string; notes?: string; category: string; sourceLabel: string };
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle]   = useState(prefilled?.title ?? '');
+  const [notes, setNotes]   = useState(prefilled?.notes ?? '');
+  const [date, setDate]     = useState(initialDate);
+  const [time, setTime]     = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError]   = useState<string | null>(null);
+
+  const save = async () => {
+    if (!title.trim()) { setError('Title is required'); return; }
+    if (!date) { setError('Date is required'); return; }
+    if (!userId) { setError('You must be signed in'); return; }
+    setSaving(true); setError(null);
+    try {
+      const { error: dbErr } = await supabase.from('content_planner').insert({
+        supabase_user_id: userId,
+        title: title.trim(),
+        notes: notes.trim() || null,
+        planned_date: date,
+        planned_time: time || null,
+        category: prefilled?.category ?? 'idea',
+        source_label: prefilled?.sourceLabel ?? 'Manual',
+      });
+      if (dbErr) throw dbErr;
+      onSaved();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save. Please try again.');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border shadow-2xl"
+        style={{ background: 'rgba(18,18,18,0.98)', borderColor: BORDER }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: BORDER }}>
+          <div>
+            <div className="text-sm font-black text-white">Add to Planner</div>
+            {prefilled?.sourceLabel && (
+              <div className="text-xs text-white/40 mt-0.5">From: {prefilled.sourceLabel}</div>
+            )}
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Title *</label>
+            <input
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="Content idea or post topic"
+              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+              style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${BORDER}` }}
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Notes</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Hook, angle, key points…"
+              rows={3}
+              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none resize-none"
+              style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${BORDER}` }}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Date *</label>
+              <input
+                type="date"
+                value={date}
+                onChange={e => setDate(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none"
+                style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${BORDER}`, colorScheme: 'dark' }}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Time (optional)</label>
+              <input
+                type="time"
+                value={time}
+                onChange={e => setTime(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl text-sm text-white outline-none"
+                style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${BORDER}`, colorScheme: 'dark' }}
+              />
+            </div>
+          </div>
+
+          {error && <p className="text-xs text-red-400">{error}</p>}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 px-5 pb-5">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white/40 hover:text-white hover:bg-white/8 transition border" style={{ borderColor: BORDER }}>
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving}
+            className="flex-1 py-2.5 rounded-xl text-sm font-black transition hover:brightness-110 disabled:opacity-50"
+            style={{ background: GOLD, color: '#000' }}>
+            {saving ? 'Saving…' : 'Save to Planner'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -4801,7 +4925,7 @@ export function MediaDistributionPage() {
     try {
       const session = await supabase.auth.getSession();
       const token = session.data.session?.access_token;
-      const res = await fetch('https://wcbkzebgcsfvrugibsjr.supabase.co/functions/v1/redeem-promo', {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-promo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify({ code: promoCode.trim() }),

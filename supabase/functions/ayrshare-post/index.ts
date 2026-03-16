@@ -1,12 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-const LATE_API_KEY="sk_1adb5186f3be9a2321b4c2ede480187d250c324f03fce819cc22632d19abb7c2";
+const LATE_API_KEY=Deno.env.get("LATE_API_KEY")??"";
+if(!LATE_API_KEY){console.error("LATE_API_KEY environment variable is not set");}
 const LATE_API_URL="https://getlate.dev/api/v1";
 const MEDIA_REQUIRED=new Set(["youtube","tiktok","instagram"]);
 const VIDEO_ONLY=new Set(["youtube","tiktok"]);
 const PLAN_LIMITS={starter:{posts:100,platforms:3},viral:{posts:100,platforms:-1},agency:{posts:-1,platforms:-1}};
 function getPeriod(){const d=new Date();return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}
 Deno.serve(async(req)=>{
-  const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Content-Type":"application/json"};
+  const _o=req.headers.get("Origin")??"";const _allowed=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"].includes(_o)?_o:"https://infinitewealthsolutionsai.com";
+  const cors={"Access-Control-Allow-Origin":_allowed,"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Content-Type":"application/json"};
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   const respond=(code,data)=>new Response(JSON.stringify(data),{status:code,headers:cors});
   const supabase=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"",{auth:{persistSession:false}});
@@ -30,6 +32,10 @@ Deno.serve(async(req)=>{
   const cleanPlatforms=platforms.filter(p=>typeof p==="string"&&p.trim().length>0).map(p=>p==="x"?"twitter":p);
   if(limits.platforms!==-1&&cleanPlatforms.length>limits.platforms)return respond(403,{error:"platform_limit",feature:"platforms",message:"Your "+plan+" plan supports up to "+limits.platforms+" platform(s) per post.",plan});
   if(!cleanPlatforms.length||!post)return respond(400,{error:"platforms and post required"});
+  if(post.length>50000)return respond(400,{error:"Post content exceeds maximum length"});
+  if(mediaUrls.length>10)return respond(400,{error:"Too many media URLs"});
+  const invalidMedia=mediaUrls.find(u=>typeof u!=="string"||u.length>2000);
+  if(invalidMedia!==undefined)return respond(400,{error:"Invalid media URL"});
   const needsMedia=cleanPlatforms.filter(p=>MEDIA_REQUIRED.has(p));
   if(needsMedia.length>0&&mediaUrls.length===0)return respond(400,{error:needsMedia.map(p=>p[0].toUpperCase()+p.slice(1)).join(", ")+" require media."});
   const isVideoUrl=url=>/\.(mp4|mov|webm|avi|mkv|m4v)/i.test(url);
@@ -53,5 +59,5 @@ Deno.serve(async(req)=>{
     if(!isError){try{await supabase.rpc("increment_usage",{p_user_id:userId,p_period:period,p_field:"posts_scheduled"});}catch(e){console.error("Usage increment failed:",e);}}
     if(isError)return respond(500,{error:errorMsg,detail:result});
     return respond(200,{success:true,postId:result._id||result.id,result});
-  }catch(e){return respond(500,{error:String(e)});}
+  }catch(e){console.error("ayrshare-post error:",e);return respond(500,{error:"Failed to publish post"});}
 });

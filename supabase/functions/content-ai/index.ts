@@ -5,11 +5,14 @@
  * - OPENAI_API_KEY
  */
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+const CORS_ORIGINS = ["https://infinitewealthsolutionsai.com", "https://www.infinitewealthsolutionsai.com"];
+const getCors = (origin: string | null) => {
+  const o = origin ?? '';
+  return {
+    "Access-Control-Allow-Origin": CORS_ORIGINS.includes(o) ? o : CORS_ORIGINS[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
 };
 
 type RequestBody = {
@@ -117,6 +120,7 @@ function stripCodeFences(input: string) {
 }
 
 Deno.serve(async (req) => {
+  const corsHeaders = getCors(req.headers.get("Origin"));
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
@@ -138,6 +142,30 @@ Deno.serve(async (req) => {
     }
 
     const expandedTone = expandTone(body.tone);
+
+    // Validate audioUrl before fetching (SSRF protection)
+    let parsedAudioUrl: URL;
+    try {
+      parsedAudioUrl = new URL(body.audioUrl);
+    } catch {
+      return new Response(
+        JSON.stringify({ error: "Invalid audioUrl" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    if (parsedAudioUrl.protocol !== "https:") {
+      return new Response(
+        JSON.stringify({ error: "audioUrl must use HTTPS" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+    const blockedHostPattern = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)/;
+    if (blockedHostPattern.test(parsedAudioUrl.hostname)) {
+      return new Response(
+        JSON.stringify({ error: "Invalid audioUrl" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // 1) Fetch audio
     const audioRes = await fetch(body.audioUrl);
@@ -284,11 +312,9 @@ Return JSON exactly in this structure:
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    console.error("content-ai unhandled error:", err);
     return new Response(
-      JSON.stringify({
-        error: "Unhandled error",
-        details: (err as any)?.message || String(err),
-      }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

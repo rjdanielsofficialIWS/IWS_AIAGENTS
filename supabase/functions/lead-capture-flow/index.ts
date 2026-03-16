@@ -7,6 +7,17 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
+// In-memory rate limiter: max 5 requests per IP per minute
+const _rl = new Map<string, { n: number; reset: number }>();
+function rateLimit(ip: string): boolean {
+  const now = Date.now();
+  const e = _rl.get(ip);
+  if (!e || now > e.reset) { _rl.set(ip, { n: 1, reset: now + 60_000 }); return true; }
+  if (e.n >= 5) return false;
+  e.n++;
+  return true;
+}
+
 const sanitizeKeywordStrict = (k: string) => {
   const s = String(k || '').toLowerCase().trim();
   const parts = s.split(':');
@@ -36,6 +47,14 @@ const makeSlug = (companyName: string) =>
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
+  }
+
+  const clientIp = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
+  if (!rateLimit(clientIp)) {
+    return new Response(JSON.stringify({ error: 'Too many requests. Please try again later.' }), {
+      status: 429,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
@@ -281,7 +300,8 @@ ${knowledgeBase}
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err?.message || 'Unknown error' }), {
+    console.error('lead-capture-flow error:', err);
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

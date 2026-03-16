@@ -1,10 +1,11 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
-const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
+const CORS_ORIGINS=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"];
 const PLAN_PRICE_IDS={"starter":"price_1TBNx6E9lvvsgykljqvbHkNt","viral":"price_1TBNx9E9lvvsgyklTfsIiHGQ","agency":"price_1TBNxCE9lvvsgyklJwtWCfHP"};
 const ADDON_PRICE_IDS={"video_60s":{priceId:"price_1TBNxeE9lvvsgyklaQbyEvOg",videoSeconds:60,label:"60 Video Seconds"},"video_180s":{priceId:"price_1TBNxhE9lvvsgyklh6cbC8NV",videoSeconds:180,label:"180 Video Seconds"},"captions_25":{priceId:"price_1TBNxlE9lvvsgyklSgVMQdY2",captionCredits:25,label:"25 Caption Credits"},"captions_100":{priceId:"price_1TBNxnE9lvvsgyklWqYQQbPh",captionCredits:100,label:"100 Caption Credits"}};
 const REFERRAL_COUPON_ID="yfctlvZ1";
 Deno.serve(async(req)=>{
+  const _o=req.headers.get("Origin")??"";const cors={"Access-Control-Allow-Origin":CORS_ORIGINS.includes(_o)?_o:CORS_ORIGINS[0],"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   try{
     const stripe=new Stripe(Deno.env.get("STRIPE_SECRET_KEY"),{apiVersion:"2024-06-20",httpClient:Stripe.createFetchHttpClient()});

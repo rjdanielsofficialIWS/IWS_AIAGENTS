@@ -5,6 +5,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// In-memory rate limiter: max 20 requests per IP per minute
+const _rl = new Map<string, { n: number; reset: number }>();
+function rateLimit(ip: string): boolean {
+  const now = Date.now();
+  const e = _rl.get(ip);
+  if (!e || now > e.reset) { _rl.set(ip, { n: 1, reset: now + 60_000 }); return true; }
+  if (e.n >= 20) return false;
+  e.n++;
+  return true;
+}
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -40,6 +51,11 @@ function extractAssistantText(vapiJson: any): string {
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
+  }
+
+  const clientIp = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  if (!rateLimit(clientIp)) {
+    return jsonResponse({ error: "Too many requests. Please try again later." }, 429);
   }
 
   try {
@@ -99,9 +115,7 @@ serve(async (req) => {
       previousChatId: vapiJson?.id || null,
     });
   } catch (err) {
-    return jsonResponse(
-      { error: "Internal error", details: String(err) },
-      500
-    );
+    console.error("vapi-public-chat error:", err);
+    return jsonResponse({ error: "Internal server error" }, 500);
   }
 });
