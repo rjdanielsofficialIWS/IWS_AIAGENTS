@@ -4756,14 +4756,12 @@ export function MediaDistributionPage() {
       )}
 
       {/* ── Pricing Modal ── */}
-                  {pricingOpen && (
+                        {pricingOpen && (
         <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center"
           style={{background:"rgba(0,0,0,0.92)",backdropFilter:"blur(10px)"}}
           onClick={e=>{if(e.target===e.currentTarget)setPricingOpen(false);}}>
           <div className="w-full md:max-w-4xl rounded-t-2xl md:rounded-2xl border flex flex-col"
             style={{background:"#0f0f0f",borderColor:"rgba(255,255,255,0.1)",maxHeight:"95dvh",overflowY:"auto"}}>
-
-            {/* Header */}
             <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div>
                 <div className="text-base font-black text-white">Choose Your Plan</div>
@@ -4771,18 +4769,16 @@ export function MediaDistributionPage() {
               </div>
               <button onClick={()=>setPricingOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4"/></button>
             </div>
-
-            {/* ── Mobile: stacked cards ── */}
             <div className="md:hidden px-4 py-4 space-y-3">
               {([
-                {key:"starter",name:"Starter",price:"$47",highlight:false,features:["30 scheduled posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"]},
-                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 scheduled posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","AI content ideas"]},
-                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","3 client workspaces","Priority support + onboarding"]},
+                {key:"starter",name:"Starter",price:"$47",highlight:false,features:["30 posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"]},
+                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","AI content ideas"]},
+                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","3 client workspaces","Priority support + call"]},
               ] as const).map(plan=>{
                 const isCurrent=subscription?.status==="active"&&subscription?.plan===plan.key;
                 const isLoading=checkoutLoading===plan.key;
                 return(
-                  <div key={plan.key} className="rounded-2xl border p-4 relative" style={{borderColor:plan.highlight?`${GOLD}60`:"rgba(255,255,255,0.1)",background:plan.highlight?`linear-gradient(160deg,${GOLD}10,rgba(0,0,0,0.4))`:"rgba(255,255,255,0.03)"}}>
+                  <div key={plan.key} className="rounded-2xl border p-4 relative" style={{borderColor:plan.highlight?`${GOLD}60`:"rgba(255,255,255,0.1)",background:plan.highlight?`linear-gradient(160deg,${GOLD}12,rgba(0,0,0,0.4))`:"rgba(255,255,255,0.03)"}}>
                     {plan.highlight&&<div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{background:`linear-gradient(90deg,transparent,${GOLD},transparent)`}}/>}
                     <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
@@ -4812,8 +4808,6 @@ export function MediaDistributionPage() {
                 );
               })}
             </div>
-
-            {/* ── Desktop: comparison table ── */}
             <div className="hidden md:block overflow-x-auto">
               <div className="grid grid-cols-4 min-w-[580px]">
                 <div className="px-5 py-5 border-b border-r" style={{borderColor:"rgba(255,255,255,0.07)"}}/>
@@ -4865,9 +4859,7 @@ export function MediaDistributionPage() {
                 </div>
               ))}
             </div>
-
-            {/* Add-ons */}
-            <div className="px-4 md:px-6 py-4 md:py-5 border-t" style={{borderColor:"rgba(255,255,255,0.07)"}}>
+            <div className="px-4 md:px-6 py-4 border-t" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">💳 Add-On Credits — One-Time Purchase</div>
               <div className="grid grid-cols-2 gap-2">
                 {([{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"},{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}] as const).map(addon=>(
@@ -4879,16 +4871,14 @@ export function MediaDistributionPage() {
                   </button>
                 ))}
               </div>
-              <p className="text-[10px] text-white/20 mt-2">Credits are added instantly after purchase.</p>
+              <p className="text-[10px] text-white/20 mt-2">Credits added instantly after purchase.</p>
             </div>
-
-            {/* Promo code */}
             <div className="px-4 md:px-6 pb-6 border-t pt-4" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs text-white/25">Have a promo code?</span>
                 <div className="flex gap-2">
-                  <input type="text" value={promoCode} onChange={e=>{setPromoCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,''));setPromoError('');setPromoSuccess('');}}
-                    onKeyDown={e=>e.key==='Enter'&&handlePromoRedeem()} placeholder="Enter code"
+                  <input type="text" value={promoCode} onChange={e=>{setPromoCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g,""));setPromoError("");setPromoSuccess("");}}
+                    onKeyDown={e=>e.key==="Enter"&&handlePromoRedeem()} placeholder="Enter code"
                     className="rounded-lg px-3 py-1.5 text-xs font-bold font-mono outline-none"
                     style={{width:110,background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.1)",color:"#fff"}}/>
                   <button onClick={handlePromoRedeem} disabled={promoLoading||!promoCode.trim()}
