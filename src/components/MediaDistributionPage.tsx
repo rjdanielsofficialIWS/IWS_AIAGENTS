@@ -2127,77 +2127,88 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
   userId: string | null;
   onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
 }) {
-  const [mode, setMode] = useState<'manual' | 'ai'>('manual');
+  type StrategistTab = 'brief' | 'calendar' | 'hooks' | 'strategy' | 'video';
+  type BriefData = {
+    niche: string; offer: string; audience: string; platforms: string[];
+    frequency: string; tone: string; goals: string[]; currentStage: string;
+  };
 
-  // Manual entry state
-  const [manualTitle, setManualTitle]   = useState('');
-  const [manualNotes, setManualNotes]   = useState('');
-  const [manualCategory, setManualCategory] = useState('idea');
-  const [manualSaved, setManualSaved]   = useState(false);
-
-  // AI state
-  const [captionMode, setCaptionMode]   = useState<'from_video' | 'from_description'>('from_description');
-  const [description, setDescription]   = useState('');
-  const [tone, setTone]                 = useState('');
-  const [videoFile, setVideoFile]       = useState<File | null>(null);
-  const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
+  const [tab, setTab]                   = useState<StrategistTab>('brief');
+  const [brief, setBrief]               = useState<BriefData>({
+    niche: '', offer: '', audience: '', platforms: ['instagram', 'linkedin'],
+    frequency: '5x/week', tone: '', goals: ['grow audience', 'generate leads'], currentStage: 'growing',
+  });
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
-  const [ideas, setIdeas]               = useState<any | null>(null);
+  const [results, setResults]           = useState<any | null>(null);
+
+  // Video repurpose state
+  const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
+  const [videoLoading, setVideoLoading] = useState(false);
+  const [videoError, setVideoError]     = useState<string | null>(null);
+  const [videoIdeas, setVideoIdeas]     = useState<any | null>(null);
+  const [videoTone, setVideoTone]       = useState('');
   const [added, setAdded]               = useState<Set<string>>(new Set());
 
+  const SUPABASE_URL_LOCAL = 'https://wcbkzebgcsfvrugibsjr.supabase.co';
+
+  const PLATFORM_OPTIONS = ['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky'];
+  const GOAL_OPTIONS = ['grow audience','generate leads','drive sales','build authority','grow email list','get speaking gigs','launch a product'];
+  const STAGE_OPTIONS = ['just starting','growing','established','scaling'];
+  const FREQ_OPTIONS = ['3x/week','5x/week','7x/week','2x/week','1x/day','2x/day'];
+
   const CATEGORY_COLORS: Record<string, string> = {
-    idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c',
+    idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c', strategy: '#f472b6',
   };
 
-  const CATEGORY_OPTIONS = [
-    { value: 'idea', label: '💡 General Idea' },
-    { value: 'short_clip', label: '🎬 Short Clip' },
-    { value: 'hook', label: '🪝 Hook' },
-    { value: 'blog', label: '✍️ Blog/Article' },
-    { value: 'other', label: '📦 Other' },
-  ];
+  const togglePlatform = (p: string) => setBrief(prev => ({
+    ...prev, platforms: prev.platforms.includes(p) ? prev.platforms.filter(x => x !== p) : [...prev.platforms, p],
+  }));
+  const toggleGoal = (g: string) => setBrief(prev => ({
+    ...prev, goals: prev.goals.includes(g) ? prev.goals.filter(x => x !== g) : [...prev.goals, g],
+  }));
 
-  const handleManualSave = () => {
-    if (!manualTitle.trim()) return;
-    onAddToPlanner?.({
-      title: manualTitle.trim(),
-      notes: manualNotes.trim() || undefined,
-      category: manualCategory,
-      sourceLabel: 'Manual',
-    });
-    setManualSaved(true);
-    setTimeout(() => {
-      setManualSaved(false);
-      setManualTitle('');
-      setManualNotes('');
-      setManualCategory('idea');
-    }, 1500);
-  };
-
-  const handleAiGenerate = async () => {
-    setLoading(true); setError(null); setIdeas(null); setAdded(new Set());
+  const handleGenerate = async () => {
+    if (!brief.niche.trim() || !brief.offer.trim() || !brief.audience.trim()) {
+      setError('Fill in your niche, offer, and target audience to continue.'); return;
+    }
+    if (!userId) { setError('Sign in to use the AI Strategist.'); return; }
+    setLoading(true); setError(null); setResults(null);
     try {
-      let source = '';
-      if (captionMode === 'from_video') {
-        if (!videoFile) throw new Error('Select a video first');
-        const { data: { session: txSession3 } } = await supabase.auth.getSession();
-        source = await transcribeVideo(videoFile, txSession3?.access_token ?? '');
-      } else {
-        if (!description.trim()) throw new Error('Enter a description of your video');
-        source = description;
-      }
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
-        body: JSON.stringify({ mode: 'repurpose_ideas', description: source, tone }),
+      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ mode: 'full_strategy', ...brief }),
       });
       const data = await res.json();
-      if (data.error === 'upgrade_required') { setError('upgrade_required'); return; }
+      if (data.error === 'upgrade_required') { setError('upgrade_required'); setLoading(false); return; }
       if (!res.ok) throw new Error(data.error || 'Generation failed');
-      setIdeas(data.ideas);
+      setResults(data);
+      setTab('calendar');
     } catch (e: any) { setError(e.message || 'Something went wrong'); }
     finally { setLoading(false); }
+  };
+
+  const handleVideoRepurpose = async () => {
+    if (!videoFile) { setVideoError('Select a video first'); return; }
+    if (!userId) { setVideoError('Sign in first'); return; }
+    setVideoLoading(true); setVideoError(null); setVideoIdeas(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const transcript = await transcribeVideo(videoFile, session?.access_token ?? '');
+      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ mode: 'repurpose_from_video', transcript, tone: videoTone }),
+      });
+      const data = await res.json();
+      if (data.error === 'upgrade_required') { setVideoError('upgrade_required'); return; }
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setVideoIdeas(data.ideas);
+    } catch (e: any) { setVideoError(e.message || 'Something went wrong'); }
+    finally { setVideoLoading(false); }
   };
 
   const handleAdd = (key: string, title: string, notes: string | undefined, category: string, sourceLabel: string) => {
@@ -2206,167 +2217,507 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
     setAdded(prev => new Set([...prev, key]));
   };
 
-  const reset = () => {
-    setDescription(''); setTone('');
-    if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-    setVideoFile(null); setVideoObjectUrl(null); setIdeas(null); setError(null); setAdded(new Set());
-  };
+  const PILLAR_COLOR = (p: string) => p === 'Reach' ? '#38bdf8' : p === 'Trust' ? '#a78bfa' : p === 'Sales' ? '#fb923c' : GOLD;
+
+  const tabs: { id: StrategistTab; label: string; emoji: string }[] = [
+    { id: 'brief',    label: 'Brief',    emoji: '📋' },
+    { id: 'calendar', label: 'Calendar', emoji: '📅' },
+    { id: 'hooks',    label: 'Hooks',    emoji: '🪝' },
+    { id: 'strategy', label: 'Strategy', emoji: '🎯' },
+    { id: 'video',    label: 'Video',    emoji: '🎬' },
+  ];
 
   return (
     <div className="space-y-4">
-      {/* Mode toggle */}
-      <div className="flex gap-2 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.2)', border: `1px solid ${BORDER}` }}>
-        <button onClick={() => setMode('manual')}
-          className="flex-1 py-2 rounded-lg text-xs font-bold transition"
-          style={{ background: mode === 'manual' ? `${GOLD}18` : 'transparent', border: `1px solid ${mode === 'manual' ? GOLD : 'transparent'}`, color: mode === 'manual' ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-          ✏️ Manual Entry
-        </button>
-        <button onClick={() => setMode('ai')}
-          className="flex-1 py-2 rounded-lg text-xs font-bold transition"
-          style={{ background: mode === 'ai' ? `${GOLD}18` : 'transparent', border: `1px solid ${mode === 'ai' ? GOLD : 'transparent'}`, color: mode === 'ai' ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-          ✨ AI Generate
-        </button>
+      {/* Tab bar */}
+      <div className="flex gap-1 p-1 rounded-xl overflow-x-auto" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0"
+            style={{
+              background: tab === t.id ? `${GOLD}18` : 'transparent',
+              border: `1px solid ${tab === t.id ? GOLD : 'transparent'}`,
+              color: tab === t.id ? GOLD_L : 'rgba(255,255,255,0.4)',
+            }}>
+            <span>{t.emoji}</span> {t.label}
+            {t.id !== 'brief' && t.id !== 'video' && !results && (
+              <span className="text-[9px] opacity-40">—</span>
+            )}
+          </button>
+        ))}
       </div>
 
-      {/* ── Manual Entry ── */}
-      {mode === 'manual' && (
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Idea Title</label>
-            <input
-              value={manualTitle}
-              onChange={e => setManualTitle(e.target.value)}
-              placeholder="What's the content idea?"
-              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
-              style={{ borderColor: BORDER }}
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
-            <textarea
-              value={manualNotes}
-              onChange={e => setManualNotes(e.target.value)}
-              placeholder="Any angles, references, key points…"
-              rows={3}
-              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none"
-              style={{ borderColor: BORDER }}
-            />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Category</label>
-            <div className="flex flex-wrap gap-2 mt-1.5">
-              {CATEGORY_OPTIONS.map(cat => {
-                const col = CATEGORY_COLORS[cat.value] || GOLD;
-                return (
-                  <button key={cat.value} onClick={() => setManualCategory(cat.value)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                    style={{
-                      borderColor: manualCategory === cat.value ? col : BORDER,
-                      background: manualCategory === cat.value ? `${col}18` : 'transparent',
-                      color: manualCategory === cat.value ? col : 'rgba(255,255,255,0.35)',
-                    }}>
-                    {cat.label}
-                  </button>
-                );
-              })}
+      {/* ── BRIEF TAB ─────────────────────────────────────────────────────── */}
+      {tab === 'brief' && (
+        <div className="space-y-4">
+          <div className="rounded-xl p-4 space-y-1" style={{ background: `${GOLD}08`, border: `1px solid ${GOLD}25` }}>
+            <div className="text-sm font-black text-white">AI Content Strategist</div>
+            <div className="text-xs text-white/45 leading-relaxed">
+              Tell me about your business and I'll build you a 30-day content calendar, hook library, platform strategy, and follower-to-client system — all tailored to your niche.
             </div>
           </div>
-          <button
-            onClick={handleManualSave}
-            disabled={!manualTitle.trim() || manualSaved || !userId}
-            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110 flex items-center justify-center gap-2"
-            style={{ background: manualSaved ? '#22c55e' : GOLD, color: '#000' }}>
-            {manualSaved
-              ? <><CheckCircle2 className="w-4 h-4" /> Saved to Planner!</>
-              : <><Plus className="w-4 h-4" /> Save to Content Planner</>}
+
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Your Niche *</label>
+              <input value={brief.niche} onChange={e => setBrief(p => ({ ...p, niche: e.target.value }))}
+                placeholder="e.g. Business coaching for real estate agents"
+                className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
+                style={{ borderColor: BORDER }} />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Your Offer *</label>
+              <input value={brief.offer} onChange={e => setBrief(p => ({ ...p, offer: e.target.value }))}
+                placeholder="e.g. 1-on-1 coaching $2,500/mo, online course $497"
+                className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
+                style={{ borderColor: BORDER }} />
+            </div>
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Target Audience *</label>
+              <input value={brief.audience} onChange={e => setBrief(p => ({ ...p, audience: e.target.value }))}
+                placeholder="e.g. Real estate agents doing $100k/yr who want to hit $300k"
+                className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
+                style={{ borderColor: BORDER }} />
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider mb-2 block">Platforms</label>
+              <div className="flex flex-wrap gap-2">
+                {PLATFORM_OPTIONS.map(p => (
+                  <button key={p} onClick={() => togglePlatform(p)}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition"
+                    style={{
+                      borderColor: brief.platforms.includes(p) ? GOLD : BORDER,
+                      background: brief.platforms.includes(p) ? `${GOLD}15` : 'transparent',
+                      color: brief.platforms.includes(p) ? GOLD_L : 'rgba(255,255,255,0.35)',
+                    }}>
+                    <PlatformIcon id={p} size="sm" />
+                    <span className="capitalize">{p === 'x' ? 'X' : p}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider mb-2 block">Posting Frequency</label>
+              <div className="flex flex-wrap gap-2">
+                {FREQ_OPTIONS.map(f => (
+                  <button key={f} onClick={() => setBrief(p => ({ ...p, frequency: f }))}
+                    className="px-3 py-1.5 rounded-lg border text-xs font-bold transition"
+                    style={{
+                      borderColor: brief.frequency === f ? GOLD : BORDER,
+                      background: brief.frequency === f ? `${GOLD}15` : 'transparent',
+                      color: brief.frequency === f ? GOLD_L : 'rgba(255,255,255,0.35)',
+                    }}>{f}</button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider mb-2 block">Goals</label>
+              <div className="flex flex-wrap gap-2">
+                {GOAL_OPTIONS.map(g => (
+                  <button key={g} onClick={() => toggleGoal(g)}
+                    className="px-3 py-1.5 rounded-lg border text-xs font-bold transition capitalize"
+                    style={{
+                      borderColor: brief.goals.includes(g) ? GOLD : BORDER,
+                      background: brief.goals.includes(g) ? `${GOLD}15` : 'transparent',
+                      color: brief.goals.includes(g) ? GOLD_L : 'rgba(255,255,255,0.35)',
+                    }}>{g}</button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider mb-2 block">Current Stage</label>
+              <div className="flex flex-wrap gap-2">
+                {STAGE_OPTIONS.map(s => (
+                  <button key={s} onClick={() => setBrief(p => ({ ...p, currentStage: s }))}
+                    className="px-3 py-1.5 rounded-lg border text-xs font-bold transition capitalize"
+                    style={{
+                      borderColor: brief.currentStage === s ? GOLD : BORDER,
+                      background: brief.currentStage === s ? `${GOLD}15` : 'transparent',
+                      color: brief.currentStage === s ? GOLD_L : 'rgba(255,255,255,0.35)',
+                    }}>{s}</button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Voice & Tone <span className="font-normal opacity-50">(optional)</span></label>
+              <input value={brief.tone} onChange={e => setBrief(p => ({ ...p, tone: e.target.value }))}
+                placeholder="e.g. Alex Hormozi, casual, luxury, professional, funny…"
+                className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
+                style={{ borderColor: BORDER }} />
+            </div>
+          </div>
+
+          {error && error !== 'upgrade_required' && (
+            <div className="text-xs text-red-300 px-1">{error}</div>
+          )}
+          {error === 'upgrade_required' && (
+            <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
+              <div className="text-sm font-bold" style={{ color: GOLD_L }}>Paid Plan Required</div>
+              <p className="text-xs text-white/50">The AI Content Strategist is available on Starter, Viral, and Agency plans.</p>
+            </div>
+          )}
+
+          <button onClick={handleGenerate} disabled={loading || !brief.niche.trim() || !brief.offer.trim() || !brief.audience.trim()}
+            className="w-full flex flex-col items-center justify-center gap-0.5 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
+            <span className="flex items-center gap-2">
+              {loading
+                ? <><Loader className="w-4 h-4 animate-spin" /> Building your strategy…</>
+                : <><Sparkles className="w-4 h-4" /> Build My Content Strategy</>}
+            </span>
+            {loading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Running 3 AI models in parallel — ~30 seconds</span>}
           </button>
-          {!userId && <p className="text-xs text-amber-400/70 text-center">Sign in to save ideas to the planner</p>}
         </div>
       )}
 
-      {/* ── AI Generate ── */}
-      {mode === 'ai' && (
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            {([['from_video', '🎙 Analyze Video'], ['from_description', '📝 From Description']] as const).map(([m, label]) => (
-              <button key={m} onClick={() => setCaptionMode(m)} className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
-                style={{ borderColor: captionMode === m ? GOLD : BORDER, background: captionMode === m ? `${GOLD}15` : 'transparent', color: captionMode === m ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                {label}
+      {/* ── CALENDAR TAB ──────────────────────────────────────────────────── */}
+      {tab === 'calendar' && (
+        <div className="space-y-4">
+          {!results ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <span className="text-3xl">📅</span>
+              <div className="text-sm font-bold text-white/30">No strategy generated yet</div>
+              <button onClick={() => setTab('brief')} className="px-4 py-2 rounded-xl text-xs font-bold transition hover:brightness-110" style={{ background: GOLD, color: '#000' }}>
+                Fill in your brief →
               </button>
-            ))}
-          </div>
-          {captionMode === 'from_video' && (
-            !videoFile ? (
-              <label className="flex flex-col items-center justify-center gap-2 p-6 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
-                <Video className="w-6 h-6 text-white/25" />
-                <span className="text-xs text-white/40">Click to select your talking video</span>
-                <input type="file" accept="video/*" className="hidden" onChange={e => {
-                  const f = e.target.files?.[0];
-                  if (f) {
-                    if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-                    const url = URL.createObjectURL(f);
-                    setVideoFile(f);
-                    setVideoObjectUrl(url);
-                  }
-                }} />
-              </label>
-            ) : (
-              <VideoPreviewCard
-                file={videoFile}
-                objectUrl={videoObjectUrl!}
-                uploadState={{ status: 'idle' }}
-                onRemove={() => {
-                  if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-                  setVideoFile(null);
-                  setVideoObjectUrl(null);
-                }}
-              />
-            )
-          )}
-          {captionMode === 'from_description' && (
-            <textarea value={description} onChange={e => setDescription(e.target.value)}
-              placeholder="Describe your video. What you talked about, main points, key takeaways…" rows={4}
-              className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-          )}
-          <input value={tone} onChange={e => setTone(e.target.value)}
-            placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
-            className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none" style={{ borderColor: BORDER }} />
-          {error && error === 'upgrade_required' ? (<div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}><div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator &amp; Agency Feature</div><p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>The Content Repurposing Engine is available on Creator and Agency plans.</p><button onClick={() => setPricingOpen(true)} className="px-4 py-2 rounded-lg text-xs font-bold" style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>Upgrade to Unlock</button></div>) : error ? (<div className="text-xs text-red-300">{error}</div>) : null}
-          {!ideas && (
+            </div>
+          ) : (
             <>
-              <button onClick={handleAiGenerate} disabled={loading}
-                className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-                style={{ background: GOLD, color: '#000' }}>
-                <span className="flex items-center justify-center gap-2">
-                  {loading
-                    ? <><Loader className="w-4 h-4 animate-spin" />{captionMode === 'from_video' ? 'Analyzing Video…' : 'Generating Ideas…'}</>
-                    : <><Sparkles className="w-4 h-4" /> Generate Ideas</>}
-                </span>
-                {loading && captionMode === 'from_video' && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
-              </button>
+              {/* Content Pillars */}
+              {results.calendar?.content_pillars?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Your Content Pillars</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {results.calendar.content_pillars.map((cp: any, i: number) => (
+                      <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                        <div className="text-xs font-bold text-white">{cp.name}</div>
+                        <div className="text-[10px] text-white/40 mt-0.5 leading-relaxed">{cp.description}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pillar ratio */}
+              {results.strategy?.content_pillars_ratio && (
+                <div className="rounded-xl border p-3" style={{ borderColor: BORDER }}>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Recommended Mix</div>
+                  <div className="flex gap-2">
+                    {Object.entries(results.strategy.content_pillars_ratio).map(([k, v]: [string, any]) => (
+                      <div key={k} className="flex-1 text-center p-2 rounded-lg" style={{ background: `${PILLAR_COLOR(k.charAt(0).toUpperCase()+k.slice(1))}15` }}>
+                        <div className="text-lg font-black" style={{ color: PILLAR_COLOR(k.charAt(0).toUpperCase()+k.slice(1)) }}>{v}%</div>
+                        <div className="text-[10px] text-white/40 capitalize font-bold">{k}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Week 1 Priority */}
+              {results.calendar?.week1_priority && (
+                <div className="rounded-xl p-3 border" style={{ borderColor: `${GOLD}40`, background: `${GOLD}08` }}>
+                  <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: GOLD }}>⭐ Week 1 Priority — Day {results.calendar.week1_priority.day}</div>
+                  <div className="text-xs text-white/60 leading-relaxed">{results.calendar.week1_priority.reason}</div>
+                </div>
+              )}
+
+              {/* 30-Day Calendar */}
+              <div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">30-Day Calendar</div>
+                <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
+                  {(results.calendar?.calendar || []).map((day: any, i: number) => {
+                    const col = PILLAR_COLOR(day.pillar);
+                    return (
+                      <div key={i} className="flex items-start gap-2.5 p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                        <div className="w-8 shrink-0 text-center">
+                          <div className="text-[10px] font-black" style={{ color: col }}>D{day.day}</div>
+                          <div className="text-[9px] text-white/25">{day.best_time}</div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                            <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: `${col}20`, color: col }}>{day.pillar}</span>
+                            <span className="text-[9px] text-white/30 font-semibold">{day.content_type}</span>
+                            {day.platform && <PlatformIcon id={day.platform.toLowerCase()} size="sm" />}
+                          </div>
+                          <div className="text-xs font-bold text-white leading-snug">{day.topic}</div>
+                          <div className="text-[10px] text-white/50 mt-1 leading-relaxed italic">"{day.hook}"</div>
+                          <div className="text-[10px] text-white/30 mt-0.5">{day.goal}</div>
+                        </div>
+                        <button onClick={() => handleAdd(`cal-${i}`, day.topic, `Hook: ${day.hook}\nGoal: ${day.goal}\nFormat: ${day.content_type}`, 'idea', 'AI Calendar')}
+                          className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition"
+                          style={{ background: added.has(`cal-${i}`) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(`cal-${i}`) ? '#86efac' : GOLD_L }}>
+                          {added.has(`cal-${i}`) ? '✓' : '+'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Evergreen Posts */}
+              {results.calendar?.evergreen_posts?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">♻️ Evergreen Posts (reuse every 90 days)</div>
+                  <div className="space-y-2">
+                    {results.calendar.evergreen_posts.map((ep: any, i: number) => (
+                      <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="text-xs font-bold text-white">{ep.topic}</div>
+                            <div className="text-[10px] text-white/50 mt-0.5 italic">"{ep.hook}"</div>
+                            <div className="text-[10px] text-white/30 mt-0.5">{ep.why_evergreen}</div>
+                          </div>
+                          <button onClick={() => handleAdd(`ev-${i}`, ep.topic, `Hook: ${ep.hook}`, 'idea', 'Evergreen')}
+                            className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition"
+                            style={{ background: added.has(`ev-${i}`) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(`ev-${i}`) ? '#86efac' : GOLD_L }}>
+                            {added.has(`ev-${i}`) ? '✓ Added' : '+ Planner'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
+        </div>
+      )}
 
-          {ideas && (
-            <div className="space-y-5">
-              {ideas.short_clips?.length > 0 && (
+      {/* ── HOOKS TAB ─────────────────────────────────────────────────────── */}
+      {tab === 'hooks' && (
+        <div className="space-y-3">
+          {!results ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <span className="text-3xl">🪝</span>
+              <div className="text-sm font-bold text-white/30">Generate your strategy first</div>
+              <button onClick={() => setTab('brief')} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: GOLD, color: '#000' }}>Fill in your brief →</button>
+            </div>
+          ) : (
+            <>
+              {results.hooks?.top_2_recommended?.length > 0 && (
+                <div className="rounded-xl p-3 border" style={{ borderColor: `${GOLD}40`, background: `${GOLD}08` }}>
+                  <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: GOLD }}>⭐ Top Recommended Hooks</div>
+                  {results.hooks.top_2_recommended.map((r: any, i: number) => {
+                    const hook = results.hooks?.hooks?.[r.index];
+                    return hook ? (
+                      <div key={i} className="mb-2 last:mb-0">
+                        <div className="text-xs font-bold text-white italic">"{hook.hook_text}"</div>
+                        <div className="text-[10px] text-white/40 mt-0.5">{r.reason}</div>
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              )}
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Hook Library ({results.hooks?.hooks?.length || 0} hooks)</div>
+              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
+                {(results.hooks?.hooks || []).map((hook: any, i: number) => (
+                  <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: `${GOLD}20`, color: GOLD_L }}>{hook.formula}</span>
+                          <PlatformIcon id={hook.best_platform?.toLowerCase() || 'instagram'} size="sm" />
+                          <div className="flex items-center gap-1 ml-auto">
+                            {Array.from({ length: 10 }).map((_, s) => (
+                              <div key={s} className="w-1.5 h-1.5 rounded-full" style={{ background: s < (hook.scroll_stop_score || 5) ? GOLD : 'rgba(255,255,255,0.1)' }} />
+                            ))}
+                          </div>
+                        </div>
+                        <div className="text-sm font-bold text-white leading-snug italic">"{hook.hook_text}"</div>
+                        <div className="text-[10px] text-white/40 mt-1">{hook.psychological_trigger}</div>
+                      </div>
+                      <button onClick={() => handleAdd(`hook-${i}`, hook.hook_text, `Formula: ${hook.formula}\nTrigger: ${hook.psychological_trigger}`, 'hook', 'Hook Library')}
+                        className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ml-2"
+                        style={{ background: added.has(`hook-${i}`) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(`hook-${i}`) ? '#86efac' : GOLD_L }}>
+                        {added.has(`hook-${i}`) ? '✓' : '+'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── STRATEGY TAB ──────────────────────────────────────────────────── */}
+      {tab === 'strategy' && (
+        <div className="space-y-4">
+          {!results ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
+              <span className="text-3xl">🎯</span>
+              <div className="text-sm font-bold text-white/30">Generate your strategy first</div>
+              <button onClick={() => setTab('brief')} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: GOLD, color: '#000' }}>Fill in your brief →</button>
+            </div>
+          ) : (
+            <>
+              {/* Quick Wins */}
+              {results.strategy?.quick_wins?.length > 0 && (
+                <div className="rounded-xl p-4 border" style={{ borderColor: `${GOLD}40`, background: `${GOLD}08` }}>
+                  <div className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: GOLD }}>⚡ Do This Week</div>
+                  <div className="space-y-2">
+                    {results.strategy.quick_wins.map((w: string, i: number) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <div className="w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black shrink-0 mt-0.5" style={{ background: `${GOLD}25`, color: GOLD }}>{i+1}</div>
+                        <p className="text-xs text-white/70 leading-relaxed">{w}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Platform Strategies */}
+              {results.strategy?.platform_strategies?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Platform Playbooks</div>
+                  <div className="space-y-3">
+                    {results.strategy.platform_strategies.map((ps: any, i: number) => (
+                      <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                        <div className="flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <PlatformIcon id={ps.platform?.toLowerCase() || 'instagram'} size="sm" />
+                          <span className="text-sm font-black text-white capitalize">{ps.platform}</span>
+                        </div>
+                        <div className="px-3 py-3 space-y-2">
+                          <div><span className="text-[10px] font-bold text-white/30 uppercase">Algorithm</span><p className="text-xs text-white/60 mt-0.5">{ps.algorithm_insight}</p></div>
+                          <div><span className="text-[10px] font-bold text-white/30 uppercase">Best Times</span><p className="text-xs text-white/60 mt-0.5">{Array.isArray(ps.posting_windows) ? ps.posting_windows.join(', ') : ps.posting_windows}</p></div>
+                          <div><span className="text-[10px] font-bold" style={{ color: GOLD }}>Growth Tactic</span><p className="text-xs text-white/70 mt-0.5">{ps.growth_tactic}</p></div>
+                          <div><span className="text-[10px] font-bold text-red-400/70 uppercase">Avoid</span><p className="text-xs text-white/50 mt-0.5">{ps.avoid}</p></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Follower-to-Client System */}
+              {results.strategy?.conversion_system && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Follower → Client System</div>
+                  <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+                    {results.strategy.conversion_system.post_types_that_generate_dms?.length > 0 && (
+                      <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+                        <div className="text-[10px] font-bold text-white/30 uppercase mb-2">Posts That Generate DMs</div>
+                        {results.strategy.conversion_system.post_types_that_generate_dms.map((pt: string, i: number) => (
+                          <div key={i} className="flex items-start gap-2 mb-1.5 last:mb-0">
+                            <div className="w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0" style={{ background: `${GOLD}25`, color: GOLD }}>{i+1}</div>
+                            <p className="text-xs text-white/65">{pt}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {results.strategy.conversion_system.dm_opener && (
+                      <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+                        <div className="text-[10px] font-bold text-white/30 uppercase mb-1.5">DM Opener</div>
+                        <p className="text-xs text-white/70 italic leading-relaxed">"{results.strategy.conversion_system.dm_opener}"</p>
+                      </div>
+                    )}
+                    {results.strategy.conversion_system.cta_language?.length > 0 && (
+                      <div className="px-4 py-3 border-b" style={{ borderColor: BORDER }}>
+                        <div className="text-[10px] font-bold text-white/30 uppercase mb-2">CTA Variations</div>
+                        {results.strategy.conversion_system.cta_language.map((cta: string, i: number) => (
+                          <div key={i} className="text-xs text-white/60 mb-1 italic">"{cta}"</div>
+                        ))}
+                      </div>
+                    )}
+                    {results.strategy.conversion_system.warming_sequence?.length > 0 && (
+                      <div className="px-4 py-3">
+                        <div className="text-[10px] font-bold text-white/30 uppercase mb-2">5-Post Warming Sequence</div>
+                        {results.strategy.conversion_system.warming_sequence.map((step: any, i: number) => (
+                          <div key={i} className="flex items-start gap-2 mb-2 last:mb-0">
+                            <div className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-black shrink-0" style={{ background: `${GOLD}20`, color: GOLD }}>{i+1}</div>
+                            <p className="text-xs text-white/60 leading-relaxed">{typeof step === 'string' ? step : (step.description || step.role || JSON.stringify(step))}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── VIDEO REPURPOSE TAB ───────────────────────────────────────────── */}
+      {tab === 'video' && (
+        <div className="space-y-4">
+          <div className="rounded-xl p-3" style={{ background: `${GOLD}08`, border: `1px solid ${GOLD}25` }}>
+            <div className="text-xs font-bold text-white">🎬 Video Repurposer</div>
+            <div className="text-[10px] text-white/45 mt-0.5 leading-relaxed">Upload a talking video and I'll extract every piece of content from it — clips, hooks, posts, blog angles, and series ideas.</div>
+          </div>
+
+          {!videoIdeas ? (
+            <div className="space-y-3">
+              {!videoFile ? (
+                <label className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                  <Video className="w-8 h-8 text-white/20" />
+                  <span className="text-sm font-bold text-white/35">Upload your talking video</span>
+                  <span className="text-xs text-white/20">AI will transcribe and extract content ideas</span>
+                  <input type="file" accept="video/*" className="hidden" onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (f) {
+                      if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+                      setVideoFile(f); setVideoObjectUrl(URL.createObjectURL(f));
+                    }
+                  }} />
+                </label>
+              ) : (
+                <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl!} uploadState={{ status: 'idle' }}
+                  onRemove={() => { if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl); setVideoFile(null); setVideoObjectUrl(null); }} />
+              )}
+              <input value={videoTone} onChange={e => setVideoTone(e.target.value)}
+                placeholder="Tone (optional): casual, Alex Hormozi, luxury…"
+                className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
+                style={{ borderColor: BORDER }} />
+              {videoError && videoError === 'upgrade_required' ? (
+                <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
+                  <div className="text-sm font-bold" style={{ color: GOLD_L }}>Viral & Agency Feature</div>
+                  <p className="text-xs text-white/50">Video repurposing is available on Viral and Agency plans.</p>
+                </div>
+              ) : videoError ? (
+                <div className="text-xs text-red-300">{videoError}</div>
+              ) : null}
+              <button onClick={handleVideoRepurpose} disabled={videoLoading || !videoFile}
+                className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+                style={{ background: GOLD, color: '#000' }}>
+                <span className="flex items-center gap-2">
+                  {videoLoading ? <><Loader className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Sparkles className="w-4 h-4" /> Extract All Content Ideas</>}
+                </span>
+                {videoLoading && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing — up to 30 seconds</span>}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <button onClick={() => { setVideoIdeas(null); setVideoFile(null); if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl); setVideoObjectUrl(null); }}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg border transition hover:bg-white/5"
+                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+                ↺ Analyze another video
+              </button>
+
+              {videoIdeas.short_clips?.length > 0 && (
                 <div>
                   <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🎬 Short Clip Ideas</div>
                   <div className="space-y-2">
-                    {ideas.short_clips.map((clip: any, i: number) => {
-                      const key = `clip-${i}`;
+                    {videoIdeas.short_clips.map((clip: any, i: number) => {
+                      const key = `vc-${i}`;
                       return (
                         <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
                           <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-bold text-white">{clip.title}</div>
-                              <div className="text-xs text-white/45 mt-1">{clip.angle}</div>
-                              <div className="text-xs font-semibold mt-1.5" style={{ color: GOLD }}>{clip.platform}</div>
+                            <div className="flex-1">
+                              <div className="text-xs font-bold text-white">{clip.title}</div>
+                              <div className="text-[10px] text-white/45 mt-0.5">{clip.angle}</div>
+                              {clip.hook && <div className="text-[10px] text-white/35 mt-0.5 italic">Hook: "{clip.hook}"</div>}
+                              <div className="text-[10px] font-semibold mt-1" style={{ color: GOLD }}>{clip.platform}</div>
                             </div>
                             <button onClick={() => handleAdd(key, clip.title, clip.angle, 'short_clip', 'Short Clip')}
-                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                              className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition"
                               style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                              {added.has(key) ? '✓' : '+ Planner'}
                             </button>
                           </div>
                         </div>
@@ -2375,19 +2726,20 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                   </div>
                 </div>
               )}
-              {ideas.social_hooks?.length > 0 && (
+
+              {videoIdeas.social_hooks?.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🪝 Hook Ideas</div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">🪝 Hooks</div>
                   <div className="space-y-1.5">
-                    {ideas.social_hooks.map((hook: string, i: number) => {
-                      const key = `hook-${i}`;
+                    {videoIdeas.social_hooks.map((hook: string, i: number) => {
+                      const key = `vh-${i}`;
                       return (
                         <div key={i} className="flex items-start gap-2 p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                          <p className="flex-1 text-sm text-white/60 leading-relaxed">{hook}</p>
-                          <button onClick={() => handleAdd(key, hook, undefined, 'hook', 'Hook Idea')}
-                            className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                          <p className="flex-1 text-xs text-white/65 leading-relaxed italic">"{hook}"</p>
+                          <button onClick={() => handleAdd(key, hook, undefined, 'hook', 'Hook')}
+                            className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition"
                             style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                            {added.has(key) ? '✓ Added' : '+ Planner'}
+                            {added.has(key) ? '✓' : '+'}
                           </button>
                         </div>
                       );
@@ -2395,23 +2747,42 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                   </div>
                 </div>
               )}
-              {ideas.blog_angles?.length > 0 && (
+
+              {videoIdeas.text_posts?.twitter?.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">✍️ Blog / Article Angles</div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">✍️ Text Posts</div>
+                  <div className="space-y-1.5">
+                    {videoIdeas.text_posts.twitter.slice(0, 3).map((post: string, i: number) => {
+                      const key = `vtp-${i}`;
+                      return (
+                        <div key={i} className="flex items-start gap-2 p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                          <p className="flex-1 text-xs text-white/65 leading-relaxed">{post}</p>
+                          <button onClick={() => handleAdd(key, post, undefined, 'idea', 'Text Post')}
+                            className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition"
+                            style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
+                            {added.has(key) ? '✓' : '+'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {videoIdeas.blog_angles?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">✍️ Blog Angles</div>
                   <div className="space-y-2">
-                    {ideas.blog_angles.map((b: any, i: number) => {
-                      const key = `blog-${i}`;
+                    {videoIdeas.blog_angles.map((b: any, i: number) => {
+                      const key = `vb-${i}`;
                       return (
                         <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
                           <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-bold text-white">{b.headline}</div>
-                              <div className="text-xs text-white/45 mt-1">{b.angle}</div>
-                            </div>
-                            <button onClick={() => handleAdd(key, b.headline, b.angle, 'blog', 'Blog Angle')}
-                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                            <div><div className="text-xs font-bold text-white">{b.headline}</div><div className="text-[10px] text-white/40 mt-0.5">{b.angle}</div></div>
+                            <button onClick={() => handleAdd(key, b.headline, b.angle, 'blog', 'Blog')}
+                              className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition"
                               style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                              {added.has(key) ? '✓' : '+ Planner'}
                             </button>
                           </div>
                         </div>
@@ -2420,23 +2791,21 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                   </div>
                 </div>
               )}
-              {ideas.other_formats?.length > 0 && (
+
+              {videoIdeas.series_ideas?.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📦 Other Formats</div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📺 Series Ideas</div>
                   <div className="space-y-2">
-                    {ideas.other_formats.map((f: any, i: number) => {
-                      const key = `other-${i}`;
+                    {videoIdeas.series_ideas.map((s: any, i: number) => {
+                      const key = `vs-${i}`;
                       return (
                         <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
                           <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-bold text-white">{f.format}</div>
-                              <div className="text-xs text-white/45 mt-1">{f.concept}</div>
-                            </div>
-                            <button onClick={() => handleAdd(key, f.format, f.concept, 'other', 'Other Format')}
-                              className="shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold transition"
+                            <div><div className="text-xs font-bold text-white">{s.series_name}</div><div className="text-[10px] text-white/40 mt-0.5">{s.concept}</div></div>
+                            <button onClick={() => handleAdd(key, s.series_name, s.concept, 'other', 'Series')}
+                              className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition"
                               style={{ background: added.has(key) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(key) ? '#86efac' : GOLD_L }}>
-                              {added.has(key) ? '✓ Added' : '+ Planner'}
+                              {added.has(key) ? '✓' : '+ Planner'}
                             </button>
                           </div>
                         </div>
@@ -2445,10 +2814,6 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                   </div>
                 </div>
               )}
-              <button onClick={reset} className="w-full py-2.5 rounded-xl text-xs font-bold border transition hover:bg-white/5"
-                style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-                ↺ Generate New Ideas
-              </button>
             </div>
           )}
         </div>
@@ -2456,8 +2821,6 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
     </div>
   );
 }
-
-// ─── PlannerPanel ─────────────────────────────────────────────────────────────
 
 function PlannerPanel({ userId }: { userId: string | null }) {
   const [items, setItems]               = useState<PlannerItem[]>([]);
