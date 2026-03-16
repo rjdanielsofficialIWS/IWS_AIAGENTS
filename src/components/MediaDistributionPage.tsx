@@ -2460,33 +2460,46 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
 // ─── PlannerPanel ─────────────────────────────────────────────────────────────
 
 function PlannerPanel({ userId }: { userId: string | null }) {
-  const [currentDate, setCurrentDate]   = useState(new Date());
   const [items, setItems]               = useState<PlannerItem[]>([]);
   const [loading, setLoading]           = useState(false);
-  const [selectedDay, setSelectedDay]   = useState<number | null>(null);
-  const [dayModalOpen, setDayModalOpen] = useState(false);
+  const [weekStart, setWeekStart]       = useState<Date>(() => {
+    const d = new Date(); d.setHours(0,0,0,0);
+    d.setDate(d.getDate() - d.getDay());
+    return d;
+  });
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addDate, setAddDate]           = useState('');
   const [repurposeOpen, setRepurposeOpen] = useState(false);
   const [pendingItem, setPendingItem]   = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
-  const year        = currentDate.getFullYear();
-  const month       = currentDate.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay    = new Date(year, month, 1).getDay();
-  const monthName   = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-  const today       = new Date();
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+
+  const weekEnd = new Date(weekStart); weekEnd.setDate(weekEnd.getDate() + 6);
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const weekLabel = `${fmt(days[0])} – ${fmt(days[6])}, ${days[0].getFullYear()}`;
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  const prevWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; });
+  const nextWeek = () => setWeekStart(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; });
+  const goToday  = () => { const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - d.getDay()); setWeekStart(d); };
 
   const loadItems = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
+      const startStr = days[0].toISOString().split('T')[0];
+      const endStr   = days[6].toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('content_planner')
         .select('*')
         .eq('supabase_user_id', userId)
-        .gte('planned_date', `${year}-${String(month + 1).padStart(2, '0')}-01`)
-        .lte('planned_date', `${year}-${String(month + 1).padStart(2, '0')}-${String(daysInMonth).padStart(2, '0')}`);
+        .gte('planned_date', startStr)
+        .lte('planned_date', endStr);
       if (!error && data) {
         setItems(data.map((r: any) => ({
           id: r.id, title: r.title, notes: r.notes,
@@ -2496,15 +2509,17 @@ function PlannerPanel({ userId }: { userId: string | null }) {
       }
     } catch (e) {}
     finally { setLoading(false); }
-  }, [userId, year, month, daysInMonth]);
+  }, [userId, weekStart]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
-  const itemsOnDay = (day: number) => {
-    const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const itemsOnDay = (day: Date) => {
+    const dateStr = day.toISOString().split('T')[0];
     return items.filter(it => it.plannedDate === dateStr)
       .sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1);
   };
+
+  const daysWithItems = days.filter(d => itemsOnDay(d).length > 0);
 
   const deleteItem = async (id: string) => {
     await supabase.from('content_planner').delete().eq('id', id);
@@ -2518,26 +2533,29 @@ function PlannerPanel({ userId }: { userId: string | null }) {
     setAddModalOpen(true);
   };
 
+  const toggleDay = (dateStr: string) => setExpandedDays(prev => {
+    const next = new Set(prev);
+    if (next.has(dateStr)) next.delete(dateStr); else next.add(dateStr);
+    return next;
+  });
+
   const CATEGORY_COLORS: Record<string, string> = {
     idea: GOLD, short_clip: '#a78bfa', hook: '#38bdf8', blog: '#86efac', other: '#fb923c',
   };
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-        <div className="flex items-center gap-2">
-          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+      {/* Header */}
+      <div className="flex items-center justify-between px-4 md:px-6 py-3 border-b shrink-0" style={{ borderColor: BORDER }}>
+        <div className="flex items-center gap-1.5">
+          <button onClick={prevWeek} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm md:text-base font-bold text-white w-32 md:w-44 text-center">{monthName}</span>
-          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+          <span className="text-sm font-bold text-white w-48 text-center">{weekLabel}</span>
+          <button onClick={nextWeek} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <button onClick={() => setCurrentDate(new Date())}
-            className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition"
-            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
+          <button onClick={goToday} className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition" style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
             Today
           </button>
           {loading && <Loader className="w-4 h-4 animate-spin text-white/20" />}
@@ -2548,112 +2566,106 @@ function PlannerPanel({ userId }: { userId: string | null }) {
             style={{ borderColor: `${GOLD}35`, color: GOLD }}>
             <Sparkles className="w-3.5 h-3.5" /> AI Ideas
           </button>
-          <button onClick={() => setRepurposeOpen(true)}
-            className="sm:hidden w-9 h-9 rounded-xl flex items-center justify-center border transition hover:bg-white/5"
-            style={{ borderColor: `${GOLD}35`, color: GOLD }}>
-            <Sparkles className="w-4 h-4" />
-          </button>
           <button onClick={() => { setAddDate(today.toISOString().split('T')[0]); setPendingItem(null); setAddModalOpen(true); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Add Idea</span>
+            <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">Add Idea</span>
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-          <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
-        ))}
-      </div>
+      {/* Content: only days with items, or empty state */}
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-4 px-4 md:px-6 py-4 space-y-2">
+        {loading && items.length === 0 ? (
+          <div className="flex items-center justify-center h-40 gap-2 text-white/25 text-sm">
+            <Loader className="w-4 h-4 animate-spin" /> Loading…
+          </div>
+        ) : daysWithItems.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
+            <span className="text-4xl">📅</span>
+            <div className="text-sm font-bold text-white/25">No ideas planned this week</div>
+            <div className="text-xs text-white/20 max-w-xs">Add ideas manually or use AI to generate content ideas from your videos</div>
+            <button onClick={() => setRepurposeOpen(true)}
+              className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+              style={{ borderColor: `${GOLD}35`, color: GOLD }}>
+              <Sparkles className="w-3.5 h-3.5" /> Generate AI Ideas
+            </button>
+          </div>
+        ) : (
+          daysWithItems.map(day => {
+            const dateStr  = day.toISOString().split('T')[0];
+            const dayItems = itemsOnDay(day);
+            const isToday  = day.getTime() === today.getTime();
+            const expanded = expandedDays.has(dateStr);
+            const dayLabel = day.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-      <div className="flex-1 overflow-y-auto pb-20 md:pb-0 grid grid-cols-7" style={{ gridAutoRows: 'minmax(64px, 1fr)' }}>
-        {Array.from({ length: firstDay }).map((_, i) => (
-          <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
-        ))}
-        {Array.from({ length: daysInMonth }).map((_, i) => {
-          const day      = i + 1;
-          const dayItems = itemsOnDay(day);
-          const isToday  = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
-          const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
-          const visibleItems = dayItems.slice(0, 2);
-          const overflow     = dayItems.length - visibleItems.length;
-
-          return (
-            <div key={day}
-              className="border-r border-b p-1 cursor-pointer hover:bg-white/3 transition group relative"
-              style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
-              onClick={() => {
-                if (dayItems.length > 0) {
-                  setSelectedDay(day); setDayModalOpen(true);
-                } else {
-                  setAddDate(`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`);
-                  setPendingItem(null); setAddModalOpen(true);
-                }
-              }}>
-              <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1 shrink-0"
-                style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }}>
-                {day}
-              </div>
-              {dayItems.length > 0 && (
-                <div className="md:hidden flex items-center gap-0.5 flex-wrap">
-                  {dayItems.slice(0, 3).map(item => {
-                    const col = CATEGORY_COLORS[item.category] || GOLD;
-                    return <span key={item.id} className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: col }} />;
-                  })}
-                  {dayItems.length > 3 && (
-                    <span className="text-[8px] font-bold leading-none" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                      +{dayItems.length - 3}
-                    </span>
-                  )}
-                </div>
-              )}
-              <div className="hidden md:block space-y-0.5">
-                {visibleItems.map(item => {
-                  const col = CATEGORY_COLORS[item.category] || GOLD;
-                  return (
-                    <div key={item.id}
-                      className="flex items-center gap-1 rounded px-1 py-0.5"
-                      style={{ background: `${col}18` }}>
-                      <span className="text-[9px] shrink-0" style={{ color: `${col}99` }}>
-                        {item.plannedTime ? item.plannedTime.slice(0, 5) : ''}
-                      </span>
-                      <span className="truncate text-[10px] font-medium leading-tight" style={{ color: col }}>
-                        {item.title}
-                      </span>
+            return (
+              <div key={dateStr} className="rounded-2xl border overflow-hidden"
+                style={{ borderColor: isToday ? `${GOLD}40` : BORDER, background: isToday ? `${GOLD}06` : 'rgba(255,255,255,0.02)' }}>
+                {/* Day header */}
+                <button
+                  onClick={() => toggleDay(dateStr)}
+                  className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/3 transition">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-black shrink-0"
+                      style={isToday ? { background: GOLD, color: '#000' } : { background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}>
+                      {day.getDate()}
                     </div>
-                  );
-                })}
-                {overflow > 0 && (
-                  <div className="text-[10px] font-bold pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    +{overflow} more
+                    <div className="text-left">
+                      <div className="text-sm font-bold text-white">{dayLabel}</div>
+                      <div className="text-xs text-white/35">{dayItems.length} idea{dayItems.length !== 1 ? 's' : ''}</div>
+                    </div>
                   </div>
-                )}
-              </div>
-              {dayItems.length === 0 && (
-                <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
-                  <Plus className="w-2.5 h-2.5 text-white/20" />
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                  <div className="flex items-center gap-2">
+                    <button onClick={e => { e.stopPropagation(); setAddDate(dateStr); setPendingItem(null); setAddModalOpen(true); }}
+                      className="w-6 h-6 rounded-full flex items-center justify-center border hover:bg-white/10 transition"
+                      style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
+                      <Plus className="w-3 h-3" />
+                    </button>
+                    {expanded
+                      ? <ChevronUp className="w-4 h-4 text-white/30" />
+                      : <ChevronDown className="w-4 h-4 text-white/30" />}
+                  </div>
+                </button>
 
-      {dayModalOpen && selectedDay !== null && (
-        <DayDetailModal
-          day={selectedDay} month={month} year={year}
-          items={itemsOnDay(selectedDay)}
-          onClose={() => setDayModalOpen(false)}
-          onDelete={deleteItem}
-          onAdd={() => {
-            setAddDate(`${year}-${String(month+1).padStart(2,'0')}-${String(selectedDay).padStart(2,'0')}`);
-            setPendingItem(null); setDayModalOpen(false); setAddModalOpen(true);
-          }}
-          categoryColors={CATEGORY_COLORS}
-        />
-      )}
+                {/* Items — always visible, collapse on tap */}
+                <div className={`${expanded === false ? 'hidden' : 'block'} border-t`} style={{ borderColor: BORDER }}>
+                  {dayItems.map(item => {
+                    const col = CATEGORY_COLORS[item.category] || GOLD;
+                    return (
+                      <div key={item.id} className="flex items-start gap-3 px-4 py-3 border-b last:border-0"
+                        style={{ borderColor: BORDER }}>
+                        <div className="w-1 self-stretch rounded-full mt-1 shrink-0" style={{ background: col }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-bold text-white leading-snug">{item.title}</span>
+                            {item.sourceLabel && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                style={{ background: `${col}18`, color: col }}>
+                                {item.sourceLabel}
+                              </span>
+                            )}
+                          </div>
+                          {item.notes && <p className="text-xs text-white/40 mt-1 leading-relaxed">{item.notes}</p>}
+                          {item.plannedTime && (
+                            <div className="flex items-center gap-1 mt-1 text-xs text-white/25">
+                              <Clock className="w-3 h-3" />{item.plannedTime.slice(0, 5)}
+                            </div>
+                          )}
+                        </div>
+                        <button onClick={() => deleteItem(item.id)}
+                          className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 text-white/20 hover:text-red-400 transition shrink-0">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
 
       {addModalOpen && (
         <AddPlannerItemModal
@@ -2686,172 +2698,6 @@ function PlannerPanel({ userId }: { userId: string | null }) {
     </div>
   );
 }
-
-// ─── DayDetailModal ───────────────────────────────────────────────────────────
-
-function DayDetailModal({ day, month, year, items, onClose, onDelete, onAdd, categoryColors }: {
-  day: number; month: number; year: number;
-  items: PlannerItem[];
-  onClose: () => void;
-  onDelete: (id: string) => void;
-  onAdd: () => void;
-  categoryColors: Record<string, string>;
-}) {
-  const dateLabel = new Date(year, month, day).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-  return (
-    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
-        style={{ background: SURFACE, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div>
-            <div className="text-sm font-black text-white">{dateLabel}</div>
-            <div className="text-xs text-white/35 mt-0.5">{items.length} idea{items.length !== 1 ? 's' : ''} planned</div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={onAdd}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
-              style={{ background: GOLD, color: '#000' }}>
-              <Plus className="w-3 h-3" /> Add
-            </button>
-            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-          {items
-            .sort((a, b) => (a.plannedTime || '23:59') < (b.plannedTime || '23:59') ? -1 : 1)
-            .map(item => {
-              const col = categoryColors[item.category] || GOLD;
-              return (
-                <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
-                  <div className="w-1 self-stretch rounded-full shrink-0 mt-0.5" style={{ background: col }} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-bold text-white leading-snug">{item.title}</span>
-                      {item.sourceLabel && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${col}18`, color: col }}>
-                          {item.sourceLabel}
-                        </span>
-                      )}
-                    </div>
-                    {item.notes && <p className="text-xs text-white/40 mt-1 leading-relaxed">{item.notes}</p>}
-                    {item.plannedTime && (
-                      <div className="flex items-center gap-1 mt-1.5 text-xs text-white/30">
-                        <Clock className="w-3 h-3" />
-                        {item.plannedTime.slice(0, 5)}
-                      </div>
-                    )}
-                  </div>
-                  <button onClick={() => onDelete(item.id)}
-                    className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 text-white/20 hover:text-red-400 transition shrink-0">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              );
-            })}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── AddPlannerItemModal ──────────────────────────────────────────────────────
-
-function AddPlannerItemModal({ userId, initialDate, prefilled, onClose, onSaved }: {
-  userId: string | null;
-  initialDate: string;
-  prefilled?: { title: string; notes?: string; category: string; sourceLabel: string };
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [title, setTitle]       = useState(prefilled?.title || '');
-  const [notes, setNotes]       = useState(prefilled?.notes || '');
-  const [date, setDate]         = useState(initialDate);
-  const [time, setTime]         = useState('');
-  const [saving, setSaving]     = useState(false);
-  const [error, setError]       = useState<string | null>(null);
-  const category                = prefilled?.category || 'idea';
-  const sourceLabel             = prefilled?.sourceLabel;
-
-  const handleSave = async () => {
-    if (!title.trim()) { setError('Add a title for this idea'); return; }
-    if (!date)         { setError('Pick a date'); return; }
-    if (!userId)       { setError('Not logged in'); return; }
-    setSaving(true); setError(null);
-    try {
-      const { error: dbErr } = await supabase.from('content_planner').insert({
-        supabase_user_id: userId,
-        title: title.trim(),
-        notes: notes.trim() || null,
-        planned_date: date,
-        planned_time: time || null,
-        category,
-        source_label: sourceLabel || 'Manual',
-      });
-      if (dbErr) throw new Error(dbErr.message);
-      onSaved();
-    } catch (e: any) { setError(e.message || 'Save failed'); setSaving(false); }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-sm rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col"
-        style={{ background: SURFACE, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div className="text-sm font-black text-white">
-            {prefilled ? `Add to Planner: ${prefilled.sourceLabel}` : 'Add Idea to Planner'}
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-        <div className="px-5 py-5 space-y-3">
-          <div>
-            <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Title</label>
-            <input value={title} onChange={e => setTitle(e.target.value)}
-              placeholder="What's the idea?" autoFocus
-              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
-              style={{ borderColor: BORDER }} />
-          </div>
-          <div>
-            <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Notes <span className="font-normal opacity-50">(optional)</span></label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)}
-              placeholder="Any details, angles, references…" rows={3}
-              className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none resize-none"
-              style={{ borderColor: BORDER }} />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Date</label>
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                className="mt-1.5 w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
-                style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-            </div>
-            <div>
-              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Time <span className="font-normal opacity-50">(optional)</span></label>
-              <input type="time" value={time} onChange={e => setTime(e.target.value)}
-                className="mt-1.5 w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
-                style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-            </div>
-          </div>
-          {error && <div className="text-xs text-red-300">{error}</div>}
-          <button onClick={handleSave} disabled={saving}
-            className="w-full py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-            style={{ background: GOLD, color: '#000' }}>
-            {saving ? <span className="flex items-center justify-center gap-2"><Loader className="w-4 h-4 animate-spin" /> Saving…</span> : 'Save to Planner'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── ComposerPanel ────────────────────────────────────────────────────────────
-// Two-column layout: Create Post (left) | Content Ideas (right)
-// No "Your Channels" section — that's in the sidebar.
 
 function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed }: {
   integrations: PostizIntegration[];
@@ -3490,7 +3336,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
       }
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
           body: JSON.stringify({ taskId, type: 'image' }),
         });
@@ -3518,7 +3364,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
       }
       try {
         const headers = await getAuthHeaders();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
           body: JSON.stringify({ taskId, type: 'video' }),
         });
@@ -3640,7 +3486,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
             return;
           }
           try {
-            const pr = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
+            const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
               method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
               body: JSON.stringify({ taskId: data.taskId, type: 'audio' }),
             });
@@ -3675,7 +3521,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
         return;
       }
       try {
-        const pr = await fetch(`${SUPABASE_URL}/functions/v1/kling-poll`, {
+        const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
           body: JSON.stringify({ taskId, type: 'image' }),
         });
