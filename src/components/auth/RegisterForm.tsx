@@ -40,15 +40,19 @@ export function RegisterForm({ onSwitchToLogin, onBack }: RegisterFormProps) {
   };
 
   return (
-    <div className="relative z-10 bg-gradient-to-br from-gray-800/30 to-gray-900/30 backdrop-blur-xl border border-gray-700/50 rounded-2xl p-8 w-full max-w-md mx-4">
+    <div className="auth-fade-in-up relative z-10 bg-gradient-to-br from-gray-800/25 to-gray-900/40 backdrop-blur-xl border border-gray-700/40 rounded-2xl p-8 w-full max-w-md mx-4 shadow-2xl shadow-black/60">
       <button
         onClick={onBack}
-        className="absolute top-4 left-4 text-gray-400 hover:text-gray-300 transition-colors"
+        className="absolute top-4 left-4 text-gray-500 hover:text-gray-300 transition-colors"
+        aria-label="Back to home"
       >
-        <ArrowLeft className="h-6 w-6" />
+        <ArrowLeft className="h-5 w-5" />
       </button>
 
-      <h2 className="text-3xl font-bold mb-6 text-center">Create Account</h2>
+      <div className="text-center mb-6">
+        <h2 className="text-2xl font-extrabold tracking-tight">Start for free</h2>
+        <p className="text-gray-500 text-sm mt-1">Create your MediaMachine account</p>
+      </div>
 
       {error && (
         <div className="mb-4 p-3 bg-red-500/10 border border-red-500/50 rounded-lg text-red-300 text-sm">
@@ -107,17 +111,17 @@ export function RegisterForm({ onSwitchToLogin, onBack }: RegisterFormProps) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-gradient-to-r from-yellow-400 to-yellow-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-500 hover:to-yellow-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-black font-bold py-3 px-6 rounded-xl hover:from-yellow-300 hover:to-yellow-400 transition-all shadow-lg shadow-yellow-400/20 hover:shadow-yellow-400/30 disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {loading ? 'Creating account...' : 'Create Account'}
+          {loading ? 'Creating account…' : 'Create Free Account'}
         </button>
       </form>
 
-      <p className="mt-6 text-center text-gray-400">
+      <p className="mt-5 text-center text-gray-500 text-sm">
         Already have an account?{' '}
         <button
           onClick={onSwitchToLogin}
-          className="text-yellow-400 hover:text-yellow-300 font-medium"
+          className="text-yellow-400 hover:text-yellow-300 font-semibold transition-colors"
         >
           Sign in
         </button>

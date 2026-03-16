@@ -50,3 +50,44 @@
 .iws-small-card:hover {
   border-color: rgba(255, 215, 0, 0.20);      /* tiny gold pop on hover */
 }
+
+/* Auth page animations */
+@keyframes auth-fade-in-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes auth-float {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-14px); }
+}
+@keyframes auth-float-delayed {
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-10px); }
+}
+@keyframes auth-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes auth-glow-pulse {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 0.6; }
+}
+.auth-fade-in-up    { animation: auth-fade-in-up 0.55s ease-out both; }
+.auth-float         { animation: auth-float 5s ease-in-out infinite; }
+.auth-float-delayed { animation: auth-float-delayed 5s ease-in-out 2s infinite; }
+.auth-glow-pulse    { animation: auth-glow-pulse 3s ease-in-out infinite; }
+.auth-shimmer-text {
+  background: linear-gradient(90deg, #fbbf24 0%, #f59e0b 35%, #fffbeb 50%, #f59e0b 65%, #fbbf24 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: auth-shimmer 4s linear infinite;
+}
+.auth-feature-card {
+  transition: transform 0.2s ease, background-color 0.2s ease;
+}
+.auth-feature-card:hover {
+  transform: translateX(5px);
+  background-color: rgba(251, 191, 36, 0.05);
+}
