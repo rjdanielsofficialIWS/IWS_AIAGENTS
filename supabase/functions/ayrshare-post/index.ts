@@ -1,0 +1,57 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const LATE_API_KEY="sk_1adb5186f3be9a2321b4c2ede480187d250c324f03fce819cc22632d19abb7c2";
+const LATE_API_URL="https://getlate.dev/api/v1";
+const MEDIA_REQUIRED=new Set(["youtube","tiktok","instagram"]);
+const VIDEO_ONLY=new Set(["youtube","tiktok"]);
+const PLAN_LIMITS={starter:{posts:100,platforms:3},viral:{posts:100,platforms:-1},agency:{posts:-1,platforms:-1}};
+function getPeriod(){const d=new Date();return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}
+Deno.serve(async(req)=>{
+  const cors={"Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Content-Type":"application/json"};
+  if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
+  const respond=(code,data)=>new Response(JSON.stringify(data),{status:code,headers:cors});
+  const supabase=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"",{auth:{persistSession:false}});
+  let userId="";
+  const token=(req.headers.get("Authorization")??"").replace("Bearer ","").trim();
+  if(token){const{data:{user},error}=await supabase.auth.getUser(token);if(!error&&user)userId=user.id;}
+  let body;try{body=await req.json();}catch{return respond(400,{error:"Invalid JSON"});}
+  if(!userId)userId=body.userId??"";
+  if(!userId)return respond(401,{error:"Not authenticated."});
+  const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id").eq("supabase_user_id",userId).maybeSingle();
+  const isPromo=sub?.stripe_customer_id?.startsWith("promo_");
+  const plan=((sub?.status==="active"||isPromo)&&sub?.plan)?sub.plan.toLowerCase():"free";
+  if(plan==="free")return respond(403,{error:"upgrade_required",message:"You need an active subscription to post.",plan});
+  const limits=PLAN_LIMITS[plan]??{posts:0,platforms:0};
+  const period=getPeriod();
+  if(limits.posts!==-1){const{data:usage}=await supabase.from("usage_tracking").select("posts_scheduled").eq("supabase_user_id",userId).eq("period",period).maybeSingle();const used=usage?.posts_scheduled??0;if(used>=limits.posts)return respond(429,{error:"limit_reached",feature:"posts",message:"You have scheduled "+used+" of "+limits.posts+" posts this month.",used,limit:limits.posts,plan});}
+  const platforms=body.platforms??[];
+  const post=body.post??"";
+  const mediaUrls=body.mediaUrls??[];
+  const scheduleDate=body.scheduleDate??"";
+  const cleanPlatforms=platforms.filter(p=>typeof p==="string"&&p.trim().length>0).map(p=>p==="x"?"twitter":p);
+  if(limits.platforms!==-1&&cleanPlatforms.length>limits.platforms)return respond(403,{error:"platform_limit",feature:"platforms",message:"Your "+plan+" plan supports up to "+limits.platforms+" platform(s) per post.",plan});
+  if(!cleanPlatforms.length||!post)return respond(400,{error:"platforms and post required"});
+  const needsMedia=cleanPlatforms.filter(p=>MEDIA_REQUIRED.has(p));
+  if(needsMedia.length>0&&mediaUrls.length===0)return respond(400,{error:needsMedia.map(p=>p[0].toUpperCase()+p.slice(1)).join(", ")+" require media."});
+  const isVideoUrl=url=>/\.(mp4|mov|webm|avi|mkv|m4v)/i.test(url);
+  const hasVideo=mediaUrls.some(isVideoUrl);
+  const voP=cleanPlatforms.filter(p=>VIDEO_ONLY.has(p));
+  if(voP.length>0&&mediaUrls.length>0&&!hasVideo)return respond(400,{error:voP.map(p=>p[0].toUpperCase()+p.slice(1)).join(", ")+" only accept video files."});
+  try{
+    const{data:profile}=await supabase.from("ayrshare_profiles").select("profile_key,cached_channels").eq("supabase_user_id",userId).maybeSingle();
+    if(!profile?.profile_key)return respond(400,{error:"No connected accounts found."});
+    const cc=Array.isArray(profile.cached_channels)?profile.cached_channels:[];
+    const pp=cleanPlatforms.map(p=>{const c=cc.find(ch=>(ch.id||"").toLowerCase()===p||(ch.profile||"").toLowerCase()===p||(ch.platform||"").toLowerCase()===p);return{platform:p,accountId:c?.accountId||c?.id||""};}).filter(p=>p.accountId);
+    if(pp.length===0)return respond(400,{error:"No connected accounts for selected platforms."});
+    const lb={content:post,platforms:pp};
+    if(mediaUrls.length>0)lb.mediaItems=mediaUrls.map(url=>({type:isVideoUrl(url)?"video":"image",url}));
+    if(scheduleDate){lb.scheduledFor=new Date(scheduleDate).toISOString();}else{lb.publishNow=true;}
+    const lateRes=await fetch(LATE_API_URL+"/posts",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb)});
+    const result=await lateRes.json();
+    const isError=!lateRes.ok;
+    const errorMsg=isError?(result.message||result.error||"Late API error "+lateRes.status):null;
+    try{await supabase.from("scheduled_posts").insert({supabase_user_id:userId,profile_key:profile.profile_key,ayrshare_post_id:result._id??result.id??null,platforms:cleanPlatforms,content:post,media_urls:mediaUrls,scheduled_at:scheduleDate?new Date(scheduleDate).toISOString():new Date().toISOString(),status:isError?"error":(scheduleDate?"scheduled":"published"),error:errorMsg??null});}catch(e){console.error("DB insert failed:",e);}
+    if(!isError){try{await supabase.rpc("increment_usage",{p_user_id:userId,p_period:period,p_field:"posts_scheduled"});}catch(e){console.error("Usage increment failed:",e);}}
+    if(isError)return respond(500,{error:errorMsg,detail:result});
+    return respond(200,{success:true,postId:result._id||result.id,result});
+  }catch(e){return respond(500,{error:String(e)});}
+});
