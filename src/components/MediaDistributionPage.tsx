@@ -2200,12 +2200,40 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     ...prev, goals: prev.goals.includes(g) ? prev.goals.filter(x => x !== g) : [...prev.goals, g],
   }));
 
+  const handleFetchTrends = async (briefSnapshot: typeof brief) => {
+    if (!briefSnapshot.niche.trim()) return;
+    if (!userId) return;
+    setTrendsLoading(true); setTrendsError(null); setTrendsResults(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({
+          mode: 'trends_research',
+          niche: briefSnapshot.niche,
+          audience: briefSnapshot.audience,
+          platforms: briefSnapshot.platforms,
+          goals: briefSnapshot.goals,
+          offer: briefSnapshot.offer,
+        }),
+      });
+      const data = await res.json();
+      if (data.error === 'upgrade_required') { setTrendsError('upgrade_required'); return; }
+      if (!res.ok) throw new Error(data.error || 'Trends research failed');
+      setTrendsResults(data);
+    } catch (e: any) { setTrendsError(e.message || 'Something went wrong'); }
+    finally { setTrendsLoading(false); }
+  };
+
   const handleGenerate = async () => {
     if (!brief.niche.trim() || !brief.audience.trim()) {
       setError('Fill in your niche and target audience to continue.'); return;
     }
     if (!userId) { setError('Sign in to use the AI Strategist.'); return; }
     setLoading(true); setError(null); setResults(null);
+    // Fire trends research in parallel — don't await, results land when ready
+    handleFetchTrends(brief);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
@@ -2220,32 +2248,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       setTab('calendar');
     } catch (e: any) { setError(e.message || 'Something went wrong'); }
     finally { setLoading(false); }
-  };
-
-  const handleFetchTrends = async () => {
-    if (!brief.niche.trim()) { setTrendsError('Fill in your niche on the Brief tab first.'); return; }
-    if (!userId) { setTrendsError('Sign in to research trends.'); return; }
-    setTrendsLoading(true); setTrendsError(null); setTrendsResults(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
-        body: JSON.stringify({
-          mode: 'trends_research',
-          niche: brief.niche,
-          audience: brief.audience,
-          platforms: brief.platforms,
-          goals: brief.goals,
-          offer: brief.offer,
-        }),
-      });
-      const data = await res.json();
-      if (data.error === 'upgrade_required') { setTrendsError('upgrade_required'); return; }
-      if (!res.ok) throw new Error(data.error || 'Trends research failed');
-      setTrendsResults(data);
-    } catch (e: any) { setTrendsError(e.message || 'Something went wrong'); }
-    finally { setTrendsLoading(false); }
   };
 
   const handleVideoRepurpose = async () => {
@@ -2282,7 +2284,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     { id: 'calendar', label: 'Calendar', emoji: '📅' },
     { id: 'hooks',    label: 'Hooks',    emoji: '🪝' },
     { id: 'strategy', label: 'Strategy', emoji: '🎯' },
-    { id: 'video',    label: 'Video',    emoji: '🎬' },
+    { id: 'video',    label: 'Repurpose', emoji: '🎬' },
   ];
 
   return (
@@ -2299,7 +2301,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 color: tab === t.id ? GOLD_L : 'rgba(255,255,255,0.4)',
               }}>
               <span>{t.emoji}</span> {t.label}
-              {t.id !== 'brief' && t.id !== 'video' && !results && (
+              {t.id !== 'brief' && t.id !== 'trends' && t.id !== 'video' && !results && (
                 <span className="text-[9px] opacity-40">—</span>
               )}
             </button>
@@ -2457,13 +2459,12 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
             </div>
           </div>
 
-          {/* Research button */}
-          {!trendsResults && !trendsLoading && (
-            <button onClick={handleFetchTrends} disabled={!brief.niche.trim()}
-              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-40 transition hover:brightness-110"
-              style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.25), rgba(99,102,241,0.25))', border: '1px solid rgba(56,189,248,0.3)', color: '#7dd3fc' }}>
-              <Sparkles className="w-4 h-4" /> Research Current Trends
-            </button>
+          {/* No manual button — trends are triggered automatically on Brief submission */}
+          {!trendsResults && !trendsLoading && !trendsError && (
+            <div className="flex flex-col items-center justify-center py-14 gap-3 text-center">
+              <span className="text-3xl opacity-40">📈</span>
+              <div className="text-sm font-bold text-white/25">Submit your Brief to generate Trend Intelligence</div>
+            </div>
           )}
 
           {/* Loading */}
@@ -2494,15 +2495,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
           {/* Results */}
           {trendsResults && !trendsLoading && (
             <div className="space-y-5">
-              {/* Refresh button */}
-              <div className="flex justify-end">
-                <button onClick={handleFetchTrends}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition hover:bg-white/5"
-                  style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.35)' }}>
-                  <RefreshCw className="w-3 h-3" /> Refresh Research
-                </button>
-              </div>
-
               {/* Niche overview */}
               {trendsResults.niche_overview && (
                 <div className="rounded-xl p-4" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
