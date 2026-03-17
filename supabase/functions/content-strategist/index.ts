@@ -126,7 +126,7 @@ Deno.serve(async (req: Request) => {
 
         callClaude(SYS, `${BRIEF}
 
-Generate a 30-day content calendar. Return ONLY this JSON:
+Generate a 7-day content calendar. Return ONLY this JSON:
 {
   "content_pillars": [{"name":"string","description":"string"}],
   "week1_priority": {"day":1,"reason":"string"},
@@ -135,7 +135,7 @@ Generate a 30-day content calendar. Return ONLY this JSON:
   ],
   "evergreen_posts": [{"topic":"string","hook":"string","why_evergreen":"string"}]
 }
-REQUIREMENTS: exactly 30 calendar entries, 4 content_pillars, 5 evergreen_posts. Every topic specific to "${niche}" and "${audience}". Vary pillars and formats throughout.`, 6000),
+REQUIREMENTS: exactly 7 calendar entries, 4 content_pillars, 3 evergreen_posts. Every topic specific to "${niche}" and "${audience}". Vary pillars and formats throughout.`, 3000),
 
         callClaude(SYS, `${BRIEF}
 
