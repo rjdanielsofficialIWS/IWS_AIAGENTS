@@ -79,14 +79,15 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
   // Auth
-  const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
-  if (!token) return json({ error: "Unauthorized" }, 401);
+  const auth = req.headers.get("Authorization") ?? "";
+  if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    { auth: { persistSession: false } }
   );
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(auth.replace("Bearer ", "").trim());
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
   // Plan check temporarily disabled
@@ -101,7 +102,7 @@ Deno.serve(async (req: Request) => {
   try {
     if (mode === "full_strategy") {
       const { niche, offer, audience, platforms = [], frequency = "5x/week", tone = "", goals = [], currentStage = "growing" } = body;
-      if (!niche || !offer || !audience) return json({ error: "niche, offer, and audience are required" }, 400);
+      if (!niche || !audience) return json({ error: "niche and audience are required" }, 400);
 
       const platformList = platforms.join(", ") || "Instagram, LinkedIn";
       const goalList = goals.join(", ") || "grow audience, generate leads";
