@@ -41,41 +41,48 @@ Deno.serve(async (req: Request) => {
     return json({ error: "invalid_plan", message: "Free trial is available for Creator and Viral plans." }, 400);
   }
 
-  // Check for existing subscription row
   const { data: existing } = await supabase
     .from("subscriptions")
-    .select("id, status, trial_expires_at")
+    .select("id, status, current_period_end")
     .eq("supabase_user_id", user.id)
     .maybeSingle();
 
+  // Already on a paid active subscription
   if (existing?.status === "active") {
     return json({ error: "already_subscribed", message: "You already have an active subscription." }, 409);
   }
 
-  if (existing?.trial_expires_at) {
+  // Any trialing row = trial was already used (whether expired or active)
+  if (existing?.status === "trialing") {
     return json({ error: "trial_already_used", message: "You have already used your free trial." }, 409);
   }
 
-  const trialExpiresAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const row = { supabase_user_id: user.id, plan, status: "trialing", trial_expires_at: trialExpiresAt };
+  const now = new Date();
+  const trialEnd = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
+  const row = {
+    supabase_user_id:     user.id,
+    plan,
+    status:               "trialing",
+    current_period_start: now.toISOString(),
+    current_period_end:   trialEnd.toISOString(),
+  };
 
   let dbErr;
   if (existing) {
-    // Row exists — update it
     const { error } = await supabase
       .from("subscriptions")
-      .update({ plan, status: "trialing", trial_expires_at: trialExpiresAt })
+      .update({ plan, status: "trialing", current_period_start: row.current_period_start, current_period_end: row.current_period_end })
       .eq("supabase_user_id", user.id);
     dbErr = error;
   } else {
-    // No row yet — insert
     const { error } = await supabase.from("subscriptions").insert(row);
     dbErr = error;
   }
 
   if (dbErr) {
-    return json({ error: "Failed to start trial: " + dbErr.message }, 500);
+    return json({ error: "db_error", message: dbErr.message }, 500);
   }
 
-  return json({ success: true, plan, trial_expires_at: trialExpiresAt });
+  return json({ success: true, plan, trial_expires_at: trialEnd.toISOString() });
 });

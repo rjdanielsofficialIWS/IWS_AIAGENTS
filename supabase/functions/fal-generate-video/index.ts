@@ -12,9 +12,9 @@ Deno.serve(async(req)=>{
     const supabase=createClient(Deno.env.get("SUPABASE_URL"),Deno.env.get("SUPABASE_SERVICE_ROLE_KEY"));
     const{data:{user},error:ae}=await supabase.auth.getUser(auth.replace("Bearer ",""));
     if(ae||!user)return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...cors,"Content-Type":"application/json"}});
-    const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id,trial_expires_at").eq("supabase_user_id",user.id).maybeSingle();
+    const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id,current_period_end").eq("supabase_user_id",user.id).maybeSingle();
     const isPromo=sub?.stripe_customer_id?.startsWith("promo_");
-    const isTrialing=sub?.status==="trialing"&&!!sub?.trial_expires_at&&new Date(sub.trial_expires_at)>new Date();
+    const isTrialing=sub?.status==="trialing"&&!!sub?.current_period_end&&new Date(sub.current_period_end)>new Date();
     const isActive=((sub?.status==="active"||isPromo)||isTrialing)&&!!sub?.plan;
     const plan=isActive?sub!.plan.toLowerCase():"free";
     if(plan==="free")return new Response(JSON.stringify({error:"upgrade_required",message:"AI video generation requires an active plan. Choose a plan to get started.",plan}),{status:403,headers:{...cors,"Content-Type":"application/json"}});

@@ -3136,7 +3136,7 @@ function AddPlannerItemModal({
 
 function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
   userId: string | null;
-  subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; } | null;
   onUpgrade: () => void;
   workspaceId?: string | null;
 }) {
@@ -3214,7 +3214,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
   const generateTalkingPoints = async (itemId: string, title: string) => {
     if (!userId) return;
     const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
-    const isTrialing = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date();
+    const isTrialing = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date();
     const isActive = subscription?.status === 'active' || isPromo || isTrialing;
     const plan = isActive ? (subscription?.plan?.toLowerCase() ?? 'free') : 'free';
     if (!isActive || plan === 'starter') { onUpgrade(); return; }
@@ -4057,7 +4057,7 @@ type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl
 function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   userId: string | null;
   onUseVideo?: (videoUrl: string) => void;
-  subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; } | null;
   onUpgrade: () => void;
 }) {
   const [step, setStep]               = React.useState<VideoStudioStep>('brief');
@@ -4173,7 +4173,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     if (!brief.trim()) { setGlobalError('Enter a video brief first'); return; }
     if (!userId) { setGlobalError('Sign in to generate AI video'); return; }
     const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
-    const isTrialing = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date();
+    const isTrialing = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date();
     const isActive = subscription?.status === 'active' || isPromo || isTrialing;
     if (!isActive) { onUpgrade(); return; }
     setGeneratingPrompts(true); setGeneratingAssets(false); setGlobalError(null);
@@ -5055,7 +5055,7 @@ function WorkspacesPanel({
   integrations,
 }: {
   userId: string | null;
-  subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; } | null;
   onUpgrade: () => void;
   workspaces: Workspace[];
   onWorkspacesChanged: () => void;
@@ -5075,8 +5075,8 @@ function WorkspacesPanel({
 
   const isAgency = subscription?.plan === 'agency' || (
     subscription?.status === 'trialing' &&
-    !!subscription?.trial_expires_at &&
-    new Date(subscription.trial_expires_at) > new Date() &&
+    !!subscription?.current_period_end &&
+    new Date(subscription.current_period_end) > new Date() &&
     subscription?.plan === 'agency'
   );
 
@@ -5542,7 +5542,7 @@ function CreditsWidget({
   usage, subscription, open, onOpen, onClose, onUpgrade, onAddon, onManage,
 }: {
   usage: { plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null;
-  subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; } | null;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
@@ -5551,11 +5551,11 @@ function CreditsWidget({
   onManage: () => void;
 }) {
   const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
-  const isTrialing = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date();
-  const trialExpired = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) <= new Date();
+  const isTrialing = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date();
+  const trialExpired = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) <= new Date();
   const isActive = subscription?.status === 'active' || isPromo || isTrialing;
-  const trialDaysLeft = isTrialing && subscription?.trial_expires_at
-    ? Math.max(0, Math.ceil((new Date(subscription.trial_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+  const trialDaysLeft = isTrialing && subscription?.current_period_end
+    ? Math.max(0, Math.ceil((new Date(subscription.current_period_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
     : null;
   const planLabel = trialExpired ? 'Trial Expired' : isTrialing ? `${subscription?.plan ?? ''} Trial` : isActive ? (subscription?.plan ?? 'free') : 'No plan';
 
@@ -5691,7 +5691,7 @@ export function MediaDistributionPage() {
   const [videoHandoff, setVideoHandoff]         = useState<{ url: string; mode: 'media' | 'text' | 'saved' } | null>(null);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
-  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string; trial_expires_at?: string } | null>(null);
+  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string; } | null>(null);
   const [trialLoading, setTrialLoading]         = useState<string | null>(null);
   const [globalUsage, setGlobalUsage]           = useState<{ plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null>(null);
   const [creditsOpen, setCreditsOpen]           = useState(false);
@@ -5740,7 +5740,7 @@ export function MediaDistributionPage() {
     // Load subscription + global usage
     (async () => {
       try {
-        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id,trial_expires_at').eq('supabase_user_id', currentUserId).maybeSingle();
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
       } catch (_) {}
       // Load workspaces
@@ -5769,7 +5769,7 @@ export function MediaDistributionPage() {
     // Handle ?checkout=success or ?addon_success= return — refresh subscription + usage
     const params = new URLSearchParams(window.location.search);
     const refreshAfterPurchase = async () => {
-      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id,trial_expires_at').eq('supabase_user_id', currentUserId).maybeSingle();
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
       if (data) setSubscription(data);
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -5943,7 +5943,7 @@ export function MediaDistributionPage() {
         else alert(d.message || 'Could not start trial. Please try again.');
         return;
       }
-      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id,trial_expires_at').eq('supabase_user_id', currentUser.id).maybeSingle();
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUser.id).maybeSingle();
       if (data) setSubscription(data);
       setPricingOpen(false);
     } catch { alert('Something went wrong. Please try again.'); }
@@ -6256,11 +6256,11 @@ export function MediaDistributionPage() {
           {/* Upgrade / trial banner */}
           {(() => {
             const _isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
-            const _isTrialing = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date();
-            const _trialExpired = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) <= new Date();
+            const _isTrialing = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date();
+            const _trialExpired = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) <= new Date();
             const _isActive = subscription?.status === 'active' || _isPromo || _isTrialing;
-            const _daysLeft = _isTrialing && subscription?.trial_expires_at
-              ? Math.max(0, Math.ceil((new Date(subscription.trial_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+            const _daysLeft = _isTrialing && subscription?.current_period_end
+              ? Math.max(0, Math.ceil((new Date(subscription.current_period_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
               : null;
             if (_trialExpired) return (
               <div style={{ background: 'linear-gradient(90deg,rgba(239,68,68,0.18),rgba(239,68,68,0.08),rgba(239,68,68,0.18))', borderBottom: '1px solid rgba(239,68,68,0.3)', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
@@ -6303,7 +6303,7 @@ export function MediaDistributionPage() {
               }
               return integrations;
             })()}
-            onOpenConnect={() => { const _isPromo = subscription?.stripe_customer_id?.startsWith('promo_'); const _isTrial = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date(); (subscription?.status === 'active' || _isPromo || _isTrial) ? setConnectModalOpen(true) : setPricingOpen(true); }}
+            onOpenConnect={() => { const _isPromo = subscription?.stripe_customer_id?.startsWith('promo_'); const _isTrial = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date(); (subscription?.status === 'active' || _isPromo || _isTrial) ? setConnectModalOpen(true) : setPricingOpen(true); }}
             workspaces={workspaces}
             activeWorkspaceId={activeWorkspaceId}
             onSwitchWorkspace={(id) => setActiveWorkspaceId(id)}
@@ -6359,8 +6359,8 @@ export function MediaDistributionPage() {
             </div>
             {(()=>{
               const _pricingIsPromo=subscription?.stripe_customer_id?.startsWith('promo_');
-              const _pricingIsTrialing=subscription?.status==='trialing'&&!!subscription?.trial_expires_at&&new Date(subscription.trial_expires_at)>new Date();
-              const _pricingTrialUsed=!!subscription?.trial_expires_at;
+              const _pricingIsTrialing=subscription?.status==='trialing'&&!!subscription?.current_period_end&&new Date(subscription.current_period_end)>new Date();
+              const _pricingTrialUsed=subscription?.status==='trialing';
               const _pricingIsActive=subscription?.status==='active'||_pricingIsPromo;
               return(<>
             <div className="md:hidden px-4 py-4 space-y-3">

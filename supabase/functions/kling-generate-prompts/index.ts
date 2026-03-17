@@ -125,9 +125,9 @@ Deno.serve(async (req: Request) => {
 
   // Require active subscription for video prompt generation
   const { data: planSub } = await supabase.auth.getUser(); // user already verified above
-  const { data: subRow } = await supabase.from('subscriptions').select('plan,status,stripe_customer_id,trial_expires_at').eq('supabase_user_id', user.id).maybeSingle();
+  const { data: subRow } = await supabase.from('subscriptions').select('plan,status,stripe_customer_id,current_period_end').eq('supabase_user_id', user.id).maybeSingle();
   const isPromo = subRow?.stripe_customer_id?.startsWith('promo_');
-  const isTrialing = subRow?.status === 'trialing' && !!subRow?.trial_expires_at && new Date(subRow.trial_expires_at as string) > new Date();
+  const isTrialing = subRow?.status === 'trialing' && !!subRow?.current_period_end && new Date(subRow.current_period_end as string) > new Date();
   const isActive = ((subRow?.status === 'active' || isPromo) || isTrialing) && !!subRow?.plan;
   if (!isActive) {
     return new Response(JSON.stringify({ error: 'upgrade_required', message: 'AI video generation requires an active plan.' }), {

@@ -46,10 +46,9 @@ Deno.serve(async (req: Request) => {
 
   const { plan, days } = entry;
 
-  // Check for existing subscription row
   const { data: existing } = await supabase
     .from("subscriptions")
-    .select("id, status, trial_expires_at")
+    .select("id, status, current_period_end")
     .eq("supabase_user_id", user.id)
     .maybeSingle();
 
@@ -57,18 +56,26 @@ Deno.serve(async (req: Request) => {
     return json({ error: "already_subscribed" }, 409);
   }
 
-  if (existing?.trial_expires_at) {
+  if (existing?.status === "trialing") {
     return json({ error: "trial_already_used", message: "This trial code has already been used." }, 409);
   }
 
-  const trialExpiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-  const row = { supabase_user_id: user.id, plan, status: "trialing", trial_expires_at: trialExpiresAt };
+  const now = new Date();
+  const trialEnd = new Date(now.getTime() + days * 24 * 60 * 60 * 1000);
+
+  const row = {
+    supabase_user_id:     user.id,
+    plan,
+    status:               "trialing",
+    current_period_start: now.toISOString(),
+    current_period_end:   trialEnd.toISOString(),
+  };
 
   let dbErr;
   if (existing) {
     const { error } = await supabase
       .from("subscriptions")
-      .update({ plan, status: "trialing", trial_expires_at: trialExpiresAt })
+      .update({ plan, status: "trialing", current_period_start: row.current_period_start, current_period_end: row.current_period_end })
       .eq("supabase_user_id", user.id);
     dbErr = error;
   } else {
@@ -77,8 +84,8 @@ Deno.serve(async (req: Request) => {
   }
 
   if (dbErr) {
-    return json({ error: "Failed to redeem promo: " + dbErr.message }, 500);
+    return json({ error: "db_error", message: dbErr.message }, 500);
   }
 
-  return json({ success: true, plan, trial_expires_at: trialExpiresAt });
+  return json({ success: true, plan, trial_expires_at: trialEnd.toISOString() });
 });
