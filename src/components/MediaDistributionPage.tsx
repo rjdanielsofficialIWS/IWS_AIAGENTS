@@ -2149,7 +2149,16 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   });
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState<string | null>(null);
-  const [results, setResults]           = useState<any | null>(null);
+  const [results, setResults]           = useState<any | null>(() => {
+    try { return JSON.parse(localStorage.getItem('mm_strategy_results') || 'null'); } catch { return null; }
+  });
+  // Persist results across tab switches
+  React.useEffect(() => {
+    try {
+      if (results) localStorage.setItem('mm_strategy_results', JSON.stringify(results));
+      else localStorage.removeItem('mm_strategy_results');
+    } catch {}
+  }, [results]);
 
   // Video repurpose state
   const [videoFile, setVideoFile]       = useState<File | null>(null);
@@ -2179,8 +2188,8 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   }));
 
   const handleGenerate = async () => {
-    if (!brief.niche.trim() || !brief.offer.trim() || !brief.audience.trim()) {
-      setError('Fill in your niche, offer, and target audience to continue.'); return;
+    if (!brief.niche.trim() || !brief.audience.trim()) {
+      setError('Fill in your niche and target audience to continue.'); return;
     }
     if (!userId) { setError('Sign in to use the AI Strategist.'); return; }
     setLoading(true); setError(null); setResults(null);
@@ -2238,22 +2247,33 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
 
   return (
     <div className="space-y-4">
-      {/* Tab bar */}
-      <div className="flex gap-1 p-1 rounded-xl overflow-x-auto" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0"
-            style={{
-              background: tab === t.id ? `${GOLD}18` : 'transparent',
-              border: `1px solid ${tab === t.id ? GOLD : 'transparent'}`,
-              color: tab === t.id ? GOLD_L : 'rgba(255,255,255,0.4)',
-            }}>
-            <span>{t.emoji}</span> {t.label}
-            {t.id !== 'brief' && t.id !== 'video' && !results && (
-              <span className="text-[9px] opacity-40">—</span>
-            )}
+      {/* Tab bar + New Strategy button */}
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex gap-1 p-1 rounded-xl overflow-x-auto" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0"
+              style={{
+                background: tab === t.id ? `${GOLD}18` : 'transparent',
+                border: `1px solid ${tab === t.id ? GOLD : 'transparent'}`,
+                color: tab === t.id ? GOLD_L : 'rgba(255,255,255,0.4)',
+              }}>
+              <span>{t.emoji}</span> {t.label}
+              {t.id !== 'brief' && t.id !== 'video' && !results && (
+                <span className="text-[9px] opacity-40">—</span>
+              )}
+            </button>
+          ))}
+        </div>
+        {results && (
+          <button
+            onClick={() => { setResults(null); setTab('brief'); }}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}
+            title="Clear and generate a new strategy">
+            <RefreshCw className="w-3.5 h-3.5" /> New
           </button>
-        ))}
+        )}
       </div>
 
       {/* ── BRIEF TAB ─────────────────────────────────────────────────────── */}
@@ -2275,7 +2295,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 style={{ borderColor: BORDER }} />
             </div>
             <div>
-              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Your Offer *</label>
+              <label className="text-xs font-bold text-white/35 uppercase tracking-wider">Your Offer <span className="normal-case font-normal opacity-60">(recommended)</span></label>
               <input value={brief.offer} onChange={e => setBrief(p => ({ ...p, offer: e.target.value }))}
                 placeholder="e.g. 1-on-1 coaching $2,500/mo, online course $497"
                 className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/20 outline-none"
@@ -2371,7 +2391,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
             </div>
           )}
 
-          <button onClick={handleGenerate} disabled={loading || !brief.niche.trim() || !brief.offer.trim() || !brief.audience.trim()}
+          <button onClick={handleGenerate} disabled={loading || !brief.niche.trim() || !brief.audience.trim()}
             className="w-full flex flex-col items-center justify-center gap-0.5 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
             <span className="flex items-center gap-2">
@@ -2840,12 +2860,52 @@ function AddPlannerItemModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [title, setTitle]   = useState(prefilled?.title ?? '');
-  const [notes, setNotes]   = useState(prefilled?.notes ?? '');
-  const [date, setDate]     = useState(initialDate);
-  const [time, setTime]     = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState<string | null>(null);
+  const [title, setTitle]         = useState(prefilled?.title ?? '');
+  const [notes, setNotes]         = useState(prefilled?.notes ?? '');
+  const [date, setDate]           = useState(initialDate);
+  const [time, setTime]           = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+  const [scriptLoading, setScriptLoading] = useState(false);
+  const [scriptGenerated, setScriptGenerated] = useState(false);
+
+  const handleGenerateScript = async () => {
+    if (!title.trim()) { setError('Add a title first so AI knows what to write'); return; }
+    if (!userId) { setError('Sign in to generate a script'); return; }
+    setScriptLoading(true); setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const context = notes.trim() ? `${title}\n\nContext / angle: ${notes}` : title;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({
+          mode: 'video_script',
+          description: context,
+          tone: 'engaging, conversational, high-retention',
+        }),
+      });
+      const data = await res.json();
+      if (data.error === 'upgrade_required') { setError('Upgrade your plan to generate AI scripts.'); return; }
+      if (!res.ok) throw new Error(data.error || 'Script generation failed');
+      // Accept script from multiple possible response shapes
+      const script: string =
+        data.script || data.transcript ||
+        data.captions?.script || data.captions?.instagram ||
+        (data.captions && typeof data.captions === 'object' ? Object.values(data.captions)[0] : null) ||
+        '';
+      if (script && typeof script === 'string') {
+        setNotes(script);
+        setScriptGenerated(true);
+      } else {
+        throw new Error('No script returned');
+      }
+    } catch (e: any) {
+      setError(e.message || 'Failed to generate script');
+    } finally {
+      setScriptLoading(false);
+    }
+  };
 
   const save = async () => {
     if (!title.trim()) { setError('Title is required'); return; }
@@ -2902,15 +2962,39 @@ function AddPlannerItemModal({
           </div>
 
           <div>
-            <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Notes</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-white/40 uppercase tracking-wider">
+                {scriptGenerated ? 'AI Script' : 'Notes'}
+              </label>
+              <button
+                onClick={handleGenerateScript}
+                disabled={scriptLoading}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:brightness-110 disabled:opacity-50"
+                style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }}
+              >
+                {scriptLoading ? (
+                  <>
+                    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
+                    Writing…
+                  </>
+                ) : scriptGenerated ? (
+                  <>✨ Regenerate Script</>
+                ) : (
+                  <>✨ Generate AI Script</>
+                )}
+              </button>
+            </div>
             <textarea
               value={notes}
-              onChange={e => setNotes(e.target.value)}
-              placeholder="Hook, angle, key points…"
-              rows={3}
-              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none resize-none"
-              style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${BORDER}` }}
+              onChange={e => { setNotes(e.target.value); if (scriptGenerated) setScriptGenerated(false); }}
+              placeholder={scriptGenerated ? '' : 'Hook, angle, key points… or generate a full script with AI'}
+              rows={scriptGenerated ? 6 : 3}
+              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none resize-none transition-all"
+              style={{ background: scriptGenerated ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.06)', border: `1px solid ${scriptGenerated ? 'rgba(168,85,247,0.3)' : BORDER}` }}
             />
+            {scriptGenerated && (
+              <p className="text-xs text-purple-400/60 mt-1">AI-generated script — edit freely before saving.</p>
+            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -5324,7 +5408,7 @@ export function MediaDistributionPage() {
 
               {/* Stats */}
               <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden', width: '100%', maxWidth: 400 }}>
-                {[{ v: '12', l: 'Platforms' }, { v: '30 Day', l: 'Calendars' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
+                {[{ v: '12', l: 'Platforms' }, { v: '24/7', l: 'Content Strategist' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
                   <div key={s.l} style={{ flex: 1, padding: '14px 8px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
                     <div style={{ color: GOLD, fontWeight: 900, fontSize: 20, letterSpacing: '-0.02em' }}>{s.v}</div>
                     <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, marginTop: 3 }}>{s.l}</div>
@@ -5479,8 +5563,8 @@ export function MediaDistributionPage() {
             <div className="md:hidden px-4 py-4 space-y-3">
               {([
                 {key:"starter",name:"Creator",price:"$47",highlight:false,features:["30 posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"]},
-                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","AI content strategy"]},
-                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","3 client workspaces","Priority support + call"]},
+                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 media posts/mo","200 text posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","4 Content Strategies/mo"]},
+                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited media posts","Unlimited text posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","12 Content Strategies/mo","3 client workspaces","Priority support + call"]},
               ] as const).map(plan=>{
                 const isCurrent=subscription?.status==="active"&&subscription?.plan===plan.key;
                 const isLoading=checkoutLoading===plan.key;
@@ -5544,11 +5628,12 @@ export function MediaDistributionPage() {
               </div>
               {([
                 ["AI Captions / mo",["15","100","Unlimited"]],
-                ["Scheduled Posts / mo",["30","100","Unlimited"]],
+                ["Scheduled Media Posts",["30","100","Unlimited"]],
+                ["Text Posts / mo",["60","200","Unlimited"]],
                 ["Social Media Accounts",["3","All","All"]],
                 ["AI Video / mo",["60s","180s","540s"]],
                 ["Content Repurposing",[false,true,true]],
-                ["AI Strategist",[false,true,true]],
+                ["AI Strategist / mo",["—","4","12"]],
                 ["Client Workspaces",["1","1","3 (+$49/ea)"]],
                 ["Priority Support",[false,false,true]],
                 ["Onboarding Call",[false,false,true]],
@@ -5569,7 +5654,7 @@ export function MediaDistributionPage() {
             <div className="px-4 md:px-6 py-4 border-t" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">💳 Add-On Credits: One-Time Purchase</div>
               <div className="grid grid-cols-2 gap-2">
-                {([{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"},{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}] as const).map(addon=>(
+                {([{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"},{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"strategies_4",label:"+ 4 Content Strategies",price:"$20"}] as const).map(addon=>(
                   <button key={addon.key} onClick={()=>handleAddonCheckout(addon.key)}
                     className="flex items-center justify-between px-3 py-2.5 rounded-xl border transition hover:brightness-110"
                     style={{background:`${GOLD}0a`,borderColor:`${GOLD}30`}}>
@@ -5612,7 +5697,7 @@ export function MediaDistributionPage() {
             </div>
             <div className="px-6 py-5 space-y-3">
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Get More: One-Time Purchase</div>
-              {(addonFeature==="video_seconds"?[{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"}]:addonFeature==="captions"?[{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}]:[]).map(addon=>(
+              {(addonFeature==="video_seconds"?[{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"}]:addonFeature==="captions"?[{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"strategies_4",label:"+ 4 Content Strategies",price:"$20"}]:[]).map(addon=>(
                 <button key={addon.key} onClick={()=>{setAddonModalOpen(false);handleAddonCheckout(addon.key);}}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-xl border transition hover:brightness-110"
                   style={{background:`${GOLD}12`,borderColor:`${GOLD}40`}}>
