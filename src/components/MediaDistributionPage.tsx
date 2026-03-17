@@ -3144,6 +3144,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [tpLoadingId, setTpLoadingId]   = useState<string | null>(null);
   const [tpResults, setTpResults]       = useState<Record<string, string[]>>({});
+  const [tpErrors, setTpErrors]         = useState<Record<string, string>>({});
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -3201,6 +3202,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   const generateTalkingPoints = async (itemId: string, title: string) => {
     if (!userId) return;
     setTpLoadingId(itemId);
+    setTpErrors(prev => { const n = { ...prev }; delete n[itemId]; return n; });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/content-strategist`, {
@@ -3209,11 +3211,17 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         body: JSON.stringify({ mode: 'talking_points', idea: title }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       if (data.talking_points && Array.isArray(data.talking_points)) {
         setTpResults(prev => ({ ...prev, [itemId]: data.talking_points }));
+      } else {
+        throw new Error('No talking points returned');
       }
-    } catch {}
-    finally { setTpLoadingId(null); }
+    } catch (e: any) {
+      setTpErrors(prev => ({ ...prev, [itemId]: e?.message || 'Generation failed' }));
+    } finally {
+      setTpLoadingId(null);
+    }
   };
 
   const pendingAddCallback = React.useRef<(() => void) | undefined>(undefined);
@@ -3326,6 +3334,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                     const col = CATEGORY_COLORS[item.category] || GOLD;
                     const points = tpResults[item.id];
                     const isLoading = tpLoadingId === item.id;
+                    const tpError = tpErrors[item.id];
                     return (
                       <div key={item.id} className="flex flex-col border-b last:border-0"
                         style={{ borderColor: BORDER }}>
@@ -3364,6 +3373,11 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
+                        {tpError && (
+                          <div className="px-4 pb-3 ml-4">
+                            <p className="text-[10px] text-red-300/70">{tpError}</p>
+                          </div>
+                        )}
                         {points && (
                           <div className="px-4 pb-3 ml-4 space-y-1.5">
                             {points.map((point, i) => (
