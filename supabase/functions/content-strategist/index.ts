@@ -104,99 +104,73 @@ Deno.serve(async (req: Request) => {
       const { niche, offer, audience, platforms = [], frequency = "5x/week", tone = "", goals = [], currentStage = "growing" } = body;
       if (!niche || !audience) return json({ error: "niche and audience are required" }, 400);
 
-      const platformList = platforms.join(", ") || "Instagram, LinkedIn";
-      const goalList = goals.join(", ") || "grow audience, generate leads";
+      const platformList = (platforms as string[]).join(", ") || "Instagram, LinkedIn";
+      const goalList = (goals as string[]).join(", ") || "grow audience, generate leads";
       const toneDesc = tone || "confident and authentic";
+      const offerDesc = offer || "their core offer";
 
-      const systemPrompt = `You are an elite social media strategist and content architect with 15+ years experience building 7-figure personal brands. You specialize in converting followers into paying clients through strategic content systems. You always return ONLY valid JSON — no markdown, no commentary.`;
+      const SYS = `You are an elite social media strategist with 15+ years building 7-figure personal brands. You convert followers into paying clients through strategic content systems. Return ONLY valid JSON — no markdown, no commentary.`;
 
-      const userPrompt = `Create a comprehensive 30-day content strategy for this business:
-
-BUSINESS BRIEF:
+      const BRIEF = `BUSINESS BRIEF:
 - Niche: ${niche}
-- Core Offer: ${offer}
+- Core Offer: ${offerDesc}
 - Target Audience: ${audience}
 - Active Platforms: ${platformList}
 - Posting Frequency: ${frequency}
 - Brand Tone: ${toneDesc}
 - Goals: ${goalList}
-- Current Stage: ${currentStage}
+- Current Stage: ${currentStage}`;
 
-Return a single JSON object with exactly this structure:
+      // Split into 3 parallel calls to avoid token limit truncation
+      const [calendarRaw, hooksRaw, strategyRaw] = await Promise.all([
 
+        callClaude(SYS, `${BRIEF}
+
+Generate a 30-day content calendar. Return ONLY this JSON:
 {
-  "calendar": {
-    "week1_priority": { "day": 1, "reason": "Why this is the most important post to start with" },
-    "calendar": [
-      {
-        "day": 1,
-        "pillar": "Reach|Trust|Sales",
-        "content_type": "Carousel|Reel|Story|Thread|Short|Long-form",
-        "platform": "instagram|linkedin|tiktok|youtube|x|facebook",
-        "topic": "Specific compelling post topic",
-        "hook": "Irresistible opening hook for this post",
-        "goal": "Specific outcome this post achieves",
-        "best_time": "9am|12pm|6pm|8pm"
-      }
-    ],
-    "evergreen_posts": [
-      {
-        "topic": "Timeless post that can be reused every 90 days",
-        "hook": "Hook that never gets old",
-        "why_evergreen": "Why this content stays relevant"
-      }
-    ]
-  },
-  "hooks": {
-    "hooks": [
-      {
-        "hook_text": "The actual hook text ready to use",
-        "formula": "AIDA|Curiosity Gap|Pain+Solution|Social Proof|Contrarian|Story|Listicle",
-        "psychological_trigger": "What makes this impossible to scroll past",
-        "scroll_stop_score": 8,
-        "best_platform": "instagram|linkedin|tiktok|x"
-      }
-    ],
-    "top_2_recommended": [
-      { "index": 0, "reason": "Why this hook is best for current stage and goals" }
-    ]
-  },
-  "strategy": {
-    "quick_wins": [
-      "Specific action to take THIS WEEK that will have immediate impact"
-    ],
-    "platform_strategies": [
-      {
-        "platform": "instagram",
-        "primary_format": "Reels",
-        "posting_cadence": "5x/week",
-        "content_mix": "40% educational, 30% entertainment, 30% promotional",
-        "growth_tactic": "Specific tactic to grow on this platform",
-        "cta_strategy": "What CTA to use and when"
-      }
-    ],
-    "content_pillars_ratio": {
-      "reach": 40,
-      "trust": 35,
-      "sales": 25
-    }
-  }
+  "content_pillars": [{"name":"string","description":"string"}],
+  "week1_priority": {"day":1,"reason":"string"},
+  "calendar": [
+    {"day":1,"pillar":"Reach|Trust|Sales","content_type":"Carousel|Reel|Story|Thread|Short|Long-form","platform":"instagram|linkedin|tiktok|youtube|x|facebook","topic":"string","hook":"string","goal":"string","best_time":"9am|12pm|6pm|8pm"}
+  ],
+  "evergreen_posts": [{"topic":"string","hook":"string","why_evergreen":"string"}]
 }
+REQUIREMENTS: exactly 30 calendar entries, 4 content_pillars, 5 evergreen_posts. Every topic specific to "${niche}" and "${audience}". Vary pillars and formats throughout.`, 6000),
 
-REQUIREMENTS:
-- Generate exactly 30 calendar entries (days 1-30)
-- Generate exactly 20 hooks covering all formulas
-- Generate exactly 2 top_2_recommended entries (indices into hooks array)
-- Generate 5 quick_wins that are specific and actionable
-- Generate platform strategies for each platform in: ${platformList}
-- Generate 5 evergreen posts
-- Make all hooks specific to "${niche}" — no generic placeholder text
-- Every topic must be highly specific and relevant to "${offer}" and "${audience}"
-- Vary content types and pillars throughout the 30 days in a logical progression`;
+        callClaude(SYS, `${BRIEF}
 
-      const raw = await callClaude(systemPrompt, userPrompt, 8192);
-      const result = safeParse(raw);
-      return json(result);
+Generate 20 scroll-stopping hooks for this business. Return ONLY this JSON:
+{
+  "hooks": [
+    {"hook_text":"string","formula":"AIDA|Curiosity Gap|Pain+Solution|Social Proof|Contrarian|Story|Listicle","psychological_trigger":"string","scroll_stop_score":8,"best_platform":"instagram|linkedin|tiktok|x"}
+  ],
+  "top_2_recommended": [{"index":0,"reason":"string"}]
+}
+REQUIREMENTS: exactly 20 hooks covering all 7 formulas, 2 top_2_recommended. Every hook specific to "${niche}" — no generic text.`, 3000),
+
+        callClaude(SYS, `${BRIEF}
+
+Generate the platform strategy and quick wins. Return ONLY this JSON:
+{
+  "quick_wins": ["string"],
+  "platform_strategies": [
+    {"platform":"string","primary_format":"string","posting_cadence":"string","content_mix":"string","growth_tactic":"string","cta_strategy":"string"}
+  ],
+  "content_pillars_ratio": {"reach":40,"trust":35,"sales":25}
+}
+REQUIREMENTS: 5 specific quick_wins, one platform_strategy per platform in [${platformList}]. All advice specific to "${niche}".`, 2000),
+
+      ]);
+
+      const calendarData = safeParse(calendarRaw);
+      const hooksData    = safeParse(hooksRaw);
+      const strategyData = safeParse(strategyRaw);
+
+      return json({
+        calendar: calendarData,
+        hooks:    hooksData,
+        strategy: strategyData,
+      });
 
     } else if (mode === "repurpose_from_video") {
       const { transcript, tone = "" } = body;
