@@ -1943,7 +1943,7 @@ function InlinePostComposer({
                   <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: GOLD_L }}>Creator & Agency Feature</div>
                     <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', lineHeight: 1.5 }}>The Content Repurposing Engine is available on Creator and Agency plans.</p>
-                    <button onClick={() => setPricingOpen(true)} className="px-4 py-2 rounded-lg text-xs font-bold transition hover:brightness-110" style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>Upgrade to Unlock</button>
+                    <button onClick={() => onUpgrade?.()} className="px-4 py-2 rounded-lg text-xs font-bold transition hover:brightness-110" style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>Upgrade to Unlock</button>
                   </div>
                 ) : textAiError ? (
                   <div className="text-xs text-red-300 px-1">{textAiError}</div>
@@ -2131,9 +2131,10 @@ function InlinePostComposer({
 // ─── InlineContentIdeas ───────────────────────────────────────────────────────
 // Inline content ideas panel with AI/manual toggle and save-to-planner
 
-function InlineContentIdeas({ userId, onAddToPlanner }: {
+function InlineContentIdeas({ userId, onAddToPlanner, onUpgrade }: {
   userId: string | null;
   onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
+  onUpgrade?: () => void;
 }) {
   type StrategistTab = 'brief' | 'calendar' | 'hooks' | 'strategy' | 'video';
   type BriefData = {
@@ -3185,7 +3186,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
               <button onClick={() => setRepurposeOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} />
+              <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => setPricingOpen(true)} />
             </div>
           </div>
         </div>
@@ -3293,7 +3294,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
                 <div className="text-xs text-white/35">Generate or add ideas, save to your planner</div>
               </div>
             </div>
-            <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} />
+            <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => setPricingOpen(true)} />
           </div>
         </div>
       </div>
