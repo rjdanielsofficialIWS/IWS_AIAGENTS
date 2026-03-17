@@ -138,39 +138,21 @@ Deno.serve(async (req: Request) => {
 
         callClaude(SYS, `${BRIEF}
 
-Generate a 7-day content calendar. Return ONLY this JSON:
-{
-  "content_pillars": [{"name":"string","description":"string"}],
-  "week1_priority": {"day":1,"reason":"string"},
-  "calendar": [
-    {"day":1,"pillar":"Reach|Trust|Sales","content_type":"Carousel|Reel|Story|Thread|Short|Long-form","platform":"instagram|linkedin|tiktok|youtube|x|facebook","topic":"string","hook":"string","goal":"string","best_time":"9am|12pm|6pm|8pm"}
-  ],
-  "evergreen_posts": [{"topic":"string","hook":"string","why_evergreen":"string"}]
-}
-REQUIREMENTS: exactly 7 calendar entries, 4 content_pillars, 3 evergreen_posts. Every topic specific to "${niche}" and "${audience}". Vary pillars and formats throughout.`, 3000),
+Generate a 7-day content calendar. Return ONLY this JSON with NO extra fields:
+{"content_pillars":[{"name":"str","description":"str"},{"name":"str","description":"str"},{"name":"str","description":"str"}],"week1_priority":{"day":1,"reason":"str"},"calendar":[{"day":1,"pillar":"Reach","content_type":"Reel","platform":"instagram","topic":"str","hook":"str","goal":"str","best_time":"9am"}],"evergreen_posts":[{"topic":"str","hook":"str"}]}
+REQUIREMENTS: exactly 7 calendar entries (days 1-7), exactly 3 content_pillars, exactly 2 evergreen_posts. Keep all string values concise (under 15 words each). Every topic specific to "${niche}".`, 2000),
 
         callClaude(SYS, `${BRIEF}
 
-Generate 20 scroll-stopping hooks for this business. Return ONLY this JSON:
-{
-  "hooks": [
-    {"hook_text":"string","formula":"AIDA|Curiosity Gap|Pain+Solution|Social Proof|Contrarian|Story|Listicle","psychological_trigger":"string","scroll_stop_score":8,"best_platform":"instagram|linkedin|tiktok|x"}
-  ],
-  "top_2_recommended": [{"index":0,"reason":"string"}]
-}
-REQUIREMENTS: exactly 20 hooks covering all 7 formulas, 2 top_2_recommended. Every hook specific to "${niche}" — no generic text.`, 3000),
+Generate 10 scroll-stopping hooks. Return ONLY this JSON:
+{"hooks":[{"hook_text":"str","formula":"Curiosity Gap","scroll_stop_score":8,"best_platform":"instagram"}],"top_2_recommended":[{"index":0,"reason":"str"}]}
+REQUIREMENTS: exactly 10 hooks, 2 top_2_recommended. Vary formulas: AIDA, Curiosity Gap, Pain+Solution, Social Proof, Contrarian, Story, Listicle. Keep hook_text under 20 words. Specific to "${niche}".`, 1500),
 
         callClaude(SYS, `${BRIEF}
 
-Generate the platform strategy and quick wins. Return ONLY this JSON:
-{
-  "quick_wins": ["string"],
-  "platform_strategies": [
-    {"platform":"string","primary_format":"string","posting_cadence":"string","content_mix":"string","growth_tactic":"string","cta_strategy":"string"}
-  ],
-  "content_pillars_ratio": {"reach":40,"trust":35,"sales":25}
-}
-REQUIREMENTS: 5 specific quick_wins, one platform_strategy per platform in [${platformList}]. All advice specific to "${niche}".`, 2000),
+Generate quick wins. Return ONLY this JSON:
+{"quick_wins":["str","str","str","str","str"],"content_pillars_ratio":{"reach":40,"trust":35,"sales":25}}
+REQUIREMENTS: exactly 5 quick_wins, each under 20 words, specific and actionable for "${niche}".`, 600),
 
       ]);
 
