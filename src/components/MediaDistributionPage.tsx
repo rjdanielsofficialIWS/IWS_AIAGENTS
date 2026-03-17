@@ -2812,28 +2812,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 </div>
               )}
 
-              {/* Platform Strategies */}
-              {results.strategy?.platform_strategies?.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Platform Playbooks</div>
-                  <div className="space-y-3">
-                    {results.strategy.platform_strategies.map((ps: any, i: number) => (
-                      <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-                        <div className="flex items-center gap-2 px-3 py-2.5 border-b" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                          <PlatformIcon id={ps.platform?.toLowerCase() || 'instagram'} size="sm" />
-                          <span className="text-sm font-black text-white capitalize">{ps.platform}</span>
-                        </div>
-                        <div className="px-3 py-3 space-y-2">
-                          <div><span className="text-[10px] font-bold text-white/30 uppercase">Algorithm</span><p className="text-xs text-white/60 mt-0.5">{ps.algorithm_insight}</p></div>
-                          <div><span className="text-[10px] font-bold text-white/30 uppercase">Best Times</span><p className="text-xs text-white/60 mt-0.5">{Array.isArray(ps.posting_windows) ? ps.posting_windows.join(', ') : ps.posting_windows}</p></div>
-                          <div><span className="text-[10px] font-bold" style={{ color: GOLD }}>Growth Tactic</span><p className="text-xs text-white/70 mt-0.5">{ps.growth_tactic}</p></div>
-                          <div><span className="text-[10px] font-bold text-red-400/70 uppercase">Avoid</span><p className="text-xs text-white/50 mt-0.5">{ps.avoid}</p></div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* Follower-to-Client System */}
               {results.strategy?.conversion_system && (

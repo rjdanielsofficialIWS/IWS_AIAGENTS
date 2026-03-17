@@ -46,6 +46,18 @@ function stripFences(s: string): string {
   return s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
 }
 
+/** Recursively strip <cite ...>...</cite> tags (and self-closing variants) from all strings in an object. */
+function stripCites(val: any): any {
+  if (typeof val === "string") return val.replace(/<cite[^>]*>(.*?)<\/cite>/gs, "$1").replace(/<cite[^>]*\/>/g, "").trim();
+  if (Array.isArray(val)) return val.map(stripCites);
+  if (val && typeof val === "object") {
+    const out: any = {};
+    for (const k of Object.keys(val)) out[k] = stripCites(val[k]);
+    return out;
+  }
+  return val;
+}
+
 /** Parse JSON, and if it fails due to truncation attempt to close open structures. */
 function safeParse(raw: string): any {
   const s = stripFences(raw);
@@ -338,8 +350,7 @@ REQUIREMENTS:
       const textBlock = (d.content as any[])?.filter((b: any) => b.type === "text").pop();
       if (!textBlock?.text) throw new Error("No text response from Claude");
 
-      const result = safeParse(textBlock.text);
-      // Ensure researched_at is set
+      const result = stripCites(safeParse(textBlock.text));
       if (!result.researched_at) result.researched_at = new Date().toISOString();
       return json(result);
 
