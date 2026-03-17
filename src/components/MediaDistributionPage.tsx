@@ -2128,10 +2128,10 @@ function InlinePostComposer({
   );
 }
 
-// ─── InlineContentIdeas ───────────────────────────────────────────────────────
-// Inline content ideas panel with AI/manual toggle and save-to-planner
+// ─── InlineContentStrategist ───────────────────────────────────────────────────────
+// Inline content strategy panel with AI/manual toggle and save-to-planner
 
-function InlineContentIdeas({ userId, onAddToPlanner, onUpgrade }: {
+function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   userId: string | null;
   onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
   onUpgrade?: () => void;
@@ -2367,7 +2367,7 @@ function InlineContentIdeas({ userId, onAddToPlanner, onUpgrade }: {
           {error === 'upgrade_required' && (
             <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
               <div className="text-sm font-bold" style={{ color: GOLD_L }}>Paid Plan Required</div>
-              <p className="text-xs text-white/50">The AI Content Strategist is available on Starter, Viral, and Agency plans.</p>
+              <p className="text-xs text-white/50">The AI Content Strategist is available on Creator, Viral, and Agency plans.</p>
             </div>
           )}
 
@@ -2666,7 +2666,7 @@ function InlineContentIdeas({ userId, onAddToPlanner, onUpgrade }: {
                 <label className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
                   <Video className="w-8 h-8 text-white/20" />
                   <span className="text-sm font-bold text-white/35">Upload your talking video</span>
-                  <span className="text-xs text-white/20">AI will transcribe and extract content ideas</span>
+                  <span className="text-xs text-white/20">AI will transcribe and extract content strategy</span>
                   <input type="file" accept="video/*" className="hidden" onChange={e => {
                     const f = e.target.files?.[0];
                     if (f) {
@@ -2695,7 +2695,7 @@ function InlineContentIdeas({ userId, onAddToPlanner, onUpgrade }: {
                 className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
                 style={{ background: GOLD, color: '#000' }}>
                 <span className="flex items-center gap-2">
-                  {videoLoading ? <><Loader className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Sparkles className="w-4 h-4" /> Extract All Content Ideas</>}
+                  {videoLoading ? <><Loader className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Sparkles className="w-4 h-4" /> Extract All AI Strategist</>}
                 </span>
                 {videoLoading && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing. Up to 30 seconds.</span>}
               </button>
@@ -2803,7 +2803,7 @@ function InlineContentIdeas({ userId, onAddToPlanner, onUpgrade }: {
 
               {videoIdeas.series_ideas?.length > 0 && (
                 <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📺 Series Ideas</div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">📺 Series Strategies</div>
                   <div className="space-y-2">
                     {videoIdeas.series_ideas.map((s: any, i: number) => {
                       const key = `vs-${i}`;
@@ -3060,12 +3060,12 @@ function PlannerPanel({ userId }: { userId: string | null }) {
           <button onClick={() => setRepurposeOpen(true)}
             className="hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold border transition hover:bg-white/5"
             style={{ borderColor: `${GOLD}35`, color: GOLD }}>
-            <Sparkles className="w-3.5 h-3.5" /> AI Ideas
+            <Sparkles className="w-3.5 h-3.5" /> AI Strategies
           </button>
           <button onClick={() => { setAddDate(today.toISOString().split('T')[0]); setPendingItem(null); setAddModalOpen(true); }}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
             style={{ background: GOLD, color: '#000' }}>
-            <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">Add Idea</span>
+            <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">Add Strategy</span>
           </button>
         </div>
       </div>
@@ -3079,12 +3079,12 @@ function PlannerPanel({ userId }: { userId: string | null }) {
         ) : daysWithItems.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
             <span className="text-4xl">📅</span>
-            <div className="text-sm font-bold text-white/25">No ideas planned this week</div>
-            <div className="text-xs text-white/20 max-w-xs">Add ideas manually or use AI to generate content ideas from your videos</div>
+            <div className="text-sm font-bold text-white/25">No strategies planned this week</div>
+            <div className="text-xs text-white/20 max-w-xs">Add strategies manually or use AI to generate content strategy from your videos</div>
             <button onClick={() => setRepurposeOpen(true)}
               className="mt-2 flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold border transition hover:bg-white/5"
               style={{ borderColor: `${GOLD}35`, color: GOLD }}>
-              <Sparkles className="w-3.5 h-3.5" /> Generate AI Ideas
+              <Sparkles className="w-3.5 h-3.5" /> Generate AI Strategies
             </button>
           </div>
         ) : (
@@ -3109,7 +3109,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                     </div>
                     <div className="text-left">
                       <div className="text-sm font-bold text-white">{dayLabel}</div>
-                      <div className="text-xs text-white/35">{dayItems.length} idea{dayItems.length !== 1 ? 's' : ''}</div>
+                      <div className="text-xs text-white/35">{dayItems.length} strateg{dayItems.length !== 1 ? 'ies' : 'y'}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
@@ -3180,13 +3180,13 @@ function PlannerPanel({ userId }: { userId: string | null }) {
             style={{ background: SURFACE, borderColor: BORDER }}>
             <div className="flex items-center justify-between px-6 py-5 border-b shrink-0" style={{ borderColor: BORDER }}>
               <div>
-                <h2 className="text-base font-bold text-white">♻️ Content Ideas</h2>
+                <h2 className="text-base font-bold text-white">♻️ AI Strategist</h2>
                 <p className="text-sm text-white/40 mt-0.5">Find new angles, add directly to your planner</p>
               </div>
               <button onClick={() => setRepurposeOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => setPricingOpen(true)} />
+              <InlineContentStrategist userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => setPricingOpen(true)} />
             </div>
           </div>
         </div>
@@ -3195,12 +3195,13 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   );
 }
 
-function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed }: {
+function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed, onUpgrade }: {
   integrations: PostizIntegration[];
   userId: string | null;
   initialVideoUrl?: string | null;
   initialComposerMode?: 'media' | 'text' | 'saved';
   onVideoConsumed?: () => void;
+  onUpgrade?: () => void;
 }) {
   const [logOpen, setLogOpen]             = useState(false);
   const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
@@ -3240,6 +3241,15 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     setAddModalOpen(true);
   };
 
+  const [composerPanelTab, setComposerPanelTab] = React.useState<'post' | 'strategist'>(
+    initialComposerMode === 'text' || initialComposerMode === 'saved' || initialVideoUrl ? 'post' : 'post'
+  );
+
+  // Switch to post tab when a video handoff arrives
+  React.useEffect(() => {
+    if (initialVideoUrl) setComposerPanelTab('post');
+  }, [initialVideoUrl]);
+
   return (
     <div className="flex flex-col flex-1 min-h-0">
 
@@ -3263,40 +3273,44 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
         ))}
       </div>
 
-      {/* ── Main two-column layout ── */}
-      <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x min-h-full" style={{ '--tw-divide-opacity': 1 } as any}>
+      {/* ── Tab strip ── */}
+      <div className="flex shrink-0 border-b" style={{ borderColor: BORDER }}>
+        <button
+          onClick={() => setComposerPanelTab('post')}
+          className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition border-b-2"
+          style={{
+            borderBottomColor: composerPanelTab === 'post' ? GOLD : 'transparent',
+            color: composerPanelTab === 'post' ? GOLD_L : 'rgba(255,255,255,0.35)',
+            background: composerPanelTab === 'post' ? `${GOLD}08` : 'transparent',
+          }}>
+          <Send className="w-4 h-4" /> Create a Post
+        </button>
+        <button
+          onClick={() => setComposerPanelTab('strategist')}
+          className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition border-b-2"
+          style={{
+            borderBottomColor: composerPanelTab === 'strategist' ? '#a78bfa' : 'transparent',
+            color: composerPanelTab === 'strategist' ? '#c4b5fd' : 'rgba(255,255,255,0.35)',
+            background: composerPanelTab === 'strategist' ? 'rgba(167,139,250,0.06)' : 'transparent',
+          }}>
+          <Sparkles className="w-4 h-4" /> AI Content Strategist
+        </button>
+      </div>
 
-          {/* Left column: Create Post */}
-          <div className="px-4 md:px-6 py-6 space-y-1" style={{ borderColor: BORDER }}>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
-                <Send className="w-4 h-4 text-black" />
-              </div>
-              <div>
-                <div className="text-sm font-black text-white">Create Post</div>
-                <div className="text-xs text-white/35">Write, upload & schedule to your channels</div>
-              </div>
-            </div>
+      {/* ── Tab content ── */}
+      <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+
+        {composerPanelTab === 'post' && (
+          <div className="px-4 md:px-6 py-6 space-y-1 max-w-2xl mx-auto w-full">
             <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} />
           </div>
+        )}
 
-          {/* Right column: Content Ideas */}
-          <div className="px-4 md:px-6 py-6 border-t lg:border-t-0" style={{ borderColor: BORDER }}>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: `linear-gradient(135deg, #a78bfa, #7c3aed)` }}>
-                <Sparkles className="w-4 h-4 text-white" />
-              </div>
-              <div>
-                <div className="text-sm font-black text-white">Content Ideas</div>
-                <div className="text-xs text-white/35">Generate or add ideas, save to your planner</div>
-              </div>
-            </div>
-            <InlineContentIdeas userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => setPricingOpen(true)} />
+        {composerPanelTab === 'strategist' && (
+          <div className="px-4 md:px-6 py-6 max-w-2xl mx-auto w-full">
+            <InlineContentStrategist userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => onUpgrade?.()} />
           </div>
-        </div>
+        )}
       </div>
 
       {/* Modals */}
@@ -3786,10 +3800,21 @@ type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl
 
 function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVideo?: (videoUrl: string) => void }) {
   const [step, setStep]               = React.useState<VideoStudioStep>('brief');
+  // Frame mode: manual upload | AI generated | none
+  const [startFrameMode, setStartFrameMode] = React.useState<'manual' | 'ai' | 'none'>('ai');
+  const [endFrameMode, setEndFrameMode]     = React.useState<'manual' | 'ai' | 'none'>('none');
   const [startFrameUrl, setStartFrameUrl] = React.useState<string | null>(null);
   const [endFrameUrl, setEndFrameUrl]     = React.useState<string | null>(null);
   const startFrameRef = React.useRef<HTMLInputElement>(null);
   const endFrameRef   = React.useRef<HTMLInputElement>(null);
+  // Transcript mode: manual paste | AI generated (from file) | none
+  const [transcriptMode, setTranscriptMode] = React.useState<'manual' | 'ai' | 'none'>('none');
+  const [manualTranscript, setManualTranscript] = React.useState('');
+  const [transcriptFile, setTranscriptFile]     = React.useState<File | null>(null);
+  const transcriptFileRef = React.useRef<HTMLInputElement>(null);
+  const [videoTranscript, setVideoTranscript]   = React.useState<string | null>(null);
+  const [transcribing, setTranscribing]         = React.useState(false);
+  const [editablePrompt, setEditablePrompt]     = React.useState('');
   const [brief, setBrief]             = React.useState('');
   const [style, setStyle]             = React.useState('cinematic');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
@@ -3880,55 +3905,102 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
   };
 
   const handleGeneratePrompts = async () => {
-    if (!brief.trim()) { setGlobalError('Enter a brief first'); return; }
+    if (!brief.trim() && transcriptMode === 'none') { setGlobalError('Enter a brief first'); return; }
     if (!userId) { setGlobalError('Sign in to generate AI video'); return; }
     setGeneratingPrompts(true); setGlobalError(null);
+
+    // Handle transcript first if AI mode selected
+    let resolvedTranscript = videoTranscript;
+    if (transcriptMode === 'ai' && transcriptFile && !resolvedTranscript) {
+      try {
+        setTranscribing(true);
+        const { data: { session: txs } } = await supabase.auth.getSession();
+        resolvedTranscript = await transcribeVideo(transcriptFile, txs?.access_token ?? '');
+        setVideoTranscript(resolvedTranscript);
+      } catch (e: any) {
+        setGlobalError('Transcript failed: ' + e.message);
+        setGeneratingPrompts(false); setTranscribing(false); return;
+      } finally { setTranscribing(false); }
+    } else if (transcriptMode === 'manual' && manualTranscript.trim()) {
+      resolvedTranscript = manualTranscript.trim();
+      setVideoTranscript(resolvedTranscript);
+    }
+
     try {
       const headers = await getAuthHeaders();
+      const enrichedBrief = resolvedTranscript
+        ? `${brief ? brief + '\n\n' : ''}Transcript for context:\n${resolvedTranscript.slice(0, 1500)}`
+        : brief;
 
-      // Step 1: Generate single best prompt
       const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ brief, style, aspectRatio, duration }),
+        body: JSON.stringify({ brief: enrichedBrief, style, aspectRatio, duration }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to generate prompt');
       const promptText: string = (data.prompts || [])[0] ?? brief;
-      const generated: VideoPrompt[] = [{ id: 'p0', text: promptText, selected: true }];
-      setPrompts(generated);
-
-      // Step 2: If user uploaded a start frame, skip image generation
-      if (startFrameUrl) {
-        const frameId = `f${Date.now()}-p0`;
-        setFrames([{ id: frameId, promptText, imageUrl: startFrameUrl, taskId: null, status: 'done' }]);
-        setStep('frames');
-        await autoGenerateVideo(frameId, startFrameUrl, promptText, headers);
-        return;
-      }
-
-      // Step 2: Auto-generate frame (image) immediately
-      setStep('frames');
-      const frameId = `f${Date.now()}-p0`;
-      const newFrame: GeneratedFrame = { id: frameId, promptText, imageUrl: null, taskId: null, status: 'generating' };
-      setFrames([newFrame]);
-
-      const imgRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-image`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ prompt: promptText, aspectRatio }),
-      });
-      const imgData = await imgRes.json();
-      if (!imgRes.ok) throw new Error(imgData.error || 'Failed to generate frame');
-
-      if (imgData.imageUrl) {
-        // Image returned immediately — go straight to video
-        setFrames([{ id: frameId, promptText, imageUrl: imgData.imageUrl, taskId: null, status: 'done' }]);
-        await autoGenerateVideo(frameId, imgData.imageUrl, promptText, headers);
-      } else if (imgData.taskId) {
-        setFrames([{ id: frameId, promptText, imageUrl: null, taskId: imgData.taskId, status: 'generating' }]);
-        pollFrameTaskAuto(frameId, imgData.taskId, promptText, headers);
-      }
+      setPrompts([{ id: 'p0', text: promptText, selected: true }]);
+      setEditablePrompt(promptText);
+      setStep('prompts'); // pause here for user to review/edit
     } catch (e: any) { setGlobalError(e.message); setStep('brief'); }
     finally { setGeneratingPrompts(false); }
+  };
+
+  const handleConfirmAndGenerate = async () => {
+    const promptText = editablePrompt.trim() || (prompts[0]?.text ?? brief);
+    if (!promptText) { setGlobalError('No prompt to generate from'); return; }
+    setGlobalError(null);
+    const headers = await getAuthHeaders();
+
+    // Determine start frame
+    if (startFrameMode === 'manual' && startFrameUrl) {
+      // Use manual start frame
+      const frameId = `f${Date.now()}-p0`;
+      setFrames([{ id: frameId, promptText, imageUrl: startFrameUrl, taskId: null, status: 'done' }]);
+      setStep('frames');
+      await autoGenerateVideo(frameId, startFrameUrl, promptText, headers, null, endFrameMode === 'manual' ? endFrameUrl : null);
+    } else if (startFrameMode === 'none') {
+      // No start frame — generate video without image anchor (text-to-video)
+      setStep('video');
+      const vidId = `v${Date.now()}-noframe`;
+      setVideos([{ id: vidId, frameUrl: '', promptText, videoUrl: null, taskId: null, status: 'generating' }]);
+      try {
+        const falBody: Record<string, unknown> = { prompt: promptText, duration, aspectRatio, quality: 'high', textToVideo: true };
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify(falBody),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to generate video');
+        if (data.requestId) {
+          setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.requestId, status: 'polling' } : v));
+          pollFalVideoTask(vidId, data.requestId, data.model, promptText, '', headers, data.statusUrl, data.responseUrl);
+        }
+      } catch (e: any) {
+        setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: e.message } : v));
+        setGlobalError(e.message);
+      }
+    } else {
+      // AI Generated start frame
+      setStep('frames');
+      const frameId = `f${Date.now()}-p0`;
+      setFrames([{ id: frameId, promptText, imageUrl: null, taskId: null, status: 'generating' }]);
+      try {
+        const imgRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-image`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          body: JSON.stringify({ prompt: promptText, aspectRatio }),
+        });
+        const imgData = await imgRes.json();
+        if (!imgRes.ok) throw new Error(imgData.error || 'Failed to generate frame');
+        if (imgData.imageUrl) {
+          setFrames([{ id: frameId, promptText, imageUrl: imgData.imageUrl, taskId: null, status: 'done' }]);
+          await autoGenerateVideo(frameId, imgData.imageUrl, promptText, headers, null, endFrameMode === 'manual' ? endFrameUrl : null);
+        } else if (imgData.taskId) {
+          setFrames([{ id: frameId, promptText, imageUrl: null, taskId: imgData.taskId, status: 'generating' }]);
+          pollFrameTaskAuto(frameId, imgData.taskId, promptText, headers);
+        }
+      } catch (e: any) { setFrames(prev => prev.map(f => f.id === frameId ? { ...f, status: 'error', error: e.message } : f)); setGlobalError(e.message); }
+    }
   };
 
   const autoGenerateVideo = async (frameId: string, imageUrl: string, promptText: string, headers: Record<string, string>, overrideStartUrl?: string | null, tailUrl?: string | null) => {
@@ -4132,7 +4204,26 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
   const resetStudio = () => {
     Object.values(pollTimers.current).forEach(clearInterval);
     pollTimers.current = {};
-    setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null); setStartFrameUrl(null); setEndFrameUrl(null);
+    setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null);
+    setStartFrameUrl(null); setEndFrameUrl(null); setStartFrameMode('ai'); setEndFrameMode('none');
+    setManualTranscript(''); setTranscriptFile(null); setVideoTranscript(null); setTranscribing(false); setEditablePrompt('');
+  };
+
+  const handleDownloadVideo = async (url: string) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = `ai-video-${Date.now()}.mp4`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 5000);
+    } catch {
+      window.open(url, '_blank');
+    }
   };
 
   const STYLES = ['cinematic','documentary','commercial','anime','realistic','fantasy','noir','vibrant'];
@@ -4231,14 +4322,55 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                   </div>
                 </div>
               </div>
-              {/* Optional start/end frame uploads */}
+              {/* Transcript */}
               <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Reference Frames</label>
-                  <span className="text-[10px] text-white/20 font-normal normal-case">optional</span>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Transcript</label>
+                <div className="flex gap-2 mb-2">
+                  {(['none', 'manual', 'ai'] as const).map(m => (
+                    <button key={m} onClick={() => setTranscriptMode(m)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
+                      style={{ borderColor: transcriptMode === m ? GOLD : BORDER, background: transcriptMode === m ? `${GOLD}18` : 'transparent', color: transcriptMode === m ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                      {m === 'ai' ? 'AI Generated' : m === 'manual' ? 'Manual' : 'None'}
+                    </button>
+                  ))}
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  {/* Start Frame */}
+                {transcriptMode === 'manual' && (
+                  <textarea value={manualTranscript} onChange={e => setManualTranscript(e.target.value)} rows={3}
+                    placeholder="Paste your transcript here…"
+                    className="w-full rounded-xl border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/20 outline-none resize-none"
+                    style={{ borderColor: BORDER }} />
+                )}
+                {transcriptMode === 'ai' && (
+                  <div>
+                    <input ref={transcriptFileRef} type="file" accept="video/*,audio/*" className="hidden"
+                      onChange={e => e.target.files?.[0] && setTranscriptFile(e.target.files[0])} />
+                    <button onClick={() => transcriptFileRef.current?.click()}
+                      className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
+                      style={{ borderColor: transcriptFile ? `${GOLD}60` : BORDER, color: transcriptFile ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                      <Upload className="w-3.5 h-3.5" />
+                      {transcriptFile ? transcriptFile.name : 'Upload video / audio to transcribe'}
+                    </button>
+                    {videoTranscript && (
+                      <p className="text-[10px] text-green-400/70 mt-1">✓ Transcript ready ({videoTranscript.length} chars)</p>
+                    )}
+                    {transcribing && <p className="text-[10px] text-white/40 mt-1 flex items-center gap-1"><Loader className="w-3 h-3 animate-spin" /> Transcribing…</p>}
+                  </div>
+                )}
+              </div>
+
+              {/* Start Frame */}
+              <div>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Start Frame</label>
+                <div className="flex gap-2 mb-2">
+                  {(['ai', 'manual', 'none'] as const).map(m => (
+                    <button key={m} onClick={() => setStartFrameMode(m)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
+                      style={{ borderColor: startFrameMode === m ? GOLD : BORDER, background: startFrameMode === m ? `${GOLD}18` : 'transparent', color: startFrameMode === m ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                      {m === 'ai' ? 'AI Generated' : m === 'manual' ? 'Manual' : 'None'}
+                    </button>
+                  ))}
+                </div>
+                {startFrameMode === 'manual' && (
                   <div>
                     <input ref={startFrameRef} type="file" accept="image/*" className="hidden"
                       onChange={e => e.target.files?.[0] && handleFrameUpload('start', e.target.files[0])} />
@@ -4247,9 +4379,9 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                       style={{ borderColor: startFrameUrl ? GOLD + '60' : BORDER, aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
                       {startFrameUrl
                         ? <img src={startFrameUrl} className="w-full h-full object-cover" alt="Start frame" />
-                        : <div className="w-full h-full flex flex-col items-center justify-center gap-1">
-                            <Upload className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                            <span className="text-[10px] text-white/20">Start Frame</span>
+                        : <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4">
+                            <Upload className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                            <span className="text-xs text-white/25">Click to upload start frame image</span>
                           </div>
                       }
                     </button>
@@ -4257,7 +4389,24 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                       <button onClick={() => setStartFrameUrl(null)} className="mt-1 text-[10px] text-white/25 hover:text-white/50 w-full text-center">remove</button>
                     )}
                   </div>
-                  {/* End Frame */}
+                )}
+                {startFrameMode === 'ai' && <p className="text-[10px] text-white/25">AI will generate the opening frame from your brief.</p>}
+                {startFrameMode === 'none' && <p className="text-[10px] text-white/25">Video will be generated without a reference start frame.</p>}
+              </div>
+
+              {/* End Frame */}
+              <div>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">End Frame</label>
+                <div className="flex gap-2 mb-2">
+                  {(['none', 'manual', 'ai'] as const).map(m => (
+                    <button key={m} onClick={() => setEndFrameMode(m)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
+                      style={{ borderColor: endFrameMode === m ? GOLD : BORDER, background: endFrameMode === m ? `${GOLD}18` : 'transparent', color: endFrameMode === m ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                      {m === 'ai' ? 'AI Generated' : m === 'manual' ? 'Manual' : 'None'}
+                    </button>
+                  ))}
+                </div>
+                {endFrameMode === 'manual' && (
                   <div>
                     <input ref={endFrameRef} type="file" accept="image/*" className="hidden"
                       onChange={e => e.target.files?.[0] && handleFrameUpload('end', e.target.files[0])} />
@@ -4266,9 +4415,9 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                       style={{ borderColor: endFrameUrl ? GOLD + '60' : BORDER, aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
                       {endFrameUrl
                         ? <img src={endFrameUrl} className="w-full h-full object-cover" alt="End frame" />
-                        : <div className="w-full h-full flex flex-col items-center justify-center gap-1">
-                            <Upload className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                            <span className="text-[10px] text-white/20">End Frame</span>
+                        : <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4">
+                            <Upload className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                            <span className="text-xs text-white/25">Click to upload end frame image</span>
                           </div>
                       }
                     </button>
@@ -4276,14 +4425,14 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                       <button onClick={() => setEndFrameUrl(null)} className="mt-1 text-[10px] text-white/25 hover:text-white/50 w-full text-center">remove</button>
                     )}
                   </div>
-                </div>
-                <p className="text-[10px] text-white/20 mt-1.5">Upload images to control how the video starts and ends</p>
+                )}
+                {endFrameMode === 'ai' && <p className="text-[10px] text-white/25">AI will generate the closing frame from your brief.</p>}
               </div>
 
-              <button onClick={handleGeneratePrompts} disabled={generatingPrompts || !brief.trim()}
+              <button onClick={handleGeneratePrompts} disabled={generatingPrompts || (!brief.trim() && transcriptMode === 'none')}
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
-                {generatingPrompts ? <><Loader className="w-4 h-4 animate-spin" /> Generating…</> : <><Wand2 className="w-4 h-4" /> Generate Video</>}
+                {generatingPrompts ? <><Loader className="w-4 h-4 animate-spin" /> {transcribing ? 'Transcribing…' : 'Generating…'}</> : <><Wand2 className="w-4 h-4" /> Generate Video Brief</>}
               </button>
             </div>
           )}
@@ -4291,29 +4440,37 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
           {step === 'prompts' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white/30 uppercase tracking-wider">Scene Prompts</span>
-                <div className="flex gap-3">
-                  <button onClick={() => setPrompts(prev => prev.map(p => ({ ...p, selected: true })))} className="text-xs font-bold" style={{ color: GOLD_L }}>All</button>
-                  <button onClick={() => setPrompts(prev => prev.map(p => ({ ...p, selected: false })))} className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.3)' }}>None</button>
+                <span className="text-xs font-bold text-white/30 uppercase tracking-wider">Review & Edit Prompt</span>
+                <button onClick={() => setStep('brief')} className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.3)' }}>← Back</button>
+              </div>
+              <p className="text-[11px] text-white/40 leading-relaxed">Edit the AI-generated prompt before processing. This controls the visual style and content of your video.</p>
+              <textarea
+                value={editablePrompt}
+                onChange={e => setEditablePrompt(e.target.value)}
+                rows={5}
+                className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                style={{ borderColor: `${GOLD}40` }}
+              />
+              {videoTranscript && (
+                <div className="p-3 rounded-xl border" style={{ borderColor: 'rgba(74,222,128,0.2)', background: 'rgba(74,222,128,0.04)' }}>
+                  <p className="text-[10px] font-bold text-green-400/70 uppercase tracking-wider mb-1">✓ Transcript attached</p>
+                  <p className="text-[10px] text-white/35 line-clamp-3">{videoTranscript.slice(0, 200)}…</p>
+                </div>
+              )}
+              <div className="grid grid-cols-2 gap-2 text-[10px] text-white/35">
+                <div className="p-2 rounded-lg border" style={{ borderColor: BORDER }}>
+                  <span className="font-bold text-white/25">Start frame: </span>
+                  {startFrameMode === 'manual' && startFrameUrl ? '✓ Image uploaded' : startFrameMode === 'ai' ? 'AI will generate' : 'None'}
+                </div>
+                <div className="p-2 rounded-lg border" style={{ borderColor: BORDER }}>
+                  <span className="font-bold text-white/25">End frame: </span>
+                  {endFrameMode === 'manual' && endFrameUrl ? '✓ Image uploaded' : endFrameMode === 'ai' ? 'AI will generate' : 'None'}
                 </div>
               </div>
-              <div className="space-y-2">
-                {prompts.map(p => (
-                  <div key={p.id} className="flex items-start gap-3 p-3 rounded-xl border"
-                    style={{ borderColor: p.selected ? `${GOLD}40` : BORDER, background: p.selected ? `${GOLD}06` : 'rgba(0,0,0,0.2)' }}>
-                    <button onClick={() => setPrompts(prev => prev.map(x => x.id === p.id ? { ...x, selected: !x.selected } : x))}
-                      className="w-4 h-4 rounded border flex items-center justify-center shrink-0 mt-0.5"
-                      style={{ borderColor: p.selected ? GOLD : BORDER, background: p.selected ? GOLD : 'transparent' }}>
-                      {p.selected && <CheckCircle2 className="w-3 h-3 text-black" />}
-                    </button>
-                    <p className="text-xs text-white/70 leading-relaxed">{p.text}</p>
-                  </div>
-                ))}
-              </div>
-              <button onClick={handleGenerateFrames} disabled={prompts.filter(p => p.selected).length === 0}
+              <button onClick={handleConfirmAndGenerate} disabled={!editablePrompt.trim()}
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
-                <Image className="w-4 h-4" /> Generate {prompts.filter(p => p.selected).length} Frame{prompts.filter(p => p.selected).length !== 1 ? 's' : ''}
+                <CheckCircle2 className="w-4 h-4" /> Confirm & Start Processing
               </button>
             </div>
           )}
@@ -4385,7 +4542,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                     {vid.status === 'done' && vid.videoUrl && (
                       <div className="p-3 space-y-2">
                         {/* Action buttons */}
-                        <div className="grid grid-cols-3 gap-2">
+                        <div className={`grid gap-2 ${videoTranscript ? 'grid-cols-3' : 'grid-cols-1'}`}>
                           <button
                             onClick={() => onUseVideo?.(vid.videoUrl!)}
                             className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:brightness-110"
@@ -4393,26 +4550,34 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                             <Send className="w-3.5 h-3.5" />
                             Post to Social
                           </button>
-                          <button
-                            onClick={() => onUseVideo?.('repurpose:' + vid.videoUrl!)}
-                            className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:bg-white/8"
-                            style={{ border: `1px solid ${GOLD}40`, color: GOLD_L }}>
-                            <Sparkles className="w-3.5 h-3.5" />
-                            Text Posts
-                          </button>
-                          <button
-                            onClick={() => onUseVideo?.('ideas:' + vid.videoUrl!)}
-                            className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:bg-white/8"
-                            style={{ border: `1px solid rgba(167,139,250,0.4)`, color: '#a78bfa' }}>
-                            <Wand2 className="w-3.5 h-3.5" />
-                            Content Ideas
-                          </button>
+                          {videoTranscript && (
+                            <>
+                              <button
+                                onClick={() => onUseVideo?.('repurpose:' + vid.videoUrl!)}
+                                className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:bg-white/8"
+                                style={{ border: `1px solid ${GOLD}40`, color: GOLD_L }}>
+                                <Sparkles className="w-3.5 h-3.5" />
+                                Text Posts
+                              </button>
+                              <button
+                                onClick={() => onUseVideo?.('ideas:' + vid.videoUrl!)}
+                                className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:bg-white/8"
+                                style={{ border: `1px solid rgba(167,139,250,0.4)`, color: '#a78bfa' }}>
+                                <Wand2 className="w-3.5 h-3.5" />
+                                AI Strategist
+                              </button>
+                            </>
+                          )}
                         </div>
-                        <a href={vid.videoUrl} download target="_blank" rel="noreferrer"
-                          className="flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-[10px] font-semibold transition hover:bg-white/5"
-                          style={{ color: 'rgba(255,255,255,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
-                          <Download className="w-3 h-3" /> Download Video
-                        </a>
+                        {!videoTranscript && (
+                          <p className="text-[10px] text-white/25 text-center px-2">Add a transcript in the brief step to unlock text post & strategy repurposing.</p>
+                        )}
+                        <button
+                          onClick={() => handleDownloadVideo(vid.videoUrl!)}
+                          className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition hover:bg-white/8"
+                          style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.7)' }}>
+                          <Download className="w-3.5 h-3.5" /> Download to Device
+                        </button>
                       </div>
                     )}
                   </div>
@@ -4440,9 +4605,9 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                   <p className="text-xs text-white/50 line-clamp-2 mb-1">{item.brief}</p>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-white/25">{new Date(item.createdAt).toLocaleDateString()}</span>
-                    <a href={item.videoUrl} download target="_blank" rel="noreferrer" className="flex items-center gap-1 text-[10px] font-bold" style={{ color: GOLD }}>
+                    <button onClick={() => handleDownloadVideo(item.videoUrl)} className="flex items-center gap-1 text-[10px] font-bold" style={{ color: GOLD }}>
                       <Download className="w-3 h-3" /> Download
-                    </a>
+                    </button>
                   </div>
                 </div>
               ))
@@ -5182,7 +5347,7 @@ export function MediaDistributionPage() {
             onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
 
-            {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} />}
+            {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
             {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} onUseVideo={(url) => {
@@ -5217,8 +5382,8 @@ export function MediaDistributionPage() {
             </div>
             <div className="md:hidden px-4 py-4 space-y-3">
               {([
-                {key:"starter",name:"Starter",price:"$47",highlight:false,features:["30 posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"]},
-                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","AI content ideas"]},
+                {key:"starter",name:"Creator",price:"$47",highlight:false,features:["30 posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"]},
+                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","AI content strategy"]},
                 {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","3 client workspaces","Priority support + call"]},
               ] as const).map(plan=>{
                 const isCurrent=subscription?.status==="active"&&subscription?.plan===plan.key;
@@ -5257,7 +5422,7 @@ export function MediaDistributionPage() {
             <div className="hidden md:block overflow-x-auto">
               <div className="grid grid-cols-4 min-w-[580px]">
                 <div className="px-5 py-5 border-b border-r" style={{borderColor:"rgba(255,255,255,0.07)"}}/>
-                {([{key:"starter",name:"Starter",price:"$47",highlight:false},{key:"viral",name:"Viral",price:"$97",highlight:true},{key:"agency",name:"Agency",price:"$297",highlight:false}] as const).map((plan,i)=>{
+                {([{key:"starter",name:"Creator",price:"$47",highlight:false},{key:"viral",name:"Viral",price:"$97",highlight:true},{key:"agency",name:"Agency",price:"$297",highlight:false}] as const).map((plan,i)=>{
                   const isCurrent=subscription?.status==="active"&&subscription?.plan===plan.key;
                   const isLoading=checkoutLoading===plan.key;
                   return(
@@ -5287,7 +5452,7 @@ export function MediaDistributionPage() {
                 ["Social Media Accounts",["3","All","All"]],
                 ["AI Video / mo",["60s","180s","540s"]],
                 ["Content Repurposing",[false,true,true]],
-                ["AI Content Ideas",[false,true,true]],
+                ["AI Strategist",[false,true,true]],
                 ["Client Workspaces",["1","1","3 (+$49/ea)"]],
                 ["Priority Support",[false,false,true]],
                 ["Onboarding Call",[false,false,true]],
