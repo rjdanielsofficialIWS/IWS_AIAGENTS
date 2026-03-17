@@ -4989,6 +4989,13 @@ export function MediaDistributionPage() {
         }
         .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
         .lg\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
+        /* Platform icon strip visibility */
+        .mm-icons-mobile  { display: block; }
+        .mm-icons-desktop { display: none;  }
+        @media (min-width: 900px) {
+          .mm-icons-mobile  { display: none;  }
+          .mm-icons-desktop { display: block; }
+        }
 
       `}</style>
 
@@ -5023,12 +5030,12 @@ export function MediaDistributionPage() {
 
       {/* ── STATE 1: Logged out — hero ── */}
       {!currentUser ? (
-        <div className="flex-1 overflow-hidden" style={{ position: 'relative', display: 'flex', alignItems: 'stretch' }}>
+        <div className="flex-1" style={{ position: 'relative', display: 'flex', alignItems: 'stretch', overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' }}>
           {/* Background glows */}
           <div style={{ position: 'absolute', width: 640, height: 640, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}07 0%, transparent 65%)`, top: '50%', left: '30%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
           <div style={{ position: 'absolute', width: 300, height: 300, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}05 0%, transparent 65%)`, top: '10%', right: '8%', pointerEvents: 'none', animation: 'mmPulse 9s ease-in-out 2s infinite' }} />
 
-          <div className="mm-hero-layout relative" style={{ animation: 'mmFadeUp 0.5s ease both', width: '100%', overflowY: 'auto' }}>
+          <div className="mm-hero-layout relative" style={{ animation: 'mmFadeUp 0.5s ease both', width: '100%' }}>
 
             {/* ── Left: branding + CTAs ── */}
             <div className="mm-hero-left">
@@ -5054,19 +5061,19 @@ export function MediaDistributionPage() {
 
 
               {/* Stats */}
-              <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden', width: '100%', maxWidth: 400 }}>
-                {[{ v: '12', l: 'Platforms' }, { v: '30-Day', l: 'Calendars' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
-                  <div key={s.l} style={{ flex: 1, padding: '12px 6px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-                    <div style={{ color: GOLD, fontWeight: 900, fontSize: 16, letterSpacing: '-0.02em' }}>{s.v}</div>
-                    <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 9, marginTop: 2 }}>{s.l}</div>
+              <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden', width: '100%', maxWidth: 400 }}>
+                {[{ v: '12', l: 'Platforms' }, { v: '30 Day', l: 'Calendars' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
+                  <div key={s.l} style={{ flex: 1, padding: '14px 8px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                    <div style={{ color: GOLD, fontWeight: 900, fontSize: 20, letterSpacing: '-0.02em' }}>{s.v}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, marginTop: 3 }}>{s.l}</div>
                   </div>
                 ))}
               </div>
 
 
 
-              {/* Platform icons — single instance, above CTAs, shows on both mobile and desktop */}
-              <div style={{ marginBottom: 16, width: '100%', maxWidth: 400 }}>
+              {/* Platform icons — MOBILE ONLY (hidden on desktop, desktop shows in right col) */}
+              <div className="mm-icons-mobile" style={{ marginBottom: 16, width: '100%', maxWidth: 400 }}>
                 <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Publish to 12 platforms</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky','pinterest','gmb','reddit','telegram'].map(pid => (
@@ -5110,6 +5117,20 @@ export function MediaDistributionPage() {
 
             {/* ── Right: feature cards ── */}
             <div className="mm-hero-right" style={{ marginTop: '32px' }}>
+
+              {/* Platform icons — DESKTOP ONLY (hidden on mobile, mobile shows in left col) */}
+              <div className="mm-icons-desktop" style={{ marginBottom: 20, width: '100%' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Publish to 12 platforms</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky','pinterest','gmb','reddit','telegram'].map(pid => (
+                    <div key={pid} title={pid.charAt(0).toUpperCase()+pid.slice(1)} style={{ opacity: 0.85, transition: 'opacity 0.15s', cursor: 'default' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}>
+                      <PlatformIcon id={pid} size="sm" />
+                    </div>
+                  ))}
+                </div>
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, width: '100%' }}>
                 {[
