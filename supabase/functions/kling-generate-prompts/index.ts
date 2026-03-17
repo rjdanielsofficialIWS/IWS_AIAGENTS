@@ -123,6 +123,17 @@ Deno.serve(async (req: Request) => {
     });
   }
 
+  // Require active subscription for video prompt generation
+  const { data: planSub } = await supabase.auth.getUser(); // user already verified above
+  const { data: subRow } = await supabase.from('subscriptions').select('plan,status,stripe_customer_id').eq('supabase_user_id', user.id).maybeSingle();
+  const isPromo = subRow?.stripe_customer_id?.startsWith('promo_');
+  const isActive = (subRow?.status === 'active' || isPromo) && !!subRow?.plan;
+  if (!isActive) {
+    return new Response(JSON.stringify({ error: 'upgrade_required', message: 'AI video generation requires an active plan.' }), {
+      status: 403, headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+
   try {
     const enhanced = await enhanceBrief(brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent, fontColor);
     return new Response(JSON.stringify({ prompts: [enhanced] }), {

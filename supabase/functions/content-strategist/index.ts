@@ -102,7 +102,19 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: authErr } = await supabase.auth.getUser(auth.replace("Bearer ", "").trim());
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
-  // Plan check temporarily disabled
+  // Plan check
+  const { data: sub } = await supabase.from("subscriptions").select("plan,status,stripe_customer_id").eq("supabase_user_id", user.id).maybeSingle();
+  const isPromo = sub?.stripe_customer_id?.startsWith("promo_");
+  const isActive = (sub?.status === "active" || isPromo) && !!sub?.plan;
+  const plan = isActive ? sub!.plan.toLowerCase() : "free";
+
+  const PLAN_FEATURES: Record<string, { repurpose: boolean; strategist: boolean; trends: boolean; talking_points: boolean; strategies_per_month: number }> = {
+    free:    { repurpose: false, strategist: false, trends: false, talking_points: false, strategies_per_month: 0 },
+    starter: { repurpose: false, strategist: false, trends: false, talking_points: false, strategies_per_month: 0 },
+    viral:   { repurpose: true,  strategist: true,  trends: true,  talking_points: true,  strategies_per_month: 4 },
+    agency:  { repurpose: true,  strategist: true,  trends: true,  talking_points: true,  strategies_per_month: -1 },
+  };
+  const pf = PLAN_FEATURES[plan] ?? PLAN_FEATURES.free;
 
   if (!ANTHROPIC_KEY) return json({ error: "Server configuration error" }, 500);
 
@@ -111,8 +123,29 @@ Deno.serve(async (req: Request) => {
 
   const { mode } = body;
 
+  // Mode-level plan gate
+  if ((mode === "repurpose_from_video") && !pf.repurpose)
+    return json({ error: "upgrade_required", message: "Content repurposing is available on the Viral and Agency plans.", plan }, 403);
+  if ((mode === "trends_research") && !pf.trends)
+    return json({ error: "upgrade_required", message: "Trend intelligence is available on the Viral and Agency plans.", plan }, 403);
+  if ((mode === "talking_points") && !pf.talking_points)
+    return json({ error: "upgrade_required", message: "AI talking points are available on the Viral and Agency plans.", plan }, 403);
+  if ((mode === "full_strategy") && !pf.strategist)
+    return json({ error: "upgrade_required", message: "AI Content Strategist is available on the Viral and Agency plans.", plan }, 403);
+
   try {
     if (mode === "full_strategy") {
+      // Strategy monthly limit check
+      if (pf.strategies_per_month !== -1) {
+        const period = getPeriod();
+        let strategiesUsed = 0;
+        try {
+          const { data: su } = await supabase.from("usage_tracking").select("strategies_used").eq("supabase_user_id", user.id).eq("period", period).maybeSingle();
+          strategiesUsed = su?.strategies_used ?? 0;
+        } catch { /* column not yet migrated — skip limit */ }
+        if (strategiesUsed >= pf.strategies_per_month)
+          return json({ error: "limit_reached", feature: "strategies", used: strategiesUsed, limit: pf.strategies_per_month, plan, message: `You've used all ${pf.strategies_per_month} content strategies this month.` }, 429);
+      }
       const { niche, offer, audience, platforms = [], frequency = "5x/week", tone = "", goals = [], currentStage = "growing" } = body;
       if (!niche || !audience) return json({ error: "niche and audience are required" }, 400);
 
@@ -159,6 +192,16 @@ REQUIREMENTS: exactly 5 quick_wins, each under 20 words, specific and actionable
       const calendarData = safeParse(calendarRaw);
       const hooksData    = safeParse(hooksRaw);
       const strategyData = safeParse(strategyRaw);
+
+      // Increment strategies_used counter (graceful — column may not exist yet)
+      try {
+        const period = getPeriod();
+        await supabase.from("usage_tracking").upsert(
+          { supabase_user_id: user.id, period, ai_analyses_used: 0, posts_scheduled: 0, video_seconds_used: 0, video_seconds_bonus: 0, caption_credits_bonus: 0, strategies_used: 0 },
+          { onConflict: "supabase_user_id,period", ignoreDuplicates: true }
+        );
+        await supabase.rpc("increment_usage", { p_user_id: user.id, p_period: period, p_field: "strategies_used" });
+      } catch { /* column not yet migrated — silent */ }
 
       return json({
         calendar: calendarData,

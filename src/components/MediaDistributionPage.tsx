@@ -2240,7 +2240,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
         }),
       });
       const data = await res.json();
-      if (data.error === 'upgrade_required') { setTrendsError('upgrade_required'); return; }
+      if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
       if (!res.ok) throw new Error(data.error || 'Trends research failed');
       setTrendsResults(data);
     } catch (e: any) { setTrendsError(e.message || 'Something went wrong'); }
@@ -2263,7 +2263,8 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
         body: JSON.stringify({ mode: 'full_strategy', ...brief }),
       });
       const data = await res.json();
-      if (data.error === 'upgrade_required') { setError('upgrade_required'); setLoading(false); return; }
+      if (data.error === 'upgrade_required') { onUpgrade?.(); setLoading(false); return; }
+      if (data.error === 'limit_reached') { setError(data.message || 'Monthly strategy limit reached. Upgrade to Agency for unlimited strategies.'); setLoading(false); return; }
       if (!res.ok) throw new Error(data.error || 'Generation failed');
       setResults(data);
       setTab('trends');
@@ -2284,7 +2285,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
         body: JSON.stringify({ mode: 'repurpose_from_video', transcript, tone: videoTone }),
       });
       const data = await res.json();
-      if (data.error === 'upgrade_required') { setVideoError('upgrade_required'); return; }
+      if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
       if (!res.ok) throw new Error(data.error || 'Failed');
       setVideoIdeas(data.ideas);
     } catch (e: any) { setVideoError(e.message || 'Something went wrong'); }
@@ -3129,7 +3130,11 @@ function AddPlannerItemModal({
   );
 }
 
-function PlannerPanel({ userId }: { userId: string | null }) {
+function PlannerPanel({ userId, subscription, onUpgrade }: {
+  userId: string | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string } | null;
+  onUpgrade: () => void;
+}) {
   const [items, setItems]               = useState<PlannerItem[]>([]);
   const [loading, setLoading]           = useState(false);
   const [weekStart, setWeekStart]       = useState<Date>(() => {
@@ -3201,6 +3206,10 @@ function PlannerPanel({ userId }: { userId: string | null }) {
 
   const generateTalkingPoints = async (itemId: string, title: string) => {
     if (!userId) return;
+    const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
+    const isActive = subscription?.status === 'active' || isPromo;
+    const plan = isActive ? (subscription?.plan?.toLowerCase() ?? 'free') : 'free';
+    if (!isActive || plan === 'starter') { onUpgrade(); return; }
     setTpLoadingId(itemId);
     setTpErrors(prev => { const n = { ...prev }; delete n[itemId]; return n; });
     try {
@@ -3422,7 +3431,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
               <button onClick={() => setRepurposeOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-5">
-              <InlineContentStrategist userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => setPricingOpen(true)} />
+              <InlineContentStrategist userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={onUpgrade} />
             </div>
           </div>
         </div>
@@ -4036,7 +4045,12 @@ type GeneratedFrame = { id: string; promptText: string; imageUrl: string | null;
 type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; };
 type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl: string; thumbnailUrl?: string; };
 
-function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVideo?: (videoUrl: string) => void }) {
+function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
+  userId: string | null;
+  onUseVideo?: (videoUrl: string) => void;
+  subscription: { plan: string; status: string; stripe_customer_id?: string } | null;
+  onUpgrade: () => void;
+}) {
   const [step, setStep]               = React.useState<VideoStudioStep>('brief');
   // Single combined frame mode for start + end
   const [frameMode, setFrameMode] = React.useState<'none' | 'manual' | 'ai'>('none');
@@ -4149,6 +4163,9 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
   const handleGeneratePrompts = async () => {
     if (!brief.trim()) { setGlobalError('Enter a video brief first'); return; }
     if (!userId) { setGlobalError('Sign in to generate AI video'); return; }
+    const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
+    const isActive = subscription?.status === 'active' || isPromo;
+    if (!isActive) { onUpgrade(); return; }
     setGeneratingPrompts(true); setGeneratingAssets(false); setGlobalError(null);
 
     // Resolve manual transcript immediately (no async needed)
@@ -4315,6 +4332,8 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
           body: JSON.stringify({ prompt: promptText, duration, aspectRatio, quality: 'high', textToVideo: true }),
         });
         const data = await res.json();
+        if (data.error === 'upgrade_required') { setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: 'Plan required' } : v)); setStep('brief'); onUpgrade(); return; }
+        if (data.error === 'limit_reached') { setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: data.message || 'Video limit reached' } : v)); setStep('brief'); setGlobalError(data.message || 'Video limit reached this month. Add more seconds or upgrade your plan.'); return; }
         if (!res.ok) throw new Error(data.error || 'Failed to generate video');
         if (data.requestId) {
           setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.requestId, status: 'polling' } : v));
@@ -4341,6 +4360,8 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
         body: JSON.stringify(falBody),
       });
       const data = await res.json();
+      if (data.error === 'upgrade_required') { setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: 'Plan required' } : v)); setStep('brief'); onUpgrade(); return; }
+      if (data.error === 'limit_reached') { setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: data.message || 'Video limit reached' } : v)); setStep('brief'); setGlobalError(data.message || 'Video limit reached this month.'); return; }
       if (!res.ok) throw new Error(data.error || 'Failed to generate video');
       if (data.requestId) {
         setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.requestId, status: 'polling' } : v));
@@ -5222,6 +5243,135 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
   );
 }
 
+// ─── Credits Widget ───────────────────────────────────────────────────────────
+
+function CreditsWidget({
+  usage, subscription, open, onOpen, onClose, onUpgrade, onAddon, onManage,
+}: {
+  usage: { plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string } | null;
+  open: boolean;
+  onOpen: () => void;
+  onClose: () => void;
+  onUpgrade: () => void;
+  onAddon: (key: string) => void;
+  onManage: () => void;
+}) {
+  const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
+  const isActive = subscription?.status === 'active' || isPromo;
+  const planLabel = isActive ? (subscription?.plan ?? 'free') : 'No plan';
+
+  const Bar = ({ used, limit, color = GOLD }: { used: number; limit: number; color?: string }) => {
+    const pct = limit <= 0 ? 0 : limit === -1 ? 100 : Math.min(100, Math.round((used / limit) * 100));
+    const isUnlimited = limit === -1;
+    const isFull = !isUnlimited && pct >= 100;
+    return (
+      <div className="h-1.5 w-full rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+        <div className="h-full rounded-full transition-all" style={{ width: isUnlimited ? '100%' : `${pct}%`, background: isFull ? '#ef4444' : color }} />
+      </div>
+    );
+  };
+
+  const Row = ({ label, used, limit, addonKey, addonLabel }: { label: string; used: number; limit: number; addonKey?: string; addonLabel?: string }) => {
+    const isUnlimited = limit === -1;
+    const isFull = !isUnlimited && limit > 0 && used >= limit;
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center justify-between text-xs">
+          <span className="text-white/50">{label}</span>
+          <div className="flex items-center gap-2">
+            <span className={`font-bold ${isFull ? 'text-red-400' : 'text-white/80'}`}>
+              {isUnlimited ? `${used} / ∞` : limit === 0 ? 'Not included' : `${used} / ${limit}`}
+            </span>
+            {addonKey && isActive && !isUnlimited && limit > 0 && (
+              <button onClick={() => onAddon(addonKey)}
+                className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                style={{ background: `${GOLD}18`, color: GOLD_L }}>
+                +More
+              </button>
+            )}
+          </div>
+        </div>
+        {limit !== 0 && <Bar used={used} limit={limit} />}
+      </div>
+    );
+  };
+
+  return (
+    <>
+      {/* Floating button */}
+      <button onClick={onOpen}
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold shadow-lg transition hover:brightness-110"
+        style={{ background: GOLD, color: '#000' }}>
+        <DollarSign className="w-3.5 h-3.5" />
+        <span className="hidden sm:inline">Credits</span>
+      </button>
+
+      {/* Modal */}
+      {open && (
+        <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center md:p-4"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}
+          onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
+          <div className="w-full md:max-w-sm rounded-t-2xl md:rounded-2xl border flex flex-col"
+            style={{ background: '#111', borderColor: 'rgba(255,255,255,0.1)', maxHeight: '90dvh', overflowY: 'auto' }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <div>
+                <div className="text-sm font-black text-white">Your Credits</div>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full capitalize"
+                    style={{ background: isActive ? `${GOLD}20` : 'rgba(255,255,255,0.06)', color: isActive ? GOLD_L : 'rgba(255,255,255,0.4)', border: `1px solid ${isActive ? GOLD + '40' : 'rgba(255,255,255,0.1)'}` }}>
+                    {planLabel} plan
+                  </span>
+                  {isActive && <span className="text-[10px] text-green-400/70">● Active</span>}
+                </div>
+              </div>
+              <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Usage rows */}
+            <div className="px-5 py-4 space-y-4">
+              {!isActive ? (
+                <div className="text-center py-4 space-y-3">
+                  <p className="text-sm text-white/50">You don't have an active plan.</p>
+                  <p className="text-xs text-white/30">Subscribe to unlock AI captions, video generation, content strategy, and more.</p>
+                  <button onClick={() => { onClose(); onUpgrade(); }}
+                    className="w-full py-2.5 rounded-xl text-sm font-black transition hover:brightness-110"
+                    style={{ background: GOLD, color: '#000' }}>
+                    View Plans
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Row label="AI Captions" used={usage?.captions.used ?? 0} limit={usage?.captions.limit ?? 0} addonKey="captions_25" addonLabel="+25 Captions" />
+                  <Row label="AI Video" used={usage?.video.used ?? 0} limit={usage?.video.limit ?? 0} addonKey="video_60s" addonLabel="+60s Video" />
+                  <Row label="Content Strategies" used={usage?.strategies.used ?? 0} limit={usage?.strategies.limit ?? 0} />
+                  <Row label="Posts Scheduled" used={usage?.posts.used ?? 0} limit={usage?.posts.limit ?? 0} />
+                  <p className="text-[10px] text-white/25 text-center">Resets at the start of each billing period</p>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => { onClose(); onUpgrade(); }}
+                      className="flex-1 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
+                      style={{ background: GOLD, color: '#000' }}>
+                      Upgrade Plan
+                    </button>
+                    <button onClick={() => { onClose(); onManage(); }}
+                      className="flex-1 py-2 rounded-xl text-xs font-bold border transition hover:bg-white/5"
+                      style={{ borderColor: 'rgba(255,255,255,0.12)', color: 'rgba(255,255,255,0.5)' }}>
+                      Manage Billing
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export function MediaDistributionPage() {
@@ -5231,6 +5381,8 @@ export function MediaDistributionPage() {
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
   const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string } | null>(null);
+  const [globalUsage, setGlobalUsage]           = useState<{ plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null>(null);
+  const [creditsOpen, setCreditsOpen]           = useState(false);
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
   const [addonModalOpen, setAddonModalOpen] = useState(false);
@@ -5271,21 +5423,51 @@ export function MediaDistributionPage() {
   useEffect(() => {
     if (!currentUserId) return;
     loadIntegrations();
-    // Load subscription
+    // Load subscription + global usage
     (async () => {
       try {
         const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
       } catch (_) {}
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.ok) {
+          const d = await res.json();
+          setGlobalUsage({
+            plan: d.plan ?? 'free',
+            isActive: d.isActive ?? false,
+            captions: { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 },
+            video:    { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 },
+            strategies: { used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 },
+            posts:    { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 },
+          });
+        }
+      } catch (_) {}
     })();
-    // Handle ?checkout=success return
+    // Handle ?checkout=success or ?addon_success= return — refresh subscription + usage
     const params = new URLSearchParams(window.location.search);
+    const refreshAfterPurchase = async () => {
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+      if (data) setSubscription(data);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${session?.access_token}` } });
+        if (res.ok) {
+          const d = await res.json();
+          setGlobalUsage({ plan: d.plan ?? 'free', isActive: d.isActive ?? false, captions: { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 }, video: { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 }, strategies: { used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 }, posts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 } });
+        }
+      } catch {}
+    };
     if (params.get('checkout') === 'success') {
       window.history.replaceState({}, '', window.location.pathname);
-      setTimeout(async () => {
-        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
-        if (data) setSubscription(data);
-      }, 2500);
+      setTimeout(refreshAfterPurchase, 2500);
+    }
+    if (params.get('addon_success')) {
+      window.history.replaceState({}, '', window.location.pathname);
+      setTimeout(refreshAfterPurchase, 3000);
     }
     // Handle ?ref= referral code — record it when user is logged in
     const refCode = params.get('ref') || localStorage.getItem('mm_ref_code');
@@ -5736,13 +5918,13 @@ export function MediaDistributionPage() {
           )}
           <div className="flex flex-1 overflow-hidden min-h-0">
           <Sidebar view={view} setView={setView} integrations={integrations}
-            onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)} />
+            onOpenConnect={() => { const isPromo = subscription?.stripe_customer_id?.startsWith('promo_'); (subscription?.status === 'active' || isPromo) ? setConnectModalOpen(true) : setPricingOpen(true); }} />
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
 
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
-            {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} />}
-            {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} onUseVideo={(url) => {
+            {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} />}
+            {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
               if (url.startsWith('repurpose:')) {
                 setVideoHandoff({ url: url.replace('repurpose:', ''), mode: 'text' });
               } else if (url.startsWith('ideas:')) {
@@ -5755,6 +5937,18 @@ export function MediaDistributionPage() {
             {view === 'partner'  && <PartnerDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
           </main>
           </div>
+
+          {/* Credits Widget — only shown when logged in */}
+          <CreditsWidget
+            usage={globalUsage}
+            subscription={subscription}
+            open={creditsOpen}
+            onOpen={() => setCreditsOpen(true)}
+            onClose={() => setCreditsOpen(false)}
+            onUpgrade={() => { setCreditsOpen(false); setPricingOpen(true); }}
+            onAddon={handleAddonCheckout}
+            onManage={handlePortal}
+          />
         </div>
       )}
 
