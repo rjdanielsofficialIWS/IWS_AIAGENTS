@@ -18,9 +18,11 @@ Deno.serve(async(req)=>{
   let body;try{body=await req.json();}catch{return respond(400,{error:"Invalid JSON"});}
   if(!userId)userId=body.userId??"";
   if(!userId)return respond(401,{error:"Not authenticated."});
-  const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id").eq("supabase_user_id",userId).maybeSingle();
+  const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id,current_period_end").eq("supabase_user_id",userId).maybeSingle();
   const isPromo=sub?.stripe_customer_id?.startsWith("promo_");
-  const plan=((sub?.status==="active"||isPromo)&&sub?.plan)?sub.plan.toLowerCase():"free";
+  const isTrialing=sub?.status==="trialing"&&!!sub?.current_period_end&&new Date(sub.current_period_end)>new Date();
+  const isActive=(sub?.status==="active"||isPromo||isTrialing)&&!!sub?.plan;
+  const plan=isActive?sub!.plan.toLowerCase():"free";
   if(plan==="free")return respond(403,{error:"upgrade_required",message:"You need an active subscription to post.",plan});
   const limits=PLAN_LIMITS[plan]??{posts:0,platforms:0};
   const period=getPeriod();

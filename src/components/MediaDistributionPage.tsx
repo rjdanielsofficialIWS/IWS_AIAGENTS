@@ -5945,6 +5945,15 @@ export function MediaDistributionPage() {
       }
       const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUser.id).maybeSingle();
       if (data) setSubscription(data);
+      // Refresh usage so CreditsWidget reflects the new active trial
+      try {
+        const { data: { session: s2 } } = await supabase.auth.getSession();
+        const ur = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${s2?.access_token}` } });
+        if (ur.ok) {
+          const ud = await ur.json();
+          setGlobalUsage({ plan: ud.plan ?? 'free', isActive: ud.isActive ?? false, captions: { used: ud.usage?.ai_captions_used ?? 0, limit: ud.limits?.ai_captions_per_month ?? 0 }, video: { used: ud.usage?.video_seconds_used ?? 0, limit: ud.limits?.video_seconds_per_month ?? 0 }, strategies: { used: ud.usage?.strategies_used ?? 0, limit: ud.limits?.strategies_per_month ?? 0 }, posts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.posts_per_month ?? 0 } });
+        }
+      } catch (_) {}
       setPricingOpen(false);
     } catch { alert('Something went wrong. Please try again.'); }
     finally { setTrialLoading(null); }
@@ -6271,13 +6280,19 @@ export function MediaDistributionPage() {
               </div>
             );
             if (_isTrialing) return (
-              <div style={{ background: `linear-gradient(90deg,${GOLD_D}22,${GOLD}18,${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>🎉 Free trial active</span>
-                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>—</span>
-                <span style={{ fontSize: 12, color: GOLD_L, fontWeight: 700 }}>{_daysLeft} day{_daysLeft !== 1 ? 's' : ''} remaining</span>
-                <button onClick={() => setPricingOpen(true)} style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0 }}>
-                  Subscribe now
-                </button>
+              <div style={{ background: `linear-gradient(90deg,${GOLD_D}22,${GOLD}18,${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '6px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>🎉 Free trial active</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: `${GOLD}25`, color: GOLD_L, border: `1px solid ${GOLD}40`, textTransform: 'capitalize' }}>{subscription?.plan} Plan</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, padding: '3px 10px', borderRadius: 20, background: GOLD, color: '#000' }}>
+                    {_daysLeft}d left
+                  </span>
+                  <button onClick={() => setPricingOpen(true)} style={{ fontSize: 11, fontWeight: 700, color: GOLD_L, background: 'none', border: `1px solid ${GOLD}50`, borderRadius: 8, cursor: 'pointer', padding: '3px 8px', whiteSpace: 'nowrap' }}>
+                    Subscribe →
+                  </button>
+                </div>
               </div>
             );
             if (!_isActive) return (
