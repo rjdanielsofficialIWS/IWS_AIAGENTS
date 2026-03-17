@@ -1306,7 +1306,7 @@ function InlinePostComposer({
     setVideoUpload({ status: 'done', path: '', url: initialVideoUrl, fileName: 'ai-video.mp4', mime: 'video/mp4', size: 0 });
     // Also pre-fill AI caption mode pointed at the video URL
     setCaptionMode('from_description');
-    setAiDescription('AI-generated video — write captions describing this content');
+    setAiDescription('AI-generated video. Write captions describing this content.');
   }, [initialVideoUrl]);
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
@@ -1726,7 +1726,7 @@ function InlinePostComposer({
                     </button>
                   ))}
                 </div>
-                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above — AI will analyze the spoken content to write captions</div>}
+                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above. AI will analyze the spoken content to write captions.</div>}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready. Click Generate below</div>}
                 {captionMode === 'from_description' && (
@@ -2253,7 +2253,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
           <div className="rounded-xl p-4 space-y-1" style={{ background: `${GOLD}08`, border: `1px solid ${GOLD}25` }}>
             <div className="text-sm font-black text-white">AI Content Strategist</div>
             <div className="text-xs text-white/45 leading-relaxed">
-              Tell me about your business and I'll build you a 30-day content calendar, hook library, platform strategy, and follower-to-client system — all tailored to your niche.
+              Tell me about your business and I'll build you a 30-day content calendar, hook library, platform strategy, and follower-to-client system, all tailored to your niche.
             </div>
           </div>
 
@@ -2370,7 +2370,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                 ? <><Loader className="w-4 h-4 animate-spin" /> Building your strategy…</>
                 : <><Sparkles className="w-4 h-4" /> Build My Content Strategy</>}
             </span>
-            {loading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Running 3 AI models in parallel — ~30 seconds</span>}
+            {loading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Running 3 AI models in parallel. About 30 seconds.</span>}
           </button>
         </div>
       )}
@@ -2421,7 +2421,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
               {/* Week 1 Priority */}
               {results.calendar?.week1_priority && (
                 <div className="rounded-xl p-3 border" style={{ borderColor: `${GOLD}40`, background: `${GOLD}08` }}>
-                  <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: GOLD }}>⭐ Week 1 Priority — Day {results.calendar.week1_priority.day}</div>
+                  <div className="text-xs font-bold uppercase tracking-wider mb-1" style={{ color: GOLD }}>⭐ Week 1 Priority: Day {results.calendar.week1_priority.day}</div>
                   <div className="text-xs text-white/60 leading-relaxed">{results.calendar.week1_priority.reason}</div>
                 </div>
               )}
@@ -2648,7 +2648,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
         <div className="space-y-4">
           <div className="rounded-xl p-3" style={{ background: `${GOLD}08`, border: `1px solid ${GOLD}25` }}>
             <div className="text-xs font-bold text-white">🎬 Video Repurposer</div>
-            <div className="text-[10px] text-white/45 mt-0.5 leading-relaxed">Upload a talking video and I'll extract every piece of content from it — clips, hooks, posts, blog angles, and series ideas.</div>
+            <div className="text-[10px] text-white/45 mt-0.5 leading-relaxed">Upload a talking video and I'll extract every piece of content from it: clips, hooks, posts, blog angles, and series ideas.</div>
           </div>
 
           {!videoIdeas ? (
@@ -2688,7 +2688,7 @@ function InlineContentIdeas({ userId, onAddToPlanner }: {
                 <span className="flex items-center gap-2">
                   {videoLoading ? <><Loader className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Sparkles className="w-4 h-4" /> Extract All Content Ideas</>}
                 </span>
-                {videoLoading && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing — up to 30 seconds</span>}
+                {videoLoading && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing. Up to 30 seconds.</span>}
               </button>
             </div>
           ) : (
@@ -3606,7 +3606,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
           <h2 className="text-lg font-black text-white">2 for 20 Partner Program</h2>
         </div>
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
-          Share your link. You earn 20% recurring commission every month they stay subscribed — forever. They get 20% off their first month, automatically applied at checkout.
+          Share your link. You earn 20% recurring commission every month they stay subscribed, forever. They get 20% off their first month, automatically applied at checkout.
         </p>
       </div>
 
@@ -3688,7 +3688,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
         <div className="space-y-3">
           {[
             { step: '1', text: 'Share your link. Anyone who clicks it gets tagged as your referral.' },
-            { step: '2', text: 'They sign up and their 20% first-month discount is applied automatically at checkout — no code entry needed.' },
+            { step: '2', text: 'They sign up and their 20% first-month discount is applied automatically at checkout. No code entry needed.' },
             { step: '3', text: 'You earn 20% of every payment they make, every month, for as long as they stay subscribed.' },
             { step: '4', text: 'Payouts processed monthly via bank transfer or PayPal once you reach the $25 minimum. Commissions are tracked in real time in your dashboard.' },
           ].map(s => (
@@ -4963,6 +4963,18 @@ export function MediaDistributionPage() {
         @keyframes mmFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
         @keyframes mmPulse  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
         @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        .mm-hero-layout { display: flex; flex-direction: column; align-items: center; width: 100%; height: 100%; padding: clamp(28px,5vw,48px) clamp(16px,4vw,48px); }
+        @media (min-width: 900px) {
+          .mm-hero-layout { flex-direction: row; align-items: stretch; gap: 40px; justify-content: center; }
+          .mm-hero-left  { flex: 0 0 360px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; }
+          .mm-hero-right { flex: 1; max-width: 560px; display: flex; flex-direction: column; justify-content: center; }
+          .mm-hero-left .mm-hero-badge, .mm-hero-left .mm-hero-headline, .mm-hero-left .mm-hero-tagline { text-align: left !important; }
+          .mm-hero-left .mm-hero-badge { justify-content: flex-start !important; }
+        }
+        @media (max-width: 899px) {
+          .mm-hero-left  { display: flex; flex-direction: column; align-items: center; text-align: center; width: 100%; }
+          .mm-hero-right { width: 100%; }
+        }
         @media (min-width: 640px) {
           .mm-pricing-backdrop { align-items: center !important; padding: 16px !important; }
           .mm-pricing-sheet { border-radius: 24px !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; max-height: 90vh !important; }
@@ -5002,99 +5014,101 @@ export function MediaDistributionPage() {
 
       {/* ── STATE 1: Logged out — hero ── */}
       {!currentUser ? (
-        <div className="flex-1 overflow-y-auto overflow-x-hidden" style={{ position: 'relative' }}>
+        <div className="flex-1 overflow-hidden" style={{ position: 'relative', display: 'flex', alignItems: 'stretch' }}>
           {/* Background glows */}
-          <div style={{ position: 'absolute', width: 640, height: 640, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}07 0%, transparent 65%)`, top: '40%', left: '50%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
-          <div style={{ position: 'absolute', width: 260, height: 260, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}05 0%, transparent 65%)`, top: '8%', right: '4%', pointerEvents: 'none', animation: 'mmPulse 9s ease-in-out 2s infinite' }} />
+          <div style={{ position: 'absolute', width: 640, height: 640, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}07 0%, transparent 65%)`, top: '50%', left: '30%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
+          <div style={{ position: 'absolute', width: 300, height: 300, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}05 0%, transparent 65%)`, top: '10%', right: '8%', pointerEvents: 'none', animation: 'mmPulse 9s ease-in-out 2s infinite' }} />
 
-          <div className="relative flex flex-col items-center" style={{ padding: 'clamp(36px,7vw,64px) clamp(16px,5vw,32px)', animation: 'mmFadeUp 0.5s ease both', maxWidth: 620, margin: '0 auto' }}>
+          <div className="mm-hero-layout relative" style={{ animation: 'mmFadeUp 0.5s ease both', width: '100%', overflowY: 'auto' }}>
 
-            {/* Logo icon */}
-            <div style={{ width: 64, height: 64, borderRadius: 18, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, boxShadow: `0 16px 48px ${GOLD}40`, flexShrink: 0 }}>
-              <Send size={26} color="#000" />
-            </div>
+            {/* ── Left: branding + CTAs ── */}
+            <div className="mm-hero-left">
+              {/* Logo */}
+              <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18, boxShadow: `0 12px 40px ${GOLD}40`, flexShrink: 0 }}>
+                <Send size={22} color="#000" />
+              </div>
 
-            {/* Live badge */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${GOLD}10`, border: `1px solid ${GOLD}22`, borderRadius: 999, padding: '4px 14px', marginBottom: 18 }}>
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, display: 'inline-block', animation: 'mmPulse 2s ease-in-out infinite' }} />
-              <span style={{ color: GOLD, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em' }}>AI-Powered Content Engine</span>
-            </div>
+              {/* Badge */}
+              <div className="mm-hero-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${GOLD}10`, border: `1px solid ${GOLD}22`, borderRadius: 999, padding: '4px 12px', marginBottom: 16 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, display: 'inline-block', animation: 'mmPulse 2s ease-in-out infinite' }} />
+                <span style={{ color: GOLD, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em' }}>AI-Powered Content Engine</span>
+              </div>
 
-            {/* Headline */}
-            <span className="mm-gold-shimmer" style={{ display: 'block', fontSize: 'clamp(30px, 7vw, 52px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 6, textAlign: 'center' }}>Media Machine</span>
-            <span style={{ display: 'block', fontSize: 10, fontWeight: 600, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 18, textAlign: 'center' }}>By Infinite Wealth Solutions AI</span>
+              {/* Headline */}
+              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontSize: 'clamp(28px, 4vw, 46px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 5 }}>Media Machine</span>
+              <span style={{ display: 'block', fontSize: 9, fontWeight: 600, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 14 }}>By Infinite Wealth Solutions AI</span>
 
-            {/* Tagline */}
-            <p style={{ fontSize: 'clamp(15px, 3vw, 18px)', color: 'rgba(255,255,255,0.72)', marginBottom: 10, lineHeight: 1.5, textAlign: 'center', maxWidth: 440, fontWeight: 600, letterSpacing: '-0.01em' }}>
-              One video. Thirty pieces of content. Every platform.
-            </p>
-            <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.38)', margin: '0 0 38px', lineHeight: 1.75, textAlign: 'center', maxWidth: 420 }}>
-              Stop posting once and hoping for the best. MediaMachine turns a single video into a complete content system — captions written, platforms scheduled, strategy built. All on autopilot.
-            </p>
-
-            {/* Feature cards grid */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, width: '100%', marginBottom: 36 }}>
-              {[
-                { icon: <Video size={15} />,        title: 'AI Video Generation',      desc: 'Cinematic AI video from a single image. No editing required.' },
-                { icon: <Sparkles size={15} />,     title: 'AI Caption Generator',     desc: 'Platform-specific captions engineered to stop the scroll.' },
-                { icon: <Calendar size={15} />,     title: 'AI Content Strategist',    desc: '30-day content calendars and hook libraries for your niche.' },
-                { icon: <TrendingUp size={15} />,   title: 'Multi-Platform Publishing', desc: 'Auto-publish to Instagram, TikTok, LinkedIn, YouTube & more.' },
-                { icon: <Film size={15} />,         title: 'Content Repurposing',       desc: 'Extract clips, tweets, blogs and threads from any video.' },
-                { icon: <Users size={15} />,        title: 'AI Voice Agents',           desc: '24/7 automated conversations that qualify and close leads.' },
-              ].map(f => (
-                <div
-                  key={f.title}
-                  style={{ padding: '14px', borderRadius: 14, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 9, transition: 'border-color 0.2s, background 0.2s', cursor: 'default' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${GOLD}35`; (e.currentTarget as HTMLElement).style.background = `${GOLD}07`; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
-                >
-                  <div style={{ width: 32, height: 32, borderRadius: 9, background: `${GOLD}14`, border: `1px solid ${GOLD}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD }}>
-                    {f.icon}
-                  </div>
-                  <div>
-                    <div style={{ color: 'white', fontWeight: 700, fontSize: 12, marginBottom: 3 }}>{f.title}</div>
-                    <div style={{ color: 'rgba(255,255,255,0.32)', fontSize: 11, lineHeight: 1.55 }}>{f.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Stats bar */}
-            <div style={{ display: 'flex', width: '100%', maxWidth: 400, marginBottom: 36, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden' }}>
-              {[{ v: '10+', l: 'Platforms' }, { v: '30-Day', l: 'Calendars' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
-                <div key={s.l} style={{ flex: 1, padding: '14px 8px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-                  <div style={{ color: GOLD, fontWeight: 900, fontSize: 17, letterSpacing: '-0.02em' }}>{s.v}</div>
-                  <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, marginTop: 2 }}>{s.l}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* CTA buttons */}
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, width: '100%', maxWidth: 320, marginBottom: 28 }}>
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                style={{ width: '100%', padding: '14px 0', borderRadius: 14, fontSize: 15, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}40`, letterSpacing: '-0.01em', transition: 'filter 0.15s' }}
-                onMouseEnter={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'}
-                onMouseLeave={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'}
-              >
-                Start Multiplying Your Content
-              </button>
-              <button
-                onClick={() => setAuthModalOpen(true)}
-                style={{ width: '100%', padding: '12px 0', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)', transition: 'border-color 0.15s, color 0.15s' }}
-                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.22)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.75)'; }}
-                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}
-              >
-                Already have an account? Sign In
-              </button>
-            </div>
-
-            {/* Referral nudge */}
-            <div style={{ padding: '14px 20px', borderRadius: 14, background: `${GOLD}07`, border: `1px solid ${GOLD}18`, textAlign: 'center', maxWidth: 340 }}>
-              <span style={{ fontSize: 12, color: GOLD_L, fontWeight: 700 }}>💸 2-for-20 Partner Program</span>
-              <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.32)', margin: '5px 0 0', lineHeight: 1.65 }}>
-                Earn 20% recurring commission for every referral. Your audience gets 20% off their first month.
+              {/* Tagline */}
+              <p className="mm-hero-tagline" style={{ fontSize: 'clamp(14px, 2vw, 16px)', color: 'rgba(255,255,255,0.65)', marginBottom: 24, lineHeight: 1.55, fontWeight: 600, letterSpacing: '-0.01em', maxWidth: 320 }}>
+                An entire marketing department on one platform.
               </p>
+
+              {/* Stats */}
+              <div style={{ display: 'flex', gap: 0, marginBottom: 28, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden', width: '100%', maxWidth: 300 }}>
+                {[{ v: '10+', l: 'Platforms' }, { v: '30-Day', l: 'Calendars' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
+                  <div key={s.l} style={{ flex: 1, padding: '12px 6px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                    <div style={{ color: GOLD, fontWeight: 900, fontSize: 16, letterSpacing: '-0.02em' }}>{s.v}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 9, marginTop: 2 }}>{s.l}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* CTAs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, width: '100%', maxWidth: 300, marginBottom: 20 }}>
+                <button
+                  onClick={() => setAuthModalOpen(true)}
+                  style={{ width: '100%', padding: '13px 0', borderRadius: 13, fontSize: 14, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 28px ${GOLD}40`, letterSpacing: '-0.01em', transition: 'filter 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'}
+                >
+                  Start Multiplying Your Content
+                </button>
+                <button
+                  onClick={() => setAuthModalOpen(true)}
+                  style={{ width: '100%', padding: '11px 0', borderRadius: 13, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)', transition: 'border-color 0.15s, color 0.15s' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.22)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.75)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}
+                >
+                  Already have an account? Sign In
+                </button>
+              </div>
+
+              {/* Referral nudge */}
+              <div style={{ padding: '12px 16px', borderRadius: 12, background: `${GOLD}07`, border: `1px solid ${GOLD}18`, maxWidth: 300, width: '100%' }}>
+                <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 2-for-20 Partner Program</div>
+                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)', margin: 0, lineHeight: 1.6 }}>
+                  Earn 20% recurring commission for every referral. Your audience gets 20% off their first month.
+                </p>
+              </div>
+            </div>
+
+            {/* ── Right: feature cards ── */}
+            <div className="mm-hero-right" style={{ marginTop: '32px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, width: '100%' }}>
+                {[
+                  { icon: <Video size={15} />,      title: 'AI Video Generation',       desc: 'Cinematic AI video from a single image. No editing required.' },
+                  { icon: <Sparkles size={15} />,   title: 'AI Caption Generator',      desc: 'Platform-specific captions engineered to stop the scroll.' },
+                  { icon: <Calendar size={15} />,   title: 'AI Content Strategist',     desc: '30-day content calendars and hook libraries for your niche.' },
+                  { icon: <TrendingUp size={15} />, title: 'Multi-Platform Publishing',  desc: 'Auto-publish to Instagram, TikTok, LinkedIn, YouTube and more.' },
+                  { icon: <Film size={15} />,       title: 'Content Repurposing',        desc: 'Extract clips, tweets, blogs and threads from any video.' },
+                  { icon: <Users size={15} />,      title: 'AI Voice Agents',            desc: '24/7 automated conversations that qualify and close leads.' },
+                ].map(f => (
+                  <div
+                    key={f.title}
+                    style={{ padding: '14px', borderRadius: 14, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 9, transition: 'border-color 0.2s, background 0.2s', cursor: 'default' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${GOLD}35`; (e.currentTarget as HTMLElement).style.background = `${GOLD}07`; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
+                  >
+                    <div style={{ width: 32, height: 32, borderRadius: 9, background: `${GOLD}14`, border: `1px solid ${GOLD}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD }}>
+                      {f.icon}
+                    </div>
+                    <div>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: 12, marginBottom: 3 }}>{f.title}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.32)', fontSize: 11, lineHeight: 1.55 }}>{f.desc}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
           </div>
@@ -5243,7 +5257,7 @@ export function MediaDistributionPage() {
               ))}
             </div>
             <div className="px-4 md:px-6 py-4 border-t" style={{borderColor:"rgba(255,255,255,0.07)"}}>
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">💳 Add-On Credits — One-Time Purchase</div>
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">💳 Add-On Credits: One-Time Purchase</div>
               <div className="grid grid-cols-2 gap-2">
                 {([{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"},{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}] as const).map(addon=>(
                   <button key={addon.key} onClick={()=>handleAddonCheckout(addon.key)}
@@ -5287,7 +5301,7 @@ export function MediaDistributionPage() {
               <div className="text-sm text-white/45">{addonFeature==="video_seconds"?`You have used ${addonUsed}s of your ${addonLimit}s monthly allowance.`:`You have used ${addonUsed} of ${addonLimit} this month.`}</div>
             </div>
             <div className="px-6 py-5 space-y-3">
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Get More — One-Time Purchase</div>
+              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Get More: One-Time Purchase</div>
               {(addonFeature==="video_seconds"?[{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"}]:addonFeature==="captions"?[{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"captions_100",label:"+ 100 AI Captions",price:"$20"}]:[]).map(addon=>(
                 <button key={addon.key} onClick={()=>{setAddonModalOpen(false);handleAddonCheckout(addon.key);}}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-xl border transition hover:brightness-110"

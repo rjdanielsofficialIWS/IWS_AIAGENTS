@@ -439,7 +439,7 @@ export function DynamicDemoPage() {
 
         <div className="mt-10 bg-white/5 border border-gray-700/50 rounded-2xl p-6 shadow-[0_10px_60px_rgba(0,0,0,0.6)]">
           It&apos;s a human-like AI that talks to your customers on the phone, answers their questions, and helps them get what
-          they need — automatically.
+          they need, automatically.
         </div>
 
         <p className="mt-10 text-lg font-semibold">
@@ -519,7 +519,7 @@ export function DynamicDemoPage() {
 
                   <p className="text-gray-300">
                     {voiceStatus === 'connecting' && 'Connecting… (you may see a mic permission prompt)'}
-                    {voiceStatus === 'live' && 'Live — Act like a customer.'}
+                    {voiceStatus === 'live' && 'Live. Act like a customer.'}
                     {voiceStatus === 'ended' && 'Call ended.'}
                     {voiceStatus === 'error' && 'Could not start the call.'}
                     {voiceStatus === 'idle' && 'Ready.'}

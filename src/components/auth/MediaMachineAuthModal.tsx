@@ -162,7 +162,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
             </h1>
 
             <p className="mm2-slide" style={{ animationDelay: '200ms', fontSize: 15, color: 'rgba(255,255,255,0.45)', lineHeight: 1.7, maxWidth: 380, margin: '0 0 32px' }}>
-              The all-in-one AI platform that creates, optimizes, and publishes content across every platform — so you can focus on running your business.
+              The all-in-one AI platform that creates, optimizes, and publishes content across every platform, so you can focus on running your business.
             </p>
 
             {/* Features */}
