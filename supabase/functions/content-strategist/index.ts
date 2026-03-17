@@ -336,8 +336,33 @@ REQUIREMENTS:
       if (!result.researched_at) result.researched_at = new Date().toISOString();
       return json(result);
 
+    } else if (mode === "talking_points") {
+      const { idea, niche = "", audience = "" } = body;
+      if (!idea || !idea.trim()) return json({ error: "idea is required" }, 400);
+
+      const raw = await callClaude(
+        `You are a viral social media content strategist and on-camera coach. You craft talking points that are compelling, memorable, and engineered for maximum engagement, shareability, and audience retention. Return ONLY valid JSON — no markdown, no commentary.`,
+        `Generate 5 viral talking points for this content idea:
+
+IDEA: ${idea.trim()}${niche ? `\nNICHE: ${niche}` : ""}${audience ? `\nTARGET AUDIENCE: ${audience}` : ""}
+
+Return ONLY this JSON:
+{"talking_points":["point1","point2","point3","point4","point5"]}
+
+REQUIREMENTS:
+- Exactly 5 talking points
+- Each point is a specific, bold, compelling statement or question (1-2 sentences max)
+- Written as actual on-camera spoken lines — not notes or bullet fragments
+- Vary structure: open with a hook, build tension, include a contrarian take, use social proof or stats if relevant, close with a strong CTA or call to reflection
+- Every point must feel urgent, authentic, and impossible to scroll past
+- NO generic filler — every word earns its place`,
+        800
+      );
+      const data = safeParse(raw);
+      return json(data);
+
     } else {
-      return json({ error: "Invalid mode. Use full_strategy, repurpose_from_video, or trends_research." }, 400);
+      return json({ error: "Invalid mode. Use full_strategy, repurpose_from_video, trends_research, or talking_points." }, 400);
     }
   } catch (e: any) {
     console.error("content-strategist error:", e);

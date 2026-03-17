@@ -1252,7 +1252,7 @@ function SavedPostCard({
                 : postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Done!</>
                 : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
             </span>
-            {posting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
+            {posting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
           </button>
         </div>
       </div>
@@ -1762,7 +1762,7 @@ function InlinePostComposer({
                   <span className="flex items-center gap-2">
                     {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Analyzing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
                   </span>
-                  {aiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
+                  {aiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
               </div>
@@ -1956,7 +1956,7 @@ function InlinePostComposer({
                       ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Analyzing…' : 'Generating…'}</>
                       : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
                   </span>
-                  {textAiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
+                  {textAiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
                 </button>
 
                 {textAiPosts && (
@@ -2122,7 +2122,7 @@ function InlinePostComposer({
               ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
               : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
         </span>
-        {submitting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 30 seconds</span>}
+        {submitting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
       </button>
     </div>
   );
@@ -2462,7 +2462,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 ? <><Loader className="w-4 h-4 animate-spin" /> Building your strategy…</>
                 : <><Sparkles className="w-4 h-4" /> Build My Content Strategy</>}
             </span>
-            {loading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Running 3 AI models in parallel. About 30 seconds.</span>}
+            {loading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Running 3 AI models in parallel. Up to 5 minutes.</span>}
           </button>
         </div>
       )}
@@ -2871,7 +2871,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 <span className="flex items-center gap-2">
                   {videoLoading ? <><Loader className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Sparkles className="w-4 h-4" /> Extract All AI Strategist</>}
                 </span>
-                {videoLoading && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing. Up to 30 seconds.</span>}
+                {videoLoading && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing. Up to 5 minutes.</span>}
               </button>
             </div>
           ) : (
@@ -3020,46 +3020,6 @@ function AddPlannerItemModal({
   const [time, setTime]           = useState('');
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState<string | null>(null);
-  const [scriptLoading, setScriptLoading] = useState(false);
-  const [scriptGenerated, setScriptGenerated] = useState(false);
-
-  const handleGenerateScript = async () => {
-    if (!title.trim()) { setError('Add a title first so AI knows what to write'); return; }
-    if (!userId) { setError('Sign in to generate a script'); return; }
-    setScriptLoading(true); setError(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const context = notes.trim() ? `${title}\n\nContext / angle: ${notes}` : title;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
-        body: JSON.stringify({
-          mode: 'video_script',
-          description: context,
-          tone: 'engaging, conversational, high-retention',
-        }),
-      });
-      const data = await res.json();
-      if (data.error === 'upgrade_required') { setError('Upgrade your plan to generate AI scripts.'); return; }
-      if (!res.ok) throw new Error(data.error || 'Script generation failed');
-      // Accept script from multiple possible response shapes
-      const script: string =
-        data.script || data.transcript ||
-        data.captions?.script || data.captions?.instagram ||
-        (data.captions && typeof data.captions === 'object' ? Object.values(data.captions)[0] : null) ||
-        '';
-      if (script && typeof script === 'string') {
-        setNotes(script);
-        setScriptGenerated(true);
-      } else {
-        throw new Error('No script returned');
-      }
-    } catch (e: any) {
-      setError(e.message || 'Failed to generate script');
-    } finally {
-      setScriptLoading(false);
-    }
-  };
 
   const save = async () => {
     if (!title.trim()) { setError('Title is required'); return; }
@@ -3116,39 +3076,15 @@ function AddPlannerItemModal({
           </div>
 
           <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-bold text-white/40 uppercase tracking-wider">
-                {scriptGenerated ? 'AI Script' : 'Notes'}
-              </label>
-              <button
-                onClick={handleGenerateScript}
-                disabled={scriptLoading}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:brightness-110 disabled:opacity-50"
-                style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }}
-              >
-                {scriptLoading ? (
-                  <>
-                    <svg className="w-3 h-3 animate-spin" viewBox="0 0 24 24" fill="none"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>
-                    Writing…
-                  </>
-                ) : scriptGenerated ? (
-                  <>✨ Regenerate Script</>
-                ) : (
-                  <>✨ Generate AI Script</>
-                )}
-              </button>
-            </div>
+            <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Notes</label>
             <textarea
               value={notes}
-              onChange={e => { setNotes(e.target.value); if (scriptGenerated) setScriptGenerated(false); }}
-              placeholder={scriptGenerated ? '' : 'Hook, angle, key points… or generate a full script with AI'}
-              rows={scriptGenerated ? 6 : 3}
-              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none resize-none transition-all"
-              style={{ background: scriptGenerated ? 'rgba(168,85,247,0.08)' : 'rgba(255,255,255,0.06)', border: `1px solid ${scriptGenerated ? 'rgba(168,85,247,0.3)' : BORDER}` }}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Hook, angle, key points…"
+              rows={3}
+              className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none resize-none"
+              style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${BORDER}` }}
             />
-            {scriptGenerated && (
-              <p className="text-xs text-purple-400/60 mt-1">AI-generated script — edit freely before saving.</p>
-            )}
           </div>
 
           <div className="grid grid-cols-2 gap-3">
@@ -3206,6 +3142,8 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   const [repurposeOpen, setRepurposeOpen] = useState(false);
   const [pendingItem, setPendingItem]   = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  const [tpLoadingId, setTpLoadingId]   = useState<string | null>(null);
+  const [tpResults, setTpResults]       = useState<Record<string, string[]>>({});
 
   const days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(weekStart);
@@ -3258,6 +3196,24 @@ function PlannerPanel({ userId }: { userId: string | null }) {
   const deleteItem = async (id: string) => {
     await supabase.from('content_planner').delete().eq('id', id);
     setItems(prev => prev.filter(it => it.id !== id));
+  };
+
+  const generateTalkingPoints = async (itemId: string, title: string) => {
+    if (!userId) return;
+    setTpLoadingId(itemId);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/content-strategist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({ mode: 'talking_points', idea: title }),
+      });
+      const data = await res.json();
+      if (data.talking_points && Array.isArray(data.talking_points)) {
+        setTpResults(prev => ({ ...prev, [itemId]: data.talking_points }));
+      }
+    } catch {}
+    finally { setTpLoadingId(null); }
   };
 
   const pendingAddCallback = React.useRef<(() => void) | undefined>(undefined);
@@ -3368,31 +3324,57 @@ function PlannerPanel({ userId }: { userId: string | null }) {
                 <div className={`${expanded === false ? 'hidden' : 'block'} border-t`} style={{ borderColor: BORDER }}>
                   {dayItems.map(item => {
                     const col = CATEGORY_COLORS[item.category] || GOLD;
+                    const points = tpResults[item.id];
+                    const isLoading = tpLoadingId === item.id;
                     return (
-                      <div key={item.id} className="flex items-start gap-3 px-4 py-3 border-b last:border-0"
+                      <div key={item.id} className="flex flex-col border-b last:border-0"
                         style={{ borderColor: BORDER }}>
-                        <div className="w-1 self-stretch rounded-full mt-1 shrink-0" style={{ background: col }} />
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-bold text-white leading-snug">{item.title}</span>
-                            {item.sourceLabel && (
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-                                style={{ background: `${col}18`, color: col }}>
-                                {item.sourceLabel}
-                              </span>
-                            )}
-                          </div>
-                          {item.notes && <p className="text-xs text-white/40 mt-1 leading-relaxed">{item.notes}</p>}
-                          {item.plannedTime && (
-                            <div className="flex items-center gap-1 mt-1 text-xs text-white/25">
-                              <Clock className="w-3 h-3" />{item.plannedTime.slice(0, 5)}
+                        <div className="flex items-start gap-3 px-4 py-3">
+                          <div className="w-1 self-stretch rounded-full mt-1 shrink-0" style={{ background: col }} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-bold text-white leading-snug">{item.title}</span>
+                              {item.sourceLabel && (
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                  style={{ background: `${col}18`, color: col }}>
+                                  {item.sourceLabel}
+                                </span>
+                              )}
                             </div>
-                          )}
+                            {item.notes && <p className="text-xs text-white/40 mt-1 leading-relaxed">{item.notes}</p>}
+                            {item.plannedTime && (
+                              <div className="flex items-center gap-1 mt-1 text-xs text-white/25">
+                                <Clock className="w-3 h-3" />{item.plannedTime.slice(0, 5)}
+                              </div>
+                            )}
+                            <button
+                              onClick={() => points ? setTpResults(prev => { const n = { ...prev }; delete n[item.id]; return n; }) : generateTalkingPoints(item.id, item.title)}
+                              disabled={isLoading}
+                              className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition disabled:opacity-50"
+                              style={{ background: points ? 'rgba(34,197,94,0.10)' : 'rgba(168,85,247,0.12)', color: points ? '#86efac' : '#c084fc', border: `1px solid ${points ? 'rgba(34,197,94,0.25)' : 'rgba(168,85,247,0.25)'}` }}>
+                              {isLoading
+                                ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</>
+                                : points
+                                ? <>✓ Hide Talking Points</>
+                                : <><Sparkles className="w-3 h-3" /> 5 Viral Talking Points</>}
+                            </button>
+                          </div>
+                          <button onClick={() => deleteItem(item.id)}
+                            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 text-white/20 hover:text-red-400 transition shrink-0">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <button onClick={() => deleteItem(item.id)}
-                          className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 text-white/20 hover:text-red-400 transition shrink-0">
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {points && (
+                          <div className="px-4 pb-3 ml-4 space-y-1.5">
+                            {points.map((point, i) => (
+                              <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg text-xs text-white/70 leading-relaxed"
+                                style={{ background: 'rgba(168,85,247,0.07)', border: '1px solid rgba(168,85,247,0.15)' }}>
+                                <span className="shrink-0 text-[10px] font-black mt-0.5" style={{ color: '#c084fc' }}>{i + 1}.</span>
+                                {point}
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -4071,6 +4053,9 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [generatingPrompts, setGeneratingPrompts] = React.useState(false);
+  const [textOnScreen, setTextOnScreen]           = React.useState(false);
+  const [textOnScreenContent, setTextOnScreenContent] = React.useState('');
+  const [fontColor, setFontColor]                 = React.useState('#FFFFFF');
   const pollTimers = React.useRef<Record<string, ReturnType<typeof setInterval>>>({});
 
   React.useEffect(() => { return () => { Object.values(pollTimers.current).forEach(clearInterval); }; }, []);
@@ -4165,7 +4150,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
       // 1. Always enhance the brief into a high-quality cinematic video prompt via Claude
       const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ brief, style, aspectRatio, duration }),
+        body: JSON.stringify({ brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined }),
       });
       const promptData = await promptRes.json();
       if (!promptRes.ok) throw new Error(promptData.error || 'Failed to enhance brief');
@@ -4553,7 +4538,7 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
     }
   };
 
-  const STYLES = ['cinematic','documentary','commercial','anime','realistic','fantasy','noir','vibrant'];
+  const STYLES = ['cinematic','documentary','commercial','anime','realistic','voiceover'];
   const allFramesDone = frames.length > 0 && frames.every(f => f.status === 'done' || f.status === 'error');
 
   return (
@@ -4729,6 +4714,45 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                 )}
               </div>
 
+              {/* Text on Screen */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Text on Screen</label>
+                  <button
+                    onClick={() => setTextOnScreen(v => !v)}
+                    className="relative w-10 h-5 rounded-full transition"
+                    style={{ background: textOnScreen ? GOLD : 'rgba(255,255,255,0.12)' }}>
+                    <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white transition-transform shadow"
+                      style={{ transform: textOnScreen ? 'translateX(20px)' : 'translateX(0)' }} />
+                  </button>
+                </div>
+                {textOnScreen && (
+                  <div className="space-y-2">
+                    <input
+                      value={textOnScreenContent}
+                      onChange={e => setTextOnScreenContent(e.target.value)}
+                      placeholder="Text to overlay on the video…"
+                      className="w-full rounded-xl border bg-black/30 px-3 py-2 text-sm text-white placeholder-white/20 outline-none"
+                      style={{ borderColor: BORDER }}
+                    />
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-white/30 shrink-0">Font Color</label>
+                      <div className="flex items-center gap-2">
+                        {['#FFFFFF','#000000','#FFD700','#FF4444','#44AAFF','#44FF88'].map(c => (
+                          <button key={c} onClick={() => setFontColor(c)}
+                            className="w-6 h-6 rounded-full border-2 transition"
+                            style={{ background: c, borderColor: fontColor === c ? 'white' : 'transparent' }} />
+                        ))}
+                        <input type="color" value={fontColor} onChange={e => setFontColor(e.target.value)}
+                          className="w-6 h-6 rounded-full cursor-pointer border-0 bg-transparent"
+                          title="Custom color" />
+                      </div>
+                      <span className="text-xs font-mono text-white/30">{fontColor}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <button onClick={handleGeneratePrompts} disabled={generatingPrompts || !brief.trim()}
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
@@ -4746,17 +4770,18 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                 <button onClick={() => setStep('brief')} className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.3)' }}>← Back</button>
               </div>
 
-              {/* Enhanced prompt — always shown */}
-              <div>
-                <p className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-1.5">Enhanced Video Prompt</p>
-                <p className="text-[10px] text-white/35 mb-2">Claude enhanced your brief into a cinematic prompt. Edit if needed.</p>
-                <textarea
-                  value={editablePrompt}
-                  onChange={e => setEditablePrompt(e.target.value)}
-                  rows={4}
-                  className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
-                  style={{ borderColor: `${GOLD}40` }}
-                />
+              {/* Brief summary (no editable prompt shown to user) */}
+              <div className="p-3 rounded-xl border" style={{ borderColor: `${GOLD}25`, background: `${GOLD}08` }}>
+                <p className="text-[10px] font-bold uppercase tracking-wider mb-1" style={{ color: GOLD }}>Your Brief</p>
+                <p className="text-xs text-white/60 leading-relaxed">{brief}</p>
+                <div className="flex gap-2 mt-2 flex-wrap">
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold capitalize" style={{ background: `${GOLD}18`, color: GOLD_L }}>{style}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>{aspectRatio}</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>{duration}s</span>
+                  {textOnScreen && textOnScreenContent && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>Text: "{textOnScreenContent}"</span>
+                  )}
+                </div>
               </div>
 
               {/* AI-generated transcript — only if transcriptMode === 'ai' */}
@@ -4874,7 +4899,13 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                         ? <video src={vid.videoUrl} controls poster={vid.frameUrl} className="w-full h-full object-contain" playsInline />
                         : vid.status === 'error'
                         ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"><AlertCircle className="w-5 h-5 text-red-400" /><span className="text-xs text-red-300">{vid.error}</span></div>
-                        : <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"><Loader className="w-6 h-6 animate-spin" style={{ color: GOLD }} /><span className="text-xs text-white/40">{vid.status === 'polling' ? 'Processing…' : 'Submitting…'}</span></div>
+                        : <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4">
+                            <Loader className="w-6 h-6 animate-spin" style={{ color: GOLD }} />
+                            <span className="text-xs text-white/40">{vid.status === 'polling' ? 'Processing…' : 'Submitting…'}</span>
+                            {editablePrompt && (
+                              <p className="absolute bottom-3 left-3 right-3 text-[9px] text-white/20 text-center leading-relaxed line-clamp-2 italic">{editablePrompt}</p>
+                            )}
+                          </div>
                       }
                     </div>
                     {vid.status === 'done' && vid.videoUrl && (
@@ -4882,7 +4913,16 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                         {/* Action buttons */}
                         <div className={`grid gap-2 ${videoTranscript ? 'grid-cols-3' : 'grid-cols-1'}`}>
                           <button
-                            onClick={() => onUseVideo?.(vid.videoUrl!)}
+                            onClick={async () => {
+                              try {
+                                const res = await fetch(vid.videoUrl!);
+                                const blob = await res.blob();
+                                const blobUrl = URL.createObjectURL(blob);
+                                onUseVideo?.(blobUrl);
+                              } catch {
+                                onUseVideo?.(vid.videoUrl!);
+                              }
+                            }}
                             className="flex flex-col items-center gap-1 px-2 py-2.5 rounded-xl text-[10px] font-bold transition hover:brightness-110"
                             style={{ background: GOLD, color: '#000' }}>
                             <Send className="w-3.5 h-3.5" />
