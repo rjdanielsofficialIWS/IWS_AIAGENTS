@@ -44,31 +44,37 @@ Deno.serve(async (req: Request) => {
   // Check for existing subscription row
   const { data: existing } = await supabase
     .from("subscriptions")
-    .select("plan, status, trial_expires_at, stripe_customer_id")
+    .select("id, status, trial_expires_at")
     .eq("supabase_user_id", user.id)
     .maybeSingle();
 
-  // Already on an active paid sub
   if (existing?.status === "active") {
     return json({ error: "already_subscribed", message: "You already have an active subscription." }, 409);
   }
 
-  // Trial already used (trial_expires_at is set = they've had a trial before)
   if (existing?.trial_expires_at) {
     return json({ error: "trial_already_used", message: "You have already used your free trial." }, 409);
   }
 
   const trialExpiresAt = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const row = { supabase_user_id: user.id, plan, status: "trialing", trial_expires_at: trialExpiresAt };
 
-  const { error: upsertErr } = await supabase
-    .from("subscriptions")
-    .upsert(
-      { supabase_user_id: user.id, plan, status: "trialing", trial_expires_at: trialExpiresAt },
-      { onConflict: "supabase_user_id" }
-    );
+  let dbErr;
+  if (existing) {
+    // Row exists — update it
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({ plan, status: "trialing", trial_expires_at: trialExpiresAt })
+      .eq("supabase_user_id", user.id);
+    dbErr = error;
+  } else {
+    // No row yet — insert
+    const { error } = await supabase.from("subscriptions").insert(row);
+    dbErr = error;
+  }
 
-  if (upsertErr) {
-    return json({ error: "Failed to start trial: " + upsertErr.message }, 500);
+  if (dbErr) {
+    return json({ error: "Failed to start trial: " + dbErr.message }, 500);
   }
 
   return json({ success: true, plan, trial_expires_at: trialExpiresAt });

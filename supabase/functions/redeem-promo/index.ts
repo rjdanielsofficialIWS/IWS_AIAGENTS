@@ -49,31 +49,35 @@ Deno.serve(async (req: Request) => {
   // Check for existing subscription row
   const { data: existing } = await supabase
     .from("subscriptions")
-    .select("plan, status, trial_expires_at, stripe_customer_id")
+    .select("id, status, trial_expires_at")
     .eq("supabase_user_id", user.id)
     .maybeSingle();
 
-  // Already on an active paid sub
   if (existing?.status === "active") {
     return json({ error: "already_subscribed" }, 409);
   }
 
-  // Trial already used
   if (existing?.trial_expires_at) {
     return json({ error: "trial_already_used", message: "This trial code has already been used." }, 409);
   }
 
   const trialExpiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+  const row = { supabase_user_id: user.id, plan, status: "trialing", trial_expires_at: trialExpiresAt };
 
-  const { error: upsertErr } = await supabase
-    .from("subscriptions")
-    .upsert(
-      { supabase_user_id: user.id, plan, status: "trialing", trial_expires_at: trialExpiresAt },
-      { onConflict: "supabase_user_id" }
-    );
+  let dbErr;
+  if (existing) {
+    const { error } = await supabase
+      .from("subscriptions")
+      .update({ plan, status: "trialing", trial_expires_at: trialExpiresAt })
+      .eq("supabase_user_id", user.id);
+    dbErr = error;
+  } else {
+    const { error } = await supabase.from("subscriptions").insert(row);
+    dbErr = error;
+  }
 
-  if (upsertErr) {
-    return json({ error: "Failed to redeem promo: " + upsertErr.message }, 500);
+  if (dbErr) {
+    return json({ error: "Failed to redeem promo: " + dbErr.message }, 500);
   }
 
   return json({ success: true, plan, trial_expires_at: trialExpiresAt });
