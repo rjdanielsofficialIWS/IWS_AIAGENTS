@@ -3800,21 +3800,22 @@ type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl
 
 function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVideo?: (videoUrl: string) => void }) {
   const [step, setStep]               = React.useState<VideoStudioStep>('brief');
-  // Frame mode: manual upload | AI generated | none
-  const [startFrameMode, setStartFrameMode] = React.useState<'manual' | 'ai' | 'none'>('ai');
-  const [endFrameMode, setEndFrameMode]     = React.useState<'manual' | 'ai' | 'none'>('none');
+  // Single combined frame mode for start + end
+  const [frameMode, setFrameMode] = React.useState<'none' | 'manual' | 'ai'>('none');
   const [startFrameUrl, setStartFrameUrl] = React.useState<string | null>(null);
   const [endFrameUrl, setEndFrameUrl]     = React.useState<string | null>(null);
   const startFrameRef = React.useRef<HTMLInputElement>(null);
   const endFrameRef   = React.useRef<HTMLInputElement>(null);
-  // Transcript mode: manual paste | AI generated (from file) | none
+  // AI-generated frames (shown in review step)
+  const [generatedStartFrameUrl, setGeneratedStartFrameUrl] = React.useState<string | null>(null);
+  const [generatedEndFrameUrl, setGeneratedEndFrameUrl]     = React.useState<string | null>(null);
+  // Transcript mode: manual paste | AI generated from brief | none
   const [transcriptMode, setTranscriptMode] = React.useState<'manual' | 'ai' | 'none'>('none');
   const [manualTranscript, setManualTranscript] = React.useState('');
-  const [transcriptFile, setTranscriptFile]     = React.useState<File | null>(null);
-  const transcriptFileRef = React.useRef<HTMLInputElement>(null);
   const [videoTranscript, setVideoTranscript]   = React.useState<string | null>(null);
-  const [transcribing, setTranscribing]         = React.useState(false);
+  const [generatingAssets, setGeneratingAssets] = React.useState(false);
   const [editablePrompt, setEditablePrompt]     = React.useState('');
+  const [editableTranscript, setEditableTranscript] = React.useState('');
   const [brief, setBrief]             = React.useState('');
   const [style, setStyle]             = React.useState('cinematic');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
@@ -3905,70 +3906,172 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
   };
 
   const handleGeneratePrompts = async () => {
-    if (!brief.trim() && transcriptMode === 'none') { setGlobalError('Enter a brief first'); return; }
+    if (!brief.trim()) { setGlobalError('Enter a video brief first'); return; }
     if (!userId) { setGlobalError('Sign in to generate AI video'); return; }
-    setGeneratingPrompts(true); setGlobalError(null);
+    setGeneratingPrompts(true); setGeneratingAssets(false); setGlobalError(null);
 
-    // Handle transcript first if AI mode selected
-    let resolvedTranscript = videoTranscript;
-    if (transcriptMode === 'ai' && transcriptFile && !resolvedTranscript) {
-      try {
-        setTranscribing(true);
-        const { data: { session: txs } } = await supabase.auth.getSession();
-        resolvedTranscript = await transcribeVideo(transcriptFile, txs?.access_token ?? '');
-        setVideoTranscript(resolvedTranscript);
-      } catch (e: any) {
-        setGlobalError('Transcript failed: ' + e.message);
-        setGeneratingPrompts(false); setTranscribing(false); return;
-      } finally { setTranscribing(false); }
-    } else if (transcriptMode === 'manual' && manualTranscript.trim()) {
-      resolvedTranscript = manualTranscript.trim();
-      setVideoTranscript(resolvedTranscript);
+    // Resolve manual transcript immediately (no async needed)
+    if (transcriptMode === 'manual' && manualTranscript.trim()) {
+      setVideoTranscript(manualTranscript.trim());
     }
+
+    const hasAiAssets = transcriptMode === 'ai' || frameMode === 'ai';
 
     try {
       const headers = await getAuthHeaders();
-      const enrichedBrief = resolvedTranscript
-        ? `${brief ? brief + '\n\n' : ''}Transcript for context:\n${resolvedTranscript.slice(0, 1500)}`
-        : brief;
 
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
+      // 1. Always enhance the brief into a high-quality cinematic video prompt via Claude
+      const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ brief: enrichedBrief, style, aspectRatio, duration }),
+        body: JSON.stringify({ brief, style, aspectRatio, duration }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to generate prompt');
-      const promptText: string = (data.prompts || [])[0] ?? brief;
-      setPrompts([{ id: 'p0', text: promptText, selected: true }]);
-      setEditablePrompt(promptText);
-      setStep('prompts'); // pause here for user to review/edit
+      const promptData = await promptRes.json();
+      if (!promptRes.ok) throw new Error(promptData.error || 'Failed to enhance brief');
+      const enhancedPrompt: string = (promptData.prompts || [])[0] ?? brief;
+      setPrompts([{ id: 'p0', text: enhancedPrompt, selected: true }]);
+      setEditablePrompt(enhancedPrompt);
+
+      if (!hasAiAssets) {
+        // No AI assets requested — skip review step, go straight to confirm + generate
+        setStep('prompts');
+        return;
+      }
+
+      // 2. Run AI asset generation in parallel
+      setGeneratingAssets(true);
+
+      const aiTasks: Promise<void>[] = [];
+
+      // AI Transcript: generate a video script from the brief using Claude
+      if (transcriptMode === 'ai') {
+        aiTasks.push((async () => {
+          try {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({ mode: 'video_script', description: brief, tone: style }),
+            });
+            const data = await res.json();
+            // Accept script from various response shapes
+            const script: string =
+              data.script || data.transcript ||
+              data.captions?.script || data.captions?.instagram ||
+              (typeof data.captions === 'object' ? Object.values(data.captions)[0] : null) ||
+              enhancedPrompt;
+            const resolved = typeof script === 'string' ? script : enhancedPrompt;
+            setVideoTranscript(resolved);
+            setEditableTranscript(resolved);
+          } catch {
+            // Fallback: use the enhanced prompt as the script
+            setVideoTranscript(enhancedPrompt);
+            setEditableTranscript(enhancedPrompt);
+          }
+        })());
+      }
+
+      // AI Frames: generate start AND end frame images in parallel
+      if (frameMode === 'ai') {
+        const startPrompt = `${enhancedPrompt} — opening frame, establishing shot`;
+        const endPrompt   = `${enhancedPrompt} — closing frame, final shot`;
+
+        aiTasks.push((async () => {
+          try {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-image`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({ prompt: startPrompt, aspectRatio }),
+            });
+            const data = await res.json();
+            if (data.imageUrl) setGeneratedStartFrameUrl(data.imageUrl);
+            else if (data.taskId) {
+              // Poll for the image
+              await new Promise<void>((resolve) => {
+                let attempts = 0;
+                const iv = setInterval(async () => {
+                  attempts++;
+                  if (attempts > 40) { clearInterval(iv); resolve(); return; }
+                  try {
+                    const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
+                      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+                      body: JSON.stringify({ taskId: data.taskId, type: 'image' }),
+                    });
+                    const pd = await pr.json();
+                    if (pd.status === 'succeed' && pd.imageUrl) { clearInterval(iv); setGeneratedStartFrameUrl(pd.imageUrl); resolve(); }
+                    else if (pd.status === 'failed') { clearInterval(iv); resolve(); }
+                  } catch { clearInterval(iv); resolve(); }
+                }, 3000);
+              });
+            }
+          } catch { /* non-fatal */ }
+        })());
+
+        aiTasks.push((async () => {
+          try {
+            const res = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-image`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+              body: JSON.stringify({ prompt: endPrompt, aspectRatio }),
+            });
+            const data = await res.json();
+            if (data.imageUrl) setGeneratedEndFrameUrl(data.imageUrl);
+            else if (data.taskId) {
+              await new Promise<void>((resolve) => {
+                let attempts = 0;
+                const iv = setInterval(async () => {
+                  attempts++;
+                  if (attempts > 40) { clearInterval(iv); resolve(); return; }
+                  try {
+                    const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
+                      method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+                      body: JSON.stringify({ taskId: data.taskId, type: 'image' }),
+                    });
+                    const pd = await pr.json();
+                    if (pd.status === 'succeed' && pd.imageUrl) { clearInterval(iv); setGeneratedEndFrameUrl(pd.imageUrl); resolve(); }
+                    else if (pd.status === 'failed') { clearInterval(iv); resolve(); }
+                  } catch { clearInterval(iv); resolve(); }
+                }, 3000);
+              });
+            }
+          } catch { /* non-fatal */ }
+        })());
+      }
+
+      await Promise.all(aiTasks);
+      setStep('prompts');
     } catch (e: any) { setGlobalError(e.message); setStep('brief'); }
-    finally { setGeneratingPrompts(false); }
+    finally { setGeneratingPrompts(false); setGeneratingAssets(false); }
   };
 
   const handleConfirmAndGenerate = async () => {
     const promptText = editablePrompt.trim() || (prompts[0]?.text ?? brief);
     if (!promptText) { setGlobalError('No prompt to generate from'); return; }
+    // Commit edited transcript
+    const finalTranscript = transcriptMode === 'manual'
+      ? (manualTranscript.trim() || null)
+      : (editableTranscript.trim() || videoTranscript || null);
+    setVideoTranscript(finalTranscript);
     setGlobalError(null);
     const headers = await getAuthHeaders();
 
-    // Determine start frame
-    if (startFrameMode === 'manual' && startFrameUrl) {
-      // Use manual start frame
+    // Resolve the best start/end frame URLs
+    const resolvedStartUrl = frameMode === 'ai'
+      ? (generatedStartFrameUrl || null)
+      : (frameMode === 'manual' ? startFrameUrl : null);
+    const resolvedEndUrl = frameMode === 'ai'
+      ? (generatedEndFrameUrl || null)
+      : (frameMode === 'manual' ? endFrameUrl : null);
+
+    if (resolvedStartUrl) {
       const frameId = `f${Date.now()}-p0`;
-      setFrames([{ id: frameId, promptText, imageUrl: startFrameUrl, taskId: null, status: 'done' }]);
+      setFrames([{ id: frameId, promptText, imageUrl: resolvedStartUrl, taskId: null, status: 'done' }]);
       setStep('frames');
-      await autoGenerateVideo(frameId, startFrameUrl, promptText, headers, null, endFrameMode === 'manual' ? endFrameUrl : null);
-    } else if (startFrameMode === 'none') {
-      // No start frame — generate video without image anchor (text-to-video)
+      await autoGenerateVideo(frameId, resolvedStartUrl, promptText, headers, null, resolvedEndUrl);
+    } else {
+      // No start frame — text-to-video
       setStep('video');
       const vidId = `v${Date.now()}-noframe`;
       setVideos([{ id: vidId, frameUrl: '', promptText, videoUrl: null, taskId: null, status: 'generating' }]);
       try {
-        const falBody: Record<string, unknown> = { prompt: promptText, duration, aspectRatio, quality: 'high', textToVideo: true };
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify(falBody),
+          body: JSON.stringify({ prompt: promptText, duration, aspectRatio, quality: 'high', textToVideo: true }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to generate video');
@@ -3980,26 +4083,6 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
         setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: e.message } : v));
         setGlobalError(e.message);
       }
-    } else {
-      // AI Generated start frame
-      setStep('frames');
-      const frameId = `f${Date.now()}-p0`;
-      setFrames([{ id: frameId, promptText, imageUrl: null, taskId: null, status: 'generating' }]);
-      try {
-        const imgRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-image`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ prompt: promptText, aspectRatio }),
-        });
-        const imgData = await imgRes.json();
-        if (!imgRes.ok) throw new Error(imgData.error || 'Failed to generate frame');
-        if (imgData.imageUrl) {
-          setFrames([{ id: frameId, promptText, imageUrl: imgData.imageUrl, taskId: null, status: 'done' }]);
-          await autoGenerateVideo(frameId, imgData.imageUrl, promptText, headers, null, endFrameMode === 'manual' ? endFrameUrl : null);
-        } else if (imgData.taskId) {
-          setFrames([{ id: frameId, promptText, imageUrl: null, taskId: imgData.taskId, status: 'generating' }]);
-          pollFrameTaskAuto(frameId, imgData.taskId, promptText, headers);
-        }
-      } catch (e: any) { setFrames(prev => prev.map(f => f.id === frameId ? { ...f, status: 'error', error: e.message } : f)); setGlobalError(e.message); }
     }
   };
 
@@ -4205,8 +4288,10 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
     Object.values(pollTimers.current).forEach(clearInterval);
     pollTimers.current = {};
     setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null);
-    setStartFrameUrl(null); setEndFrameUrl(null); setStartFrameMode('ai'); setEndFrameMode('none');
-    setManualTranscript(''); setTranscriptFile(null); setVideoTranscript(null); setTranscribing(false); setEditablePrompt('');
+    setFrameMode('none'); setStartFrameUrl(null); setEndFrameUrl(null);
+    setGeneratedStartFrameUrl(null); setGeneratedEndFrameUrl(null);
+    setTranscriptMode('none'); setManualTranscript('');
+    setVideoTranscript(null); setEditablePrompt(''); setEditableTranscript(''); setGeneratingAssets(false);
   };
 
   const handleDownloadVideo = async (url: string) => {
@@ -4324,11 +4409,11 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
               </div>
               {/* Transcript */}
               <div>
-                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Transcript</label>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Transcript / Script</label>
                 <div className="flex gap-2 mb-2">
                   {(['none', 'manual', 'ai'] as const).map(m => (
                     <button key={m} onClick={() => setTranscriptMode(m)}
-                      className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
                       style={{ borderColor: transcriptMode === m ? GOLD : BORDER, background: transcriptMode === m ? `${GOLD}18` : 'transparent', color: transcriptMode === m ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
                       {m === 'ai' ? 'AI Generated' : m === 'manual' ? 'Manual' : 'None'}
                     </button>
@@ -4336,137 +4421,148 @@ function AIVideoStudio({ userId, onUseVideo }: { userId: string | null; onUseVid
                 </div>
                 {transcriptMode === 'manual' && (
                   <textarea value={manualTranscript} onChange={e => setManualTranscript(e.target.value)} rows={3}
-                    placeholder="Paste your transcript here…"
+                    placeholder="Paste your script or transcript here…"
                     className="w-full rounded-xl border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/20 outline-none resize-none"
                     style={{ borderColor: BORDER }} />
                 )}
                 {transcriptMode === 'ai' && (
-                  <div>
-                    <input ref={transcriptFileRef} type="file" accept="video/*,audio/*" className="hidden"
-                      onChange={e => e.target.files?.[0] && setTranscriptFile(e.target.files[0])} />
-                    <button onClick={() => transcriptFileRef.current?.click()}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
-                      style={{ borderColor: transcriptFile ? `${GOLD}60` : BORDER, color: transcriptFile ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
-                      <Upload className="w-3.5 h-3.5" />
-                      {transcriptFile ? transcriptFile.name : 'Upload video / audio to transcribe'}
-                    </button>
-                    {videoTranscript && (
-                      <p className="text-[10px] text-green-400/70 mt-1">✓ Transcript ready ({videoTranscript.length} chars)</p>
-                    )}
-                    {transcribing && <p className="text-[10px] text-white/40 mt-1 flex items-center gap-1"><Loader className="w-3 h-3 animate-spin" /> Transcribing…</p>}
-                  </div>
+                  <p className="text-[10px] text-white/30 px-1">Claude will write a video script from your brief. You can edit it before processing.</p>
                 )}
               </div>
 
-              {/* Start Frame */}
+              {/* Reference Frames (combined start + end) */}
               <div>
-                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Start Frame</label>
-                <div className="flex gap-2 mb-2">
-                  {(['ai', 'manual', 'none'] as const).map(m => (
-                    <button key={m} onClick={() => setStartFrameMode(m)}
-                      className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
-                      style={{ borderColor: startFrameMode === m ? GOLD : BORDER, background: startFrameMode === m ? `${GOLD}18` : 'transparent', color: startFrameMode === m ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
-                      {m === 'ai' ? 'AI Generated' : m === 'manual' ? 'Manual' : 'None'}
-                    </button>
-                  ))}
-                </div>
-                {startFrameMode === 'manual' && (
-                  <div>
-                    <input ref={startFrameRef} type="file" accept="image/*" className="hidden"
-                      onChange={e => e.target.files?.[0] && handleFrameUpload('start', e.target.files[0])} />
-                    <button onClick={() => startFrameRef.current?.click()}
-                      className="w-full rounded-xl border overflow-hidden transition hover:border-white/20"
-                      style={{ borderColor: startFrameUrl ? GOLD + '60' : BORDER, aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
-                      {startFrameUrl
-                        ? <img src={startFrameUrl} className="w-full h-full object-cover" alt="Start frame" />
-                        : <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4">
-                            <Upload className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                            <span className="text-xs text-white/25">Click to upload start frame image</span>
-                          </div>
-                      }
-                    </button>
-                    {startFrameUrl && (
-                      <button onClick={() => setStartFrameUrl(null)} className="mt-1 text-[10px] text-white/25 hover:text-white/50 w-full text-center">remove</button>
-                    )}
-                  </div>
-                )}
-                {startFrameMode === 'ai' && <p className="text-[10px] text-white/25">AI will generate the opening frame from your brief.</p>}
-                {startFrameMode === 'none' && <p className="text-[10px] text-white/25">Video will be generated without a reference start frame.</p>}
-              </div>
-
-              {/* End Frame */}
-              <div>
-                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">End Frame</label>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Reference Frames</label>
                 <div className="flex gap-2 mb-2">
                   {(['none', 'manual', 'ai'] as const).map(m => (
-                    <button key={m} onClick={() => setEndFrameMode(m)}
-                      className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
-                      style={{ borderColor: endFrameMode === m ? GOLD : BORDER, background: endFrameMode === m ? `${GOLD}18` : 'transparent', color: endFrameMode === m ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                    <button key={m} onClick={() => setFrameMode(m)}
+                      className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
+                      style={{ borderColor: frameMode === m ? GOLD : BORDER, background: frameMode === m ? `${GOLD}18` : 'transparent', color: frameMode === m ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
                       {m === 'ai' ? 'AI Generated' : m === 'manual' ? 'Manual' : 'None'}
                     </button>
                   ))}
                 </div>
-                {endFrameMode === 'manual' && (
-                  <div>
-                    <input ref={endFrameRef} type="file" accept="image/*" className="hidden"
-                      onChange={e => e.target.files?.[0] && handleFrameUpload('end', e.target.files[0])} />
-                    <button onClick={() => endFrameRef.current?.click()}
-                      className="w-full rounded-xl border overflow-hidden transition hover:border-white/20"
-                      style={{ borderColor: endFrameUrl ? GOLD + '60' : BORDER, aspectRatio: '16/9', background: 'rgba(0,0,0,0.3)' }}>
-                      {endFrameUrl
-                        ? <img src={endFrameUrl} className="w-full h-full object-cover" alt="End frame" />
-                        : <div className="w-full h-full flex flex-col items-center justify-center gap-2 p-4">
-                            <Upload className="w-5 h-5" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                            <span className="text-xs text-white/25">Click to upload end frame image</span>
-                          </div>
-                      }
-                    </button>
-                    {endFrameUrl && (
-                      <button onClick={() => setEndFrameUrl(null)} className="mt-1 text-[10px] text-white/25 hover:text-white/50 w-full text-center">remove</button>
-                    )}
+                {frameMode === 'manual' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Start Frame */}
+                    <div>
+                      <p className="text-[10px] text-white/25 mb-1.5 font-semibold">Start Frame</p>
+                      <input ref={startFrameRef} type="file" accept="image/*" className="hidden"
+                        onChange={e => e.target.files?.[0] && handleFrameUpload('start', e.target.files[0])} />
+                      <button onClick={() => startFrameRef.current?.click()}
+                        className="w-full rounded-xl border overflow-hidden transition hover:border-white/20"
+                        style={{ borderColor: startFrameUrl ? GOLD + '60' : BORDER, aspectRatio: '4/3', background: 'rgba(0,0,0,0.3)' }}>
+                        {startFrameUrl
+                          ? <img src={startFrameUrl} className="w-full h-full object-cover" alt="Start" />
+                          : <div className="w-full h-full flex flex-col items-center justify-center gap-1.5">
+                              <Upload className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                              <span className="text-[10px] text-white/20">Upload image</span>
+                            </div>
+                        }
+                      </button>
+                      {startFrameUrl && <button onClick={() => setStartFrameUrl(null)} className="mt-1 text-[10px] text-white/20 hover:text-white/45 w-full text-center">remove</button>}
+                    </div>
+                    {/* End Frame */}
+                    <div>
+                      <p className="text-[10px] text-white/25 mb-1.5 font-semibold">End Frame</p>
+                      <input ref={endFrameRef} type="file" accept="image/*" className="hidden"
+                        onChange={e => e.target.files?.[0] && handleFrameUpload('end', e.target.files[0])} />
+                      <button onClick={() => endFrameRef.current?.click()}
+                        className="w-full rounded-xl border overflow-hidden transition hover:border-white/20"
+                        style={{ borderColor: endFrameUrl ? GOLD + '60' : BORDER, aspectRatio: '4/3', background: 'rgba(0,0,0,0.3)' }}>
+                        {endFrameUrl
+                          ? <img src={endFrameUrl} className="w-full h-full object-cover" alt="End" />
+                          : <div className="w-full h-full flex flex-col items-center justify-center gap-1.5">
+                              <Upload className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
+                              <span className="text-[10px] text-white/20">Upload image</span>
+                            </div>
+                        }
+                      </button>
+                      {endFrameUrl && <button onClick={() => setEndFrameUrl(null)} className="mt-1 text-[10px] text-white/20 hover:text-white/45 w-full text-center">remove</button>}
+                    </div>
                   </div>
                 )}
-                {endFrameMode === 'ai' && <p className="text-[10px] text-white/25">AI will generate the closing frame from your brief.</p>}
+                {frameMode === 'ai' && (
+                  <p className="text-[10px] text-white/30 px-1">AI will generate opening and closing frame images from your brief. Review them before processing.</p>
+                )}
               </div>
 
-              <button onClick={handleGeneratePrompts} disabled={generatingPrompts || (!brief.trim() && transcriptMode === 'none')}
+              <button onClick={handleGeneratePrompts} disabled={generatingPrompts || !brief.trim()}
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
-                {generatingPrompts ? <><Loader className="w-4 h-4 animate-spin" /> {transcribing ? 'Transcribing…' : 'Generating…'}</> : <><Wand2 className="w-4 h-4" /> Generate Video Brief</>}
+                {generatingPrompts
+                  ? <><Loader className="w-4 h-4 animate-spin" /> {generatingAssets ? 'Generating AI assets…' : 'Enhancing brief…'}</>
+                  : <><Wand2 className="w-4 h-4" /> Generate Video Brief</>}
               </button>
             </div>
           )}
 
           {step === 'prompts' && (
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-white/30 uppercase tracking-wider">Review & Edit Prompt</span>
+                <span className="text-xs font-bold text-white/30 uppercase tracking-wider">Review & Confirm</span>
                 <button onClick={() => setStep('brief')} className="text-xs font-bold" style={{ color: 'rgba(255,255,255,0.3)' }}>← Back</button>
               </div>
-              <p className="text-[11px] text-white/40 leading-relaxed">Edit the AI-generated prompt before processing. This controls the visual style and content of your video.</p>
-              <textarea
-                value={editablePrompt}
-                onChange={e => setEditablePrompt(e.target.value)}
-                rows={5}
-                className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
-                style={{ borderColor: `${GOLD}40` }}
-              />
-              {videoTranscript && (
-                <div className="p-3 rounded-xl border" style={{ borderColor: 'rgba(74,222,128,0.2)', background: 'rgba(74,222,128,0.04)' }}>
-                  <p className="text-[10px] font-bold text-green-400/70 uppercase tracking-wider mb-1">✓ Transcript attached</p>
-                  <p className="text-[10px] text-white/35 line-clamp-3">{videoTranscript.slice(0, 200)}…</p>
+
+              {/* Enhanced prompt — always shown */}
+              <div>
+                <p className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-1.5">Enhanced Video Prompt</p>
+                <p className="text-[10px] text-white/35 mb-2">Claude enhanced your brief into a cinematic prompt. Edit if needed.</p>
+                <textarea
+                  value={editablePrompt}
+                  onChange={e => setEditablePrompt(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                  style={{ borderColor: `${GOLD}40` }}
+                />
+              </div>
+
+              {/* AI-generated transcript — only if transcriptMode === 'ai' */}
+              {transcriptMode === 'ai' && (
+                <div>
+                  <p className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-1.5">AI-Generated Script</p>
+                  {editableTranscript
+                    ? <textarea
+                        value={editableTranscript}
+                        onChange={e => setEditableTranscript(e.target.value)}
+                        rows={5}
+                        className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                        style={{ borderColor: 'rgba(74,222,128,0.3)' }}
+                      />
+                    : <div className="flex items-center gap-2 p-3 rounded-xl border text-xs text-white/30" style={{ borderColor: BORDER }}>
+                        <Loader className="w-3.5 h-3.5 animate-spin" /> Generating script…
+                      </div>
+                  }
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-2 text-[10px] text-white/35">
-                <div className="p-2 rounded-lg border" style={{ borderColor: BORDER }}>
-                  <span className="font-bold text-white/25">Start frame: </span>
-                  {startFrameMode === 'manual' && startFrameUrl ? '✓ Image uploaded' : startFrameMode === 'ai' ? 'AI will generate' : 'None'}
+
+              {/* AI-generated frames — only if frameMode === 'ai' */}
+              {frameMode === 'ai' && (
+                <div>
+                  <p className="text-[10px] font-bold text-white/30 uppercase tracking-wider mb-2">AI-Generated Frames</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[10px] text-white/25 mb-1.5 font-semibold">Start Frame</p>
+                      <div className="rounded-xl border overflow-hidden" style={{ borderColor: generatedStartFrameUrl ? `${GOLD}50` : BORDER, aspectRatio: '4/3', background: 'rgba(0,0,0,0.3)' }}>
+                        {generatedStartFrameUrl
+                          ? <img src={generatedStartFrameUrl} className="w-full h-full object-cover" alt="Start" />
+                          : <div className="w-full h-full flex items-center justify-center"><Loader className="w-5 h-5 animate-spin" style={{ color: GOLD }} /></div>
+                        }
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-white/25 mb-1.5 font-semibold">End Frame</p>
+                      <div className="rounded-xl border overflow-hidden" style={{ borderColor: generatedEndFrameUrl ? `${GOLD}50` : BORDER, aspectRatio: '4/3', background: 'rgba(0,0,0,0.3)' }}>
+                        {generatedEndFrameUrl
+                          ? <img src={generatedEndFrameUrl} className="w-full h-full object-cover" alt="End" />
+                          : <div className="w-full h-full flex items-center justify-center"><Loader className="w-5 h-5 animate-spin" style={{ color: GOLD }} /></div>
+                        }
+                      </div>
+                    </div>
+                  </div>
                 </div>
-                <div className="p-2 rounded-lg border" style={{ borderColor: BORDER }}>
-                  <span className="font-bold text-white/25">End frame: </span>
-                  {endFrameMode === 'manual' && endFrameUrl ? '✓ Image uploaded' : endFrameMode === 'ai' ? 'AI will generate' : 'None'}
-                </div>
-              </div>
+              )}
+
               <button onClick={handleConfirmAndGenerate} disabled={!editablePrompt.trim()}
                 className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
