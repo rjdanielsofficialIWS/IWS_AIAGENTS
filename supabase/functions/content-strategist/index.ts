@@ -31,7 +31,7 @@ async function callClaude(system: string, user: string, maxTokens = 4000): Promi
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-opus-4-5",
+      model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: user }],
@@ -281,7 +281,7 @@ REQUIREMENTS:
 
       // Use Claude with web search to research real-time trends
       const webSearchBody = {
-        model: "claude-opus-4-5",
+        model: "claude-sonnet-4-20250514",
         max_tokens: 8192,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
         system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON.`,
@@ -372,8 +372,8 @@ REQUIREMENTS:
     } else {
       return json({ error: "Invalid mode. Use full_strategy, repurpose_from_video, or trends_research." }, 400);
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error("content-strategist error:", e);
-    return json({ error: "Generation failed. Please try again." }, 500);
+    return json({ error: e?.message || String(e) || "Generation failed. Please try again." }, 500);
   }
 });
