@@ -46,6 +46,31 @@ function stripFences(s: string): string {
   return s.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/i, "").trim();
 }
 
+/** Parse JSON, and if it fails due to truncation attempt to close open structures. */
+function safeParse(raw: string): any {
+  const s = stripFences(raw);
+  try {
+    return JSON.parse(s);
+  } catch {
+    // Try to close any unclosed braces/brackets
+    let depth = 0;
+    const closers: string[] = [];
+    for (const ch of s) {
+      if (ch === '{') { depth++; closers.push('}'); }
+      else if (ch === '[') { depth++; closers.push(']'); }
+      else if (ch === '}' || ch === ']') { depth--; closers.pop(); }
+    }
+    // Strip trailing incomplete value (last comma or partial string)
+    let fixed = s.replace(/,\s*$/, "").replace(/:\s*"[^"]*$/, ': ""');
+    fixed += closers.reverse().join("");
+    try {
+      return JSON.parse(fixed);
+    } catch {
+      throw new Error("Response was truncated and could not be recovered. Try again.");
+    }
+  }
+}
+
 Deno.serve(async (req: Request) => {
   const cors = corsFor(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -169,8 +194,8 @@ REQUIREMENTS:
 - Every topic must be highly specific and relevant to "${offer}" and "${audience}"
 - Vary content types and pillars throughout the 30 days in a logical progression`;
 
-      const raw = await callClaude(systemPrompt, userPrompt, 6000);
-      const result = JSON.parse(stripFences(raw));
+      const raw = await callClaude(systemPrompt, userPrompt, 8192);
+      const result = safeParse(raw);
       return json(result);
 
     } else if (mode === "repurpose_from_video") {
@@ -243,8 +268,8 @@ REQUIREMENTS:
 - Twitter posts under 270 characters
 - LinkedIn posts 150-300 words with clear hook, value, and CTA`;
 
-      const raw = await callClaude(systemPrompt, userPrompt, 5000);
-      const ideas = JSON.parse(stripFences(raw));
+      const raw = await callClaude(systemPrompt, userPrompt, 8192);
+      const ideas = safeParse(raw);
       return json({ ideas });
 
     } else if (mode === "trends_research") {
@@ -257,7 +282,7 @@ REQUIREMENTS:
       // Use Claude with web search to research real-time trends
       const webSearchBody = {
         model: "claude-opus-4-5",
-        max_tokens: 5000,
+        max_tokens: 8192,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
         system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON.`,
         messages: [
@@ -339,7 +364,7 @@ REQUIREMENTS:
       const textBlock = (d.content as any[])?.filter((b: any) => b.type === "text").pop();
       if (!textBlock?.text) throw new Error("No text response from Claude");
 
-      const result = JSON.parse(stripFences(textBlock.text));
+      const result = safeParse(textBlock.text);
       // Ensure researched_at is set
       if (!result.researched_at) result.researched_at = new Date().toISOString();
       return json(result);
