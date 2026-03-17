@@ -2152,11 +2152,32 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   const [results, setResults]           = useState<any | null>(() => {
     try { return JSON.parse(localStorage.getItem('mm_strategy_results') || 'null'); } catch { return null; }
   });
-  // Persist results across tab switches
+
+  // Sync results to/from Supabase user metadata so they persist across devices
+  React.useEffect(() => {
+    if (!userId) return;
+    // On mount: pull from server if localStorage is empty
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const serverResults = user?.user_metadata?.mm_strategy;
+        if (serverResults && !localStorage.getItem('mm_strategy_results')) {
+          setResults(serverResults);
+        }
+      } catch {}
+    })();
+  }, [userId]);
+
   React.useEffect(() => {
     try {
-      if (results) localStorage.setItem('mm_strategy_results', JSON.stringify(results));
-      else localStorage.removeItem('mm_strategy_results');
+      if (results) {
+        localStorage.setItem('mm_strategy_results', JSON.stringify(results));
+        // Push to server so other devices pick it up
+        supabase.auth.updateUser({ data: { mm_strategy: results } }).catch(() => {});
+      } else {
+        localStorage.removeItem('mm_strategy_results');
+        supabase.auth.updateUser({ data: { mm_strategy: null } }).catch(() => {});
+      }
     } catch {}
   }, [results]);
 
@@ -3575,13 +3596,13 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
 
         {composerPanelTab === 'post' && (
-          <div className="px-4 md:px-6 py-6 space-y-1 max-w-2xl mx-auto w-full">
+          <div className="px-4 md:px-8 py-6 w-full">
             <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} />
           </div>
         )}
 
         {composerPanelTab === 'strategist' && (
-          <div className="px-4 md:px-6 py-6 max-w-2xl mx-auto w-full">
+          <div className="px-4 md:px-8 py-6 w-full">
             <InlineContentStrategist userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => onUpgrade?.()} />
           </div>
         )}
