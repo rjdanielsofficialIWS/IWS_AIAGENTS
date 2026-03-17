@@ -2136,7 +2136,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
   onUpgrade?: () => void;
 }) {
-  type StrategistTab = 'brief' | 'calendar' | 'hooks' | 'strategy' | 'video';
+  type StrategistTab = 'brief' | 'trends' | 'calendar' | 'hooks' | 'strategy' | 'video';
   type BriefData = {
     niche: string; offer: string; audience: string; platforms: string[];
     frequency: string; tone: string; goals: string[]; currentStage: string;
@@ -2159,6 +2159,19 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       else localStorage.removeItem('mm_strategy_results');
     } catch {}
   }, [results]);
+
+  // Trends state
+  const [trendsLoading, setTrendsLoading] = useState(false);
+  const [trendsError, setTrendsError]     = useState<string | null>(null);
+  const [trendsResults, setTrendsResults] = useState<any | null>(() => {
+    try { return JSON.parse(localStorage.getItem('mm_trends_results') || 'null'); } catch { return null; }
+  });
+  React.useEffect(() => {
+    try {
+      if (trendsResults) localStorage.setItem('mm_trends_results', JSON.stringify(trendsResults));
+      else localStorage.removeItem('mm_trends_results');
+    } catch {}
+  }, [trendsResults]);
 
   // Video repurpose state
   const [videoFile, setVideoFile]       = useState<File | null>(null);
@@ -2209,6 +2222,32 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     finally { setLoading(false); }
   };
 
+  const handleFetchTrends = async () => {
+    if (!brief.niche.trim()) { setTrendsError('Fill in your niche on the Brief tab first.'); return; }
+    if (!userId) { setTrendsError('Sign in to research trends.'); return; }
+    setTrendsLoading(true); setTrendsError(null); setTrendsResults(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        body: JSON.stringify({
+          mode: 'trends_research',
+          niche: brief.niche,
+          audience: brief.audience,
+          platforms: brief.platforms,
+          goals: brief.goals,
+          offer: brief.offer,
+        }),
+      });
+      const data = await res.json();
+      if (data.error === 'upgrade_required') { setTrendsError('upgrade_required'); return; }
+      if (!res.ok) throw new Error(data.error || 'Trends research failed');
+      setTrendsResults(data);
+    } catch (e: any) { setTrendsError(e.message || 'Something went wrong'); }
+    finally { setTrendsLoading(false); }
+  };
+
   const handleVideoRepurpose = async () => {
     if (!videoFile) { setVideoError('Select a video first'); return; }
     if (!userId) { setVideoError('Sign in first'); return; }
@@ -2239,6 +2278,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
 
   const tabs: { id: StrategistTab; label: string; emoji: string }[] = [
     { id: 'brief',    label: 'Brief',    emoji: '📋' },
+    { id: 'trends',   label: 'Trends',   emoji: '📈' },
     { id: 'calendar', label: 'Calendar', emoji: '📅' },
     { id: 'hooks',    label: 'Hooks',    emoji: '🪝' },
     { id: 'strategy', label: 'Strategy', emoji: '🎯' },
@@ -2401,6 +2441,186 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
             </span>
             {loading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Running 3 AI models in parallel. About 30 seconds.</span>}
           </button>
+        </div>
+      )}
+
+      {/* ── TRENDS TAB ────────────────────────────────────────────────────── */}
+      {tab === 'trends' && (
+        <div className="space-y-4">
+          {/* Header */}
+          <div className="rounded-xl p-4 space-y-1" style={{ background: 'rgba(56,189,248,0.07)', border: '1px solid rgba(56,189,248,0.18)' }}>
+            <div className="text-sm font-black text-white flex items-center gap-2">
+              <span>📈</span> Niche Trend Intelligence
+            </div>
+            <div className="text-xs leading-relaxed" style={{ color: 'rgba(255,255,255,0.45)' }}>
+              Deep research into what's trending in <span className="text-sky-300 font-semibold">{brief.niche || 'your niche'}</span> right now — viral formats, rising topics, platform-specific angles, and content gaps your competitors are missing.
+            </div>
+          </div>
+
+          {/* Research button */}
+          {!trendsResults && !trendsLoading && (
+            <button onClick={handleFetchTrends} disabled={!brief.niche.trim()}
+              className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-40 transition hover:brightness-110"
+              style={{ background: 'linear-gradient(135deg, rgba(56,189,248,0.25), rgba(99,102,241,0.25))', border: '1px solid rgba(56,189,248,0.3)', color: '#7dd3fc' }}>
+              <Sparkles className="w-4 h-4" /> Research Current Trends
+            </button>
+          )}
+
+          {/* Loading */}
+          {trendsLoading && (
+            <div className="flex flex-col items-center justify-center py-14 gap-4">
+              <div className="relative w-12 h-12">
+                <div className="absolute inset-0 rounded-full border-2 border-sky-500/20" />
+                <div className="absolute inset-0 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" />
+                <span className="absolute inset-0 flex items-center justify-center text-lg">📡</span>
+              </div>
+              <div className="text-sm font-bold text-white/50">Researching trends across the internet…</div>
+              <div className="text-xs text-white/25">Scanning viral content, search data & platform algorithms</div>
+            </div>
+          )}
+
+          {/* Error */}
+          {trendsError && trendsError !== 'upgrade_required' && !trendsLoading && (
+            <div className="text-xs text-red-300 px-1">{trendsError}</div>
+          )}
+          {trendsError === 'upgrade_required' && !trendsLoading && (
+            <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
+              <div className="text-sm font-bold" style={{ color: GOLD_L }}>Paid Plan Required</div>
+              <p className="text-xs text-white/50">Trend Intelligence is available on Creator, Viral, and Agency plans.</p>
+              <button onClick={onUpgrade} className="px-4 py-2 rounded-lg text-xs font-bold transition hover:brightness-110" style={{ background: `linear-gradient(135deg,${GOLD_D},${GOLD})`, color: '#000' }}>Upgrade to Unlock</button>
+            </div>
+          )}
+
+          {/* Results */}
+          {trendsResults && !trendsLoading && (
+            <div className="space-y-5">
+              {/* Refresh button */}
+              <div className="flex justify-end">
+                <button onClick={handleFetchTrends}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border transition hover:bg-white/5"
+                  style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.35)' }}>
+                  <RefreshCw className="w-3 h-3" /> Refresh Research
+                </button>
+              </div>
+
+              {/* Niche overview */}
+              {trendsResults.niche_overview && (
+                <div className="rounded-xl p-4" style={{ background: 'rgba(56,189,248,0.06)', border: '1px solid rgba(56,189,248,0.15)' }}>
+                  <div className="text-xs font-bold text-sky-400 uppercase tracking-wider mb-1.5">Niche Overview</div>
+                  <p className="text-sm text-white/75 leading-relaxed">{trendsResults.niche_overview}</p>
+                </div>
+              )}
+
+              {/* Trending topics */}
+              {trendsResults.trending_topics?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2.5">🔥 Trending Topics Right Now</div>
+                  <div className="space-y-2">
+                    {trendsResults.trending_topics.map((t: any, i: number) => (
+                      <div key={i} className="rounded-xl p-3.5 border" style={{ background: 'rgba(255,255,255,0.03)', borderColor: BORDER }}>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1">
+                            <div className="text-sm font-bold text-white">{t.topic}</div>
+                            {t.why && <div className="text-xs text-white/45 mt-0.5 leading-relaxed">{t.why}</div>}
+                            {t.content_angle && (
+                              <div className="mt-1.5 text-xs font-semibold" style={{ color: '#7dd3fc' }}>
+                                💡 Angle: {t.content_angle}
+                              </div>
+                            )}
+                          </div>
+                          <button onClick={() => handleAdd(`trend-${i}`, t.topic, t.content_angle, 'idea', 'Trends')}
+                            disabled={added.has(`trend-${i}`)}
+                            className="shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg border transition"
+                            style={{ borderColor: added.has(`trend-${i}`) ? 'rgba(34,197,94,0.4)' : BORDER, color: added.has(`trend-${i}`) ? '#86efac' : 'rgba(255,255,255,0.4)', background: added.has(`trend-${i}`) ? 'rgba(34,197,94,0.08)' : 'transparent' }}>
+                            {added.has(`trend-${i}`) ? '✓' : '+ Plan'}
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Viral formats */}
+              {trendsResults.viral_formats?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2.5">🎬 Viral Content Formats</div>
+                  <div className="grid grid-cols-1 gap-2">
+                    {trendsResults.viral_formats.map((f: any, i: number) => (
+                      <div key={i} className="rounded-xl p-3.5 border" style={{ background: 'rgba(168,85,247,0.05)', borderColor: 'rgba(168,85,247,0.18)' }}>
+                        <div className="text-sm font-bold" style={{ color: '#c084fc' }}>{f.format}</div>
+                        {f.description && <div className="text-xs text-white/50 mt-0.5 leading-relaxed">{f.description}</div>}
+                        {f.example && <div className="text-xs mt-1.5 text-white/35 italic">e.g. "{f.example}"</div>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Rising keywords */}
+              {trendsResults.rising_keywords?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2.5">🔑 Rising Keywords & Phrases</div>
+                  <div className="flex flex-wrap gap-2">
+                    {trendsResults.rising_keywords.map((kw: string, i: number) => (
+                      <span key={i} className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                        style={{ background: `${GOLD}12`, border: `1px solid ${GOLD}25`, color: GOLD_L }}>
+                        {kw}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Platform trends */}
+              {trendsResults.platform_trends?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2.5">📱 Platform-Specific Trends</div>
+                  <div className="space-y-2">
+                    {trendsResults.platform_trends.map((pt: any, i: number) => (
+                      <div key={i} className="rounded-xl p-3.5 border flex gap-3" style={{ background: 'rgba(255,255,255,0.025)', borderColor: BORDER }}>
+                        <div className="shrink-0 mt-0.5">
+                          <PlatformIcon id={pt.platform?.toLowerCase()} size="sm" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white capitalize">{pt.platform}: <span className="text-white/70 font-semibold">{pt.trend}</span></div>
+                          {pt.tip && <div className="text-xs text-white/40 mt-0.5 leading-relaxed">{pt.tip}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Competitor gaps */}
+              {trendsResults.competitor_gaps?.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2.5">🎯 Content Gaps to Own</div>
+                  <div className="space-y-2">
+                    {trendsResults.competitor_gaps.map((gap: string, i: number) => (
+                      <div key={i} className="flex items-start gap-2.5 rounded-xl px-3.5 py-2.5 border" style={{ background: 'rgba(251,146,60,0.05)', borderColor: 'rgba(251,146,60,0.15)' }}>
+                        <span className="text-orange-400 mt-0.5 shrink-0">→</span>
+                        <span className="text-sm text-white/70 leading-relaxed">{gap}</span>
+                        <button onClick={() => handleAdd(`gap-${i}`, gap, undefined, 'idea', 'Trends Gap')}
+                          disabled={added.has(`gap-${i}`)}
+                          className="shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg border ml-auto transition"
+                          style={{ borderColor: added.has(`gap-${i}`) ? 'rgba(34,197,94,0.4)' : BORDER, color: added.has(`gap-${i}`) ? '#86efac' : 'rgba(255,255,255,0.4)', background: added.has(`gap-${i}`) ? 'rgba(34,197,94,0.08)' : 'transparent' }}>
+                          {added.has(`gap-${i}`) ? '✓' : '+ Plan'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Timestamps */}
+              {trendsResults.researched_at && (
+                <div className="text-center text-[10px] text-white/15 pt-2">
+                  Researched {new Date(trendsResults.researched_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 

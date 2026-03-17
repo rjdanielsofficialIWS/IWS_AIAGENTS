@@ -247,8 +247,105 @@ REQUIREMENTS:
       const ideas = JSON.parse(stripFences(raw));
       return json({ ideas });
 
+    } else if (mode === "trends_research") {
+      const { niche, audience = "", platforms = [], goals = [], offer = "" } = body;
+      if (!niche || !niche.trim()) return json({ error: "niche is required" }, 400);
+
+      const platformList = (platforms as string[]).join(", ") || "Instagram, TikTok, LinkedIn";
+      const goalList = (goals as string[]).join(", ") || "grow audience, generate leads";
+
+      // Use Claude with web search to research real-time trends
+      const webSearchBody = {
+        model: "claude-opus-4-5",
+        max_tokens: 5000,
+        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+        system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON.`,
+        messages: [
+          {
+            role: "user",
+            content: `Research the current trends for this niche and return structured intelligence:
+
+NICHE: ${niche.trim()}
+TARGET AUDIENCE: ${audience || "general audience interested in this niche"}
+ACTIVE PLATFORMS: ${platformList}
+GOALS: ${goalList}
+${offer ? `OFFER: ${offer}` : ""}
+
+Search for:
+1. What topics are trending right now in "${niche}" on social media
+2. What content formats are going viral in this space
+3. Rising keywords, hashtags, and search terms
+4. Platform-specific algorithm trends and what's getting pushed
+5. Content gaps — what competitors are NOT covering that the audience wants
+
+After your research, return ONLY this JSON structure:
+
+{
+  "niche_overview": "2-3 sentence synthesis of the current landscape and opportunity in this niche",
+  "trending_topics": [
+    {
+      "topic": "Specific trending topic title",
+      "why": "Why this is trending right now and why the audience cares",
+      "content_angle": "The exact angle to take to own this topic"
+    }
+  ],
+  "viral_formats": [
+    {
+      "format": "Format name (e.g. 'POV story', 'Hot take thread', 'Before/After')",
+      "description": "Why this format is working in this niche right now",
+      "example": "Specific example title/concept to use"
+    }
+  ],
+  "rising_keywords": ["keyword1", "keyword2", "keyword3"],
+  "platform_trends": [
+    {
+      "platform": "instagram",
+      "trend": "What the algorithm is rewarding / what's working",
+      "tip": "Specific tactical tip to capitalize on this"
+    }
+  ],
+  "competitor_gaps": [
+    "Specific underserved topic or angle that this audience wants but nobody is delivering well"
+  ],
+  "researched_at": "${new Date().toISOString()}"
+}
+
+REQUIREMENTS:
+- trending_topics: exactly 6 entries, all based on real current trends you found
+- viral_formats: exactly 5 entries specific to this niche
+- rising_keywords: exactly 10 keywords/phrases
+- platform_trends: one entry per platform in [${platformList}]
+- competitor_gaps: exactly 5 specific gaps
+- All content must be specific to "${niche}" — no generic advice
+- Return ONLY the JSON object, nothing else`,
+          },
+        ],
+      };
+
+      const r = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": ANTHROPIC_KEY!,
+          "anthropic-version": "2023-06-01",
+          "anthropic-beta": "web-search-2025-03-05",
+        },
+        body: JSON.stringify(webSearchBody),
+      });
+      if (!r.ok) throw new Error("Claude web search error: " + await r.text());
+      const d = await r.json();
+
+      // Extract the final text block (last text content block after tool use)
+      const textBlock = (d.content as any[])?.filter((b: any) => b.type === "text").pop();
+      if (!textBlock?.text) throw new Error("No text response from Claude");
+
+      const result = JSON.parse(stripFences(textBlock.text));
+      // Ensure researched_at is set
+      if (!result.researched_at) result.researched_at = new Date().toISOString();
+      return json(result);
+
     } else {
-      return json({ error: "Invalid mode. Use full_strategy or repurpose_from_video." }, 400);
+      return json({ error: "Invalid mode. Use full_strategy, repurpose_from_video, or trends_research." }, 400);
     }
   } catch (e) {
     console.error("content-strategist error:", e);
