@@ -110,7 +110,9 @@ type PostizIntegration = {
   picture?: string; profile?: string; disabled?: boolean;
 };
 
-type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner' | 'video';
+type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner' | 'video' | 'workspaces';
+
+type Workspace = { id: string; name: string; color: string; assignedChannelIds: string[]; createdAt: string };
 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
@@ -3007,13 +3009,14 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
 }
 
 function AddPlannerItemModal({
-  userId, initialDate, prefilled, onClose, onSaved,
+  userId, initialDate, prefilled, onClose, onSaved, workspaceId,
 }: {
   userId: string | null;
   initialDate: string;
   prefilled?: { title: string; notes?: string; category: string; sourceLabel: string };
   onClose: () => void;
   onSaved: () => void;
+  workspaceId?: string | null;
 }) {
   const [title, setTitle]         = useState(prefilled?.title ?? '');
   const [notes, setNotes]         = useState(prefilled?.notes ?? '');
@@ -3036,6 +3039,7 @@ function AddPlannerItemModal({
         planned_time: time || null,
         category: prefilled?.category ?? 'idea',
         source_label: prefilled?.sourceLabel ?? 'Manual',
+        workspace_id: workspaceId ?? null,
       });
       if (dbErr) throw dbErr;
       onSaved();
@@ -3130,10 +3134,11 @@ function AddPlannerItemModal({
   );
 }
 
-function PlannerPanel({ userId, subscription, onUpgrade }: {
+function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
   userId: string | null;
   subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
   onUpgrade: () => void;
+  workspaceId?: string | null;
 }) {
   const [items, setItems]               = useState<PlannerItem[]>([]);
   const [loading, setLoading]           = useState(false);
@@ -3172,12 +3177,14 @@ function PlannerPanel({ userId, subscription, onUpgrade }: {
     try {
       const startStr = days[0].toISOString().split('T')[0];
       const endStr   = days[6].toISOString().split('T')[0];
-      const { data, error } = await supabase
+      let q = supabase
         .from('content_planner')
         .select('*')
         .eq('supabase_user_id', userId)
         .gte('planned_date', startStr)
         .lte('planned_date', endStr);
+      if (workspaceId) q = q.eq('workspace_id', workspaceId);
+      const { data, error } = await q;
       if (!error && data) {
         setItems(data.map((r: any) => ({
           id: r.id, title: r.title, notes: r.notes,
@@ -3187,7 +3194,7 @@ function PlannerPanel({ userId, subscription, onUpgrade }: {
       }
     } catch (e) {}
     finally { setLoading(false); }
-  }, [userId, weekStart]);
+  }, [userId, weekStart, workspaceId]);
 
   useEffect(() => { loadItems(); }, [loadItems]);
 
@@ -3414,6 +3421,7 @@ function PlannerPanel({ userId, subscription, onUpgrade }: {
           userId={userId}
           initialDate={addDate}
           prefilled={pendingItem ?? undefined}
+          workspaceId={workspaceId}
           onClose={() => { setAddModalOpen(false); setPendingItem(null); }}
           onSaved={() => { setAddModalOpen(false); setPendingItem(null); loadItems(); pendingAddCallback.current?.(); pendingAddCallback.current = undefined; }}
         />
@@ -5034,19 +5042,262 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   );
 }
 
+// ─── WorkspacesPanel ──────────────────────────────────────────────────────────
+
+function WorkspacesPanel({
+  userId,
+  subscription,
+  onUpgrade,
+  workspaces,
+  onWorkspacesChanged,
+  activeWorkspaceId,
+  onSetActive,
+  integrations,
+}: {
+  userId: string | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
+  onUpgrade: () => void;
+  workspaces: Workspace[];
+  onWorkspacesChanged: () => void;
+  activeWorkspaceId: string | null;
+  onSetActive: (id: string | null) => void;
+  integrations: PostizIntegration[];
+}) {
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newName, setNewName]       = useState('');
+  const [newColor, setNewColor]     = useState('#D6B25E');
+  const [saving, setSaving]         = useState(false);
+  const [saveError, setSaveError]   = useState<string | null>(null);
+  const [deleting, setDeleting]     = useState<string | null>(null);
+  const [assignLoading, setAssignLoading] = useState<string | null>(null);
+
+  const COLOR_PRESETS = ['#D6B25E', '#22c55e', '#3b82f6', '#a855f7', '#ef4444', '#f97316'];
+
+  const isAgency = subscription?.plan === 'agency' || (
+    subscription?.status === 'trialing' &&
+    !!subscription?.trial_expires_at &&
+    new Date(subscription.trial_expires_at) > new Date() &&
+    subscription?.plan === 'agency'
+  );
+
+  const handleCreate = async () => {
+    if (!userId || !newName.trim()) return;
+    setSaving(true); setSaveError(null);
+    try {
+      const { error } = await supabase.from('workspaces').insert({
+        owner_user_id: userId,
+        name: newName.trim(),
+        color: newColor,
+        assigned_channel_ids: [],
+      });
+      if (error) { setSaveError(error.message); return; }
+      setNewName(''); setNewColor('#D6B25E'); setCreateOpen(false);
+      onWorkspacesChanged();
+    } catch (e: any) {
+      setSaveError(e?.message ?? 'Failed to create');
+    } finally { setSaving(false); }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!userId) return;
+    setDeleting(id);
+    try {
+      await supabase.from('workspaces').delete().eq('id', id).eq('owner_user_id', userId);
+      if (activeWorkspaceId === id) onSetActive(null);
+      onWorkspacesChanged();
+    } finally { setDeleting(null); }
+  };
+
+  const handleToggleChannel = async (workspace: Workspace, channelId: string) => {
+    if (!userId) return;
+    const current = workspace.assignedChannelIds;
+    const updated = current.includes(channelId)
+      ? current.filter(c => c !== channelId)
+      : [...current, channelId];
+    setAssignLoading(workspace.id + ':' + channelId);
+    try {
+      await supabase.from('workspaces').update({ assigned_channel_ids: updated }).eq('id', workspace.id).eq('owner_user_id', userId);
+      onWorkspacesChanged();
+    } finally { setAssignLoading(null); }
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto p-6" style={{ color: 'white' }}>
+      <div className="max-w-2xl mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h2 className="text-xl font-black text-white">Client Workspaces</h2>
+            <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              Group channels by client or brand. Up to 4 workspaces per account.
+            </p>
+          </div>
+          {isAgency && workspaces.length < 4 && (
+            <button
+              onClick={() => setCreateOpen(v => !v)}
+              className="px-4 py-2 rounded-xl text-sm font-bold transition"
+              style={{ background: `${GOLD}20`, color: GOLD_L, border: `1px solid ${GOLD}40` }}>
+              + Create Workspace
+            </button>
+          )}
+        </div>
+
+        {!isAgency && (
+          <div className="rounded-2xl border p-6 mb-6 text-center" style={{ background: SURFACE, borderColor: BORDER }}>
+            <div className="text-4xl mb-3">🏢</div>
+            <h3 className="text-base font-black text-white mb-2">Agency Plan Required</h3>
+            <p className="text-sm mb-4" style={{ color: 'rgba(255,255,255,0.4)' }}>
+              Client Workspaces are available on the Agency plan. Manage multiple brands and clients from one dashboard.
+            </p>
+            <button
+              onClick={onUpgrade}
+              className="px-6 py-2.5 rounded-xl text-sm font-black transition"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})`, color: '#000' }}>
+              Upgrade to Agency
+            </button>
+          </div>
+        )}
+
+        {isAgency && createOpen && (
+          <div className="rounded-2xl border p-5 mb-6" style={{ background: SURFACE, borderColor: `${GOLD}30` }}>
+            <h3 className="text-sm font-black text-white mb-4">New Workspace</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-xs font-bold mb-1.5 block" style={{ color: 'rgba(255,255,255,0.5)' }}>Name</label>
+                <input
+                  value={newName}
+                  onChange={e => setNewName(e.target.value)}
+                  placeholder="e.g. Acme Corp"
+                  className="w-full px-3 py-2 rounded-xl text-sm outline-none"
+                  style={{ background: 'rgba(255,255,255,0.07)', border: `1px solid ${BORDER}`, color: 'white' }}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold mb-1.5 block" style={{ color: 'rgba(255,255,255,0.5)' }}>Color</label>
+                <div className="flex gap-2 flex-wrap">
+                  {COLOR_PRESETS.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setNewColor(c)}
+                      className="w-7 h-7 rounded-full border-2 transition"
+                      style={{ background: c, borderColor: newColor === c ? 'white' : 'transparent' }}
+                    />
+                  ))}
+                </div>
+              </div>
+              {saveError && <p className="text-xs text-red-400">{saveError}</p>}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleCreate}
+                  disabled={saving || !newName.trim()}
+                  className="px-4 py-2 rounded-xl text-sm font-black transition disabled:opacity-50"
+                  style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})`, color: '#000' }}>
+                  {saving ? 'Creating…' : 'Create'}
+                </button>
+                <button
+                  onClick={() => { setCreateOpen(false); setNewName(''); setSaveError(null); }}
+                  className="px-4 py-2 rounded-xl text-sm font-bold transition"
+                  style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isAgency && workspaces.length === 0 && !createOpen && (
+          <div className="rounded-2xl border p-8 text-center" style={{ background: SURFACE, borderColor: BORDER }}>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.35)' }}>No workspaces yet. Create your first one above.</p>
+          </div>
+        )}
+
+        <div className="space-y-4">
+          {workspaces.map(ws => (
+            <div key={ws.id} className="rounded-2xl border overflow-hidden" style={{ background: SURFACE, borderColor: activeWorkspaceId === ws.id ? `${ws.color}50` : BORDER }}>
+              <div className="flex items-center gap-3 p-4">
+                <div className="w-3 h-3 rounded-full shrink-0" style={{ background: ws.color }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-black text-white truncate">{ws.name}</div>
+                  <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                    {ws.assignedChannelIds.length} channel{ws.assignedChannelIds.length !== 1 ? 's' : ''} assigned
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {activeWorkspaceId === ws.id ? (
+                    <button
+                      onClick={() => onSetActive(null)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-black"
+                      style={{ background: `${ws.color}25`, color: ws.color, border: `1px solid ${ws.color}50` }}>
+                      Active
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onSetActive(ws.id)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:bg-white/10"
+                      style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                      Set Active
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleDelete(ws.id)}
+                    disabled={deleting === ws.id}
+                    className="p-1.5 rounded-lg transition hover:bg-red-500/15 text-red-400/50 hover:text-red-400 disabled:opacity-40">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {integrations.length > 0 && (
+                <div className="px-4 pb-4 border-t pt-3" style={{ borderColor: BORDER }}>
+                  <p className="text-xs font-bold mb-2" style={{ color: 'rgba(255,255,255,0.3)' }}>ASSIGN CHANNELS</p>
+                  <div className="flex flex-wrap gap-2">
+                    {integrations.map(int => {
+                      const assigned = ws.assignedChannelIds.includes(int.id) || ws.assignedChannelIds.includes(int.identifier);
+                      const loadKey = ws.id + ':' + int.id;
+                      return (
+                        <label key={int.id} className="flex items-center gap-1.5 cursor-pointer select-none px-2.5 py-1.5 rounded-lg transition"
+                          style={{ background: assigned ? `${ws.color}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${assigned ? ws.color + '40' : 'rgba(255,255,255,0.08)'}` }}>
+                          <input
+                            type="checkbox"
+                            checked={assigned}
+                            disabled={assignLoading === loadKey}
+                            onChange={() => handleToggleChannel(ws, int.id)}
+                            className="w-3 h-3 accent-yellow-400"
+                          />
+                          <PlatformIcon id={int.profile || int.identifier} size="sm" />
+                          <span className="text-xs font-semibold" style={{ color: assigned ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.4)' }}>{int.name}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
-function Sidebar({ view, setView, integrations, onOpenConnect }: {
+function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activeWorkspaceId, onSwitchWorkspace, onManageWorkspaces }: {
   view: ViewMode; setView: (v: ViewMode) => void;
   integrations: PostizIntegration[]; onOpenConnect: () => void;
+  workspaces: Workspace[]; activeWorkspaceId: string | null;
+  onSwitchWorkspace: (id: string | null) => void; onManageWorkspaces: () => void;
 }) {
+  const [wsSwitcherOpen, setWsSwitcherOpen] = useState(false);
   const navItems = [
-    { id: 'composer' as ViewMode, label: 'Posts',    icon: <Edit3 className="w-5 h-5" /> },
-    { id: 'calendar' as ViewMode, label: 'Calendar', icon: <Calendar className="w-5 h-5" /> },
-    { id: 'planner'  as ViewMode, label: 'Planner',  icon: <BookOpen className="w-5 h-5" /> },
-    { id: 'video'    as ViewMode, label: 'AI Video', icon: <Film className="w-5 h-5" /> },
-    { id: 'partner'  as ViewMode, label: 'Earn',     icon: <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
+    { id: 'composer' as ViewMode, label: 'Posts',      icon: <Edit3 className="w-5 h-5" /> },
+    { id: 'calendar' as ViewMode, label: 'Calendar',   icon: <Calendar className="w-5 h-5" /> },
+    { id: 'planner'  as ViewMode, label: 'Planner',    icon: <BookOpen className="w-5 h-5" /> },
+    { id: 'video'    as ViewMode, label: 'AI Video',   icon: <Film className="w-5 h-5" /> },
+    { id: 'partner'  as ViewMode, label: 'Earn',       icon: <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
+    { id: 'workspaces' as ViewMode, label: 'Workspaces', icon: <Users className="w-5 h-5" /> },
   ];
+
+  const activeWs = workspaces.find(w => w.id === activeWorkspaceId) ?? null;
 
   return (
     <>
@@ -5063,6 +5314,46 @@ function Sidebar({ view, setView, integrations, onOpenConnect }: {
             </div>
           </div>
         </div>
+        {workspaces.length > 0 && (
+          <div className="px-3 pt-3 relative">
+            <button
+              onClick={() => setWsSwitcherOpen(v => !v)}
+              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5"
+              style={{ border: `1px solid ${activeWs ? activeWs.color + '40' : BORDER}`, color: activeWs ? activeWs.color : 'rgba(255,255,255,0.3)', background: activeWs ? `${activeWs.color}0d` : 'transparent' }}>
+              {activeWs && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: activeWs.color }} />}
+              <span className="truncate flex-1 text-left">{activeWs ? activeWs.name : 'All Brands'}</span>
+              <ChevronDown className="w-3 h-3 shrink-0 opacity-50" />
+            </button>
+            {wsSwitcherOpen && (
+              <div className="absolute left-3 right-3 top-full mt-1 rounded-xl border z-50 overflow-hidden shadow-xl"
+                style={{ background: '#1a1a1f', borderColor: BORDER }}>
+                <button
+                  onClick={() => { onSwitchWorkspace(null); setWsSwitcherOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-xs font-bold transition hover:bg-white/5"
+                  style={{ color: !activeWorkspaceId ? GOLD_L : 'rgba(255,255,255,0.5)' }}>
+                  All Brands
+                </button>
+                {workspaces.map(ws => (
+                  <button key={ws.id}
+                    onClick={() => { onSwitchWorkspace(ws.id); setWsSwitcherOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs font-bold transition hover:bg-white/5 flex items-center gap-2"
+                    style={{ color: activeWorkspaceId === ws.id ? GOLD_L : 'rgba(255,255,255,0.5)' }}>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ws.color }} />
+                    <span className="truncate">{ws.name}</span>
+                  </button>
+                ))}
+                <div className="border-t" style={{ borderColor: BORDER }}>
+                  <button
+                    onClick={() => { onManageWorkspaces(); setWsSwitcherOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold transition hover:bg-white/5"
+                    style={{ color: 'rgba(255,255,255,0.25)' }}>
+                    Manage workspaces…
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <nav className="px-3 py-4 space-y-0.5">
           {navItems.map(item => (
             <button key={item.id} onClick={() => setView(item.id)}
@@ -5417,6 +5708,8 @@ export function MediaDistributionPage() {
   const [promoSuccess, setPromoSuccess]         = useState('');
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
+  const [workspaces, setWorkspaces]             = useState<Workspace[]>([]);
+  const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => localStorage.getItem('mm_active_workspace') || null);
   const [authModalOpen, setAuthModalOpen]       = useState(false);
   const { user: authUser, signOut }             = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
@@ -5449,6 +5742,11 @@ export function MediaDistributionPage() {
       try {
         const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id,trial_expires_at').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
+      } catch (_) {}
+      // Load workspaces
+      try {
+        const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUserId).order('created_at');
+        if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at })));
       } catch (_) {}
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -5509,6 +5807,11 @@ export function MediaDistributionPage() {
       })();
     }
   }, [currentUserId]);
+
+  useEffect(() => {
+    if (activeWorkspaceId) localStorage.setItem('mm_active_workspace', activeWorkspaceId);
+    else localStorage.removeItem('mm_active_workspace');
+  }, [activeWorkspaceId]);
 
   // ── Social account return detection ──────────────────────────────────────
   // Three signals, any one is enough: URL ?connected=1, localStorage flag, visibilitychange.
@@ -5988,14 +6291,28 @@ export function MediaDistributionPage() {
             );
             return null;
           })()}
+          {/* H — compute filtered integrations based on active workspace */}
+          {(() => { return null; })()}
           <div className="flex flex-1 overflow-hidden min-h-0">
-          <Sidebar view={view} setView={setView} integrations={integrations}
-            onOpenConnect={() => { const _isPromo = subscription?.stripe_customer_id?.startsWith('promo_'); const _isTrial = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date(); (subscription?.status === 'active' || _isPromo || _isTrial) ? setConnectModalOpen(true) : setPricingOpen(true); }} />
+          {/* I — Sidebar with workspace props */}
+          <Sidebar view={view} setView={setView}
+            integrations={(() => {
+              const aw = workspaces.find(w => w.id === activeWorkspaceId);
+              if (activeWorkspaceId && aw && aw.assignedChannelIds.length > 0) {
+                return integrations.filter(i => aw.assignedChannelIds.includes(i.id) || aw.assignedChannelIds.includes(i.identifier));
+              }
+              return integrations;
+            })()}
+            onOpenConnect={() => { const _isPromo = subscription?.stripe_customer_id?.startsWith('promo_'); const _isTrial = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date(); (subscription?.status === 'active' || _isPromo || _isTrial) ? setConnectModalOpen(true) : setPricingOpen(true); }}
+            workspaces={workspaces}
+            activeWorkspaceId={activeWorkspaceId}
+            onSwitchWorkspace={(id) => setActiveWorkspaceId(id)}
+            onManageWorkspaces={() => setView('workspaces')} />
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
-
-            {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} />}
+            {/* K — pass activeIntegrations to ComposerPanel */}
+            {view === 'composer' && <ComposerPanel integrations={(() => { const aw = workspaces.find(w => w.id === activeWorkspaceId); if (activeWorkspaceId && aw && aw.assignedChannelIds.length > 0) return integrations.filter(i => aw.assignedChannelIds.includes(i.id) || aw.assignedChannelIds.includes(i.identifier)); return integrations; })()} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
-            {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} />}
+            {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
             {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
               if (url.startsWith('repurpose:')) {
                 setVideoHandoff({ url: url.replace('repurpose:', ''), mode: 'text' });
@@ -6007,6 +6324,8 @@ export function MediaDistributionPage() {
               setView('composer');
             }} />}
             {view === 'partner'  && <PartnerDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
+            {/* J — WorkspacesPanel view */}
+            {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} />}
           </main>
           </div>
 
