@@ -4988,7 +4988,10 @@ export function MediaDistributionPage() {
           .mm-pricing-sheet { border-radius: 24px !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; max-height: 90vh !important; }
         }
         .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
-        .lg\\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
+        .lg\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
+        /* Platform icons: show mobile strip on small screens, hide on desktop (right col handles it) */
+        .mm-platforms-mobile { display: block; }
+        @media (min-width: 900px) { .mm-platforms-mobile { display: none; } }
       `}</style>
 
       {oauthLoading && (
@@ -5062,19 +5065,7 @@ export function MediaDistributionPage() {
                 ))}
               </div>
 
-              {/* Platform Icons Strip */}
-              <div style={{ marginBottom: 20, maxWidth: 300, width: '100%' }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Publish to 12 platforms</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky','pinterest','gmb','reddit','telegram'].map(pid => (
-                    <div key={pid} title={pid.charAt(0).toUpperCase()+pid.slice(1)} style={{ opacity: 0.85, transition: 'opacity 0.15s', cursor: 'default' }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}>
-                      <PlatformIcon id={pid} size="sm" />
-                    </div>
-                  ))}
-                </div>
-              </div>
+
 
               {/* CTAs */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9, width: '100%', maxWidth: 300, marginBottom: 20 }}>
@@ -5096,6 +5087,20 @@ export function MediaDistributionPage() {
                 </button>
               </div>
 
+              {/* Platform Icons — mobile only (hidden on desktop via mm-hero-right showing it) */}
+              <div className="mm-platforms-mobile" style={{ marginBottom: 20, maxWidth: 300, width: '100%' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Publish to 12 platforms</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky','pinterest','gmb','reddit','telegram'].map(pid => (
+                    <div key={pid} title={pid.charAt(0).toUpperCase()+pid.slice(1)} style={{ opacity: 0.85, transition: 'opacity 0.15s', cursor: 'default' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}>
+                      <PlatformIcon id={pid} size="sm" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Referral nudge */}
               <div style={{ padding: '12px 16px', borderRadius: 12, background: `${GOLD}07`, border: `1px solid ${GOLD}18`, maxWidth: 300, width: '100%' }}>
                 <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 2-for-20 Partner Program</div>
@@ -5107,6 +5112,21 @@ export function MediaDistributionPage() {
 
             {/* ── Right: feature cards ── */}
             <div className="mm-hero-right" style={{ marginTop: '32px' }}>
+
+              {/* Platform Icons Strip — above feature cards on desktop, hidden on mobile (shown in left col on mobile) */}
+              <div style={{ marginBottom: 20, width: '100%' }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Publish to 12 platforms</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky','pinterest','gmb','reddit','telegram'].map(pid => (
+                    <div key={pid} title={pid.charAt(0).toUpperCase()+pid.slice(1)} style={{ opacity: 0.85, transition: 'opacity 0.15s', cursor: 'default' }}
+                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
+                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}>
+                      <PlatformIcon id={pid} size="sm" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, width: '100%' }}>
                 {[
                   { icon: <Video size={15} />,      title: 'AI Video Generation',       desc: 'Cinematic AI video from a single image. No editing required.' },

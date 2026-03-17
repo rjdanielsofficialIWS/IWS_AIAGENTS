@@ -342,7 +342,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
                   {/* Email */}
                   <div style={{ marginBottom: 10 }}>
                     <label style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: 6 }}>Email</label>
-                    <input autoFocus={false} readOnly onFocus={e => { e.currentTarget.removeAttribute('readOnly'); }}
+                    <input autoFocus={false}
                       type="email" value={email} onChange={e => setEmail(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                       placeholder="you@example.com" autoFocus
@@ -354,7 +354,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
                   {/* Password */}
                   <div style={{ marginBottom: 18 }}>
                     <label style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', display: 'block', marginBottom: 6 }}>Password</label>
-                    <input autoFocus={false} readOnly onFocus={e => { e.currentTarget.removeAttribute('readOnly'); }}
+                    <input autoFocus={false}
                       type="password" value={password} onChange={e => setPassword(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleSubmit()}
                       placeholder={mode === 'signup' ? 'Choose a strong password' : 'Your password'}
