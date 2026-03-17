@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Loader, AlertCircle, Zap, Video, Share2, Sparkles, CalendarDays, Mic } from 'lucide-react';
 import { supabase } from '../../services/vapiAI';
 
@@ -28,6 +28,17 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [sent, setSent]               = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      // Blur whatever triggered the modal so mobile keyboard doesn't auto-open
+      setTimeout(() => {
+        if (document.activeElement instanceof HTMLElement) {
+          document.activeElement.blur();
+        }
+      }, 50);
+    }
+  }, [open]);
 
   if (!open) return null;
 
@@ -329,7 +340,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
                         <path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 001.83 5.4L4.5 7.49a4.77 4.77 0 014.48-3.3z"/>
                       </svg>
                     )}
-                    {googleLoading ? 'Redirecting…' : 'Continue with Google'}
+                    {googleLoading ? 'Opening Google…' : 'Continue with Google'}
                   </button>
 
                   {/* Divider */}
@@ -345,7 +356,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
                     <input
                       type="email" value={email} onChange={e => setEmail(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                      placeholder="you@example.com" autoFocus
+                      placeholder="you@example.com"
                       className="mm2-input"
                       style={{ width: '100%', boxSizing: 'border-box', padding: '11px 14px', borderRadius: 10, fontSize: 14, color: 'white', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.09)', transition: 'border-color 0.15s, box-shadow 0.15s' }}
                     />

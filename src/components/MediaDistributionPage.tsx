@@ -4973,8 +4973,8 @@ export function MediaDistributionPage() {
         @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         .mm-hero-layout { display: flex; flex-direction: column; align-items: center; width: 100%; height: 100%; padding: clamp(28px,5vw,48px) clamp(16px,4vw,48px); }
         @media (min-width: 900px) {
-          .mm-hero-layout { flex-direction: row; align-items: stretch; gap: 40px; justify-content: center; }
-          .mm-hero-left  { flex: 0 0 360px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; }
+          .mm-hero-layout { flex-direction: row; align-items: stretch; gap: 60px; justify-content: center; }
+          .mm-hero-left  { flex: 0 0 460px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; }
           .mm-hero-right { flex: 1; max-width: 560px; display: flex; flex-direction: column; justify-content: center; }
           .mm-hero-left .mm-hero-badge, .mm-hero-left .mm-hero-headline, .mm-hero-left .mm-hero-tagline { text-align: left !important; }
           .mm-hero-left .mm-hero-badge { justify-content: flex-start !important; }
@@ -4989,9 +4989,7 @@ export function MediaDistributionPage() {
         }
         .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
         .lg\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
-        /* Platform icons: show mobile strip on small screens, hide on desktop (right col handles it) */
-        .mm-platforms-mobile { display: block; }
-        @media (min-width: 900px) { .mm-platforms-mobile { display: none; } }
+
       `}</style>
 
       {oauthLoading && (
@@ -5035,7 +5033,7 @@ export function MediaDistributionPage() {
             {/* ── Left: branding + CTAs ── */}
             <div className="mm-hero-left">
               {/* Logo */}
-              <div style={{ width: 56, height: 56, borderRadius: 16, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18, boxShadow: `0 12px 40px ${GOLD}40`, flexShrink: 0 }}>
+              <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, boxShadow: `0 12px 40px ${GOLD}40`, flexShrink: 0 }}>
                 <Send size={22} color="#000" />
               </div>
 
@@ -5046,17 +5044,17 @@ export function MediaDistributionPage() {
               </div>
 
               {/* Headline */}
-              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontSize: 'clamp(28px, 4vw, 46px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 5 }}>Media Machine</span>
+              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontSize: 'clamp(28px, 4.5vw, 64px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 8 }}>Media Machine</span>
               <span style={{ display: 'block', fontSize: 9, fontWeight: 900, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 14 }}>By Infinite Wealth Solutions AI</span>
 
               {/* Tagline */}
-              <p className="mm-hero-tagline" style={{ fontSize: 'clamp(15px, 2vw, 17px)', color: 'rgba(255,255,255,0.85)', marginBottom: 20, lineHeight: 1.5, fontWeight: 800, letterSpacing: '-0.02em', maxWidth: 320 }}>
+              <p className="mm-hero-tagline" style={{ fontSize: 'clamp(15px, 2.2vw, 22px)', color: 'rgba(255,255,255,0.85)', marginBottom: 20, lineHeight: 1.5, fontWeight: 800, letterSpacing: '-0.02em', maxWidth: 400 }}>
                 An entire marketing department on one platform.
               </p>
 
 
               {/* Stats */}
-              <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden', width: '100%', maxWidth: 300 }}>
+              <div style={{ display: 'flex', gap: 0, marginBottom: 16, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 12, overflow: 'hidden', width: '100%', maxWidth: 400 }}>
                 {[{ v: '12', l: 'Platforms' }, { v: '30-Day', l: 'Calendars' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
                   <div key={s.l} style={{ flex: 1, padding: '12px 6px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
                     <div style={{ color: GOLD, fontWeight: 900, fontSize: 16, letterSpacing: '-0.02em' }}>{s.v}</div>
@@ -5067,29 +5065,9 @@ export function MediaDistributionPage() {
 
 
 
-              {/* CTAs */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, width: '100%', maxWidth: 300, marginBottom: 20 }}>
-                <button
-                  onClick={() => setAuthModalOpen(true)}
-                  style={{ width: '100%', padding: '13px 0', borderRadius: 13, fontSize: 14, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 28px ${GOLD}40`, letterSpacing: '-0.01em', transition: 'filter 0.15s' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'}
-                >
-                  Start Multiplying Your Content
-                </button>
-                <button
-                  onClick={() => setAuthModalOpen(true)}
-                  style={{ width: '100%', padding: '11px 0', borderRadius: 13, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)', transition: 'border-color 0.15s, color 0.15s' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.22)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.75)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}
-                >
-                  Already have an account? Sign In
-                </button>
-              </div>
-
-              {/* Platform Icons — mobile only (hidden on desktop via mm-hero-right showing it) */}
-              <div className="mm-platforms-mobile" style={{ marginBottom: 20, maxWidth: 300, width: '100%' }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Publish to 12 platforms</div>
+              {/* Platform icons — single instance, above CTAs, shows on both mobile and desktop */}
+              <div style={{ marginBottom: 16, width: '100%', maxWidth: 400 }}>
+                <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Publish to 12 platforms</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky','pinterest','gmb','reddit','telegram'].map(pid => (
                     <div key={pid} title={pid.charAt(0).toUpperCase()+pid.slice(1)} style={{ opacity: 0.85, transition: 'opacity 0.15s', cursor: 'default' }}
@@ -5099,6 +5077,26 @@ export function MediaDistributionPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              {/* CTAs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, width: '100%', maxWidth: 400, marginBottom: 20 }}>
+                <button
+                  onClick={() => setAuthModalOpen(true)}
+                  style={{ width: '100%', padding: '16px 0', borderRadius: 14, fontSize: 16, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 28px ${GOLD}40`, letterSpacing: '-0.01em', transition: 'filter 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'}
+                >
+                  Start Multiplying Your Content
+                </button>
+                <button
+                  onClick={() => setAuthModalOpen(true)}
+                  style={{ width: '100%', padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)', transition: 'border-color 0.15s, color 0.15s' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.22)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.75)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}
+                >
+                  Already have an account? Sign In
+                </button>
               </div>
 
               {/* Referral nudge */}
@@ -5113,21 +5111,7 @@ export function MediaDistributionPage() {
             {/* ── Right: feature cards ── */}
             <div className="mm-hero-right" style={{ marginTop: '32px' }}>
 
-              {/* Platform Icons Strip — above feature cards on desktop, hidden on mobile (shown in left col on mobile) */}
-              <div style={{ marginBottom: 20, width: '100%' }}>
-                <div style={{ fontSize: 9, fontWeight: 700, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 10 }}>Publish to 12 platforms</div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {['instagram','facebook','tiktok','youtube','x','linkedin','threads','bluesky','pinterest','gmb','reddit','telegram'].map(pid => (
-                    <div key={pid} title={pid.charAt(0).toUpperCase()+pid.slice(1)} style={{ opacity: 0.85, transition: 'opacity 0.15s', cursor: 'default' }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.opacity = '1'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.opacity = '0.85'}>
-                      <PlatformIcon id={pid} size="sm" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, width: '100%' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, width: '100%' }}>
                 {[
                   { icon: <Video size={15} />,      title: 'AI Video Generation',       desc: 'Cinematic AI video from a single image. No editing required.' },
                   { icon: <Sparkles size={15} />,   title: 'AI Caption Generator',      desc: 'Platform-specific captions engineered to stop the scroll.' },
@@ -5138,7 +5122,7 @@ export function MediaDistributionPage() {
                 ].map(f => (
                   <div
                     key={f.title}
-                    style={{ padding: '14px', borderRadius: 14, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 9, transition: 'border-color 0.2s, background 0.2s', cursor: 'default' }}
+                    style={{ padding: '20px', borderRadius: 16, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 12, transition: 'border-color 0.2s, background 0.2s', cursor: 'default' }}
                     onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${GOLD}35`; (e.currentTarget as HTMLElement).style.background = `${GOLD}07`; }}
                     onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
                   >
@@ -5146,8 +5130,8 @@ export function MediaDistributionPage() {
                       {f.icon}
                     </div>
                     <div>
-                      <div style={{ color: 'white', fontWeight: 700, fontSize: 12, marginBottom: 3 }}>{f.title}</div>
-                      <div style={{ color: 'rgba(255,255,255,0.32)', fontSize: 11, lineHeight: 1.55 }}>{f.desc}</div>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{f.title}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.32)', fontSize: 12, lineHeight: 1.6 }}>{f.desc}</div>
                     </div>
                   </div>
                 ))}
