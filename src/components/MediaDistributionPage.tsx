@@ -2245,7 +2245,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       if (data.error === 'upgrade_required') { setError('upgrade_required'); setLoading(false); return; }
       if (!res.ok) throw new Error(data.error || 'Generation failed');
       setResults(data);
-      setTab('calendar');
+      setTab('trends');
     } catch (e: any) { setError(e.message || 'Something went wrong'); }
     finally { setLoading(false); }
   };
