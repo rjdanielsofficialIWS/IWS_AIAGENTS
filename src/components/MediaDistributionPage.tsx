@@ -3132,7 +3132,7 @@ function AddPlannerItemModal({
 
 function PlannerPanel({ userId, subscription, onUpgrade }: {
   userId: string | null;
-  subscription: { plan: string; status: string; stripe_customer_id?: string } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
   onUpgrade: () => void;
 }) {
   const [items, setItems]               = useState<PlannerItem[]>([]);
@@ -3207,7 +3207,8 @@ function PlannerPanel({ userId, subscription, onUpgrade }: {
   const generateTalkingPoints = async (itemId: string, title: string) => {
     if (!userId) return;
     const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
-    const isActive = subscription?.status === 'active' || isPromo;
+    const isTrialing = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date();
+    const isActive = subscription?.status === 'active' || isPromo || isTrialing;
     const plan = isActive ? (subscription?.plan?.toLowerCase() ?? 'free') : 'free';
     if (!isActive || plan === 'starter') { onUpgrade(); return; }
     setTpLoadingId(itemId);
@@ -4048,7 +4049,7 @@ type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl
 function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   userId: string | null;
   onUseVideo?: (videoUrl: string) => void;
-  subscription: { plan: string; status: string; stripe_customer_id?: string } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
   onUpgrade: () => void;
 }) {
   const [step, setStep]               = React.useState<VideoStudioStep>('brief');
@@ -4164,7 +4165,8 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     if (!brief.trim()) { setGlobalError('Enter a video brief first'); return; }
     if (!userId) { setGlobalError('Sign in to generate AI video'); return; }
     const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
-    const isActive = subscription?.status === 'active' || isPromo;
+    const isTrialing = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date();
+    const isActive = subscription?.status === 'active' || isPromo || isTrialing;
     if (!isActive) { onUpgrade(); return; }
     setGeneratingPrompts(true); setGeneratingAssets(false); setGlobalError(null);
 
@@ -5249,7 +5251,7 @@ function CreditsWidget({
   usage, subscription, open, onOpen, onClose, onUpgrade, onAddon, onManage,
 }: {
   usage: { plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null;
-  subscription: { plan: string; status: string; stripe_customer_id?: string } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; trial_expires_at?: string } | null;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
@@ -5258,8 +5260,13 @@ function CreditsWidget({
   onManage: () => void;
 }) {
   const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
-  const isActive = subscription?.status === 'active' || isPromo;
-  const planLabel = isActive ? (subscription?.plan ?? 'free') : 'No plan';
+  const isTrialing = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date();
+  const trialExpired = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) <= new Date();
+  const isActive = subscription?.status === 'active' || isPromo || isTrialing;
+  const trialDaysLeft = isTrialing && subscription?.trial_expires_at
+    ? Math.max(0, Math.ceil((new Date(subscription.trial_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+    : null;
+  const planLabel = trialExpired ? 'Trial Expired' : isTrialing ? `${subscription?.plan ?? ''} Trial` : isActive ? (subscription?.plan ?? 'free') : 'No plan';
 
   const Bar = ({ used, limit, color = GOLD }: { used: number; limit: number; color?: string }) => {
     const pct = limit <= 0 ? 0 : limit === -1 ? 100 : Math.min(100, Math.round((used / limit) * 100));
@@ -5323,7 +5330,9 @@ function CreditsWidget({
                     style={{ background: isActive ? `${GOLD}20` : 'rgba(255,255,255,0.06)', color: isActive ? GOLD_L : 'rgba(255,255,255,0.4)', border: `1px solid ${isActive ? GOLD + '40' : 'rgba(255,255,255,0.1)'}` }}>
                     {planLabel} plan
                   </span>
-                  {isActive && <span className="text-[10px] text-green-400/70">● Active</span>}
+                  {isTrialing && trialDaysLeft !== null && <span className="text-[10px] text-amber-400/80">● {trialDaysLeft}d left</span>}
+                  {!isTrialing && isActive && <span className="text-[10px] text-green-400/70">● Active</span>}
+                  {trialExpired && <span className="text-[10px] text-red-400/80">● Expired</span>}
                 </div>
               </div>
               <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
@@ -5333,7 +5342,18 @@ function CreditsWidget({
 
             {/* Usage rows */}
             <div className="px-5 py-4 space-y-4">
-              {!isActive ? (
+              {trialExpired ? (
+                <div className="text-center py-4 space-y-3">
+                  <div className="text-2xl">⏰</div>
+                  <p className="text-sm font-bold text-red-400">Your free trial has ended</p>
+                  <p className="text-xs text-white/30">Subscribe to keep your AI captions, video generation, content strategy, and more.</p>
+                  <button onClick={() => { onClose(); onUpgrade(); }}
+                    className="w-full py-2.5 rounded-xl text-sm font-black transition hover:brightness-110"
+                    style={{ background: `linear-gradient(135deg,${GOLD_D},${GOLD})`, color: '#000' }}>
+                    Subscribe Now
+                  </button>
+                </div>
+              ) : !isActive ? (
                 <div className="text-center py-4 space-y-3">
                   <p className="text-sm text-white/50">You don't have an active plan.</p>
                   <p className="text-xs text-white/30">Subscribe to unlock AI captions, video generation, content strategy, and more.</p>
@@ -5380,7 +5400,8 @@ export function MediaDistributionPage() {
   const [videoHandoff, setVideoHandoff]         = useState<{ url: string; mode: 'media' | 'text' | 'saved' } | null>(null);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
-  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string } | null>(null);
+  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string; trial_expires_at?: string } | null>(null);
+  const [trialLoading, setTrialLoading]         = useState<string | null>(null);
   const [globalUsage, setGlobalUsage]           = useState<{ plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null>(null);
   const [creditsOpen, setCreditsOpen]           = useState(false);
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
@@ -5426,7 +5447,7 @@ export function MediaDistributionPage() {
     // Load subscription + global usage
     (async () => {
       try {
-        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id,trial_expires_at').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
       } catch (_) {}
       try {
@@ -5450,7 +5471,7 @@ export function MediaDistributionPage() {
     // Handle ?checkout=success or ?addon_success= return — refresh subscription + usage
     const params = new URLSearchParams(window.location.search);
     const refreshAfterPurchase = async () => {
-      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id,trial_expires_at').eq('supabase_user_id', currentUserId).maybeSingle();
       if (data) setSubscription(data);
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -5600,6 +5621,30 @@ export function MediaDistributionPage() {
       loadIntegrations(true);
       throw err;
     }
+  };
+
+  const handleStartTrial = async (planKey: string) => {
+    if (!currentUser) { setAuthModalOpen(true); return; }
+    setTrialLoading(planKey);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/start-trial`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan: planKey }),
+      });
+      const d = await res.json();
+      if (!res.ok) {
+        if (d.error === 'trial_already_used') alert('You have already used your free trial. Please subscribe to continue.');
+        else if (d.error === 'already_subscribed') alert('You already have an active subscription.');
+        else alert(d.message || 'Could not start trial. Please try again.');
+        return;
+      }
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id,trial_expires_at').eq('supabase_user_id', currentUser.id).maybeSingle();
+      if (data) setSubscription(data);
+      setPricingOpen(false);
+    } catch { alert('Something went wrong. Please try again.'); }
+    finally { setTrialLoading(null); }
   };
 
   const handleCheckout = async (plan: string) => {
@@ -5905,20 +5950,47 @@ export function MediaDistributionPage() {
       ) : (
         /* ── STATES 2 & 3: Logged in — always show dashboard ── */
         <div className="flex flex-col flex-1 overflow-hidden">
-          {/* Upgrade banner — only shown when no active subscription */}
-          {subscription?.status !== 'active' && (
-            <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
-              <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
-              <button onClick={() => setPricingOpen(true)}
-                style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
-                Upgrade to unlock AI video, scheduling & content repurposing
-              </button>
-            </div>
-          )}
+          {/* Upgrade / trial banner */}
+          {(() => {
+            const _isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
+            const _isTrialing = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date();
+            const _trialExpired = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) <= new Date();
+            const _isActive = subscription?.status === 'active' || _isPromo || _isTrialing;
+            const _daysLeft = _isTrialing && subscription?.trial_expires_at
+              ? Math.max(0, Math.ceil((new Date(subscription.trial_expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+              : null;
+            if (_trialExpired) return (
+              <div style={{ background: 'linear-gradient(90deg,rgba(239,68,68,0.18),rgba(239,68,68,0.08),rgba(239,68,68,0.18))', borderBottom: '1px solid rgba(239,68,68,0.3)', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
+                <span style={{ fontSize: 12, color: 'rgba(239,68,68,0.9)', fontWeight: 700 }}>⏰ Your free trial has ended.</span>
+                <button onClick={() => setPricingOpen(true)} style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0 }}>
+                  Subscribe to keep access →
+                </button>
+              </div>
+            );
+            if (_isTrialing) return (
+              <div style={{ background: `linear-gradient(90deg,${GOLD_D}22,${GOLD}18,${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>🎉 Free trial active</span>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)' }}>—</span>
+                <span style={{ fontSize: 12, color: GOLD_L, fontWeight: 700 }}>{_daysLeft} day{_daysLeft !== 1 ? 's' : ''} remaining</span>
+                <button onClick={() => setPricingOpen(true)} style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0 }}>
+                  Subscribe now
+                </button>
+              </div>
+            );
+            if (!_isActive) return (
+              <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
+                <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
+                <button onClick={() => setPricingOpen(true)} style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
+                  Upgrade to unlock AI video, scheduling & content repurposing
+                </button>
+              </div>
+            );
+            return null;
+          })()}
           <div className="flex flex-1 overflow-hidden min-h-0">
           <Sidebar view={view} setView={setView} integrations={integrations}
-            onOpenConnect={() => { const isPromo = subscription?.stripe_customer_id?.startsWith('promo_'); (subscription?.status === 'active' || isPromo) ? setConnectModalOpen(true) : setPricingOpen(true); }} />
+            onOpenConnect={() => { const _isPromo = subscription?.stripe_customer_id?.startsWith('promo_'); const _isTrial = subscription?.status === 'trialing' && !!subscription?.trial_expires_at && new Date(subscription.trial_expires_at) > new Date(); (subscription?.status === 'active' || _isPromo || _isTrial) ? setConnectModalOpen(true) : setPricingOpen(true); }} />
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
 
             {view === 'composer' && <ComposerPanel integrations={integrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} />}
@@ -5962,18 +6034,27 @@ export function MediaDistributionPage() {
             <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div>
                 <div className="text-base font-black text-white">Choose Your Plan</div>
-                <div className="text-xs text-white/40 mt-0.5">7-day money-back guarantee</div>
+                <div className="text-xs text-white/40 mt-0.5">Try Creator or Viral free for 7 days — no card required</div>
               </div>
               <button onClick={()=>setPricingOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4"/></button>
             </div>
+            {(()=>{
+              const _pricingIsPromo=subscription?.stripe_customer_id?.startsWith('promo_');
+              const _pricingIsTrialing=subscription?.status==='trialing'&&!!subscription?.trial_expires_at&&new Date(subscription.trial_expires_at)>new Date();
+              const _pricingTrialUsed=!!subscription?.trial_expires_at;
+              const _pricingIsActive=subscription?.status==='active'||_pricingIsPromo;
+              return(<>
             <div className="md:hidden px-4 py-4 space-y-3">
               {([
-                {key:"starter",name:"Creator",price:"$47",highlight:false,features:["30 posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"]},
-                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 media posts/mo","200 text posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","4 Content Strategies/mo"]},
-                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited media posts","Unlimited text posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","12 Content Strategies/mo","3 client workspaces","Priority support + call"]},
+                {key:"starter",name:"Creator",price:"$47",highlight:false,features:["30 posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"],trialEligible:true},
+                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 media posts/mo","200 text posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","4 Content Strategies/mo"],trialEligible:true},
+                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited media posts","Unlimited text posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","12 Content Strategies/mo","3 client workspaces","Priority support + call"],trialEligible:false},
               ] as const).map(plan=>{
-                const isCurrent=subscription?.status==="active"&&subscription?.plan===plan.key;
+                const isCurrent=_pricingIsActive&&subscription?.plan===plan.key;
+                const isTrialingThis=_pricingIsTrialing&&subscription?.plan===plan.key;
+                const showTrial=plan.trialEligible&&!_pricingIsActive&&!_pricingIsTrialing&&!_pricingTrialUsed;
                 const isLoading=checkoutLoading===plan.key;
+                const isTLoading=trialLoading===plan.key;
                 return(
                   <div key={plan.key} className="rounded-2xl border p-4 relative" style={{borderColor:plan.highlight?`${GOLD}60`:"rgba(255,255,255,0.1)",background:plan.highlight?`linear-gradient(160deg,${GOLD}12,rgba(0,0,0,0.4))`:"rgba(255,255,255,0.03)"}}>
                     {plan.highlight&&<div className="absolute top-0 left-0 right-0 h-0.5 rounded-t-2xl" style={{background:`linear-gradient(90deg,transparent,${GOLD},transparent)`}}/>}
@@ -5982,6 +6063,7 @@ export function MediaDistributionPage() {
                         <span className="text-base font-black text-white">{plan.name}</span>
                         {plan.highlight&&<span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase" style={{background:GOLD,color:"#000"}}>Popular</span>}
                         {isCurrent&&<span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase" style={{background:"rgba(34,197,94,0.2)",color:"#86efac",border:"1px solid rgba(34,197,94,0.3)"}}>Current</span>}
+                        {isTrialingThis&&<span className="text-[9px] font-black px-2 py-0.5 rounded-full uppercase" style={{background:"rgba(251,191,36,0.2)",color:"#fbbf24",border:"1px solid rgba(251,191,36,0.3)"}}>Trial</span>}
                       </div>
                       <div className="flex items-baseline gap-0.5">
                         <span className="text-2xl font-black text-white">{plan.price}</span>
@@ -5996,10 +6078,13 @@ export function MediaDistributionPage() {
                         </li>
                       ))}
                     </ul>
-                    <button onClick={()=>isCurrent?handlePortal():handleCheckout(plan.key)} disabled={isLoading||portalLoading}
+                    {showTrial&&<button onClick={()=>handleStartTrial(plan.key)} disabled={isTLoading} className="w-full py-2.5 rounded-xl text-sm font-black transition disabled:opacity-50 mb-2" style={{background:`linear-gradient(135deg,${GOLD_D}cc,${GOLD}cc)`,color:"#000",border:`1px solid ${GOLD}60`}}>
+                      {isTLoading?"Starting...":"🎉 Start 7-Day Free Trial"}
+                    </button>}
+                    <button onClick={()=>isCurrent||isTrialingThis?handlePortal():handleCheckout(plan.key)} disabled={isLoading||portalLoading}
                       className="w-full py-2.5 rounded-xl text-sm font-black transition disabled:opacity-50"
-                      style={{background:isCurrent?"rgba(34,197,94,0.15)":plan.highlight?`linear-gradient(135deg,${GOLD_D},${GOLD})`:"rgba(255,255,255,0.08)",color:isCurrent?"#86efac":plan.highlight?"#000":"rgba(255,255,255,0.7)",border:isCurrent?"1px solid rgba(34,197,94,0.3)":"none"}}>
-                      {isLoading?"Loading...":isCurrent?"✓ Current Plan":"Subscribe"}
+                      style={{background:isCurrent?"rgba(34,197,94,0.15)":isTrialingThis?"rgba(251,191,36,0.15)":plan.highlight?`linear-gradient(135deg,${GOLD_D},${GOLD})`:"rgba(255,255,255,0.08)",color:isCurrent?"#86efac":isTrialingThis?"#fbbf24":plan.highlight?"#000":"rgba(255,255,255,0.7)",border:isCurrent?"1px solid rgba(34,197,94,0.3)":isTrialingThis?"1px solid rgba(251,191,36,0.3)":"none"}}>
+                      {isLoading?"Loading...":isCurrent?"✓ Current Plan":isTrialingThis?"Manage Trial →":"Subscribe"}
                     </button>
                   </div>
                 );
@@ -6008,9 +6093,12 @@ export function MediaDistributionPage() {
             <div className="hidden md:block overflow-x-auto">
               <div className="grid grid-cols-4 min-w-[580px]">
                 <div className="px-5 py-5 border-b border-r" style={{borderColor:"rgba(255,255,255,0.07)"}}/>
-                {([{key:"starter",name:"Creator",price:"$47",highlight:false},{key:"viral",name:"Viral",price:"$97",highlight:true},{key:"agency",name:"Agency",price:"$297",highlight:false}] as const).map((plan,i)=>{
-                  const isCurrent=subscription?.status==="active"&&subscription?.plan===plan.key;
+                {([{key:"starter",name:"Creator",price:"$47",highlight:false,trialEligible:true},{key:"viral",name:"Viral",price:"$97",highlight:true,trialEligible:true},{key:"agency",name:"Agency",price:"$297",highlight:false,trialEligible:false}] as const).map((plan,i)=>{
+                  const isCurrent=_pricingIsActive&&subscription?.plan===plan.key;
+                  const isTrialingThis=_pricingIsTrialing&&subscription?.plan===plan.key;
+                  const showTrial=plan.trialEligible&&!_pricingIsActive&&!_pricingIsTrialing&&!_pricingTrialUsed;
                   const isLoading=checkoutLoading===plan.key;
+                  const isTLoading=trialLoading===plan.key;
                   return(
                     <div key={plan.key} className={`px-5 py-5 border-b ${i<2?"border-r":""} relative`} style={{borderColor:"rgba(255,255,255,0.07)",background:plan.highlight?`linear-gradient(160deg,${GOLD}0d,transparent)`:"transparent"}}>
                       {plan.highlight&&<div className="absolute top-0 left-0 right-0 h-0.5" style={{background:`linear-gradient(90deg,transparent,${GOLD},transparent)`}}/>}
@@ -6018,15 +6106,19 @@ export function MediaDistributionPage() {
                         <span className="text-sm font-black text-white">{plan.name}</span>
                         {plan.highlight&&<span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase" style={{background:GOLD,color:"#000"}}>Popular</span>}
                         {isCurrent&&<span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase" style={{background:"rgba(34,197,94,0.2)",color:"#86efac",border:"1px solid rgba(34,197,94,0.3)"}}>Current</span>}
+                        {isTrialingThis&&<span className="text-[9px] font-black px-1.5 py-0.5 rounded uppercase" style={{background:"rgba(251,191,36,0.2)",color:"#fbbf24",border:"1px solid rgba(251,191,36,0.3)"}}>Trial</span>}
                       </div>
                       <div className="flex items-baseline gap-1 mb-3">
                         <span className="text-2xl font-black text-white">{plan.price}</span>
                         <span className="text-xs text-white/35">/mo</span>
                       </div>
-                      <button onClick={()=>isCurrent?handlePortal():handleCheckout(plan.key)} disabled={isLoading||portalLoading}
+                      {showTrial&&<button onClick={()=>handleStartTrial(plan.key)} disabled={isTLoading} className="w-full py-1.5 rounded-lg text-[11px] font-black transition disabled:opacity-50 mb-1.5 hover:brightness-110" style={{background:`linear-gradient(135deg,${GOLD_D}cc,${GOLD}cc)`,color:"#000",border:`1px solid ${GOLD}50`}}>
+                        {isTLoading?"Starting...":"🎉 Free Trial"}
+                      </button>}
+                      <button onClick={()=>isCurrent||isTrialingThis?handlePortal():handleCheckout(plan.key)} disabled={isLoading||portalLoading}
                         className="w-full py-2 rounded-lg text-xs font-black transition disabled:opacity-50 hover:brightness-110"
-                        style={{background:isCurrent?"rgba(34,197,94,0.15)":plan.highlight?`linear-gradient(135deg,${GOLD_D},${GOLD})`:"rgba(255,255,255,0.08)",color:isCurrent?"#86efac":plan.highlight?"#000":"rgba(255,255,255,0.7)",border:isCurrent?"1px solid rgba(34,197,94,0.3)":"none"}}>
-                        {isLoading?"Loading...":isCurrent?"✓ Current Plan":"Subscribe"}
+                        style={{background:isCurrent?"rgba(34,197,94,0.15)":isTrialingThis?"rgba(251,191,36,0.15)":plan.highlight?`linear-gradient(135deg,${GOLD_D},${GOLD})`:"rgba(255,255,255,0.08)",color:isCurrent?"#86efac":isTrialingThis?"#fbbf24":plan.highlight?"#000":"rgba(255,255,255,0.7)",border:isCurrent?"1px solid rgba(34,197,94,0.3)":isTrialingThis?"1px solid rgba(251,191,36,0.3)":"none"}}>
+                        {isLoading?"Loading...":isCurrent?"✓ Current Plan":isTrialingThis?"Manage →":"Subscribe"}
                       </button>
                     </div>
                   );
@@ -6057,6 +6149,7 @@ export function MediaDistributionPage() {
                 </div>
               ))}
             </div>
+            </>)})()}
             <div className="px-4 md:px-6 py-4 border-t" style={{borderColor:"rgba(255,255,255,0.07)"}}>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">💳 Add-On Credits: One-Time Purchase</div>
               <div className="grid grid-cols-2 gap-2">

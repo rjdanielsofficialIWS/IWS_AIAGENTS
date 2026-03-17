@@ -15,9 +15,10 @@ Deno.serve(async(req)=>{
   if(!token)return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...cors,"Content-Type":"application/json"}});
   const{data:{user},error}=await supabase.auth.getUser(token);
   if(error||!user)return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...cors,"Content-Type":"application/json"}});
-  const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id").eq("supabase_user_id",user.id).maybeSingle();
+  const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id,trial_expires_at").eq("supabase_user_id",user.id).maybeSingle();
   const isPromo=sub?.stripe_customer_id?.startsWith("promo_");
-  const isActive=(sub?.status==="active"||isPromo)&&!!sub?.plan;
+  const isTrialing=sub?.status==="trialing"&&!!sub?.trial_expires_at&&new Date(sub.trial_expires_at)>new Date();
+  const isActive=((sub?.status==="active"||isPromo)||isTrialing)&&!!sub?.plan;
   const plan=isActive?sub!.plan.toLowerCase():"free";
   const limits=PLAN_LIMITS[plan]??PLAN_LIMITS.free;
   const period=getPeriod();

@@ -103,9 +103,10 @@ Deno.serve(async (req: Request) => {
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
   // Plan check
-  const { data: sub } = await supabase.from("subscriptions").select("plan,status,stripe_customer_id").eq("supabase_user_id", user.id).maybeSingle();
+  const { data: sub } = await supabase.from("subscriptions").select("plan,status,stripe_customer_id,trial_expires_at").eq("supabase_user_id", user.id).maybeSingle();
   const isPromo = sub?.stripe_customer_id?.startsWith("promo_");
-  const isActive = (sub?.status === "active" || isPromo) && !!sub?.plan;
+  const isTrialing = sub?.status === "trialing" && !!sub?.trial_expires_at && new Date(sub.trial_expires_at as string) > new Date();
+  const isActive = ((sub?.status === "active" || isPromo) || isTrialing) && !!sub?.plan;
   const plan = isActive ? sub!.plan.toLowerCase() : "free";
 
   const PLAN_FEATURES: Record<string, { repurpose: boolean; strategist: boolean; trends: boolean; talking_points: boolean; strategies_per_month: number }> = {
