@@ -2133,10 +2133,10 @@ function InlinePostComposer({
 
 function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   userId: string | null;
-  onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }) => void;
+  onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }, onSaved?: () => void) => void;
   onUpgrade?: () => void;
 }) {
-  type StrategistTab = 'brief' | 'trends' | 'calendar' | 'hooks' | 'strategy' | 'video';
+  type StrategistTab = 'brief' | 'trends' | 'calendar' | 'strategy' | 'video';
   type BriefData = {
     niche: string; offer: string; audience: string; platforms: string[];
     frequency: string; tone: string; goals: string[]; currentStage: string;
@@ -2293,8 +2293,9 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
 
   const handleAdd = (key: string, title: string, notes: string | undefined, category: string, sourceLabel: string) => {
     if (added.has(key)) return;
-    onAddToPlanner?.({ title, notes, category, sourceLabel });
-    setAdded(prev => new Set([...prev, key]));
+    onAddToPlanner?.({ title, notes, category, sourceLabel }, () => {
+      setAdded(prev => new Set([...prev, key]));
+    });
   };
 
   const PILLAR_COLOR = (p: string) => p === 'Reach' ? '#38bdf8' : p === 'Trust' ? '#a78bfa' : p === 'Sales' ? '#fb923c' : GOLD;
@@ -2303,7 +2304,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     { id: 'brief',    label: 'Brief',    emoji: '📋' },
     { id: 'trends',   label: 'Trends',   emoji: '📈' },
     { id: 'calendar', label: 'Calendar', emoji: '📅' },
-    { id: 'hooks',    label: 'Hooks',    emoji: '🪝' },
     { id: 'strategy', label: 'Strategy', emoji: '🎯' },
     { id: 'video',    label: 'Repurpose', emoji: '🎬' },
   ];
@@ -2345,7 +2345,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
           <div className="rounded-xl p-4 space-y-1" style={{ background: `${GOLD}08`, border: `1px solid ${GOLD}25` }}>
             <div className="text-sm font-black text-white">AI Content Strategist</div>
             <div className="text-xs text-white/45 leading-relaxed">
-              Tell me about your business and I'll build you a 30-day content calendar, hook library, platform strategy, and follower-to-client system, all tailored to your niche.
+              Tell me about your business and I'll build you a 7-day content calendar with viral hooks, trend intelligence, and a follower-to-client strategy — all tailored to your niche.
             </div>
           </div>
 
@@ -2688,9 +2688,9 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 </div>
               )}
 
-              {/* 30-Day Calendar */}
+              {/* 7-Day Calendar */}
               <div>
-                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">30-Day Calendar</div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">7-Day Calendar</div>
                 <div className="space-y-1.5 max-h-[500px] overflow-y-auto pr-1">
                   {(results.calendar?.calendar || []).map((day: any, i: number) => {
                     const col = PILLAR_COLOR(day.pillar);
@@ -2745,63 +2745,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                   </div>
                 </div>
               )}
-            </>
-          )}
-        </div>
-      )}
-
-      {/* ── HOOKS TAB ─────────────────────────────────────────────────────── */}
-      {tab === 'hooks' && (
-        <div className="space-y-3">
-          {!results ? (
-            <div className="flex flex-col items-center justify-center py-16 gap-3 text-center">
-              <span className="text-3xl">🪝</span>
-              <div className="text-sm font-bold text-white/30">Generate your strategy first</div>
-              <button onClick={() => setTab('brief')} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ background: GOLD, color: '#000' }}>Fill in your brief →</button>
-            </div>
-          ) : (
-            <>
-              {results.hooks?.top_2_recommended?.length > 0 && (
-                <div className="rounded-xl p-3 border" style={{ borderColor: `${GOLD}40`, background: `${GOLD}08` }}>
-                  <div className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: GOLD }}>⭐ Top Recommended Hooks</div>
-                  {results.hooks.top_2_recommended.map((r: any, i: number) => {
-                    const hook = results.hooks?.hooks?.[r.index];
-                    return hook ? (
-                      <div key={i} className="mb-2 last:mb-0">
-                        <div className="text-xs font-bold text-white italic">"{hook.hook_text}"</div>
-                        <div className="text-[10px] text-white/40 mt-0.5">{r.reason}</div>
-                      </div>
-                    ) : null;
-                  })}
-                </div>
-              )}
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Hook Library ({results.hooks?.hooks?.length || 0} hooks)</div>
-              <div className="space-y-2 max-h-[520px] overflow-y-auto pr-1">
-                {(results.hooks?.hooks || []).map((hook: any, i: number) => (
-                  <div key={i} className="p-3 rounded-xl border" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                          <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: `${GOLD}20`, color: GOLD_L }}>{hook.formula}</span>
-                          <PlatformIcon id={hook.best_platform?.toLowerCase() || 'instagram'} size="sm" />
-                          <div className="flex items-center gap-1 ml-auto">
-                            {Array.from({ length: 10 }).map((_, s) => (
-                              <div key={s} className="w-1.5 h-1.5 rounded-full" style={{ background: s < (hook.scroll_stop_score || 5) ? GOLD : 'rgba(255,255,255,0.1)' }} />
-                            ))}
-                          </div>
-                        </div>
-                        <div className="text-sm font-bold text-white leading-snug italic">"{hook.hook_text}"</div>
-                        <div className="text-[10px] text-white/40 mt-1">{hook.psychological_trigger}</div>
-                      </div>
-                      <button onClick={() => handleAdd(`hook-${i}`, hook.hook_text, `Formula: ${hook.formula}\nTrigger: ${hook.psychological_trigger}`, 'hook', 'Hook Library')}
-                        className="shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition ml-2"
-                        style={{ background: added.has(`hook-${i}`) ? 'rgba(34,197,94,0.15)' : `${GOLD}15`, color: added.has(`hook-${i}`) ? '#86efac' : GOLD_L }}>
-                        {added.has(`hook-${i}`) ? '✓' : '+'}
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </>
           )}
         </div>
@@ -3317,7 +3260,9 @@ function PlannerPanel({ userId }: { userId: string | null }) {
     setItems(prev => prev.filter(it => it.id !== id));
   };
 
-  const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }) => {
+  const pendingAddCallback = React.useRef<(() => void) | undefined>(undefined);
+  const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }, onSaved?: () => void) => {
+    pendingAddCallback.current = onSaved;
     setPendingItem(item);
     setAddDate(today.toISOString().split('T')[0]);
     setRepurposeOpen(false);
@@ -3464,7 +3409,7 @@ function PlannerPanel({ userId }: { userId: string | null }) {
           initialDate={addDate}
           prefilled={pendingItem ?? undefined}
           onClose={() => { setAddModalOpen(false); setPendingItem(null); }}
-          onSaved={() => { setAddModalOpen(false); setPendingItem(null); loadItems(); }}
+          onSaved={() => { setAddModalOpen(false); setPendingItem(null); loadItems(); pendingAddCallback.current?.(); pendingAddCallback.current = undefined; }}
         />
       )}
 
@@ -3531,7 +3476,9 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     failed:    posts.filter(p => p.status === 'failed').length,
   };
 
-  const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }) => {
+  const pendingAddCallback = React.useRef<(() => void) | undefined>(undefined);
+  const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }, onSaved?: () => void) => {
+    pendingAddCallback.current = onSaved;
     setPendingItem(item);
     setAddModalOpen(true);
   };
@@ -3617,7 +3564,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
           initialDate={addDate}
           prefilled={pendingItem ?? undefined}
           onClose={() => { setAddModalOpen(false); setPendingItem(null); }}
-          onSaved={() => { setAddModalOpen(false); setPendingItem(null); }}
+          onSaved={() => { setAddModalOpen(false); setPendingItem(null); pendingAddCallback.current?.(); pendingAddCallback.current = undefined; }}
         />
       )}
     </div>
@@ -5693,7 +5640,7 @@ export function MediaDistributionPage() {
                 {[
                   { icon: <Video size={15} />,      title: 'AI Video Generation',       desc: 'Cinematic AI video from a single image. No editing required.' },
                   { icon: <Sparkles size={15} />,   title: 'AI Caption Generator',      desc: 'Platform-specific captions engineered to stop the scroll.' },
-                  { icon: <Calendar size={15} />,   title: 'AI Content Strategist',     desc: '30-day content calendars and hook libraries for your niche.' },
+                  { icon: <Calendar size={15} />,   title: 'AI Content Strategist',     desc: '7-day content calendars with viral hooks and trend research for your niche.' },
                   { icon: <TrendingUp size={15} />, title: 'Multi-Platform Publishing',  desc: 'Auto-publish to Instagram, TikTok, LinkedIn, YouTube and more.' },
                   { icon: <Film size={15} />,       title: 'Content Repurposing',        desc: 'Extract clips, tweets, blogs and threads from any video.' },
                   { icon: <Users size={15} />,      title: 'AI Voice Agents',            desc: '24/7 automated conversations that qualify and close leads.' },
