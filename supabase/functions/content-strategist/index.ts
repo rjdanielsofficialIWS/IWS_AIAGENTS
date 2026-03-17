@@ -79,15 +79,14 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
   // Auth
-  const auth = req.headers.get("Authorization") ?? "";
-  if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+  const token = (req.headers.get("Authorization") ?? "").replace("Bearer ", "").trim();
+  if (!token) return json({ error: "Unauthorized" }, 401);
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    { auth: { persistSession: false } }
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
   );
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(auth.replace("Bearer ", "").trim());
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
   // Plan check temporarily disabled
