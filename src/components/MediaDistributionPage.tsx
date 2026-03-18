@@ -5909,7 +5909,7 @@ export function MediaDistributionPage() {
   const [workspaces, setWorkspaces]             = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => localStorage.getItem('mm_active_workspace') || null);
   const [authModalOpen, setAuthModalOpen]       = useState(false);
-  const { user: authUser, signOut }             = useAuth();
+  const { user: authUser, signOut, loading: authLoading } = useAuth();
   const currentUser = authUser ? { id: authUser.id, email: authUser.email ?? '' } : null;
 
   useEffect(() => {
@@ -6325,8 +6325,12 @@ export function MediaDistributionPage() {
         onManagePlan={currentUser ? (subscription?.status === 'active' ? handlePortal : () => setPricingOpen(true)) : () => setAuthModalOpen(true)}
       />
 
-      {/* ── STATE 1: Logged out — hero ── */}
-      {!currentUser ? (
+      {/* ── STATE 1: Auth loading / Logged out — hero ── */}
+      {authLoading ? (
+        <div className="flex-1 flex items-center justify-center" style={{ background: BG }}>
+          <div className="w-8 h-8 border-2 rounded-full animate-spin" style={{ borderColor: `rgba(214,178,94,0.3)`, borderTopColor: '#D6B25E' }} />
+        </div>
+      ) : !currentUser ? (
         <div className="flex-1" style={{ position: 'relative', display: 'flex', alignItems: 'stretch', overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' }}>
           {/* Background glows */}
           <div style={{ position: 'absolute', width: 640, height: 640, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}07 0%, transparent 65%)`, top: '50%', left: '30%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
