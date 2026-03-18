@@ -1,10 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const CORS_ORIGINS=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"];
 const PLAN_LIMITS={
-  starter:{ai_captions_per_month:15,posts_per_month:30,platforms_allowed:3,video_seconds_per_month:60,strategies_per_month:0,repurpose_allowed:false,ai_ideas_allowed:false},
-  viral:  {ai_captions_per_month:100,posts_per_month:100,platforms_allowed:-1,video_seconds_per_month:180,strategies_per_month:4,repurpose_allowed:true,ai_ideas_allowed:true},
-  agency: {ai_captions_per_month:-1,posts_per_month:-1,platforms_allowed:-1,video_seconds_per_month:540,strategies_per_month:-1,repurpose_allowed:true,ai_ideas_allowed:true},
-  free:   {ai_captions_per_month:0,posts_per_month:0,platforms_allowed:0,video_seconds_per_month:0,strategies_per_month:0,repurpose_allowed:false,ai_ideas_allowed:false},
+  starter:{ai_captions_per_month:15,posts_per_month:30,text_posts_per_month:60,platforms_allowed:3,video_seconds_per_month:60,strategies_per_month:0,repurpose_allowed:false,ai_ideas_allowed:false},
+  viral:  {ai_captions_per_month:100,posts_per_month:100,text_posts_per_month:200,platforms_allowed:-1,video_seconds_per_month:180,strategies_per_month:4,repurpose_allowed:true,ai_ideas_allowed:true},
+  agency: {ai_captions_per_month:-1,posts_per_month:-1,text_posts_per_month:-1,platforms_allowed:-1,video_seconds_per_month:540,strategies_per_month:-1,repurpose_allowed:true,ai_ideas_allowed:true},
+  free:   {ai_captions_per_month:0,posts_per_month:0,text_posts_per_month:0,platforms_allowed:0,video_seconds_per_month:0,strategies_per_month:0,repurpose_allowed:false,ai_ideas_allowed:false},
 };
 function getPeriod(){const d=new Date();return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}
 Deno.serve(async(req)=>{

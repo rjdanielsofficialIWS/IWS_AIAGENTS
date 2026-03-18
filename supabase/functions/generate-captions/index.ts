@@ -38,9 +38,10 @@ Deno.serve(async(req)=>{
     const token=(req.headers.get("Authorization")??"").replace("Bearer ","").trim();
     const{data:{user}}=token?await supabase.auth.getUser(token):{data:{user:null}};
     if(!user)return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...cors,"Content-Type":"application/json"}});
-    const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id").eq("supabase_user_id",user.id).maybeSingle();
+    const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id,current_period_end").eq("supabase_user_id",user.id).maybeSingle();
     const isPromo=sub?.stripe_customer_id?.startsWith("promo_");
-    const plan=((sub?.status==="active"||isPromo)&&sub?.plan)?sub.plan.toLowerCase():"free";
+    const isTrialing=sub?.status==="trialing"&&!!sub?.current_period_end&&new Date(sub.current_period_end)>new Date();
+    const plan=((sub?.status==="active"||isPromo||isTrialing)&&sub?.plan)?sub.plan.toLowerCase():"free";
     const{mode,transcript,description,platforms,tone}=await req.json();
     const source=transcript||description||"";
     if(!source)return new Response(JSON.stringify({error:"Content required"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});

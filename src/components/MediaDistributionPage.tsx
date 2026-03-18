@@ -140,6 +140,7 @@ function generateState() {
 async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
+  workspaceId?: string | null;
 }) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token ?? '';
@@ -162,9 +163,10 @@ async function ayrsharePost(payload: {
 
 const MEDIA_REQUIRED_PLATFORMS = new Set(['youtube', 'tiktok', 'instagram']);
 
-async function fetchChannels(userId: string, force = false): Promise<PostizIntegration[]> {
+async function fetchChannels(userId: string, force = false, workspaceId?: string | null): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const url = `${SUPABASE_URL}/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}`;
+  const wsParam = workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : '';
+  const url = `${SUPABASE_URL}/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}${wsParam}`;
   const res = await fetch(url);
   if (!res.ok) return [];
   const data = await res.json();
@@ -431,11 +433,19 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
 
 // ─── Small shared components ──────────────────────────────────────────────────
 
-function PlatformIcon({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' | 'lg' }) {
+function PlatformIcon({ id, size = 'md', picture }: { id: string; size?: 'sm' | 'md' | 'lg'; picture?: string }) {
   const px = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
   const iconPx = size === 'sm' ? 14 : size === 'lg' ? 24 : 20;
   const r = size === 'sm' ? 7 : size === 'lg' ? 12 : 10;
   const key = (id || '').toLowerCase().replace('twitter', 'x');
+
+  if (picture && picture.startsWith('http')) {
+    return (
+      <div style={{ width: px, height: px, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.5)', border: '1.5px solid rgba(255,255,255,0.15)' }}>
+        <img src={picture} alt={id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      </div>
+    );
+  }
 
   const logos: Record<string, { bg: string; node: React.ReactNode }> = {
     instagram: {
@@ -538,13 +548,14 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 // ─── ConnectAccountsModal ─────────────────────────────────────────────────────
 
 function ConnectAccountsModal({
-  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser, onDisconnectPlatform,
+  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser, onDisconnectPlatform, workspaceId,
 }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   onConnectPostiz: () => void; integrationsLoading: boolean;
   onRefresh: (force?: boolean) => void;
   onDisconnectPlatform: (platformId: string) => Promise<void>;
   currentUser: { id: string; email: string } | null;
+  workspaceId?: string | null;
 }) {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id being connected via Late
@@ -593,7 +604,7 @@ function ConnectAccountsModal({
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ platform: platformId }),
+        body: JSON.stringify({ platform: platformId, ...(workspaceId ? { workspaceId } : {}) }),
       });
 
       if (!res.ok) {
@@ -649,7 +660,7 @@ function ConnectAccountsModal({
                 {integrations.map(int => (
                   <div key={int.id} className="group flex items-center gap-3 p-3 rounded-xl border transition"
                     style={{ borderColor: 'rgba(34,197,94,0.2)', background: 'rgba(34,197,94,0.05)' }}>
-                    <PlatformIcon id={int.profile || int.identifier} size="md" />
+                    <PlatformIcon id={int.profile || int.identifier} size="md" picture={int.picture} />
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-bold text-white truncate">{int.name}</div>
                       <div className="text-xs text-white/30">{int.profile || int.identifier}</div>
@@ -1630,7 +1641,7 @@ function InlinePostComposer({
                       }}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
                       style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                      <PlatformIcon id={int.profile || int.identifier} size="sm" />
+                      <PlatformIcon id={int.profile || int.identifier} size="sm" picture={int.picture} />
                       <span className="max-w-[90px] truncate text-xs">{int.name}</span>
                       {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
                     </button>
@@ -1847,7 +1858,7 @@ function InlinePostComposer({
                       onClick={() => { toggleTextAccount(integ.id); setSubmitError(null); }}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border font-semibold transition"
                       style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                      <PlatformIcon id={platform} size="sm" />
+                      <PlatformIcon id={platform} size="sm" picture={integ.picture} />
                       <span className="max-w-[90px] truncate text-xs">{integ.name}</span>
                       {selected && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
                     </button>
@@ -5577,7 +5588,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
             <div className="space-y-0.5 max-h-44 overflow-y-auto">
               {integrations.map(int => (
                 <div key={int.id} className="group flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/5 transition">
-                  <PlatformIcon id={int.profile || int.identifier} size="sm" />
+                  <PlatformIcon id={int.profile || int.identifier} size="sm" picture={int.picture} />
                   <span className="text-xs text-white/50 truncate flex-1">{int.name}</span>
                   <button
                     onClick={onOpenConnect}
@@ -5905,6 +5916,7 @@ export function MediaDistributionPage() {
   const [promoError, setPromoError]             = useState('');
   const [promoSuccess, setPromoSuccess]         = useState('');
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
+  const [workspaceIntegrations, setWorkspaceIntegrations] = useState<PostizIntegration[]>([]);
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [workspaces, setWorkspaces]             = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => localStorage.getItem('mm_active_workspace') || null);
@@ -5935,6 +5947,18 @@ export function MediaDistributionPage() {
   useEffect(() => {
     if (!currentUserId) return;
     loadIntegrations();
+
+  // Load workspace-scoped channels when active workspace changes
+  useEffect(() => {
+    if (!currentUserId || !activeWorkspaceId) { setWorkspaceIntegrations([]); return; }
+    setIntegrationsLoading(true);
+    fetchChannels(currentUserId, false, activeWorkspaceId)
+      .then(setWorkspaceIntegrations)
+      .catch(() => setWorkspaceIntegrations([]))
+      .finally(() => setIntegrationsLoading(false));
+  }, [currentUserId, activeWorkspaceId]);
+
+  const activeIntegrations = activeWorkspaceId ? workspaceIntegrations : integrations;
     // Load subscription + global usage
     (async () => {
       try {
@@ -6755,11 +6779,18 @@ export function MediaDistributionPage() {
       )}
       <ConnectAccountsModal
         open={connectModalOpen} onClose={() => setConnectModalOpen(false)}
-        integrations={integrations} onConnectPostiz={handleConnect}
+        integrations={activeIntegrations} onConnectPostiz={handleConnect}
         integrationsLoading={integrationsLoading}
-        onRefresh={(force) => loadIntegrations(force)}
+        onRefresh={(force) => {
+          if (activeWorkspaceId && currentUserId) {
+            setIntegrationsLoading(true);
+            fetchChannels(currentUserId, force, activeWorkspaceId)
+              .then(setWorkspaceIntegrations).catch(() => {}).finally(() => setIntegrationsLoading(false));
+          } else { loadIntegrations(force); }
+        }}
         onDisconnectPlatform={handleDisconnectPlatform}
         currentUser={currentUser}
+        workspaceId={activeWorkspaceId}
       />
 
       <MediaMachineAuthModal
