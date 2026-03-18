@@ -1161,7 +1161,7 @@ function SavedPostCard({
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
       const platformIds = selectedAccounts.map(id => {
         const a = textPostAccounts.find(a => a.integ.id === id);
-        return a?.integ.identifier || a?.platform || '';
+        return a?.integ.profile || a?.integ.id || a?.platform || '';
       }).filter(Boolean);
       await ayrsharePost({ platforms: platformIds, post: activeText, scheduleDate: sd });
       setPostOk(true);
@@ -1509,7 +1509,7 @@ function InlinePostComposer({
       setSubmitError('Wait for media to finish uploading.'); return;
     }
     const selectedPlatformIds = selectedIntegrations
-      .map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; })
+      .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
       .filter(Boolean);
     const platformsNeedingMedia = selectedPlatformIds.filter(p => MEDIA_REQUIRED_PLATFORMS.has(p));
     const hasMedia = videoUpload.status === 'done' || imageUploads.some(u => u.status === 'done');
@@ -1547,7 +1547,7 @@ function InlinePostComposer({
         const postPromises = selectedIntegrations.map(async (integId) => {
           const integ = integrations.find(i => i.id === integId);
           if (!integ) return;
-          const platformId = integ.identifier || integ.id || '';
+          const platformId = integ.profile || integ.id || '';
           const caption = generatedCaptions![platformId]
             ?? generatedCaptions![platformId.toLowerCase()]
             ?? Object.values(generatedCaptions!)[0]
@@ -1583,7 +1583,7 @@ function InlinePostComposer({
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
       const platformIds = selectedTextAccounts.map(id => {
         const acct = textPostAccounts.find(a => a.integ.id === id);
-        return acct?.integ.identifier || acct?.platform || '';
+        return acct?.integ.profile || acct?.integ.id || acct?.platform || '';
       }).filter(Boolean);
       await ayrsharePost({ platforms: platformIds, post: text, scheduleDate: sd });
       setSubmitOk(true);
