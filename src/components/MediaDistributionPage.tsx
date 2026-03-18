@@ -5926,7 +5926,8 @@ export function MediaDistributionPage() {
 
   useEffect(() => {
     if (window.location.hash.includes('access_token')) {
-      window.history.replaceState(null, '', window.location.pathname);
+      // Let Supabase parse the hash token before removing it
+      setTimeout(() => window.history.replaceState(null, '', window.location.pathname), 1000);
     }
     // Persist ?ref= code before sign-up so it survives the auth flow
     const refParam = new URLSearchParams(window.location.search).get('ref');
