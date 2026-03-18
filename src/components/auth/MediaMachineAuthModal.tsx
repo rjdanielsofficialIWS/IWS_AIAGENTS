@@ -69,7 +69,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
     try {
       const { error: err } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: window.location.origin + '/MediaMachine' },
+        options: { redirectTo: window.location.origin + '/MediaMachine' + '/MediaMachine' },
       });
       if (err) throw err;
     } catch (e: any) {
