@@ -580,6 +580,12 @@ function ConnectAccountsModal({
     try {
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr || !session) { setConnecting(null); onConnectPostiz(); return; }
+      // Check subscription — if not active, close modal and show pricing
+      const { data: subCheck } = await supabase.from('subscriptions').select('status,stripe_customer_id,current_period_end').eq('supabase_user_id', session.user.id).maybeSingle();
+      const _isPromo = subCheck?.stripe_customer_id?.startsWith('promo_');
+      const _isTrialing = subCheck?.status === 'trialing' && !!subCheck?.current_period_end && new Date(subCheck.current_period_end) > new Date();
+      const _isActive = subCheck?.status === 'active' || _isPromo || _isTrialing;
+      if (!_isActive) { setConnecting(null); onConnectPostiz(); return; }
 
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const popup = isMobile ? null : window.open('', '_blank');
@@ -5442,18 +5448,17 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { ema
           {initials}
         </div>
         <span className="hidden sm:block" style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
-        {subscription?.status === 'active' && (
-          <button onClick={onManagePlan} title="Manage subscription"
+        {(() => { const _tbPromo = subscription?.stripe_customer_id?.startsWith('promo_'); const _tbTrial = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date(); const _tbActive = subscription?.status === 'active' || _tbPromo || _tbTrial; return _tbActive ? (
+          <button onClick={onManagePlan} title={_tbTrial ? 'Free trial active' : 'Manage subscription'}
             style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', letterSpacing: '0.06em', textTransform: 'uppercase', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
-            {subscription.plan}
+            {subscription!.plan}{_tbTrial ? ' trial' : ''}
           </button>
-        )}
-        {(!subscription || subscription.status !== 'active') && user && (
+        ) : user ? (
           <button onClick={onManagePlan} title="Upgrade plan"
             style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em', textTransform: 'uppercase', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', flexShrink: 0 }}>
             upgrade
           </button>
-        )}
+        ) : null; })()}
         <ChevronDown className="w-3 h-3 hidden sm:block" style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
       {open && (
@@ -5541,7 +5546,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
 function CreditsWidget({
   usage, subscription, open, onOpen, onClose, onUpgrade, onAddon, onManage,
 }: {
-  usage: { plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null;
+  usage: { plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number }; textPosts: { used: number; limit: number } } | null;
   subscription: { plan: string; status: string; stripe_customer_id?: string; } | null;
   open: boolean;
   onOpen: () => void;
@@ -5660,6 +5665,7 @@ function CreditsWidget({
                   <Row label="AI Video" used={usage?.video.used ?? 0} limit={usage?.video.limit ?? 0} addonKey="video_60s" addonLabel="+60s Video" />
                   <Row label="Content Strategies" used={usage?.strategies.used ?? 0} limit={usage?.strategies.limit ?? 0} />
                   <Row label="Posts Scheduled" used={usage?.posts.used ?? 0} limit={usage?.posts.limit ?? 0} />
+                  <Row label="Text Posts" used={usage?.textPosts.used ?? 0} limit={usage?.textPosts.limit ?? 0} />
                   <p className="text-[10px] text-white/25 text-center">Resets at the start of each billing period</p>
                   <div className="flex gap-2 pt-1">
                     <button onClick={() => { onClose(); onUpgrade(); }}
@@ -5758,10 +5764,11 @@ export function MediaDistributionPage() {
           setGlobalUsage({
             plan: d.plan ?? 'free',
             isActive: d.isActive ?? false,
-            captions: { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 },
-            video:    { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 },
-            strategies: { used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 },
-            posts:    { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 },
+            captions:  { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 },
+            video:     { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 },
+            strategies:{ used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 },
+            posts:     { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 },
+            textPosts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.text_posts_per_month ?? 0 },
           });
         }
       } catch (_) {}
@@ -5776,7 +5783,7 @@ export function MediaDistributionPage() {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${session?.access_token}` } });
         if (res.ok) {
           const d = await res.json();
-          setGlobalUsage({ plan: d.plan ?? 'free', isActive: d.isActive ?? false, captions: { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 }, video: { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 }, strategies: { used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 }, posts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 } });
+          setGlobalUsage({ plan: d.plan ?? 'free', isActive: d.isActive ?? false, captions: { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 }, video: { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 }, strategies: { used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 }, posts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 }, textPosts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.text_posts_per_month ?? 0 } });
         }
       } catch {}
     };
@@ -5951,7 +5958,7 @@ export function MediaDistributionPage() {
         const ur = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${s2?.access_token}` } });
         if (ur.ok) {
           const ud = await ur.json();
-          setGlobalUsage({ plan: ud.plan ?? 'free', isActive: ud.isActive ?? false, captions: { used: ud.usage?.ai_captions_used ?? 0, limit: ud.limits?.ai_captions_per_month ?? 0 }, video: { used: ud.usage?.video_seconds_used ?? 0, limit: ud.limits?.video_seconds_per_month ?? 0 }, strategies: { used: ud.usage?.strategies_used ?? 0, limit: ud.limits?.strategies_per_month ?? 0 }, posts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.posts_per_month ?? 0 } });
+          setGlobalUsage({ plan: ud.plan ?? 'free', isActive: ud.isActive ?? false, captions: { used: ud.usage?.ai_captions_used ?? 0, limit: ud.limits?.ai_captions_per_month ?? 0 }, video: { used: ud.usage?.video_seconds_used ?? 0, limit: ud.limits?.video_seconds_per_month ?? 0 }, strategies: { used: ud.usage?.strategies_used ?? 0, limit: ud.limits?.strategies_per_month ?? 0 }, posts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.posts_per_month ?? 0 }, textPosts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.text_posts_per_month ?? 0 } });
         }
       } catch (_) {}
       setPricingOpen(false);
@@ -6117,7 +6124,7 @@ export function MediaDistributionPage() {
         integrations={integrations} integrationsLoading={integrationsLoading}
         onConnect={handleConnect} onDisconnect={handleDisconnect}
         onRefresh={(force) => loadIntegrations(force)}
-        onOpenConnect={() => subscription?.status === 'active' ? setConnectModalOpen(true) : setPricingOpen(true)}
+        onOpenConnect={() => { const _p = subscription?.stripe_customer_id?.startsWith('promo_'); const _t = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date(); (subscription?.status === 'active' || _p || _t) ? setConnectModalOpen(true) : setPricingOpen(true); }}
         user={currentUser}
         onSignOut={handleSignOut}
         onSignIn={() => setAuthModalOpen(true)}
@@ -6318,7 +6325,7 @@ export function MediaDistributionPage() {
               }
               return integrations;
             })()}
-            onOpenConnect={() => { const _isPromo = subscription?.stripe_customer_id?.startsWith('promo_'); const _isTrial = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date(); (subscription?.status === 'active' || _isPromo || _isTrial) ? setConnectModalOpen(true) : setPricingOpen(true); }}
+            onOpenConnect={() => setConnectModalOpen(true)}
             workspaces={workspaces}
             activeWorkspaceId={activeWorkspaceId}
             onSwitchWorkspace={(id) => setActiveWorkspaceId(id)}
@@ -6376,7 +6383,7 @@ export function MediaDistributionPage() {
               const _pricingIsPromo=subscription?.stripe_customer_id?.startsWith('promo_');
               const _pricingIsTrialing=subscription?.status==='trialing'&&!!subscription?.current_period_end&&new Date(subscription.current_period_end)>new Date();
               const _pricingTrialUsed=subscription?.status==='trialing';
-              const _pricingIsActive=subscription?.status==='active'||_pricingIsPromo;
+              const _pricingIsActive=subscription?.status==='active'||_pricingIsPromo||_pricingIsTrialing;
               return(<>
             <div className="md:hidden px-4 py-4 space-y-3">
               {([
