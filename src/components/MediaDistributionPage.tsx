@@ -5775,6 +5775,7 @@ export function MediaDistributionPage() {
             captions:  { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 },
             video:     { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 },
             strategies:{ used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 },
+            textPosts: { used: 0, limit: ({starter:60,viral:200,agency:-1} as any)[d.plan ?? 'free'] ?? 0 },
             posts:     { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 },
             textPosts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.text_posts_per_month ?? 0 },
           });
