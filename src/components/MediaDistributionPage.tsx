@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
-import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
+import { MediaMachineAuthModal } from './auth/InfiniteMediaAuthModal';
 
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';

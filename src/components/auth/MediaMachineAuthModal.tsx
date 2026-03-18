@@ -55,7 +55,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
         if (err) throw err;
         reset();
         onSuccess();
-        window.location.href = '/MediaMachine';
+        window.location.href = '/InfiniteMedia';
       }
     } catch (e: any) {
       setError(e.message || 'Something went wrong');
@@ -155,7 +155,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
               <div style={{ width: 48, height: 48, borderRadius: 14, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 10, boxShadow: `0 8px 24px ${GOLD}35` }}>
                 <Zap size={22} color="#000" />
               </div>
-              <div style={{ color: 'white', fontWeight: 900, fontSize: 18, letterSpacing: '-0.02em' }}>MediaMachine</div>
+              <div style={{ color: 'white', fontWeight: 900, fontSize: 18, letterSpacing: '-0.02em' }}>Infinite Media</div>
               <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, marginTop: 2, fontWeight: 600, letterSpacing: '0.06em' }}>by Infinite Wealth Solutions AI</div>
             </div>
 
@@ -183,7 +183,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
                     {mode === 'signin' ? 'Welcome back' : 'Start for free'}
                   </h2>
                   <p style={{ color: 'rgba(255,255,255,0.35)', fontSize: 12, marginTop: 5 }}>
-                    {mode === 'signin' ? 'Sign in to your MediaMachine account' : 'Create your MediaMachine account'}
+                    {mode === 'signin' ? 'Sign in to your Infinite Media account' : 'Create your Infinite Media account'}
                   </p>
                 </div>
 

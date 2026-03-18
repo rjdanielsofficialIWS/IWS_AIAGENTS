@@ -46,7 +46,7 @@ const plans: Plan[] = [
     ],
     cta: {
       label: 'Launch Media Machine',
-      href: '/MediaMachine',
+      href: '/InfiniteMedia',
       external: false,
     },
   },

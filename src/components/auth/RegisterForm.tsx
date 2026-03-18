@@ -51,7 +51,7 @@ export function RegisterForm({ onSwitchToLogin, onBack }: RegisterFormProps) {
 
       <div className="text-center mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">Start for free</h2>
-        <p className="text-gray-500 text-sm mt-1">Create your MediaMachine account</p>
+        <p className="text-gray-500 text-sm mt-1">Create your Infinite Media account</p>
       </div>
 
       {error && (

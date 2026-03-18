@@ -215,7 +215,7 @@ export function HomePage() {
             </div>
             <div className="hidden lg:flex items-center space-x-1">
               <a href="#use-cases" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
-              <Link to="/MediaMachine" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Social Media</Link>
+              <Link to="/InfiniteMedia" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Social Media</Link>
               <a href="#pricing" className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-white/5 transition-all">Pricing</a>
             </div>
             <div className="flex items-center space-x-3">
@@ -233,7 +233,7 @@ export function HomePage() {
           <div className="lg:hidden border-t border-white/5 bg-black/90 backdrop-blur-md">
             <div className="px-4 py-3 space-y-1">
               <a href="#use-cases" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
-              <Link to="/MediaMachine" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Social Media Manager</Link>
+              <Link to="/InfiniteMedia" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Social Media Manager</Link>
               <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Pricing</a>
               <div className="pt-2">
                 <a href="https://calendly.com/infinitewealthsolutions/iws-ai-agents-onbooarding" target="_blank" rel="noopener noreferrer"
@@ -341,7 +341,7 @@ export function HomePage() {
                     </div>
                   ))}
                 </div>
-                <Link to="/MediaMachine" className="inline-flex items-center space-x-3 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02]">
+                <Link to="/InfiniteMedia" className="inline-flex items-center space-x-3 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02]">
                   <Share2 className="h-5 w-5" /><span>Start Multiplying Your Content</span><ArrowRight className="h-5 w-5" />
                 </Link>
               </div>
@@ -514,7 +514,7 @@ export function HomePage() {
               <h4 className="font-semibold text-gray-300 mb-3 text-sm">Services</h4>
               <div className="space-y-2">
                 <button onClick={() => setPhoneModal('voice')} className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">AI Voice Agents</button>
-                <Link to="/MediaMachine" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Social Media Manager</Link>
+                <Link to="/InfiniteMedia" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Social Media Manager</Link>
                 <a href="#pricing" className="block text-gray-500 hover:text-gray-400 text-sm transition-colors">Web Development</a>
               </div>
             </div>

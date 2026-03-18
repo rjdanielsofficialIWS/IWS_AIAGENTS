@@ -131,14 +131,14 @@ function AppContent() {
       <Routes>
 
         <Route path="/" element={<HomePage />} />
-        <Route path="/MediaMachine" element={<MediaDistributionPage />} />
+        <Route path="/InfiniteMedia" element={<MediaDistributionPage />} />
 
         <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
         <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/terms-and-conditions" element={<TermsAndConditionsPage />} />
 
-        <Route path="/login" element={<Navigate to="/MediaMachine" replace />} />
-        <Route path="/register" element={<Navigate to="/MediaMachine" replace />} />
+        <Route path="/login" element={<Navigate to="/InfiniteMedia" replace />} />
+        <Route path="/register" element={<Navigate to="/InfiniteMedia" replace />} />
 
         {/* Dashboard */}
         <Route

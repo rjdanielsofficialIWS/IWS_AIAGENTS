@@ -44,7 +44,7 @@ export function LoginForm({ onSwitchToRegister, onBack }: LoginFormProps) {
 
       <div className="text-center mb-6">
         <h2 className="text-2xl font-extrabold tracking-tight">Welcome back</h2>
-        <p className="text-gray-500 text-sm mt-1">Sign in to your MediaMachine account</p>
+        <p className="text-gray-500 text-sm mt-1">Sign in to your Infinite Media account</p>
       </div>
 
       {error && (
