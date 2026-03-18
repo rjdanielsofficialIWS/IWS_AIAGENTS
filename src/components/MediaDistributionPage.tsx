@@ -440,9 +440,19 @@ function PlatformIcon({ id, size = 'md', picture }: { id: string; size?: 'sm' | 
   const key = (id || '').toLowerCase().replace('twitter', 'x');
 
   if (picture && picture.startsWith('http')) {
+    const badgePx = size === 'sm' ? 12 : size === 'lg' ? 20 : 16;
+    const badgeOffset = -2;
+    const logo = logos[key];
     return (
-      <div style={{ width: px, height: px, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.5)', border: '1.5px solid rgba(255,255,255,0.15)' }}>
-        <img src={picture} alt={id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+      <div style={{ position: 'relative', width: px, height: px, flexShrink: 0 }}>
+        <div style={{ width: px, height: px, borderRadius: '50%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.5)', border: '1.5px solid rgba(255,255,255,0.15)' }}>
+          <img src={picture} alt={id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+        </div>
+        {logo && (
+          <div style={{ position: 'absolute', bottom: badgeOffset, right: badgeOffset, width: badgePx, height: badgePx, borderRadius: '50%', background: logo.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #111', boxShadow: '0 1px 4px rgba(0,0,0,0.8)', overflow: 'hidden', flexShrink: 0 }}>
+            <div style={{ transform: `scale(${badgePx / 32})`, transformOrigin: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{logo.node}</div>
+          </div>
+        )}
       </div>
     );
   }
