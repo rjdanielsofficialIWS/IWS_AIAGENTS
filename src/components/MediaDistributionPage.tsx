@@ -3160,6 +3160,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
   const [tpLoadingId, setTpLoadingId]   = useState<string | null>(null);
   const [tpResults, setTpResults]       = useState<Record<string, string[]>>({});
+  const [tpCollapsed, setTpCollapsed]   = useState<Set<string>>(new Set());
   const [tpErrors, setTpErrors]         = useState<Record<string, string>>({});
 
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -3380,14 +3381,21 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
                               </div>
                             )}
                             <button
-                              onClick={() => points ? setTpResults(prev => { const n = { ...prev }; delete n[item.id]; return n; }) : generateTalkingPoints(item.id, item.title)}
+                              onClick={() => {
+                                if (points) {
+                                  // Toggle visibility without deleting — store in collapsed set
+                                  setTpCollapsed(prev => { const n = new Set(prev); n.has(item.id) ? n.delete(item.id) : n.add(item.id); return n; });
+                                } else {
+                                  generateTalkingPoints(item.id, item.title);
+                                }
+                              }}
                               disabled={isLoading}
                               className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition disabled:opacity-50"
                               style={{ background: points ? 'rgba(34,197,94,0.10)' : 'rgba(168,85,247,0.12)', color: points ? '#86efac' : '#c084fc', border: `1px solid ${points ? 'rgba(34,197,94,0.25)' : 'rgba(168,85,247,0.25)'}` }}>
                               {isLoading
                                 ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</>
                                 : points
-                                ? <>✓ Hide Talking Points</>
+                                ? tpCollapsed.has(item.id) ? <><Sparkles className="w-3 h-3" /> Show Talking Points</> : <>✓ Hide Talking Points</>
                                 : <><Sparkles className="w-3 h-3" /> 5 Viral Talking Points</>}
                             </button>
                           </div>
@@ -3401,7 +3409,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
                             <p className="text-[10px] text-red-300/70">{tpError}</p>
                           </div>
                         )}
-                        {points && (
+                        {points && !tpCollapsed.has(item.id) && (
                           <div className="px-4 pb-3 ml-4 space-y-1.5">
                             {points.map((point, i) => (
                               <div key={i} className="flex items-start gap-2 p-2.5 rounded-lg text-xs text-white/70 leading-relaxed"
