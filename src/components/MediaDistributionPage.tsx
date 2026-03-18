@@ -5518,8 +5518,8 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
               <Send className="w-4 h-4 text-black" />
             </div>
             <div className="leading-none">
-              <div className="text-xs font-black text-white">MEDIA</div>
-              <div className="text-xs font-bold mt-0.5" style={{ color: GOLD }}>MACHINE</div>
+              <div className="text-xs font-black text-white">INFINITE</div>
+              <div className="text-xs font-bold mt-0.5" style={{ color: GOLD }}>MEDIA</div>
             </div>
           </div>
         </div>
@@ -5707,7 +5707,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
             style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
             <Send className="w-3 h-3 text-black" />
           </div>
-          <span className="text-xs font-black tracking-widest text-white">MEDIA <span style={{ color: GOLD }}>MACHINE</span></span>
+          <span className="text-xs font-black tracking-widest text-white">INFINITE <span style={{ color: GOLD }}>MEDIA</span></span>
         </div>
       </div>
       <div className="flex items-center gap-2">
@@ -6376,7 +6376,7 @@ export function MediaDistributionPage() {
               </div>
 
               {/* Headline */}
-              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontSize: 'clamp(28px, 4.5vw, 64px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 8 }}>Media Machine</span>
+              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontSize: 'clamp(28px, 4.5vw, 64px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 8 }}>Infinite Media</span>
               <span style={{ display: 'block', fontSize: 9, fontWeight: 900, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 14 }}>By Infinite Wealth Solutions AI</span>
 
               {/* Tagline */}
