@@ -5947,18 +5947,6 @@ export function MediaDistributionPage() {
   useEffect(() => {
     if (!currentUserId) return;
     loadIntegrations();
-
-  // Load workspace-scoped channels when active workspace changes
-  useEffect(() => {
-    if (!currentUserId || !activeWorkspaceId) { setWorkspaceIntegrations([]); return; }
-    setIntegrationsLoading(true);
-    fetchChannels(currentUserId, false, activeWorkspaceId)
-      .then(setWorkspaceIntegrations)
-      .catch(() => setWorkspaceIntegrations([]))
-      .finally(() => setIntegrationsLoading(false));
-  }, [currentUserId, activeWorkspaceId]);
-
-  const activeIntegrations = activeWorkspaceId ? workspaceIntegrations : integrations;
     // Load subscription + global usage
     (async () => {
       try {
@@ -6066,6 +6054,18 @@ export function MediaDistributionPage() {
     }
     setIntegrationsLoading(false);
   }, [currentUserId]);
+
+  // Load workspace-scoped channels when active workspace changes
+  useEffect(() => {
+    if (!currentUserId || !activeWorkspaceId) { setWorkspaceIntegrations([]); return; }
+    setIntegrationsLoading(true);
+    fetchChannels(currentUserId, false, activeWorkspaceId)
+      .then(setWorkspaceIntegrations)
+      .catch(() => setWorkspaceIntegrations([]))
+      .finally(() => setIntegrationsLoading(false));
+  }, [currentUserId, activeWorkspaceId]);
+
+  const activeIntegrations = activeWorkspaceId ? workspaceIntegrations : integrations;
 
   // Signal 1: URL param ?connected=1 — works after full page reload (mobile)
   useEffect(() => {
