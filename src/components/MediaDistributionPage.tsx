@@ -3806,9 +3806,9 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
   );
 }
 
-// ─── PartnerDashboard ─────────────────────────────────────────────────────────
+// ─── AffiliateDashboard ─────────────────────────────────────────────────────────
 
-function PartnerDashboard({ userId, userEmail, userName }: { userId: string | null; userEmail: string | null; userName?: string | null }) {
+function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | null; userEmail: string | null; userName?: string | null }) {
   const [data, setData] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
   const [copied, setCopied] = React.useState(false);
@@ -3817,7 +3817,19 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
   const [codeError, setCodeError] = React.useState('');
   const [showCodeEditor, setShowCodeEditor] = React.useState(false);
 
-  // Derive a default code from the user's name or email prefix
+  // Payout state
+  const [payoutData, setPayoutData] = React.useState<any>(null);
+  const [payoutOpen, setPayoutOpen] = React.useState(false);
+  const [payoutMethod, setPayoutMethod] = React.useState<'paypal' | 'bank_transfer'>('paypal');
+  const [paypalEmail, setPaypalEmail] = React.useState('');
+  const [bankName, setBankName] = React.useState('');
+  const [bankAccountName, setBankAccountName] = React.useState('');
+  const [bankAccountNumber, setBankAccountNumber] = React.useState('');
+  const [bankRoutingNumber, setBankRoutingNumber] = React.useState('');
+  const [payoutSubmitting, setPayoutSubmitting] = React.useState(false);
+  const [payoutError, setPayoutError] = React.useState('');
+  const [payoutSuccess, setPayoutSuccess] = React.useState('');
+
   const defaultCode = React.useMemo(() => {
     const raw = userName || (userEmail ? userEmail.split('@')[0] : '');
     return raw.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 16) || '';
@@ -3828,14 +3840,18 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
-        headers: { Authorization: `Bearer ${session?.access_token}` },
-      });
-      if (res.ok) {
-        const json = await res.json();
+      const headers = { Authorization: `Bearer ${session?.access_token}` };
+      const [statsRes, payoutRes] = await Promise.all([
+        fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, { headers }),
+        fetch(`${SUPABASE_URL}/functions/v1/affiliate-payout`, { headers }),
+      ]);
+      if (statsRes.ok) {
+        const json = await statsRes.json();
         setData(json);
-        // Pre-fill editor with existing custom code, or default to name-based code
         setCustomCodeInput(json.customCode ?? defaultCode);
+      }
+      if (payoutRes.ok) {
+        setPayoutData(await payoutRes.json());
       }
     } catch (e) { console.error(e); }
     setLoading(false);
@@ -3846,8 +3862,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
   const copyLink = () => {
     if (!data?.referralLink) return;
     navigator.clipboard.writeText(data.referralLink).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setCopied(true); setTimeout(() => setCopied(false), 2000);
     });
   };
 
@@ -3855,8 +3870,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
     const trimmed = customCodeInput.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!trimmed || trimmed.length < 3) { setCodeError('Must be at least 3 characters'); return; }
     if (trimmed.length > 16) { setCodeError('Max 16 characters'); return; }
-    setCodeStatus('saving');
-    setCodeError('');
+    setCodeStatus('saving'); setCodeError('');
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
@@ -3866,16 +3880,41 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
       });
       const json = await res.json();
       if (!res.ok) { setCodeError(json.error ?? 'Failed to save'); setCodeStatus('error'); return; }
-      setCodeStatus('success');
-      setShowCodeEditor(false);
+      setCodeStatus('success'); setShowCodeEditor(false);
       await fetchStats();
       setTimeout(() => setCodeStatus('idle'), 2000);
     } catch (e: any) { setCodeError(e.message); setCodeStatus('error'); }
   };
 
+  const handlePayoutSubmit = async () => {
+    setPayoutError(''); setPayoutSuccess('');
+    if (payoutMethod === 'paypal' && !paypalEmail.trim()) { setPayoutError('Enter your PayPal email.'); return; }
+    if (payoutMethod === 'bank_transfer') {
+      if (!bankAccountName.trim()) { setPayoutError('Enter account holder name.'); return; }
+      if (!bankAccountNumber.trim()) { setPayoutError('Enter account number.'); return; }
+      if (!bankRoutingNumber.trim()) { setPayoutError('Enter routing number.'); return; }
+      if (!bankName.trim()) { setPayoutError('Enter bank name.'); return; }
+    }
+    setPayoutSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/affiliate-payout`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: payoutMethod, paypalEmail, bankAccountName, bankAccountNumber, bankRoutingNumber, bankName }),
+      });
+      const json = await res.json();
+      if (!res.ok) { setPayoutError(json.error || 'Failed to submit request.'); return; }
+      setPayoutSuccess('Payout request submitted! We process payouts within 3-5 business days.');
+      await fetchStats();
+      setTimeout(() => { setPayoutOpen(false); setPayoutSuccess(''); }, 3000);
+    } catch (e: any) { setPayoutError(e.message || 'Something went wrong.'); }
+    finally { setPayoutSubmitting(false); }
+  };
+
   if (!userId) return (
     <div className="flex-1 flex items-center justify-center" style={{ color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>
-      Sign in to access the Partner Program
+      Sign in to access the Affiliate Program
     </div>
   );
 
@@ -3885,9 +3924,19 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
     </div>
   );
 
-  const totalEarned = ((data?.totalEarnedCents ?? 0) / 100).toFixed(2);
-  const pendingPayout = ((data?.pendingCents ?? 0) / 100).toFixed(2);
-  const effectiveCode = data?.referralCode ?? '';
+  const totalEarned     = ((data?.totalEarnedCents ?? 0) / 100).toFixed(2);
+  const availablePayout = ((payoutData?.availableCents ?? 0) / 100).toFixed(2);
+  const effectiveCode   = data?.referralCode ?? '';
+  const canRequest      = payoutData?.canRequest ?? false;
+  const pendingPayout   = payoutData?.pendingPayout ?? null;
+  const minPayout       = ((payoutData?.minimumPayoutCents ?? 2500) / 100).toFixed(2);
+
+  const STATUS_COLOR = (s: string) =>
+    s === 'paid' ? 'rgb(74,222,128)' : s === 'processing' ? GOLD_L : s === 'rejected' ? '#fca5a5' : 'rgba(255,255,255,0.5)';
+  const STATUS_BG = (s: string) =>
+    s === 'paid' ? 'rgba(74,222,128,0.1)' : s === 'processing' ? `${GOLD}18` : s === 'rejected' ? 'rgba(239,68,68,0.1)' : 'rgba(255,255,255,0.06)';
+  const STATUS_BORDER = (s: string) =>
+    s === 'paid' ? 'rgba(74,222,128,0.25)' : s === 'processing' ? `${GOLD}40` : s === 'rejected' ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.1)';
 
   return (
     <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-8 space-y-5" style={{ background: BG }}>
@@ -3896,10 +3945,10 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
       <div>
         <div className="flex items-center gap-2 mb-1">
           <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ color: GOLD }}><rect x="1" y="4" width="22" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M1 9h3M20 9h3M1 15h3M20 15h3"/></svg>
-          <h2 className="text-lg font-black text-white">2 for 20 Partner Program</h2>
+          <h2 className="text-lg font-black text-white">2 for 20 Affiliate Program</h2>
         </div>
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
-          Share your link. You earn 20% recurring commission every month they stay subscribed, forever. They get 20% off their first month, automatically applied at checkout.
+          Share your link. Earn 20% recurring commission every month they stay subscribed, forever. They get 20% off their first month automatically.
         </p>
       </div>
 
@@ -3907,7 +3956,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
       <div className="grid grid-cols-3 gap-3">
         {[
           { label: 'Total Earned', value: `$${totalEarned}`, icon: <DollarSign className="w-4 h-4" /> },
-          { label: 'Pending Payout', value: `$${pendingPayout}`, icon: <TrendingUp className="w-4 h-4" /> },
+          { label: 'Available', value: `$${availablePayout}`, icon: <TrendingUp className="w-4 h-4" /> },
           { label: 'Active Referrals', value: data?.activeReferrals ?? 0, icon: <Users className="w-4 h-4" /> },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-4 flex flex-col gap-1" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
@@ -3918,8 +3967,61 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
         ))}
       </div>
 
+      {/* Payout Request Card */}
+      <div className="rounded-xl p-5 space-y-3" style={{ background: `linear-gradient(135deg, ${GOLD}10, rgba(255,255,255,0.02))`, border: `1px solid ${GOLD}30` }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-black text-white">Request Payout</div>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)', marginTop: 2 }}>
+              Minimum ${minPayout} · Processed within 3-5 business days
+            </div>
+          </div>
+          {pendingPayout ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold"
+              style={{ background: `${GOLD}18`, color: GOLD_L, border: `1px solid ${GOLD}40` }}>
+              <Loader className="w-3 h-3 animate-spin" />
+              ${(pendingPayout.amount_cents / 100).toFixed(2)} Pending
+            </div>
+          ) : canRequest ? (
+            <button onClick={() => setPayoutOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-sm font-black transition hover:brightness-110"
+              style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>
+              <DollarSign className="w-4 h-4" /> Request ${availablePayout}
+            </button>
+          ) : (
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', textAlign: 'right', maxWidth: 160 }}>
+              {parseFloat(availablePayout) === 0
+                ? 'No earnings yet'
+                : `Need $${minPayout} minimum · $${availablePayout} available`}
+            </div>
+          )}
+        </div>
+
+        {/* Payout history */}
+        {(payoutData?.payouts?.length ?? 0) > 0 && (
+          <div className="space-y-2 pt-2 border-t" style={{ borderColor: `${GOLD}20` }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Payout History</div>
+            {payoutData.payouts.map((p: any) => (
+              <div key={p.id} className="flex items-center justify-between py-2 border-b last:border-0" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                <div>
+                  <div className="text-sm font-bold text-white">${(p.amount_cents / 100).toFixed(2)}</div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
+                    {p.method === 'paypal' ? `PayPal · ${p.paypal_email}` : `Bank Transfer · ${p.bank_name}`} · {new Date(p.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                  </div>
+                  {p.admin_notes && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginTop: 2 }}>{p.admin_notes}</div>}
+                </div>
+                <span className="px-2.5 py-1 rounded-full text-xs font-bold capitalize"
+                  style={{ background: STATUS_BG(p.status), color: STATUS_COLOR(p.status), border: `1px solid ${STATUS_BORDER(p.status)}` }}>
+                  {p.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Referral link card */}
-      <div className="rounded-xl p-5 space-y-3" style={{ background: `linear-gradient(135deg, ${GOLD}12, rgba(255,255,255,0.02))`, border: `1px solid ${GOLD}30` }}>
+      <div className="rounded-xl p-5 space-y-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="flex items-center justify-between mb-1">
           <span style={{ fontSize: 12, fontWeight: 700, color: GOLD_L, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Referral Link</span>
           <button onClick={() => setShowCodeEditor(!showCodeEditor)}
@@ -3938,32 +4040,22 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
             {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy</>}
           </button>
         </div>
-
-        {/* Code display */}
         <div className="flex items-center gap-2">
           <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)' }}>
-            Code: <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.1em' }}>
-              {effectiveCode || '—'}
-            </span>
+            Code: <span style={{ color: GOLD, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.1em' }}>{effectiveCode || '—'}</span>
           </p>
           {data?.customCode && (
             <span className="px-1.5 py-0.5 rounded text-xs" style={{ background: `${GOLD}20`, color: GOLD, fontSize: 9, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>Custom</span>
           )}
         </div>
-
-        {/* Custom code editor */}
         {showCodeEditor && (
           <div className="rounded-lg p-3 space-y-2 mt-1" style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)' }}>
-            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Set a custom code (3-16 letters/numbers). This replaces your link code.</p>
+            <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>Set a custom code (3-16 letters/numbers).</p>
             <div className="flex gap-2">
-              <input
-                value={customCodeInput}
-                onChange={e => setCustomCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
-                placeholder={data?.systemCode ?? 'e.g. JOHN20'}
-                maxLength={16}
+              <input value={customCodeInput} onChange={e => setCustomCodeInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
+                placeholder={data?.systemCode ?? 'e.g. JOHN20'} maxLength={16}
                 className="flex-1 rounded-lg px-3 py-2 text-sm font-mono"
-                style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${codeStatus === 'error' ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.12)'}`, color: '#fff', outline: 'none' }}
-              />
+                style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${codeStatus === 'error' ? 'rgba(239,68,68,0.5)' : 'rgba(255,255,255,0.12)'}`, color: '#fff', outline: 'none' }} />
               <button onClick={saveCustomCode} disabled={codeStatus === 'saving'}
                 className="px-4 py-2 rounded-lg text-xs font-bold"
                 style={{ background: codeStatus === 'success' ? 'rgba(74,222,128,0.2)' : `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: codeStatus === 'success' ? 'rgb(74,222,128)' : '#000', opacity: codeStatus === 'saving' ? 0.6 : 1 }}>
@@ -3981,9 +4073,9 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
         <div className="space-y-3">
           {[
             { step: '1', text: 'Share your link. Anyone who clicks it gets tagged as your referral.' },
-            { step: '2', text: 'They sign up and their 20% first-month discount is applied automatically at checkout. No code entry needed.' },
+            { step: '2', text: 'They sign up and get 20% off their first month automatically at checkout.' },
             { step: '3', text: 'You earn 20% of every payment they make, every month, for as long as they stay subscribed.' },
-            { step: '4', text: 'Payouts processed monthly via bank transfer or PayPal once you reach the $25 minimum. Commissions are tracked in real time in your dashboard.' },
+            { step: '4', text: 'Request a payout once you hit $25. We process via PayPal or bank transfer within 3-5 business days.' },
           ].map(s => (
             <div key={s.step} className="flex items-start gap-3">
               <div className="w-5 h-5 rounded-full flex items-center justify-center shrink-0 text-xs font-black" style={{ background: `${GOLD}25`, color: GOLD }}>{s.step}</div>
@@ -4007,11 +4099,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{new Date(r.created_at).toLocaleDateString()}</div>
                 </div>
                 <span className="px-2.5 py-1 rounded-full text-xs font-bold"
-                  style={{
-                    background: r.status === 'active' ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.06)',
-                    color: r.status === 'active' ? 'rgb(74,222,128)' : 'rgba(255,255,255,0.35)',
-                    border: `1px solid ${r.status === 'active' ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.1)'}`,
-                  }}>
+                  style={{ background: r.status === 'active' ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.06)', color: r.status === 'active' ? 'rgb(74,222,128)' : 'rgba(255,255,255,0.35)', border: `1px solid ${r.status === 'active' ? 'rgba(74,222,128,0.25)' : 'rgba(255,255,255,0.1)'}` }}>
                   {r.status}
                 </span>
               </div>
@@ -4034,11 +4122,7 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
                   <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.25)' }}>{c.period_start ? new Date(c.period_start).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }) : new Date(c.created_at).toLocaleDateString()}</div>
                 </div>
                 <span className="px-2.5 py-1 rounded-full text-xs font-bold"
-                  style={{
-                    background: c.status === 'paid' ? 'rgba(74,222,128,0.1)' : `${GOLD}15`,
-                    color: c.status === 'paid' ? 'rgb(74,222,128)' : GOLD,
-                    border: `1px solid ${c.status === 'paid' ? 'rgba(74,222,128,0.25)' : `${GOLD}30`}`,
-                  }}>
+                  style={{ background: c.status === 'paid' ? 'rgba(74,222,128,0.1)' : `${GOLD}15`, color: c.status === 'paid' ? 'rgb(74,222,128)' : GOLD, border: `1px solid ${c.status === 'paid' ? 'rgba(74,222,128,0.25)' : `${GOLD}30`}` }}>
                   {c.status}
                 </span>
               </div>
@@ -4054,10 +4138,110 @@ function PartnerDashboard({ userId, userEmail, userName }: { userId: string | nu
           <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>Share your link above to start earning</p>
         </div>
       )}
+
+      {/* ── Payout Request Modal ── */}
+      {payoutOpen && (
+        <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+          <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => { setPayoutOpen(false); setPayoutError(''); setPayoutSuccess(''); }} />
+          <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border shadow-2xl flex flex-col"
+            style={{ background: '#111', borderColor: `${GOLD}40`, maxHeight: '90dvh', overflowY: 'auto' }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+              <div>
+                <div className="text-base font-black text-white">Request Payout</div>
+                <div className="text-xs mt-0.5" style={{ color: GOLD }}>
+                  ${availablePayout} available
+                </div>
+              </div>
+              <button onClick={() => { setPayoutOpen(false); setPayoutError(''); setPayoutSuccess(''); }}
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {/* Method selector */}
+              <div>
+                <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-2">Payout Method</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {([['paypal', '💳 PayPal'], ['bank_transfer', '🏦 Bank Transfer']] as const).map(([m, label]) => (
+                    <button key={m} onClick={() => setPayoutMethod(m)}
+                      className="py-2.5 rounded-xl text-sm font-bold border transition"
+                      style={{ borderColor: payoutMethod === m ? GOLD : 'rgba(255,255,255,0.1)', background: payoutMethod === m ? `${GOLD}18` : 'transparent', color: payoutMethod === m ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {payoutMethod === 'paypal' && (
+                <div>
+                  <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">PayPal Email *</label>
+                  <input value={paypalEmail} onChange={e => setPaypalEmail(e.target.value)} type="email"
+                    placeholder="your@paypal.com"
+                    className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid rgba(255,255,255,0.12)` }} />
+                </div>
+              )}
+
+              {payoutMethod === 'bank_transfer' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Account Holder Name *</label>
+                    <input value={bankAccountName} onChange={e => setBankAccountName(e.target.value)}
+                      placeholder="Full name on account"
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Bank Name *</label>
+                    <input value={bankName} onChange={e => setBankName(e.target.value)}
+                      placeholder="e.g. Chase, Bank of America"
+                      className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                      style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Account Number *</label>
+                      <input value={bankAccountNumber} onChange={e => setBankAccountNumber(e.target.value)}
+                        placeholder="••••••••••"
+                        className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Routing Number *</label>
+                      <input value={bankRoutingNumber} onChange={e => setBankRoutingNumber(e.target.value)}
+                        placeholder="••••••••••"
+                        className="w-full px-3 py-2.5 rounded-xl text-sm text-white placeholder-white/20 outline-none"
+                        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.12)' }} />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="rounded-xl p-3 text-xs" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.35)', lineHeight: 1.6 }}>
+                💡 Your full available balance of <strong style={{ color: GOLD }}>${availablePayout}</strong> will be paid out. Processed within 3-5 business days. You'll receive a confirmation once sent.
+              </div>
+
+              {payoutError && <p className="text-xs text-red-400">{payoutError}</p>}
+              {payoutSuccess && <p className="text-xs text-green-400 font-bold">{payoutSuccess}</p>}
+
+              <div className="flex gap-2 pt-1">
+                <button onClick={() => { setPayoutOpen(false); setPayoutError(''); }}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white/40 hover:text-white hover:bg-white/8 transition border" style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
+                  Cancel
+                </button>
+                <button onClick={handlePayoutSubmit} disabled={payoutSubmitting}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-black transition hover:brightness-110 disabled:opacity-50"
+                  style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>
+                  {payoutSubmitting ? 'Submitting…' : `Request $${availablePayout}`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
-
 
 
 // ─── AIVideoStudio ───────────────────────────────────────────────────────────
@@ -6221,7 +6405,7 @@ export function MediaDistributionPage() {
 
               {/* Referral nudge */}
               <div style={{ padding: '12px 16px', borderRadius: 12, background: `${GOLD}07`, border: `1px solid ${GOLD}18`, maxWidth: 300, width: '100%' }}>
-                <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 2-for-20 Partner Program</div>
+                <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 2-for-20 Affiliate Program</div>
                 <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)', margin: 0, lineHeight: 1.6 }}>
                   Earn 20% recurring commission for every referral. Your audience gets 20% off their first month.
                 </p>
@@ -6354,7 +6538,7 @@ export function MediaDistributionPage() {
               }
               setView('composer');
             }} />}
-            {view === 'partner'  && <PartnerDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
+            {view === 'partner'  && <AffiliateDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
             {/* J — WorkspacesPanel view */}
             {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} />}
           </main>
