@@ -5329,6 +5329,7 @@ function WorkspacesPanel({
   activeWorkspaceId,
   onSetActive,
   integrations,
+  wsChannelCounts,
 }: {
   userId: string | null;
   subscription: { plan: string; status: string; stripe_customer_id?: string; } | null;
@@ -5338,6 +5339,7 @@ function WorkspacesPanel({
   activeWorkspaceId: string | null;
   onSetActive: (id: string | null) => void;
   integrations: PostizIntegration[];
+  wsChannelCounts?: Record<string, number>;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName]       = useState('');
