@@ -5976,7 +5976,6 @@ export function MediaDistributionPage() {
   const [retentionError, setRetentionError]     = useState<string | null>(null);
   const [offerEligible, setOfferEligible]       = useState(false);
   const portalUrlRef = React.useRef<string>('');
-  const portalUrlRef = React.useRef<string>('');
   const [addonModalOpen, setAddonModalOpen] = useState(false);
   const [addonFeature, setAddonFeature] = useState('captions');
   const [addonUsed, setAddonUsed] = useState(0);
