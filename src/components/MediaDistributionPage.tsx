@@ -599,13 +599,6 @@ function ConnectAccountsModal({
   }, [open]);
 
   const handleConnectPlatform = async (platformId: string) => {
-    // Check subscription synchronously via prop before any async work
-    // This keeps us within the user gesture for mobile redirects
-    if (!isSubscriptionActive) {
-      onClose();
-      onConnectPostiz();
-      return;
-    }
     setConnecting(platformId); setError(null);
     try {
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
@@ -743,7 +736,10 @@ function ConnectAccountsModal({
                 return (
                   <button
                     key={p.id}
-                    onClick={() => handleConnectPlatform(p.id)}
+                    onClick={() => {
+                      if (!isSubscriptionActive) { onClose(); onConnectPostiz(); return; }
+                      handleConnectPlatform(p.id);
+                    }}
                     disabled={!!connecting}
                     className="flex flex-col items-center gap-2 p-3 rounded-xl border transition hover:brightness-110 disabled:opacity-40 relative"
                     style={{
