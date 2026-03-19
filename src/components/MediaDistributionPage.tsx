@@ -1397,9 +1397,6 @@ function InlinePostComposer({
   const [textAiPosts, setTextAiPosts]   = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
   const [textAiSelected, setTextAiSelected] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
 
-  const xInteg       = activeIntegrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
-  const liInteg      = activeIntegrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
-  const threadsInteg = activeIntegrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('threads'));
 
   // Multi-select for text post accounts
   const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
@@ -6131,6 +6128,10 @@ export function MediaDistributionPage() {
   }, [currentUserId, activeWorkspaceId]);
 
   const activeIntegrations = activeWorkspaceId ? workspaceIntegrations : integrations;
+
+  const xInteg       = activeIntegrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
+  const liInteg      = activeIntegrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
+  const threadsInteg = activeIntegrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('threads'));
 
   // Signal 1: URL param ?connected=1 — works after full page reload (mobile)
   useEffect(() => {
