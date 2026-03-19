@@ -794,8 +794,8 @@ function ConnectAccountsModal({
 
 // ─── PostLogModal ─────────────────────────────────────────────────────────────
 
-function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
-  open: boolean; onClose: () => void; userId: string | null; initialFilter?: string;
+function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId }: {
+  open: boolean; onClose: () => void; userId: string | null; initialFilter?: string; workspaceId?: string | null;
 }) {
   const [posts, setPosts]     = useState<ScheduledPost[]>([]);
   const [loading, setLoading] = useState(false);
@@ -809,7 +809,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all' }: {
     try {
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`);
       const data = res.ok ? await res.json() : { posts: [] };
       const now = new Date();
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -3512,7 +3512,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     try {
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`);
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`);
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
@@ -3611,7 +3611,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       </div>
 
       {/* Modals */}
-      <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} />
+      <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} workspaceId={workspaceId} />
 
       {addModalOpen && (
         <AddPlannerItemModal
@@ -3628,7 +3628,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 
 // ─── CalendarView ─────────────────────────────────────────────────────────────
 
-function CalendarView({ integrations, userId }: { integrations: PostizIntegration[]; userId: string | null }) {
+function CalendarView({ integrations, userId, workspaceId }: { integrations: PostizIntegration[]; userId: string | null; workspaceId?: string | null }) {
   const [posts, setPosts]               = useState<ScheduledPost[]>([]);
   const [loading, setLoading]           = useState(false);
   const [currentDate, setCurrentDate]   = useState(new Date());
@@ -3650,7 +3650,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
     try {
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-      const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
+      const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`);
       const data  = res.ok ? await res.json() : { posts: [] };
       const list  = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
@@ -6642,7 +6642,7 @@ export function MediaDistributionPage() {
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
             {/* K — pass activeIntegrations to ComposerPanel */}
             {view === 'composer' && <ComposerPanel integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
-            {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
+            {view === 'calendar' && <CalendarView  integrations={activeIntegrations} userId={currentUser?.id ?? null} workspaceId={activeWorkspaceId} />}
             {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
             {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
               if (url.startsWith('repurpose:')) {
