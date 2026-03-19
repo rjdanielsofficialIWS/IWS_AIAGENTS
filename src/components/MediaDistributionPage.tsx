@@ -6270,11 +6270,11 @@ export function MediaDistributionPage() {
   };
 
   const handlePortal = async () => {
-    // Promo users don't have a real Stripe customer — show a friendly message instead
     if (subscription?.stripe_customer_id?.startsWith('promo_')) {
       setOauthError('Your account was activated with a promo code. No billing to manage.');
       return;
     }
+    // Show cancellation modal with retention offer before going to Stripe
     setPortalLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -6289,10 +6289,42 @@ export function MediaDistributionPage() {
         setOauthError('Your account was activated with a promo code. No billing to manage.');
         return;
       }
-      if (data.url) window.location.href = data.url;
-      else throw new Error(data.error || 'Portal failed');
+      // Store portal URL for use after modal
+      if (data.url) {
+        setOfferEligible(data.offerEligible ?? false);
+        setRetentionSuccess(false);
+        setRetentionError(null);
+        setCancelModalOpen(true);
+        // Store portal URL in a ref so modal can use it
+        portalUrlRef.current = data.url;
+      } else throw new Error(data.error || 'Portal failed');
     } catch (e: any) { setOauthError(e.message); }
     finally { setPortalLoading(false); }
+  };
+
+  const portalUrlRef = React.useRef<string>('');
+
+  const handleRetentionOffer = async () => {
+    setRetentionLoading(true);
+    setRetentionError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token ?? '';
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/apply-retention-discount`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || data.error || 'Failed to apply discount');
+      setRetentionSuccess(true);
+      setOfferEligible(false);
+    } catch (e: any) { setRetentionError(e.message); }
+    finally { setRetentionLoading(false); }
+  };
+
+  const handleProceedToCancel = () => {
+    setCancelModalOpen(false);
+    if (portalUrlRef.current) window.location.href = portalUrlRef.current;
   };
 
   const handleAddonCheckout = async (addonKey) => {
@@ -6839,6 +6871,69 @@ export function MediaDistributionPage() {
           </div>
         </div>
       )}
+
+      {/* ── Cancellation / Retention Modal ── */}
+      {cancelModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', padding: 16 }}>
+          <div style={{ width: '100%', maxWidth: 440, background: 'linear-gradient(170deg,#1a1a1a,#141414)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.8)' }}>
+            <div style={{ height: 3, background: `linear-gradient(90deg, transparent, ${GOLD_D} 15%, ${GOLD} 40%, ${GOLD_L} 55%, ${GOLD} 75%, transparent)` }} />
+            <div style={{ padding: '28px 28px 32px' }}>
+              {retentionSuccess ? (
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 48, marginBottom: 16 }}>🎉</div>
+                  <h2 style={{ color: 'white', fontSize: 20, fontWeight: 800, marginBottom: 10 }}>You're all set!</h2>
+                  <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, lineHeight: 1.6, marginBottom: 24 }}>
+                    Your <span style={{ color: GOLD_L, fontWeight: 700 }}>25% discount</span> has been applied to your next billing cycle. We're glad you're staying!
+                  </p>
+                  <button onClick={() => setCancelModalOpen(false)}
+                    style={{ width: '100%', padding: '13px 0', borderRadius: 12, border: 'none', fontSize: 14, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg,${GOLD_D},${GOLD} 50%,${GOLD_L})`, color: '#000' }}>
+                    Continue Using Infinite Media
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                    <div style={{ fontSize: 40, marginBottom: 12 }}>😢</div>
+                    <h2 style={{ color: 'white', fontSize: 20, fontWeight: 800, marginBottom: 8 }}>Before you go...</h2>
+                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13, lineHeight: 1.6 }}>
+                      We'd hate to see you leave. Your account and all your content will be lost when you cancel.
+                    </p>
+                  </div>
+
+                  {offerEligible && (
+                    <div style={{ background: `${GOLD}12`, border: `1px solid ${GOLD}40`, borderRadius: 14, padding: '18px 20px', marginBottom: 20, textAlign: 'center' }}>
+                      <div style={{ fontSize: 22, marginBottom: 6 }}>🎁</div>
+                      <p style={{ color: GOLD_L, fontWeight: 800, fontSize: 15, marginBottom: 6 }}>Special Offer — Just For You</p>
+                      <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 1.6, marginBottom: 14 }}>
+                        Stay and get <span style={{ color: GOLD_L, fontWeight: 700 }}>25% off your next month</span>. This one-time offer won't be available again.
+                      </p>
+                      {retentionError && (
+                        <p style={{ color: '#f87171', fontSize: 12, marginBottom: 10 }}>{retentionError}</p>
+                      )}
+                      <button onClick={handleRetentionOffer} disabled={retentionLoading}
+                        style={{ width: '100%', padding: '12px 0', borderRadius: 12, border: 'none', fontSize: 14, fontWeight: 800, cursor: retentionLoading ? 'not-allowed' : 'pointer', background: `linear-gradient(135deg,${GOLD_D},${GOLD} 50%,${GOLD_L})`, color: '#000', opacity: retentionLoading ? 0.7 : 1 }}>
+                        {retentionLoading ? 'Applying discount...' : 'Yes, give me 25% off!'}
+                      </button>
+                    </div>
+                  )}
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <button onClick={() => setCancelModalOpen(false)}
+                      style={{ width: '100%', padding: '12px 0', borderRadius: 12, border: `1px solid ${GOLD}40`, fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.6)' }}>
+                      Never mind, keep my account
+                    </button>
+                    <button onClick={handleProceedToCancel}
+                      style={{ width: '100%', padding: '10px 0', borderRadius: 12, border: '1px solid rgba(255,255,255,0.08)', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.25)' }}>
+                      Continue to cancel anyway
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <ConnectAccountsModal
         open={connectModalOpen} onClose={() => setConnectModalOpen(false)}
         integrations={activeIntegrations} onConnectPostiz={handleConnect}
