@@ -559,7 +559,7 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 // ─── ConnectAccountsModal ─────────────────────────────────────────────────────
 
 function ConnectAccountsModal({
-  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser, onDisconnectPlatform, workspaceId, isSubscriptionActive = false,
+  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser, onDisconnectPlatform, workspaceId, isSubscriptionActive = false, onNeedsPricing,
 }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   onConnectPostiz: () => void; integrationsLoading: boolean;
@@ -568,6 +568,7 @@ function ConnectAccountsModal({
   currentUser: { id: string; email: string } | null;
   workspaceId?: string | null;
   isSubscriptionActive?: boolean;
+  onNeedsPricing?: () => void;
 }) {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id being connected via Late
@@ -737,7 +738,7 @@ function ConnectAccountsModal({
                   <button
                     key={p.id}
                     onClick={() => {
-                      if (!isSubscriptionActive) { onClose(); onConnectPostiz(); return; }
+                      if (!isSubscriptionActive) { onClose(); setTimeout(() => { onNeedsPricing ? onNeedsPricing() : onConnectPostiz(); }, 50); return; }
                       handleConnectPlatform(p.id);
                     }}
                     disabled={!!connecting}
@@ -6953,6 +6954,7 @@ export function MediaDistributionPage() {
         currentUser={currentUser}
         workspaceId={activeWorkspaceId}
         isSubscriptionActive={!!(subscription?.status === 'active' || subscription?.stripe_customer_id?.startsWith('promo_') || (subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date()))}
+        onNeedsPricing={() => setPricingOpen(true)}
       />
 
       <MediaMachineAuthModal
