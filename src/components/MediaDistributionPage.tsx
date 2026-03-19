@@ -1164,7 +1164,7 @@ function SavedPostCard({
         const a = textPostAccounts.find(a => a.integ.id === id);
         return a?.integ.profile || a?.integ.id || a?.platform || '';
       }).filter(Boolean);
-      await ayrsharePost({ platforms: platformIds, post: activeText, scheduleDate: sd });
+      await ayrsharePost({ platforms: platformIds, post: activeText, scheduleDate: sd, workspaceId: workspaceId ?? null });
       setPostOk(true);
       setSelectedAccounts([]);
       setTimeout(() => setPostOk(false), 3000);
@@ -1540,7 +1540,7 @@ function InlinePostComposer({
           .filter(Boolean);
         const isYT = platforms.includes('youtube');
         await ayrsharePost({
-          platforms, post: content, mediaUrls, scheduleDate: sd,
+          platforms, post: content, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null,
           ...(isYT ? { youTubeTitle: youTubeTitle || content.slice(0, 100), youTubeShorts: true } : {}),
         });
       } else {
@@ -1555,7 +1555,7 @@ function InlinePostComposer({
           if (!caption) return;
           const isYT = platformId === 'youtube';
           await ayrsharePost({
-            platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd,
+            platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null,
             ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}),
           });
         });
@@ -1585,7 +1585,7 @@ function InlinePostComposer({
         const acct = textPostAccounts.find(a => a.integ.id === id);
         return acct?.integ.profile || acct?.integ.id || acct?.platform || '';
       }).filter(Boolean);
-      await ayrsharePost({ platforms: platformIds, post: text, scheduleDate: sd });
+      await ayrsharePost({ platforms: platformIds, post: text, scheduleDate: sd, workspaceId: workspaceId ?? null });
       setSubmitOk(true);
       setXText(''); setLinkedinText('');
       setAiEditText(''); setEditingIdx(null); setSelectedTextAccounts([]);
@@ -2166,6 +2166,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   userId: string | null;
   onAddToPlanner?: (item: { title: string; notes?: string; category: string; sourceLabel: string }, onSaved?: () => void) => void;
   onUpgrade?: () => void;
+  workspaceId?: string | null;
 }) {
   type StrategistTab = 'brief' | 'trends' | 'calendar' | 'strategy' | 'video';
   type BriefData = {
@@ -3486,7 +3487,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
   );
 }
 
-function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed, onUpgrade }: {
+function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed, onUpgrade, workspaceId }: {
   integrations: PostizIntegration[];
   userId: string | null;
   initialVideoUrl?: string | null;
@@ -6653,7 +6654,7 @@ export function MediaDistributionPage() {
             onManageWorkspaces={() => setView('workspaces')} />
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
             {/* K — pass activeIntegrations to ComposerPanel */}
-            {view === 'composer' && <ComposerPanel integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} />}
+            {view === 'composer' && <ComposerPanel integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
             {view === 'calendar' && <CalendarView  integrations={integrations} userId={currentUser?.id ?? null} />}
             {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
             {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
