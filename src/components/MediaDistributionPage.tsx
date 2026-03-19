@@ -1262,8 +1262,8 @@ function SavedPostCard({
         </div>
         {scheduleType === 'schedule' && (
           <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
-            className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none w-full"
-            style={{ borderColor: BORDER, colorScheme: 'dark' }} />
+            className="rounded-xl border bg-black/25 px-3 py-1.5 text-xs text-white outline-none"
+            style={{ borderColor: BORDER, colorScheme: 'dark', width: 'fit-content' }} />
         )}
       </div>
 
@@ -1607,8 +1607,8 @@ function InlinePostComposer({
       </div>
       {scheduleType === 'schedule' && (
         <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
-          className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none w-full"
-          style={{ borderColor: BORDER, colorScheme: 'dark' }} />
+          className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none"
+          style={{ borderColor: BORDER, colorScheme: 'dark', width: 'fit-content' }} />
       )}
     </div>
   );
