@@ -5970,6 +5970,12 @@ export function MediaDistributionPage() {
   const [creditsOpen, setCreditsOpen]           = useState(false);
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
+  const [cancelModalOpen, setCancelModalOpen]   = useState(false);
+  const [retentionLoading, setRetentionLoading] = useState(false);
+  const [retentionSuccess, setRetentionSuccess] = useState(false);
+  const [retentionError, setRetentionError]     = useState<string | null>(null);
+  const [offerEligible, setOfferEligible]       = useState(false);
+  const portalUrlRef = React.useRef<string>('');
   const [addonModalOpen, setAddonModalOpen] = useState(false);
   const [addonFeature, setAddonFeature] = useState('captions');
   const [addonUsed, setAddonUsed] = useState(0);
