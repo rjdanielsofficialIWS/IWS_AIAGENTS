@@ -659,7 +659,7 @@ function ConnectAccountsModal({
         </div>
 
         <div className="overflow-y-auto flex-1 p-6 space-y-4">
-          {integrations.length > 0 && (
+          {activeIntegrations.length > 0 && (
             <div>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
                 Connected ({integrations.length})
@@ -5494,7 +5494,7 @@ function WorkspacesPanel({
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-black text-white truncate">{ws.name}</div>
                   <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                    {ws.assignedChannelIds.length} channel{ws.assignedChannelIds.length !== 1 ? 's' : ''} assigned
+                    {ws.assignedChannelIds?.length || 0} channel{(ws.assignedChannelIds?.length || 0) !== 1 ? 's' : ''} connected
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -5522,31 +5522,7 @@ function WorkspacesPanel({
                 </div>
               </div>
 
-              {integrations.length > 0 && (
-                <div className="px-4 pb-4 border-t pt-3" style={{ borderColor: BORDER }}>
-                  <p className="text-xs font-bold mb-2" style={{ color: 'rgba(255,255,255,0.3)' }}>ASSIGN CHANNELS</p>
-                  <div className="flex flex-wrap gap-2">
-                    {integrations.map(int => {
-                      const assigned = ws.assignedChannelIds.includes(int.id) || ws.assignedChannelIds.includes(int.identifier);
-                      const loadKey = ws.id + ':' + int.id;
-                      return (
-                        <label key={int.id} className="flex items-center gap-1.5 cursor-pointer select-none px-2.5 py-1.5 rounded-lg transition"
-                          style={{ background: assigned ? `${ws.color}18` : 'rgba(255,255,255,0.04)', border: `1px solid ${assigned ? ws.color + '40' : 'rgba(255,255,255,0.08)'}` }}>
-                          <input
-                            type="checkbox"
-                            checked={assigned}
-                            disabled={assignLoading === loadKey}
-                            onChange={() => handleToggleChannel(ws, int.id)}
-                            className="w-3 h-3 accent-yellow-400"
-                          />
-                          <PlatformIcon id={int.profile || int.identifier} size="sm" />
-                          <span className="text-xs font-semibold" style={{ color: assigned ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.4)' }}>{int.name}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+
             </div>
           ))}
         </div>
@@ -5690,7 +5666,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
           style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
           <Link2 className="w-5 h-5" />
           <span className="text-[10px] font-bold tracking-wide">
-            {integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}
+            {activeIntegrations.length > 0 ? `${activeIntegrations.length} Ch.` : 'Connect'}
           </span>
         </button>
       </nav>
@@ -5783,7 +5759,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
             {integrations.length > 0 && (
               <div className="hidden sm:flex items-center gap-1.5 text-xs text-green-400 font-semibold mr-1">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                <span>{integrationsLoading ? 'Syncing…' : `${integrations.length} channel${integrations.length !== 1 ? 's' : ''}`}</span>
+                <span>{integrationsLoading ? 'Syncing…' : `${activeIntegrations.length} channel${activeIntegrations.length !== 1 ? 's' : ''}`}</span>
               </div>
             )}
             <button onClick={() => onRefresh()} disabled={integrationsLoading}
