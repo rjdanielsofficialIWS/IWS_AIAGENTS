@@ -1406,11 +1406,13 @@ function InlinePostComposer({
   const [aiEditText, setAiEditText] = useState('');
   const [editingIdx, setEditingIdx] = useState<{ tab: 'twitter' | 'linkedin'; idx: number } | null>(null);
 
-  const textPostAccounts = [
-    ...(xInteg       ? [{ integ: xInteg,       platform: 'x' as PlatformId       }] : []),
-    ...(liInteg      ? [{ integ: liInteg,       platform: 'linkedin' as PlatformId }] : []),
-    ...(threadsInteg ? [{ integ: threadsInteg,  platform: 'threads' as PlatformId  }] : []),
-  ];
+  const textPostAccounts = integrations
+    .filter(i => ['x','twitter','linkedin','threads'].includes((i.profile||i.identifier||'').toLowerCase()))
+    .map(i => {
+      const prof = (i.profile||i.identifier||'').toLowerCase();
+      const platform: PlatformId = prof.startsWith('linkedin') ? 'linkedin' : prof.startsWith('threads') ? 'threads' : 'x';
+      return { integ: i, platform };
+    });
 
   const getSelectedPlatforms = () =>
     selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean) as string[];
