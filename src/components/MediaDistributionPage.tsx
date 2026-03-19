@@ -5494,7 +5494,7 @@ function WorkspacesPanel({
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-black text-white truncate">{ws.name}</div>
                   <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                    {ws.assignedChannelIds?.length || 0} channel{(ws.assignedChannelIds?.length || 0) !== 1 ? 's' : ''} connected
+                    {wsChannelCounts?.[ws.id] ?? 0} channel{(wsChannelCounts?.[ws.id] ?? 0) !== 1 ? 's' : ''} connected
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -5966,6 +5966,7 @@ export function MediaDistributionPage() {
   const [promoSuccess, setPromoSuccess]         = useState('');
   const [integrations, setIntegrations]         = useState<PostizIntegration[]>([]);
   const [workspaceIntegrations, setWorkspaceIntegrations] = useState<PostizIntegration[]>([]);
+  const [wsChannelCounts, setWsChannelCounts] = useState<Record<string, number>>({});
   const [integrationsLoading, setIntegrationsLoading] = useState(false);
   const [workspaces, setWorkspaces]             = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(() => localStorage.getItem('mm_active_workspace') || null);
@@ -6006,7 +6007,12 @@ export function MediaDistributionPage() {
       // Load workspaces
       try {
         const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUserId).order('created_at');
-        if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at })));
+        if (ws) {
+              setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at })));
+              const counts: Record<string, number> = {};
+              ws.forEach((w: any) => { counts[w.id] = Array.isArray(w.cached_channels) ? w.cached_channels.length : 0; });
+              setWsChannelCounts(counts);
+            }
       } catch (_) {}
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -6645,7 +6651,7 @@ export function MediaDistributionPage() {
             }} />}
             {view === 'partner'  && <AffiliateDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
             {/* J — WorkspacesPanel view */}
-            {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} />}
+            {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} wsChannelCounts={wsChannelCounts} />}
           </main>
           </div>
 
