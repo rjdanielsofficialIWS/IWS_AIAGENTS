@@ -1260,11 +1260,44 @@ function SavedPostCard({
             </button>
           ))}
         </div>
-        {scheduleType === 'schedule' && (
-          <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
-            className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none w-full"
-            style={{ borderColor: BORDER }} />
-        )}
+        {scheduleType === 'schedule' && (() => {
+          const [showDatePicker1, setShowDatePicker1] = React.useState(false);
+          return (
+            <>
+              <button onClick={() => setShowDatePicker1(true)}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm text-white w-full text-left transition hover:border-white/20"
+                style={{ borderColor: scheduleDateStr ? GOLD + '60' : BORDER, background: 'rgba(0,0,0,0.25)' }}>
+                <span style={{ color: scheduleDateStr ? GOLD_L : 'rgba(255,255,255,0.3)', fontSize: 13 }}>
+                  {scheduleDateStr ? new Date(scheduleDateStr).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Pick date & time…'}
+                </span>
+              </button>
+              {showDatePicker1 && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+                  onClick={e => { if (e.target === e.currentTarget) setShowDatePicker1(false); }}
+                  style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
+                  <div style={{ background: 'linear-gradient(170deg,#1a1a1a,#141414)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, width: '100%', maxWidth: 360, boxShadow: '0 32px 80px rgba(0,0,0,0.8)' }}>
+                    <div style={{ height: 3, background: `linear-gradient(90deg,transparent,${GOLD_D} 15%,${GOLD} 50%,${GOLD_D} 85%,transparent)`, borderRadius: 2, marginBottom: 20 }} />
+                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Schedule for</p>
+                    <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
+                      autoFocus
+                      className="rounded-xl border bg-black/25 px-4 py-3 text-sm text-white outline-none w-full"
+                      style={{ borderColor: GOLD + '60', colorScheme: 'dark', fontSize: 15 }} />
+                    <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                      <button onClick={() => setShowDatePicker1(false)}
+                        style={{ flex: 1, padding: '11px 0', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                      <button onClick={() => setShowDatePicker1(false)}
+                        style={{ flex: 1, padding: '11px 0', borderRadius: 12, border: 'none', background: `linear-gradient(135deg,${GOLD_D},${GOLD} 50%,${GOLD_L})`, color: '#000', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+                        Confirm
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
       </div>
 
       {/* ── Footer: error + post button ── */}
@@ -1605,10 +1638,44 @@ function InlinePostComposer({
           </button>
         ))}
       </div>
-      {scheduleType === 'schedule' && (
-        <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
-          className="rounded-xl border bg-black/25 px-4 py-2.5 text-sm text-white outline-none" style={{ borderColor: BORDER }} />
-      )}
+      {scheduleType === 'schedule' && (() => {
+          const [showDatePicker2, setShowDatePicker2] = React.useState(false);
+          return (
+            <>
+              <button onClick={() => setShowDatePicker2(true)}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-xl border text-sm text-white transition hover:border-white/20"
+                style={{ borderColor: scheduleDateStr ? GOLD + '60' : BORDER, background: 'rgba(0,0,0,0.25)' }}>
+                <span style={{ color: scheduleDateStr ? GOLD_L : 'rgba(255,255,255,0.3)', fontSize: 13 }}>
+                  {scheduleDateStr ? new Date(scheduleDateStr).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Pick date & time…'}
+                </span>
+              </button>
+              {showDatePicker2 && (
+                <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+                  onClick={e => { if (e.target === e.currentTarget) setShowDatePicker2(false); }}
+                  style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)' }}>
+                  <div style={{ background: 'linear-gradient(170deg,#1a1a1a,#141414)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 20, padding: 28, width: '100%', maxWidth: 360, boxShadow: '0 32px 80px rgba(0,0,0,0.8)' }}>
+                    <div style={{ height: 3, background: `linear-gradient(90deg,transparent,${GOLD_D} 15%,${GOLD} 50%,${GOLD_D} 85%,transparent)`, borderRadius: 2, marginBottom: 20 }} />
+                    <p style={{ color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>Schedule for</p>
+                    <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
+                      autoFocus
+                      className="rounded-xl border bg-black/25 px-4 py-3 text-sm text-white outline-none w-full"
+                      style={{ borderColor: GOLD + '60', colorScheme: 'dark', fontSize: 15 }} />
+                    <div style={{ display: 'flex', gap: 10, marginTop: 20 }}>
+                      <button onClick={() => setShowDatePicker2(false)}
+                        style={{ flex: 1, padding: '11px 0', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                        Cancel
+                      </button>
+                      <button onClick={() => setShowDatePicker2(false)}
+                        style={{ flex: 1, padding: '11px 0', borderRadius: 12, border: 'none', background: `linear-gradient(135deg,${GOLD_D},${GOLD} 50%,${GOLD_L})`, color: '#000', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+                        Confirm
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          );
+        })()}
     </div>
   );
 
