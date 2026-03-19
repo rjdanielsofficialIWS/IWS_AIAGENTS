@@ -1416,7 +1416,7 @@ function InlinePostComposer({
   ];
 
   const getSelectedPlatforms = () =>
-    selectedIntegrations.map(id => integrations.find(i => i.id === id)?.identifier).filter(Boolean) as string[];
+    selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean) as string[];
   const isYouTubeSelected = getSelectedPlatforms().includes('youtube');
 
   const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
@@ -1536,7 +1536,7 @@ function InlinePostComposer({
 
       if (captionType === 'manual') {
         const platforms = selectedIntegrations
-          .map(id => { const i = integrations.find(x => x.id === id); return i?.identifier || i?.id || ''; })
+          .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
           .filter(Boolean);
         const isYT = platforms.includes('youtube');
         await ayrsharePost({
