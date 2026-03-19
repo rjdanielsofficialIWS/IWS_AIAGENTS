@@ -1238,7 +1238,7 @@ function SavedPostCard({
                 <button key={integ.id} onClick={() => toggle(integ.id)}
                   className="flex items-center gap-2 px-3 py-2 rounded-xl border font-semibold transition"
                   style={{ borderColor: sel ? (p?.color || GOLD) : BORDER, background: sel ? (p?.bg || `${GOLD}15`) : 'transparent', color: sel ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                  <PlatformIcon id={platform} size="sm" />
+                  <PlatformIcon id={platform} size="sm" picture={integ.picture} />
                   <span className="text-xs truncate max-w-[80px]">{integ.name}</span>
                   {sel && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
                 </button>
@@ -1397,9 +1397,9 @@ function InlinePostComposer({
   const [textAiPosts, setTextAiPosts]   = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
   const [textAiSelected, setTextAiSelected] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
 
-  const xInteg       = integrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
-  const liInteg      = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
-  const threadsInteg = integrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('threads'));
+  const xInteg       = activeIntegrations.find(i => ['x','twitter'].includes((i.profile||i.identifier||'').toLowerCase()));
+  const liInteg      = activeIntegrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('linkedin'));
+  const threadsInteg = activeIntegrations.find(i => (i.profile||i.identifier||'').toLowerCase().startsWith('threads'));
 
   // Multi-select for text post accounts
   const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
@@ -1545,7 +1545,7 @@ function InlinePostComposer({
         });
       } else {
         const postPromises = selectedIntegrations.map(async (integId) => {
-          const integ = integrations.find(i => i.id === integId);
+          const integ = activeIntegrations.find(i => i.id === integId);
           if (!integ) return;
           const platformId = integ.profile || integ.id || '';
           const caption = generatedCaptions![platformId]
