@@ -5976,6 +5976,7 @@ export function MediaDistributionPage() {
   const [retentionError, setRetentionError]     = useState<string | null>(null);
   const [offerEligible, setOfferEligible]       = useState(false);
   const portalUrlRef = React.useRef<string>('');
+  const portalUrlRef = React.useRef<string>('');
   const [addonModalOpen, setAddonModalOpen] = useState(false);
   const [addonFeature, setAddonFeature] = useState('captions');
   const [addonUsed, setAddonUsed] = useState(0);
@@ -6307,8 +6308,6 @@ export function MediaDistributionPage() {
     } catch (e: any) { setOauthError(e.message); }
     finally { setPortalLoading(false); }
   };
-
-  const portalUrlRef = React.useRef<string>('');
 
   const handleRetentionOffer = async () => {
     setRetentionLoading(true);
