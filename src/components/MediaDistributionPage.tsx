@@ -559,7 +559,7 @@ function TranscriptViewer({ transcript }: { transcript: string }) {
 // ─── ConnectAccountsModal ─────────────────────────────────────────────────────
 
 function ConnectAccountsModal({
-  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser, onDisconnectPlatform, workspaceId,
+  open, onClose, integrations, onConnectPostiz, integrationsLoading, onRefresh, currentUser, onDisconnectPlatform, workspaceId, isSubscriptionActive = false,
 }: {
   open: boolean; onClose: () => void; integrations: PostizIntegration[];
   onConnectPostiz: () => void; integrationsLoading: boolean;
@@ -567,6 +567,7 @@ function ConnectAccountsModal({
   onDisconnectPlatform: (platformId: string) => Promise<void>;
   currentUser: { id: string; email: string } | null;
   workspaceId?: string | null;
+  isSubscriptionActive?: boolean;
 }) {
   const [connecting, setConnecting] = useState<string | null>(null);
   const [disconnecting, setDisconnecting] = useState<string | null>(null); // platform id being connected via Late
@@ -598,16 +599,17 @@ function ConnectAccountsModal({
   }, [open]);
 
   const handleConnectPlatform = async (platformId: string) => {
+    // Check subscription synchronously via prop before any async work
+    // This keeps us within the user gesture for mobile redirects
+    if (!isSubscriptionActive) {
+      onClose();
+      onConnectPostiz();
+      return;
+    }
     setConnecting(platformId); setError(null);
     try {
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
-      if (sessionErr || !session) { setConnecting(null); onConnectPostiz(); return; }
-      // Check subscription — if not active, close modal and show pricing (works on both mobile and desktop)
-      const { data: subCheck } = await supabase.from('subscriptions').select('status,stripe_customer_id,current_period_end').eq('supabase_user_id', session.user.id).maybeSingle();
-      const _isPromo = subCheck?.stripe_customer_id?.startsWith('promo_');
-      const _isTrialing = subCheck?.status === 'trialing' && !!subCheck?.current_period_end && new Date(subCheck.current_period_end) > new Date();
-      const _isActive = subCheck?.status === 'active' || _isPromo || _isTrialing;
-      if (!_isActive) { setConnecting(null); onClose(); onConnectPostiz(); return; }
+      if (sessionErr || !session) { setConnecting(null); onClose(); onConnectPostiz(); return; }
 
       // On mobile open in same tab, on desktop open popup
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
@@ -728,11 +730,13 @@ function ConnectAccountsModal({
             </div>
             <div className="grid grid-cols-3 gap-2">
               {CONNECTABLE_PLATFORMS.filter(p => {
-                // Hide platforms that are already connected
-                return !integrations.some(i =>
-                  (i.profile || i.identifier || '').toLowerCase() === p.id.toLowerCase() ||
-                  (i.profile || i.identifier || '').toLowerCase().includes(p.id.toLowerCase())
-                );
+                // Hide platforms already connected — treat 'twitter' and 'x' as equivalent
+                const normPid = p.id === 'twitter' ? 'x' : p.id;
+                return !integrations.some(i => {
+                  const prof = (i.profile || i.identifier || '').toLowerCase();
+                  const normProf = prof === 'twitter' ? 'x' : prof;
+                  return normProf === normPid || normProf.includes(normPid);
+                });
               }).map(p => {
                 const isConnecting = connecting === p.id;
                 const isConnected = false; // already filtered out connected ones
@@ -6952,6 +6956,7 @@ export function MediaDistributionPage() {
         onDisconnectPlatform={handleDisconnectPlatform}
         currentUser={currentUser}
         workspaceId={activeWorkspaceId}
+        isSubscriptionActive={!!(subscription?.status === 'active' || subscription?.stripe_customer_id?.startsWith('promo_') || (subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date()))}
       />
 
       <MediaMachineAuthModal
