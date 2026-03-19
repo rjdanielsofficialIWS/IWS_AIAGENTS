@@ -4901,7 +4901,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                 <div>
                   <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Duration</label>
                   <div className="flex gap-2">
-                    {['5','10'].map(d => (
+                    {['5','10','15'].map(d => (
                       <button key={d} onClick={() => setDuration(d)}
                         className="flex-1 py-2 rounded-lg text-xs font-bold border transition"
                         style={{ borderColor: duration === d ? GOLD : BORDER, background: duration === d ? `${GOLD}18` : 'transparent', color: duration === d ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
