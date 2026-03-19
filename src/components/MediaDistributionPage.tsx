@@ -1542,7 +1542,7 @@ function InlinePostComposer({
         });
       } else {
         const postPromises = selectedIntegrations.map(async (integId) => {
-          const integ = activeIntegrations.find(i => i.id === integId);
+          const integ = integrations.find(i => i.id === integId);
           if (!integ) return;
           const platformId = integ.profile || integ.id || '';
           const caption = generatedCaptions![platformId]
