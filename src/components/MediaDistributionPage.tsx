@@ -1297,13 +1297,14 @@ function SavedPostCard({
 // Inline version of PostComposerModal (no modal wrapper)
 
 function InlinePostComposer({
-  integrations, userId, onSuccess, initialVideoUrl, initialMode,
+  integrations, userId, onSuccess, initialVideoUrl, initialMode, workspaceId,
 }: {
   integrations: PostizIntegration[];
   userId: string | null;
   onSuccess?: () => void;
   initialVideoUrl?: string | null;
   initialMode?: 'media' | 'text' | 'saved';
+  workspaceId?: string | null;
 }) {
   type PostType = 'media' | 'text' | 'saved';
   type SavedPost = { id: string; text: string; label: string; savedAt: Date };
@@ -3598,7 +3599,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 
         {composerPanelTab === 'post' && (
           <div className="px-4 md:px-8 py-6 w-full">
-            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} />
+            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} workspaceId={workspaceId} />
           </div>
         )}
 
@@ -3823,7 +3824,7 @@ function CalendarView({ integrations, userId }: { integrations: PostizIntegratio
               <button onClick={() => setComposerOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
-              <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); setComposerOpen(false); }} />
+              <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); setComposerOpen(false); }} workspaceId={workspaceId} />
             </div>
           </div>
         </div>
