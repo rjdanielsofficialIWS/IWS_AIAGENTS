@@ -1373,7 +1373,7 @@ function InlinePostComposer({
           const d = await res.json();
           setUsageData({
             used: d.usage?.ai_analyses_used ?? 0,
-            limit: d.limits?.ai_analyses_per_month ?? 0,
+            limit: d.limits?.ai_captions_per_month ?? d.limits?.ai_analyses_per_month ?? 0,
             postsUsed: d.usage?.posts_scheduled ?? 0,
             postsLimit: d.limits?.posts_per_month ?? 0,
             plan: d.plan ?? 'free',
@@ -1781,7 +1781,7 @@ function InlinePostComposer({
                       <div className="h-full rounded-full transition-all" style={{ width: `${Math.min(100, (usageData.used / usageData.limit) * 100)}%`, background: usageData.used >= usageData.limit ? '#ef4444' : usageData.used / usageData.limit > 0.8 ? '#f59e0b' : GOLD }} />
                     </div>
                     <span style={{ fontSize: 10, color: usageData.used >= usageData.limit ? '#ef4444' : 'rgba(255,255,255,0.3)', whiteSpace: 'nowrap' }}>
-                      {usageData.used}/{usageData.limit} analyses
+                      {usageData.used}/{usageData.limit} captions
                     </span>
                   </div>
                 )}
@@ -6037,7 +6037,7 @@ export function MediaDistributionPage() {
             video:     { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 },
             strategies:{ used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 },
             posts:     { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 },
-            textPosts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.text_posts_per_month ?? 0 },
+            textPosts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.text_posts_per_month ?? d.limits?.posts_per_month ?? 0 },
           });
         }
       } catch (_) {}
@@ -6243,7 +6243,7 @@ export function MediaDistributionPage() {
         const ur = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${s2?.access_token}` } });
         if (ur.ok) {
           const ud = await ur.json();
-          setGlobalUsage({ plan: ud.plan ?? 'free', isActive: ud.isActive ?? false, captions: { used: ud.usage?.ai_captions_used ?? 0, limit: ud.limits?.ai_captions_per_month ?? 0 }, video: { used: ud.usage?.video_seconds_used ?? 0, limit: ud.limits?.video_seconds_per_month ?? 0 }, strategies: { used: ud.usage?.strategies_used ?? 0, limit: ud.limits?.strategies_per_month ?? 0 }, posts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.posts_per_month ?? 0 }, textPosts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.text_posts_per_month ?? 0 } });
+          setGlobalUsage({ plan: ud.plan ?? 'free', isActive: ud.isActive ?? false, captions: { used: ud.usage?.ai_captions_used ?? 0, limit: ud.limits?.ai_captions_per_month ?? 0 }, video: { used: ud.usage?.video_seconds_used ?? 0, limit: ud.limits?.video_seconds_per_month ?? 0 }, strategies: { used: ud.usage?.strategies_used ?? 0, limit: ud.limits?.strategies_per_month ?? 0 }, posts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.posts_per_month ?? 0 }, textPosts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.text_posts_per_month ?? ud.limits?.posts_per_month ?? 0 } });
         }
       } catch (_) {}
       setPricingOpen(false);
