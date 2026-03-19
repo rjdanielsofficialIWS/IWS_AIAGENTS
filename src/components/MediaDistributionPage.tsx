@@ -3611,7 +3611,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       </div>
 
       {/* Modals */}
-      <PostLogModal open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} workspaceId={workspaceId} />
+      <PostLogModal key={workspaceId ?? 'personal'} open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} workspaceId={workspaceId} />
 
       {addModalOpen && (
         <AddPlannerItemModal
@@ -6641,9 +6641,9 @@ export function MediaDistributionPage() {
             onManageWorkspaces={() => setView('workspaces')} />
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
             {/* K — pass activeIntegrations to ComposerPanel */}
-            {view === 'composer' && <ComposerPanel integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
-            {view === 'calendar' && <CalendarView  integrations={activeIntegrations} userId={currentUser?.id ?? null} workspaceId={activeWorkspaceId} />}
-            {view === 'planner'  && <PlannerPanel  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
+            {view === 'composer' && <ComposerPanel key={activeWorkspaceId ?? 'personal'} integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
+            {view === 'calendar' && <CalendarView key={activeWorkspaceId ?? 'personal'}  integrations={activeIntegrations} userId={currentUser?.id ?? null} workspaceId={activeWorkspaceId} />}
+            {view === 'planner'  && <PlannerPanel key={activeWorkspaceId ?? 'personal'}  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
             {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
               if (url.startsWith('repurpose:')) {
                 setVideoHandoff({ url: url.replace('repurpose:', ''), mode: 'text' });
