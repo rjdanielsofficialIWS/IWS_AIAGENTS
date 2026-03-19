@@ -602,14 +602,15 @@ function ConnectAccountsModal({
     try {
       const { data: { session }, error: sessionErr } = await supabase.auth.getSession();
       if (sessionErr || !session) { setConnecting(null); onConnectPostiz(); return; }
-      // Check subscription — if not active, close modal and show pricing
+      // Check subscription — if not active, close modal and show pricing (works on both mobile and desktop)
       const { data: subCheck } = await supabase.from('subscriptions').select('status,stripe_customer_id,current_period_end').eq('supabase_user_id', session.user.id).maybeSingle();
       const _isPromo = subCheck?.stripe_customer_id?.startsWith('promo_');
       const _isTrialing = subCheck?.status === 'trialing' && !!subCheck?.current_period_end && new Date(subCheck.current_period_end) > new Date();
       const _isActive = subCheck?.status === 'active' || _isPromo || _isTrialing;
-      if (!_isActive) { setConnecting(null); onConnectPostiz(); return; }
+      if (!_isActive) { setConnecting(null); onClose(); onConnectPostiz(); return; }
 
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      // On mobile open in same tab, on desktop open popup
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || window.innerWidth < 768;
       const popup = isMobile ? null : window.open('', '_blank');
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
@@ -726,12 +727,15 @@ function ConnectAccountsModal({
               {integrations.length > 0 ? 'Add Another Platform' : 'Choose a Platform to Connect'}
             </div>
             <div className="grid grid-cols-3 gap-2">
-              {CONNECTABLE_PLATFORMS.map(p => {
-                const isConnecting = connecting === p.id;
-                const isConnected = integrations.some(i =>
-                  (i.profile || i.identifier || '').toLowerCase().includes(p.id) ||
-                  (i.name || '').toLowerCase().includes(p.label.toLowerCase().split(' ')[0])
+              {CONNECTABLE_PLATFORMS.filter(p => {
+                // Hide platforms that are already connected
+                return !integrations.some(i =>
+                  (i.profile || i.identifier || '').toLowerCase() === p.id.toLowerCase() ||
+                  (i.profile || i.identifier || '').toLowerCase().includes(p.id.toLowerCase())
                 );
+              }).map(p => {
+                const isConnecting = connecting === p.id;
+                const isConnected = false; // already filtered out connected ones
                 return (
                   <button
                     key={p.id}
@@ -739,20 +743,16 @@ function ConnectAccountsModal({
                     disabled={!!connecting}
                     className="flex flex-col items-center gap-2 p-3 rounded-xl border transition hover:brightness-110 disabled:opacity-40 relative"
                     style={{
-                      borderColor: isConnected ? 'rgba(34,197,94,0.35)' : isConnecting ? `${p.color}60` : BORDER,
-                      background: isConnected ? 'rgba(34,197,94,0.06)' : isConnecting ? p.bg : 'rgba(255,255,255,0.03)',
+                      borderColor: isConnecting ? `${p.color}60` : BORDER,
+                      background: isConnecting ? p.bg : 'rgba(255,255,255,0.03)',
                     }}>
-                    {isConnected && (
-                      <div className="absolute top-1.5 right-1.5 w-3 h-3 rounded-full bg-green-400 flex items-center justify-center">
-                        <CheckCircle2 className="w-2.5 h-2.5 text-black" />
-                      </div>
-                    )}
+
                     {isConnecting
                       ? <Loader className="w-6 h-6 animate-spin" style={{ color: p.color }} />
                       : <PlatformIcon id={p.id} size="md" />
                     }
                     <span className="text-[10px] font-bold text-center leading-tight"
-                      style={{ color: isConnecting ? p.color : isConnected ? '#86efac' : 'rgba(255,255,255,0.5)' }}>
+                      style={{ color: isConnecting ? p.color : 'rgba(255,255,255,0.5)' }}>
                       {isConnecting ? 'Opening\u2026' : p.label}
                     </span>
                   </button>
