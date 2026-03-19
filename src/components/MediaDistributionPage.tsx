@@ -819,7 +819,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
     } catch (e) {}
     finally { setLoading(false); }
-  }, [userId, open]);
+  }, [userId, open, workspaceId]);
 
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
@@ -1384,7 +1384,7 @@ function InlinePostComposer({
         }
       } catch (e) { /* silent */ }
     })();
-  }, [userId]);
+  }, [userId, workspaceId]);
 
   const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
   const [xText, setXText]               = useState('');
@@ -3659,7 +3659,7 @@ function CalendarView({ integrations, userId, workspaceId }: { integrations: Pos
       }));
     } catch (e) {}
     finally { setLoading(false); }
-  }, [userId, year, month]);
+  }, [userId, year, month, workspaceId]);
 
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
