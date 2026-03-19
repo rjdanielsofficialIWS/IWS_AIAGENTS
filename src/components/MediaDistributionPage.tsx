@@ -659,7 +659,7 @@ function ConnectAccountsModal({
         </div>
 
         <div className="overflow-y-auto flex-1 p-6 space-y-4">
-          {activeIntegrations.length > 0 && (
+          {integrations.length > 0 && (
             <div>
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">
                 Connected ({integrations.length})
@@ -5666,7 +5666,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
           style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
           <Link2 className="w-5 h-5" />
           <span className="text-[10px] font-bold tracking-wide">
-            {activeIntegrations.length > 0 ? `${activeIntegrations.length} Ch.` : 'Connect'}
+            {integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}
           </span>
         </button>
       </nav>
@@ -5759,7 +5759,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
             {integrations.length > 0 && (
               <div className="hidden sm:flex items-center gap-1.5 text-xs text-green-400 font-semibold mr-1">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                <span>{integrationsLoading ? 'Syncing…' : `${activeIntegrations.length} channel${activeIntegrations.length !== 1 ? 's' : ''}`}</span>
+                <span>{integrationsLoading ? 'Syncing…' : `${integrations.length} channel${integrations.length !== 1 ? 's' : ''}`}</span>
               </div>
             )}
             <button onClick={() => onRefresh()} disabled={integrationsLoading}
