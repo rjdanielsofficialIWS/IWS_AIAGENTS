@@ -1127,12 +1127,13 @@ function ImagePreviewCard({
 
 function SavedPostCard({
   post, textPostAccounts, isEditing, editText,
-  onEditStart, onEditChange, onEditSave, onEditCancel, onDelete,
+  onEditStart, onEditChange, onEditSave, onEditCancel, onDelete, workspaceId,
 }: {
   post: { id: string; text: string; label: string; savedAt: Date };
   textPostAccounts: { integ: PostizIntegration; platform: PlatformId }[];
   isEditing: boolean;
   editText: string;
+  workspaceId?: string | null;
   onEditStart: () => void;
   onEditChange: (v: string) => void;
   onEditSave: () => void;
@@ -2118,6 +2119,7 @@ function InlinePostComposer({
                   key={p.id}
                   post={p}
                   textPostAccounts={textPostAccounts}
+                  workspaceId={workspaceId}
                   isEditing={savedEditId === p.id}
                   editText={savedEditText}
                   onEditStart={() => { setSavedEditId(p.id); setSavedEditText(p.text); }}
