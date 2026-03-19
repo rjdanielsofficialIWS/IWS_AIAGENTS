@@ -6429,7 +6429,7 @@ export function MediaDistributionPage() {
       )}
 
       <TopBar
-        integrations={integrations} integrationsLoading={integrationsLoading}
+        integrations={activeIntegrations} integrationsLoading={integrationsLoading}
         onConnect={handleConnect} onDisconnect={handleDisconnect}
         onRefresh={(force) => loadIntegrations(force)}
         onOpenConnect={() => { const _p = subscription?.stripe_customer_id?.startsWith('promo_'); const _t = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date(); (subscription?.status === 'active' || _p || _t) ? setConnectModalOpen(true) : setPricingOpen(true); }}
