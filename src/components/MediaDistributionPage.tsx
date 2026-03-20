@@ -5536,6 +5536,36 @@ function WorkspacesPanel({
         )}
 
         <div className="space-y-4">
+          {/* Personal account card */}
+          <div className="rounded-2xl border overflow-hidden" style={{ background: SURFACE, borderColor: !activeWorkspaceId ? `${GOLD}50` : BORDER }}>
+            <div className="flex items-center gap-3 p-4">
+              <div className="w-3 h-3 rounded-full shrink-0" style={{ background: GOLD }} />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-black text-white truncate">Personal</div>
+                <div className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>
+                  {integrations.length} channel{integrations.length !== 1 ? 's' : ''} connected
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {!activeWorkspaceId ? (
+                  <button
+                    onClick={() => onSetActive(null)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-black"
+                    style={{ background: `${GOLD}25`, color: GOLD_L, border: `1px solid ${GOLD}50` }}>
+                    Active
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => onSetActive(null)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold transition hover:bg-white/10"
+                    style={{ color: 'rgba(255,255,255,0.4)', border: '1px solid rgba(255,255,255,0.1)' }}>
+                    Set Active
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
           {workspaces.map(ws => (
             <div key={ws.id} className="rounded-2xl border overflow-hidden" style={{ background: SURFACE, borderColor: activeWorkspaceId === ws.id ? `${ws.color}50` : BORDER }}>
               <div className="flex items-center gap-3 p-4">
