@@ -3262,6 +3262,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
         .gte('planned_date', startStr)
         .lte('planned_date', endStr);
       if (workspaceId) q = q.eq('workspace_id', workspaceId);
+      else q = q.is('workspace_id', null);
       const { data, error } = await q;
       if (!error && data) {
         setItems(data.map((r: any) => ({
@@ -3662,6 +3663,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
           userId={userId}
           initialDate={addDate}
           prefilled={pendingItem ?? undefined}
+          workspaceId={workspaceId}
           onClose={() => { setAddModalOpen(false); setPendingItem(null); }}
           onSaved={() => { setAddModalOpen(false); setPendingItem(null); pendingAddCallback.current?.(); pendingAddCallback.current = undefined; }}
         />
