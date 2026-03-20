@@ -5622,7 +5622,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
               className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5"
               style={{ border: `1px solid ${activeWs ? activeWs.color + '40' : BORDER}`, color: activeWs ? activeWs.color : 'rgba(255,255,255,0.3)', background: activeWs ? `${activeWs.color}0d` : 'transparent' }}>
               {activeWs && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: activeWs.color }} />}
-              <span className="truncate flex-1 text-left">{activeWs ? activeWs.name : 'All Brands'}</span>
+              <span className="truncate flex-1 text-left">{activeWs ? activeWs.name : 'Personal'}</span>
               <ChevronDown className="w-3 h-3 shrink-0 opacity-50" />
             </button>
             {wsSwitcherOpen && (
@@ -5632,7 +5632,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
                   onClick={() => { onSwitchWorkspace(null); setWsSwitcherOpen(false); }}
                   className="w-full text-left px-3 py-2 text-xs font-bold transition hover:bg-white/5"
                   style={{ color: !activeWorkspaceId ? GOLD_L : 'rgba(255,255,255,0.5)' }}>
-                  All Brands
+                  Personal
                 </button>
                 {workspaces.map(ws => (
                   <button key={ws.id}
