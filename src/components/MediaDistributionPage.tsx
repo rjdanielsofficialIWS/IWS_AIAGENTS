@@ -684,7 +684,7 @@ function ConnectAccountsModal({
                           const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-disconnect`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-                            body: JSON.stringify({ platform: platformId }),
+                            body: JSON.stringify({ platform: platformId, ...(workspaceId ? { workspaceId } : {}) }),
                           });
                           if (!res.ok) {
                             const err = await res.json().catch(() => ({}));
@@ -6243,16 +6243,17 @@ export function MediaDistributionPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session?.access_token}`,
         },
-        body: JSON.stringify({ platform: platformId }),
+        body: JSON.stringify({ platform: platformId, ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}) }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        // Revert optimistic update on failure
         loadIntegrations(true);
+        if (activeWorkspaceId) fetchChannels(currentUser?.id ?? '', true, activeWorkspaceId).then(setWorkspaceIntegrations);
         throw new Error(err.error || 'Failed to disconnect');
       }
+      // Reload workspace integrations after successful disconnect
+      if (activeWorkspaceId) fetchChannels(currentUser?.id ?? '', true, activeWorkspaceId).then(setWorkspaceIntegrations);
     } catch (err) {
-      // Revert on network error too
       loadIntegrations(true);
       throw err;
     }
