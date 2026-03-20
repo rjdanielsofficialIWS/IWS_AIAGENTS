@@ -1780,7 +1780,7 @@ function InlinePostComposer({
                     );
                   })}
                 </div>
-              )
+              )}
               {isYouTubeSelected && (
                 <div className="space-y-2">
                   <div className="text-xs font-bold text-white/30 uppercase tracking-wider">YouTube Title <span className="text-red-400">*</span></div>
