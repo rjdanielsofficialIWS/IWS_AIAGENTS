@@ -52,29 +52,27 @@ Deno.serve(async(req)=>{
     const cc=Array.isArray(profile.cached_channels)?profile.cached_channels:[];
     const pp=cleanPlatforms.map(p=>{const c=cc.find(ch=>(ch.id||"").toLowerCase()===p||(ch.profile||"").toLowerCase()===p||(ch.platform||"").toLowerCase()===p);return{platform:p,accountId:c?.accountId||c?.id||""};}).filter(p=>p.accountId);
     if(pp.length===0)return respond(400,{error:"No connected accounts for selected platforms."});
-    let lb:Record<string,unknown>;
+    const lb:Record<string,unknown>={profileId:profile.profile_key,content:post,platforms:pp};
     if(threadPosts.length>0){
-      // Thread: build platformSpecificData.threadItems per platform
+      // Thread: build platformSpecificData.threadItems per platform entry
       const firstItem:Record<string,unknown>={content:post};
-      if(mediaUrls.length>0)firstItem.mediaItems=mediaUrls.map((url:string)=>({url}));
+      if(mediaUrls.length>0)firstItem.mediaItems=mediaUrls.map((url:string)=>({type:isVideoUrl(url)?"video":"image",url}));
       const threadItems=[firstItem,...threadPosts.map((t:string)=>({content:t}))];
-      lb={platforms:pp.map((p:Record<string,unknown>)=>({...p,platformSpecificData:{threadItems}}))};
-    }else{
-      lb={content:post,platforms:pp};
-      if(mediaUrls.length>0){
-        if(isCarousel){
-          // Carousel: pass all images as mediaItems (Late API renders multi-image as carousel)
-          lb.mediaItems=mediaUrls.map((url:string)=>({type:"image",url}));
-        }else{
-          lb.mediaItems=mediaUrls.map((url:string)=>({type:isVideoUrl(url)?"video":"image",url}));
-        }
+      lb.platforms=pp.map((p:Record<string,unknown>)=>({...p,platformSpecificData:{threadItems}}));
+    }else if(mediaUrls.length>0){
+      if(isCarousel){
+        lb.mediaItems=mediaUrls.map((url:string)=>({type:"image",url}));
+      }else{
+        lb.mediaItems=mediaUrls.map((url:string)=>({type:isVideoUrl(url)?"video":"image",url}));
       }
     }
     if(scheduleDate){lb.scheduledFor=new Date(scheduleDate).toISOString();}else{lb.publishNow=true;}
+    console.log("Late API request:",JSON.stringify(lb));
     const lateRes=await fetch(LATE_API_URL+"/posts",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb)});
     const result=await lateRes.json();
     const isError=!lateRes.ok;
     const errorMsg=isError?(result.message||result.error||"Late API error "+lateRes.status):null;
+    if(isError)console.error("Late API error response:",JSON.stringify(result));
     try{await supabase.from("scheduled_posts").insert({supabase_user_id:userId,profile_key:profile.profile_key,ayrshare_post_id:result._id??result.id??null,platforms:cleanPlatforms,content:post,media_urls:mediaUrls,scheduled_at:scheduleDate?new Date(scheduleDate).toISOString():new Date().toISOString(),status:isError?"error":(scheduleDate?"scheduled":"published"),error:errorMsg??null});}catch(e){console.error("DB insert failed:",e);}
     if(!isError){try{await supabase.rpc("increment_usage",{p_user_id:userId,p_period:period,p_field:"posts_scheduled"});}catch(e){console.error("Usage increment failed:",e);}}
     if(isError)return respond(500,{error:errorMsg,detail:result});
