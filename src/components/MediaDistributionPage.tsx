@@ -3694,21 +3694,24 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
           onClick={() => setComposerPanelTab('strategist')}
           className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition border-b-2"
           style={{
-            borderBottomColor: composerPanelTab === 'strategist' ? '#a78bfa' : 'transparent',
-            color: composerPanelTab === 'strategist' ? '#c4b5fd' : 'rgba(255,255,255,0.35)',
-            background: composerPanelTab === 'strategist' ? 'rgba(167,139,250,0.06)' : 'transparent',
+            borderBottomColor: composerPanelTab === 'strategist' ? '#38bdf8' : 'transparent',
+            color: composerPanelTab === 'strategist' ? '#7dd3fc' : 'rgba(255,255,255,0.35)',
+            background: composerPanelTab === 'strategist' ? 'rgba(56,189,248,0.06)' : 'transparent',
           }}>
-          <Sparkles className="w-4 h-4" /> AI Content Strategist
+          <Sparkles className="w-4 h-4" style={{ color: composerPanelTab === 'strategist' ? '#38bdf8' : 'inherit' }} /> AI Content Strategist
         </button>
       </div>
 
       {/* ── Tab content ── */}
       <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
 
+        {/* Referral Banner — always visible regardless of tab */}
+        <div className="px-4 md:px-8 pt-4">
+          <ReferralBanner userId={userId} />
+        </div>
+
         {composerPanelTab === 'post' && (
           <div className="px-4 md:px-8 py-6 w-full">
-            {/* Referral Banner — always visible */}
-            <ReferralBanner userId={userId} />
             <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} workspaceId={workspaceId} />
           </div>
         )}
