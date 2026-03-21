@@ -1356,6 +1356,7 @@ function InlinePostComposer({
   const [postFormat, setPostFormat]     = useState<PostFormat>('standard');
   const [threadTweets, setThreadTweets] = useState<string[]>(['', '']);
   const [carouselCount, setCarouselCount] = useState<number>(3);
+  const [threadTopic, setThreadTopic] = useState('');
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
@@ -1597,7 +1598,7 @@ function InlinePostComposer({
         setContent(''); setVideoFile(null); setVideoObjectUrl(null);
         setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]);
         setGeneratedCaptions(null); setManualCaptions({}); setSelectedIntegrations([]);
-        setPostFormat('standard'); setThreadTweets(['', '']); setCarouselCount(3);
+        setPostFormat('standard'); setThreadTweets(['', '']); setCarouselCount(3); setThreadTopic('');
         onSuccess?.();
       }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
@@ -2076,7 +2077,7 @@ function InlinePostComposer({
                 <span className="text-xs font-bold text-white/40 uppercase tracking-wider">🧵 Thread</span>
                 <div className="flex items-center gap-2">
                   <button onClick={async () => {
-                    const desc = textAiDesc.trim() || xText.trim();
+                    const desc = threadTopic.trim();
                     if (!desc) return;
                     setTextAiLoading(true); setTextAiError(null);
                     try {
@@ -2092,10 +2093,10 @@ function InlinePostComposer({
                       if (data.thread && Array.isArray(data.thread)) setThreadTweets(data.thread);
                     } catch (e: any) { setTextAiError(e.message || 'Failed'); }
                     finally { setTextAiLoading(false); }
-                  }} disabled={textAiLoading}
+                  }} disabled={textAiLoading || !threadTopic.trim()}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:bg-white/8 disabled:opacity-40"
                     style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)' }}>
-                    {textAiLoading ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</> : <><Sparkles className="w-3 h-3" /> AI Generate</>}
+                    {textAiLoading ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</> : <><Sparkles className="w-3 h-3" /> AI Thread</>}
                   </button>
                   <button onClick={() => setThreadTweets(prev => [...prev, ''])}
                     disabled={threadTweets.length >= 10}
@@ -2105,6 +2106,10 @@ function InlinePostComposer({
                   </button>
                 </div>
               </div>
+              <input value={threadTopic} onChange={e => setThreadTopic(e.target.value)}
+                placeholder="Thread topic or idea… (required for AI Generate)"
+                className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/20 outline-none"
+                style={{ borderColor: BORDER }} />
               {textAiError && textAiError !== 'upgrade_required' && <p className="text-xs text-red-300">{textAiError}</p>}
               {threadTweets.map((tweet, i) => (
                 <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: tweet.length > 280 ? '#f87171' : BORDER }}>
@@ -2153,13 +2158,13 @@ function InlinePostComposer({
             </div>
           )}
 
-          {/* AI Generate section */}
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+          {/* AI Generate section — hidden in carousel mode */}
+          {postFormat !== 'carousel' && <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
             <button onClick={() => { setShowTextAi(v => !v); }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
-                  {showTextAi ? 'Write Manually Instead' : '✨ AI Generate Posts'}
+                  {showTextAi ? 'Write Manually Instead' : 'AI Generate Posts'}
                 </span>
               </div>
               <ChevronRight className={`w-4 h-4 transition-transform text-white/30 ${showTextAi ? 'rotate-90' : ''}`} />
@@ -2339,7 +2344,7 @@ function InlinePostComposer({
                 )}
               </div>
             )}
-          </div>
+          </div>}
 
           {scheduleSectionJsx}
         </>
