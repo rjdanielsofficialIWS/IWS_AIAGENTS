@@ -993,7 +993,7 @@ function VideoPreviewCard({
 
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: '#000' }}>
-      <div className="relative bg-black" style={{ aspectRatio: videoAspectRatio }}>
+      <div className="relative bg-black" style={{ aspectRatio: videoAspectRatio, maxHeight: '60vh' }}>
         <video
           ref={videoRef}
           src={objectUrl}
