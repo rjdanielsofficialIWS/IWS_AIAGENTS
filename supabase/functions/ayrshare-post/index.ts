@@ -31,6 +31,8 @@ Deno.serve(async(req)=>{
   const post=body.post??"";
   const mediaUrls=body.mediaUrls??[];
   const scheduleDate=body.scheduleDate??"";
+  const threadPosts:string[]=Array.isArray(body.thread)?body.thread.filter((t:unknown)=>typeof t==="string"&&(t as string).trim()):[];
+  const isCarousel:boolean=body.carousel===true;
   const cleanPlatforms=platforms.filter(p=>typeof p==="string"&&p.trim().length>0).map(p=>p==="x"?"twitter":p);
   if(limits.platforms!==-1&&cleanPlatforms.length>limits.platforms)return respond(403,{error:"platform_limit",feature:"platforms",message:"Your "+plan+" plan supports up to "+limits.platforms+" platform(s) per post.",plan});
   if(!cleanPlatforms.length||!post)return respond(400,{error:"platforms and post required"});
@@ -50,8 +52,24 @@ Deno.serve(async(req)=>{
     const cc=Array.isArray(profile.cached_channels)?profile.cached_channels:[];
     const pp=cleanPlatforms.map(p=>{const c=cc.find(ch=>(ch.id||"").toLowerCase()===p||(ch.profile||"").toLowerCase()===p||(ch.platform||"").toLowerCase()===p);return{platform:p,accountId:c?.accountId||c?.id||""};}).filter(p=>p.accountId);
     if(pp.length===0)return respond(400,{error:"No connected accounts for selected platforms."});
-    const lb={content:post,platforms:pp};
-    if(mediaUrls.length>0)lb.mediaItems=mediaUrls.map(url=>({type:isVideoUrl(url)?"video":"image",url}));
+    let lb:Record<string,unknown>;
+    if(threadPosts.length>0){
+      // Thread: build platformSpecificData.threadItems per platform
+      const firstItem:Record<string,unknown>={content:post};
+      if(mediaUrls.length>0)firstItem.mediaItems=mediaUrls.map((url:string)=>({url}));
+      const threadItems=[firstItem,...threadPosts.map((t:string)=>({content:t}))];
+      lb={platforms:pp.map((p:Record<string,unknown>)=>({...p,platformSpecificData:{threadItems}}))};
+    }else{
+      lb={content:post,platforms:pp};
+      if(mediaUrls.length>0){
+        if(isCarousel){
+          // Carousel: pass all images as mediaItems (Late API renders multi-image as carousel)
+          lb.mediaItems=mediaUrls.map((url:string)=>({type:"image",url}));
+        }else{
+          lb.mediaItems=mediaUrls.map((url:string)=>({type:isVideoUrl(url)?"video":"image",url}));
+        }
+      }
+    }
     if(scheduleDate){lb.scheduledFor=new Date(scheduleDate).toISOString();}else{lb.publishNow=true;}
     const lateRes=await fetch(LATE_API_URL+"/posts",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb)});
     const result=await lateRes.json();

@@ -140,7 +140,7 @@ function generateState() {
 async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
-  workspaceId?: string | null;
+  workspaceId?: string | null; thread?: string[]; carousel?: boolean;
 }) {
   const { data: { session } } = await supabase.auth.getSession();
   const token = session?.access_token ?? '';
