@@ -1604,8 +1604,14 @@ function InlinePostComposer({
   };
 
   const handleTextSubmit = async () => {
-    const text = editingIdx ? aiEditText : xText;
-    if (!text.trim()) { setSubmitError('Write something first.'); return; }
+    if (postFormat === 'thread') {
+      const validTweets = threadTweets.filter(t => t.trim());
+      if (validTweets.length < 2) { setSubmitError('Add at least 2 posts to create a thread.'); return; }
+      if (validTweets.some(t => t.length > 280)) { setSubmitError('One or more posts exceed 280 characters.'); return; }
+    } else {
+      const text = editingIdx ? aiEditText : xText;
+      if (!text.trim()) { setSubmitError('Write something first.'); return; }
+    }
     if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account to post to.'); return; }
     setSubmitting(true); setSubmitError(null);
     try {
@@ -1614,10 +1620,17 @@ function InlinePostComposer({
         const acct = textPostAccounts.find(a => a.integ.id === id);
         return acct?.integ.profile || acct?.integ.id || acct?.platform || '';
       }).filter(Boolean);
+      if (postFormat === 'thread') {
+        const validTweets = threadTweets.filter(t => t.trim());
+        await ayrsharePost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), scheduleDate: sd, workspaceId: workspaceId ?? null });
+      } else {
+      const text = editingIdx ? aiEditText : xText;
       await ayrsharePost({ platforms: platformIds, post: text, scheduleDate: sd, workspaceId: workspaceId ?? null });
+      }
       setSubmitOk(true);
       setXText(''); setLinkedinText('');
       setAiEditText(''); setEditingIdx(null); setSelectedTextAccounts([]);
+      setPostFormat('standard'); setThreadTweets(['', '']);
       setTimeout(() => setSubmitOk(false), 3000);
     } catch (e: any) { setSubmitError(e.message || 'Post failed'); }
     finally { setSubmitting(false); }
@@ -1692,12 +1705,11 @@ function InlinePostComposer({
             )}
           </div>
 
-          {/* Post Format Selector */}
-          {(() => {
+          {/* Post Format Selector — Carousel only, shown when 2+ images uploaded and carousel platforms selected */}
+          {imageFiles.length >= 2 && (() => {
             const selPlatforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return (i?.profile || i?.id || '').toLowerCase(); });
             const hasCarousel = selPlatforms.some(p => ['instagram','facebook','linkedin','threads'].includes(p));
-            const hasThread   = selPlatforms.some(p => ['twitter','x','threads','linkedin','bluesky'].includes(p));
-            if (!hasCarousel && !hasThread) return null;
+            if (!hasCarousel) return null;
             return (
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Format</span>
@@ -1706,57 +1718,14 @@ function InlinePostComposer({
                   style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
                   Standard
                 </button>
-                {hasCarousel && (
-                  <button onClick={() => setPostFormat('carousel')}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                    style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
-                    🖼 Carousel
-                  </button>
-                )}
-                {hasThread && (
-                  <button onClick={() => setPostFormat('thread')}
-                    className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                    style={{ borderColor: postFormat === 'thread' ? '#a78bfa' : BORDER, background: postFormat === 'thread' ? 'rgba(167,139,250,0.15)' : 'transparent', color: postFormat === 'thread' ? '#c4b5fd' : 'rgba(255,255,255,0.4)' }}>
-                    🧵 Thread
-                  </button>
-                )}
+                <button onClick={() => setPostFormat('carousel')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                  style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
+                  🖼 Carousel
+                </button>
               </div>
             );
           })()}
-
-          {/* Thread composer — shown when thread format selected */}
-          {postFormat === 'thread' && (
-            <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: 'rgba(167,139,250,0.3)', background: 'rgba(167,139,250,0.05)' }}>
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#c4b5fd' }}>🧵 Thread Posts</span>
-                <button onClick={() => setThreadTweets(prev => [...prev, ''])}
-                  disabled={threadTweets.length >= 10}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40"
-                  style={{ background: 'rgba(167,139,250,0.2)', color: '#c4b5fd' }}>
-                  <Plus className="w-3 h-3" /> Add Tweet
-                </button>
-              </div>
-              {threadTweets.map((tweet, i) => (
-                <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: tweet.length > 280 ? '#f87171' : 'rgba(167,139,250,0.25)' }}>
-                  <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: 'rgba(167,139,250,0.15)', background: 'rgba(0,0,0,0.2)' }}>
-                    <span className="text-[10px] font-black" style={{ color: '#a78bfa' }}>#{i + 1}</span>
-                    <span className="ml-auto text-[10px]" style={{ color: tweet.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{tweet.length}/280</span>
-                    {threadTweets.length > 2 && (
-                      <button onClick={() => setThreadTweets(prev => prev.filter((_, xi) => xi !== i))}
-                        className="w-4 h-4 flex items-center justify-center rounded hover:bg-red-500/20 text-white/20 hover:text-red-400 transition">
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                  <textarea value={tweet}
-                    onChange={e => setThreadTweets(prev => prev.map((x, xi) => xi === i ? e.target.value : x))}
-                    placeholder={i === 0 ? 'Start your thread here…' : `Tweet ${i + 1}…`}
-                    rows={3}
-                    className="w-full bg-transparent px-3 py-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
-                </div>
-              ))}
-            </div>
-          )}
 
           <div className="flex items-center gap-2 px-1">
             <span className="text-xs font-bold text-white/25 uppercase tracking-wider mr-1">Add media</span>
@@ -2011,8 +1980,64 @@ function InlinePostComposer({
 
           {/* ── Step 2: Write manually OR use AI ── */}
 
+          {/* Thread format toggle for text posts */}
+          {(() => {
+            const selPlatforms = selectedTextAccounts.map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return (a?.integ.profile || a?.integ.id || '').toLowerCase(); });
+            const hasThread = selPlatforms.some(p => ['twitter','x','threads','linkedin','bluesky'].includes(p));
+            if (!hasThread || selectedTextAccounts.length === 0) return null;
+            return (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Format</span>
+                <button onClick={() => setPostFormat('standard')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                  style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                  Standard
+                </button>
+                <button onClick={() => setPostFormat('thread')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                  style={{ borderColor: postFormat === 'thread' ? '#a78bfa' : BORDER, background: postFormat === 'thread' ? 'rgba(167,139,250,0.15)' : 'transparent', color: postFormat === 'thread' ? '#c4b5fd' : 'rgba(255,255,255,0.4)' }}>
+                  🧵 Thread
+                </button>
+              </div>
+            );
+          })()}
+
+          {/* Thread composer for text posts */}
+          {postFormat === 'thread' && (
+            <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: 'rgba(167,139,250,0.3)', background: 'rgba(167,139,250,0.05)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#c4b5fd' }}>🧵 Thread Posts</span>
+                <button onClick={() => setThreadTweets(prev => [...prev, ''])}
+                  disabled={threadTweets.length >= 10}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40"
+                  style={{ background: 'rgba(167,139,250,0.2)', color: '#c4b5fd' }}>
+                  <Plus className="w-3 h-3" /> Add Post
+                </button>
+              </div>
+              {threadTweets.map((tweet, i) => (
+                <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: tweet.length > 280 ? '#f87171' : 'rgba(167,139,250,0.25)' }}>
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: 'rgba(167,139,250,0.15)', background: 'rgba(0,0,0,0.2)' }}>
+                    <span className="text-[10px] font-black" style={{ color: '#a78bfa' }}>#{i + 1}</span>
+                    <span className="ml-auto text-[10px]" style={{ color: tweet.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{tweet.length}/280</span>
+                    {threadTweets.length > 2 && (
+                      <button onClick={() => setThreadTweets(prev => prev.filter((_, xi) => xi !== i))}
+                        className="w-4 h-4 flex items-center justify-center rounded hover:bg-red-500/20 text-white/20 hover:text-red-400 transition">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                  <textarea value={tweet}
+                    onChange={e => setThreadTweets(prev => prev.map((x, xi) => xi === i ? e.target.value : x))}
+                    placeholder={i === 0 ? 'Start your thread here…' : `Post ${i + 1}…`}
+                    rows={3}
+                    className="w-full bg-transparent px-3 py-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Manual compose — always visible unless AI panel is open */}
-          {!showTextAi && (
+          {!showTextAi && postFormat !== 'thread' && (
             <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
               <textarea
                 value={xText}
