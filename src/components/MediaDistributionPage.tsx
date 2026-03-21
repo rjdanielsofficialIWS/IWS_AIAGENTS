@@ -1355,6 +1355,7 @@ function InlinePostComposer({
   type PostFormat = 'standard' | 'carousel' | 'thread';
   const [postFormat, setPostFormat]     = useState<PostFormat>('standard');
   const [threadTweets, setThreadTweets] = useState<string[]>(['', '']);
+  const [carouselCount, setCarouselCount] = useState<number>(3);
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
@@ -1596,7 +1597,7 @@ function InlinePostComposer({
         setContent(''); setVideoFile(null); setVideoObjectUrl(null);
         setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]);
         setGeneratedCaptions(null); setManualCaptions({}); setSelectedIntegrations([]);
-        setPostFormat('standard'); setThreadTweets(['', '']);
+        setPostFormat('standard'); setThreadTweets(['', '']); setCarouselCount(3);
         onSuccess?.();
       }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
@@ -1705,6 +1706,83 @@ function InlinePostComposer({
             )}
           </div>
 
+          {/* Format toggle — Carousel or Standard */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Format</span>
+            <button onClick={() => { setPostFormat('standard'); setImageFiles([]); setImageUploads([]); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+              style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+              Standard
+            </button>
+            <button onClick={() => { setPostFormat('carousel'); setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' }); }}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+              style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
+              🖼 Carousel
+            </button>
+          </div>
+
+          {/* Carousel image count selector */}
+          {postFormat === 'carousel' && (
+            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'rgba(56,189,248,0.25)', background: 'rgba(56,189,248,0.05)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#7dd3fc' }}>🖼 Carousel — how many images?</span>
+                <div className="flex items-center gap-1">
+                  {[2,3,4,5,6,7,8,9,10].map(n => (
+                    <button key={n} onClick={() => {
+                      setCarouselCount(n);
+                      setImageFiles(prev => prev.slice(0, n));
+                      setImageUploads(prev => prev.slice(0, n));
+                    }}
+                      className="w-7 h-7 rounded-lg text-xs font-bold transition"
+                      style={{ background: carouselCount === n ? '#38bdf8' : 'rgba(255,255,255,0.06)', color: carouselCount === n ? '#000' : 'rgba(255,255,255,0.4)' }}>
+                      {n}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+                {Array.from({ length: carouselCount }).map((_, i) => {
+                  const file = imageFiles[i];
+                  const uploadState = imageUploads[i] ?? { status: 'idle' };
+                  if (file) {
+                    return (
+                      <div key={i} className="relative">
+                        <ImagePreviewCard file={file} uploadState={uploadState}
+                          onRemove={() => {
+                            setImageFiles(prev => { const n = [...prev]; n.splice(i, 1); return n; });
+                            setImageUploads(prev => { const n = [...prev]; n.splice(i, 1); return n; });
+                          }} />
+                        <span className="absolute top-1 left-1 text-[9px] font-black px-1 rounded" style={{ background: 'rgba(0,0,0,0.7)', color: '#7dd3fc' }}>{i+1}</span>
+                      </div>
+                    );
+                  }
+                  return (
+                    <label key={i} className="cursor-pointer flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed transition hover:border-sky-400/50"
+                      style={{ borderColor: 'rgba(56,189,248,0.2)', background: 'rgba(56,189,248,0.03)', aspectRatio: '1' }}>
+                      <span className="text-lg font-black" style={{ color: 'rgba(56,189,248,0.4)' }}>{i+1}</span>
+                      <span className="text-[9px] text-white/20">tap to add</span>
+                      <input type="file" accept="image/*" className="hidden"
+                        onChange={e => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          const newFiles = [...imageFiles];
+                          const newUploads = [...imageUploads];
+                          newFiles[i] = f;
+                          newUploads[i] = { status: 'idle' };
+                          setImageFiles(newFiles);
+                          setImageUploads(newUploads);
+                          uploadFileForPost(f, 'image', s => setImageUploads(prev => { const n = [...prev]; n[i] = s; return n; }));
+                        }} />
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-[10px] text-white/25">Supported on Instagram, Facebook, LinkedIn & Threads</p>
+            </div>
+          )}
+
+          {/* Standard media upload */}
+          {postFormat === 'standard' && (
           <div className="flex items-center gap-2 px-1">
             <span className="text-xs font-bold text-white/25 uppercase tracking-wider mr-1">Add media</span>
             <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
@@ -1732,8 +1810,9 @@ function InlinePostComposer({
                 }} />
             </label>
           </div>
+          )}
 
-          {(imageFiles.length > 0 || videoFile) && (
+          {postFormat === 'standard' && (imageFiles.length > 0 || videoFile) && (
             <div className="space-y-3">
               {videoFile && videoObjectUrl && (
                 <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl} uploadState={videoUpload}
@@ -1754,30 +1833,7 @@ function InlinePostComposer({
             </div>
           )}
 
-          {/* Carousel selector — appears after images are uploaded */}
-          {imageFiles.length >= 2 && (() => {
-            const selPlatforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return (i?.profile || i?.id || '').toLowerCase(); });
-            const hasCarousel = selPlatforms.some(p => ['instagram','facebook','linkedin','threads'].includes(p));
-            if (!hasCarousel) return null;
-            return (
-              <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl border" style={{ borderColor: `${GOLD}25`, background: `${GOLD}05` }}>
-                <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Format</span>
-                <button onClick={() => setPostFormat('standard')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                  style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
-                  Standard
-                </button>
-                <button onClick={() => setPostFormat('carousel')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                  style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
-                  🖼 Carousel
-                </button>
-                {postFormat === 'carousel' && (
-                  <span className="text-[10px] text-white/30 ml-1">✓ {imageFiles.length} images will post as a swipeable carousel</span>
-                )}
-              </div>
-            );
-          })()}
+
 
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
