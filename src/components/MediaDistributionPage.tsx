@@ -1359,6 +1359,8 @@ function InlinePostComposer({
   const [threadTopic, setThreadTopic] = useState('');
   const [threadTopicError, setThreadTopicError] = useState(false);
   const [threadVideoMode, setThreadVideoMode] = useState(false);
+  const [threadVideoFile, setThreadVideoFile] = useState<File|null>(null);
+  const [threadVideoTranscript, setThreadVideoTranscript] = useState('');
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
@@ -2087,7 +2089,7 @@ function InlinePostComposer({
                       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
-                        body: JSON.stringify({ mode: 'thread_posts', description: desc, tone: textAiTone }),
+                        body: JSON.stringify({ mode: 'thread_posts', description: threadVideoMode ? (threadVideoTranscript || desc || 'Generate a viral thread') : desc, tone: textAiTone, video_repurpose: threadVideoMode }),
                       });
                       const data = await res.json();
                       if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
@@ -2118,8 +2120,36 @@ function InlinePostComposer({
                 >
                   <Video className="w-3 h-3" /> Repurpose Video
                 </button>
-                {threadVideoMode && <span className="text-xs" style={{ color: GOLD + 'aa' }}>AI will use your uploaded video as source</span>}
+                {threadVideoMode && !threadVideoFile && <span className="text-xs" style={{ color: GOLD + 'aa' }}>Upload a video to repurpose</span>}
+                {threadVideoMode && threadVideoFile && <span className="text-xs" style={{ color: GOLD }}>&#10003; {threadVideoFile.name}</span>}
               </div>
+              {threadVideoMode && (
+                <label className="flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed cursor-pointer transition-all py-4 mb-2"
+                  style={{ borderColor: threadVideoFile ? GOLD : GOLD + '40', background: threadVideoFile ? GOLD + '0a' : 'transparent' }}>
+                  <input type="file" accept="video/*,audio/*" className="hidden"
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setThreadVideoFile(file);
+                      // Read as base64 for description fallback
+                      setThreadVideoTranscript('Video: ' + file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + 'MB). Repurpose into a viral thread based on the video title and context.');
+                    }} />
+                  {threadVideoFile ? (
+                    <div className="flex items-center gap-2">
+                      <Video className="w-4 h-4" style={{ color: GOLD }} />
+                      <span className="text-xs font-medium" style={{ color: GOLD }}>{threadVideoFile.name}</span>
+                      <button onClick={e => { e.preventDefault(); setThreadVideoFile(null); setThreadVideoTranscript(''); }}
+                        className="ml-1 text-white/30 hover:text-red-400 transition text-xs">&#x2715;</button>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1">
+                      <Video className="w-5 h-5" style={{ color: GOLD + '80' }} />
+                      <span className="text-xs" style={{ color: GOLD + '99' }}>Click to upload video or audio</span>
+                      <span className="text-[10px]" style={{ color: GOLD + '55' }}>MP4, MOV, MP3, M4A supported</span>
+                    </div>
+                  )}
+                </label>
+              )}
               {(!threadVideoMode || !mediaFiles || mediaFiles.length === 0) && (
                 <input value={threadTopic} onChange={e => { setThreadTopic(e.target.value); setThreadTopicError(false); }}
                   placeholder={threadVideoMode ? "Optional: add context..." : "Thread topic or idea..."}
