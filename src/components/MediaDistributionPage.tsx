@@ -1359,6 +1359,8 @@ function InlinePostComposer({
   const [threadTopic, setThreadTopic] = useState('');
   const [threadTopicError, setThreadTopicError] = useState(false);
   const [threadVideoMode, setThreadVideoMode] = useState(false);
+  const [threadTopicError, setThreadTopicError] = useState(false);
+  const [threadVideoMode, setThreadVideoMode] = useState(false);
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
@@ -2110,10 +2112,24 @@ function InlinePostComposer({
                   </button>
                 </div>
               </div>
-              <input value={threadTopic} onChange={e => setThreadTopic(e.target.value)}
-                placeholder="Thread topic or idea… (required for AI Generate)"
-                className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/20 outline-none"
-                style={{ borderColor: BORDER }} />
+              <div className="flex items-center gap-2 mb-2">
+                <button
+                  onClick={() => { setThreadVideoMode(v => !v); setThreadTopicError(false); }}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
+                  style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + (threadVideoMode ? GOLD : GOLD + '40'), color: threadVideoMode ? GOLD : GOLD + '99' }}
+                >
+                  <Video className="w-3 h-3" /> Repurpose Video
+                </button>
+                {threadVideoMode && <span className="text-xs" style={{ color: GOLD + 'aa' }}>AI will use your uploaded video as source</span>}
+              </div>
+              {(!threadVideoMode || mediaFiles.length === 0) && (
+                <input value={threadTopic} onChange={e => { setThreadTopic(e.target.value); setThreadTopicError(false); }}
+                  placeholder={threadVideoMode ? "Optional: add context..." : "Thread topic or idea..."}
+                  className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/20 outline-none"
+                  style={{ borderColor: threadTopicError ? '#ef4444' : BORDER }}
+                />
+              )}
+              {threadTopicError && <p className="text-xs mt-1 text-red-400">Please enter a topic or enable Repurpose Video mode</p>}
               {textAiError && textAiError !== 'upgrade_required' && <p className="text-xs text-red-300">{textAiError}</p>}
               {threadTweets.map((tweet, i) => (
                 <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: tweet.length > 280 ? '#f87171' : BORDER }}>
