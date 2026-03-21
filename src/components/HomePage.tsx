@@ -269,7 +269,7 @@ export function HomePage() {
             <Link to="/InfiniteMedia"
               className="w-full sm:w-auto bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 flex items-center justify-center space-x-3">
               <span>Infinite Media</span>
-            </a>
+            </Link>
           </div>
           <div className="flex flex-wrap justify-center gap-8">
             {[{ value: '24/7', label: 'Always On' }, { value: '3x', label: 'Services, 1 Stack' }, { value: '100%', label: 'Built for Growth' }].map(s => (
