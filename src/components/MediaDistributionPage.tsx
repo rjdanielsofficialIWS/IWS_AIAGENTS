@@ -993,11 +993,11 @@ function VideoPreviewCard({
 
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: '#000' }}>
-      <div className="relative bg-black" style={{ aspectRatio: videoAspectRatio, maxHeight: '60vh' }}>
+      <div className="relative bg-black">
         <video
           ref={videoRef}
           src={objectUrl}
-          className="w-full h-full object-contain"
+          className="w-full block object-contain"
           playsInline
           muted
           preload="auto"
@@ -1007,7 +1007,7 @@ function VideoPreviewCard({
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onClick={togglePlay}
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: 'pointer', maxHeight: '60vh' }}
         />
         {!playing && (
           <button onClick={togglePlay} className="absolute inset-0 flex items-center justify-center group"
