@@ -1357,6 +1357,8 @@ function InlinePostComposer({
   const [threadTweets, setThreadTweets] = useState<string[]>(['', '']);
   const [carouselCount, setCarouselCount] = useState<number>(3);
   const [threadTopic, setThreadTopic] = useState('');
+  const [threadTopicError, setThreadTopicError] = useState(false);
+  const [threadVideoMode, setThreadVideoMode] = useState(false);
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
@@ -2093,7 +2095,9 @@ function InlinePostComposer({
                       if (data.thread && Array.isArray(data.thread)) setThreadTweets(data.thread);
                     } catch (e: any) { setTextAiError(e.message || 'Failed'); }
                     finally { setTextAiLoading(false); }
-                  }} disabled={textAiLoading || !threadTopic.trim()}
+                  }}
+                  disabled={textAiLoading}
+                  style={{ background: GOLD + '22', border: '1.5px solid ' + GOLD + '88', color: GOLD }}
                     className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:bg-white/8 disabled:opacity-40"
                     style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)' }}>
                     {textAiLoading ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</> : <><Sparkles className="w-3 h-3" /> AI Thread</>}
