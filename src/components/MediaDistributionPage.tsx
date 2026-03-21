@@ -1705,28 +1705,6 @@ function InlinePostComposer({
             )}
           </div>
 
-          {/* Post Format Selector — Carousel only, shown when 2+ images uploaded and carousel platforms selected */}
-          {imageFiles.length >= 2 && (() => {
-            const selPlatforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return (i?.profile || i?.id || '').toLowerCase(); });
-            const hasCarousel = selPlatforms.some(p => ['instagram','facebook','linkedin','threads'].includes(p));
-            if (!hasCarousel) return null;
-            return (
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Format</span>
-                <button onClick={() => setPostFormat('standard')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                  style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
-                  Standard
-                </button>
-                <button onClick={() => setPostFormat('carousel')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                  style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
-                  🖼 Carousel
-                </button>
-              </div>
-            );
-          })()}
-
           <div className="flex items-center gap-2 px-1">
             <span className="text-xs font-bold text-white/25 uppercase tracking-wider mr-1">Add media</span>
             <label className="cursor-pointer flex items-center gap-1.5 px-3 py-2 rounded-lg border hover:bg-white/8 text-white/40 hover:text-white text-xs font-bold transition" style={{ borderColor: BORDER }}>
@@ -1775,6 +1753,31 @@ function InlinePostComposer({
               )}
             </div>
           )}
+
+          {/* Carousel selector — appears after images are uploaded */}
+          {imageFiles.length >= 2 && (() => {
+            const selPlatforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return (i?.profile || i?.id || '').toLowerCase(); });
+            const hasCarousel = selPlatforms.some(p => ['instagram','facebook','linkedin','threads'].includes(p));
+            if (!hasCarousel) return null;
+            return (
+              <div className="flex items-center gap-2 flex-wrap p-3 rounded-xl border" style={{ borderColor: `${GOLD}25`, background: `${GOLD}05` }}>
+                <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Format</span>
+                <button onClick={() => setPostFormat('standard')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                  style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                  Standard
+                </button>
+                <button onClick={() => setPostFormat('carousel')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                  style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
+                  🖼 Carousel
+                </button>
+                {postFormat === 'carousel' && (
+                  <span className="text-[10px] text-white/30 ml-1">✓ {imageFiles.length} images will post as a swipeable carousel</span>
+                )}
+              </div>
+            );
+          })()}
 
           <div>
             <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
