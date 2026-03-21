@@ -1714,53 +1714,53 @@ function InlinePostComposer({
               style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
               Standard
             </button>
-            <button onClick={() => { setPostFormat('carousel'); setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' }); }}
-              className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-              style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
-              🖼 Carousel
-            </button>
+            {(() => {
+              const selP = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return (i?.profile || i?.id || '').toLowerCase(); });
+              const allSupportCarousel = selP.length > 0 && selP.every(p => ['instagram','facebook','linkedin','threads'].includes(p));
+              // Auto-revert to standard if non-carousel platform selected
+              if (postFormat === 'carousel' && !allSupportCarousel && selP.length > 0) {
+                setTimeout(() => setPostFormat('standard'), 0);
+              }
+              if (!allSupportCarousel) return null;
+              return (
+                <button onClick={() => { setPostFormat('carousel'); setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' }); }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                  style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
+                  🖼 Carousel
+                </button>
+              );
+            })()}
           </div>
 
           {/* Carousel image count selector */}
           {postFormat === 'carousel' && (
-            <div className="rounded-xl border p-4 space-y-3" style={{ borderColor: 'rgba(56,189,248,0.25)', background: 'rgba(56,189,248,0.05)' }}>
+            <div className="rounded-xl border p-3 space-y-3" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#7dd3fc' }}>🖼 Carousel — how many images?</span>
-                <div className="flex items-center gap-1">
-                  {[2,3,4,5,6,7,8,9,10].map(n => (
-                    <button key={n} onClick={() => {
-                      setCarouselCount(n);
-                      setImageFiles(prev => prev.slice(0, n));
-                      setImageUploads(prev => prev.slice(0, n));
-                    }}
-                      className="w-7 h-7 rounded-lg text-xs font-bold transition"
-                      style={{ background: carouselCount === n ? '#38bdf8' : 'rgba(255,255,255,0.06)', color: carouselCount === n ? '#000' : 'rgba(255,255,255,0.4)' }}>
-                      {n}
-                    </button>
-                  ))}
-                </div>
+                <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Carousel Images</span>
+                <span className="text-[10px] text-white/25">{imageFiles.filter(Boolean).length} of {carouselCount} added</span>
               </div>
-              <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+              <div className="flex flex-wrap gap-2">
                 {Array.from({ length: carouselCount }).map((_, i) => {
                   const file = imageFiles[i];
                   const uploadState = imageUploads[i] ?? { status: 'idle' };
                   if (file) {
                     return (
-                      <div key={i} className="relative">
-                        <ImagePreviewCard file={file} uploadState={uploadState}
-                          onRemove={() => {
-                            setImageFiles(prev => { const n = [...prev]; n.splice(i, 1); return n; });
-                            setImageUploads(prev => { const n = [...prev]; n.splice(i, 1); return n; });
-                          }} />
-                        <span className="absolute top-1 left-1 text-[9px] font-black px-1 rounded" style={{ background: 'rgba(0,0,0,0.7)', color: '#7dd3fc' }}>{i+1}</span>
+                      <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border shrink-0" style={{ borderColor: BORDER }}>
+                        <img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt={`Slide ${i+1}`} />
+                        <div className="absolute top-0 left-0 w-4 h-4 flex items-center justify-center rounded-br text-[8px] font-black" style={{ background: 'rgba(0,0,0,0.7)', color: 'rgba(255,255,255,0.7)' }}>{i+1}</div>
+                        {uploadState.status === 'uploading' && <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}><Loader className="w-3 h-3 animate-spin text-white" /></div>}
+                        {uploadState.status === 'done' && <div className="absolute bottom-0 right-0 w-4 h-4 flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.8)' }}><CheckCircle2 className="w-2.5 h-2.5 text-white" /></div>}
+                        <button onClick={() => { setImageFiles(prev => { const n = [...prev]; n.splice(i, 1); return n; }); setImageUploads(prev => { const n = [...prev]; n.splice(i, 1); return n; }); setCarouselCount(prev => Math.max(2, prev - 1)); }}
+                          className="absolute top-0 right-0 w-4 h-4 flex items-center justify-center rounded-bl" style={{ background: 'rgba(239,68,68,0.8)' }}>
+                          <X className="w-2.5 h-2.5 text-white" />
+                        </button>
                       </div>
                     );
                   }
                   return (
-                    <label key={i} className="cursor-pointer flex flex-col items-center justify-center gap-1 rounded-xl border-2 border-dashed transition hover:border-sky-400/50"
-                      style={{ borderColor: 'rgba(56,189,248,0.2)', background: 'rgba(56,189,248,0.03)', aspectRatio: '1' }}>
-                      <span className="text-lg font-black" style={{ color: 'rgba(56,189,248,0.4)' }}>{i+1}</span>
-                      <span className="text-[9px] text-white/20">tap to add</span>
+                    <label key={i} className="cursor-pointer w-16 h-16 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-0.5 shrink-0 hover:border-white/30 transition"
+                      style={{ borderColor: 'rgba(255,255,255,0.12)' }}>
+                      <span className="text-[9px] text-white/30 font-bold">Image {i+1}</span>
                       <input type="file" accept="image/*" className="hidden"
                         onChange={e => {
                           const f = e.target.files?.[0];
@@ -1776,8 +1776,16 @@ function InlinePostComposer({
                     </label>
                   );
                 })}
+                {carouselCount < 10 && (
+                  <button onClick={() => setCarouselCount(prev => Math.min(10, prev + 1))}
+                    className="w-16 h-16 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-0.5 shrink-0 hover:border-white/30 transition"
+                    style={{ borderColor: 'rgba(255,255,255,0.1)' }}>
+                    <Plus className="w-4 h-4 text-white/25" />
+                    <span className="text-[9px] text-white/20">Add</span>
+                  </button>
+                )}
               </div>
-              <p className="text-[10px] text-white/25">Supported on Instagram, Facebook, LinkedIn & Threads</p>
+              <p className="text-[10px] text-white/20">Instagram, Facebook, LinkedIn & Threads</p>
             </div>
           )}
 
@@ -2063,20 +2071,45 @@ function InlinePostComposer({
 
           {/* Thread composer for text posts */}
           {postFormat === 'thread' && (
-            <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: 'rgba(167,139,250,0.3)', background: 'rgba(167,139,250,0.05)' }}>
+            <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#c4b5fd' }}>🧵 Thread Posts</span>
-                <button onClick={() => setThreadTweets(prev => [...prev, ''])}
-                  disabled={threadTweets.length >= 10}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40"
-                  style={{ background: 'rgba(167,139,250,0.2)', color: '#c4b5fd' }}>
-                  <Plus className="w-3 h-3" /> Add Post
-                </button>
+                <span className="text-xs font-bold text-white/40 uppercase tracking-wider">🧵 Thread</span>
+                <div className="flex items-center gap-2">
+                  <button onClick={async () => {
+                    const desc = textAiDesc.trim() || xText.trim();
+                    if (!desc) return;
+                    setTextAiLoading(true); setTextAiError(null);
+                    try {
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+                        body: JSON.stringify({ mode: 'thread_posts', description: desc, tone: textAiTone }),
+                      });
+                      const data = await res.json();
+                      if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
+                      if (!res.ok) throw new Error(data.error || 'Generation failed');
+                      if (data.thread && Array.isArray(data.thread)) setThreadTweets(data.thread);
+                    } catch (e: any) { setTextAiError(e.message || 'Failed'); }
+                    finally { setTextAiLoading(false); }
+                  }} disabled={textAiLoading}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:bg-white/8 disabled:opacity-40"
+                    style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)' }}>
+                    {textAiLoading ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</> : <><Sparkles className="w-3 h-3" /> AI Generate</>}
+                  </button>
+                  <button onClick={() => setThreadTweets(prev => [...prev, ''])}
+                    disabled={threadTweets.length >= 10}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40 hover:bg-white/8"
+                    style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)' }}>
+                    <Plus className="w-3 h-3" /> Add
+                  </button>
+                </div>
               </div>
+              {textAiError && textAiError !== 'upgrade_required' && <p className="text-xs text-red-300">{textAiError}</p>}
               {threadTweets.map((tweet, i) => (
-                <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: tweet.length > 280 ? '#f87171' : 'rgba(167,139,250,0.25)' }}>
-                  <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: 'rgba(167,139,250,0.15)', background: 'rgba(0,0,0,0.2)' }}>
-                    <span className="text-[10px] font-black" style={{ color: '#a78bfa' }}>#{i + 1}</span>
+                <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: tweet.length > 280 ? '#f87171' : BORDER }}>
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.2)' }}>
+                    <span className="text-[10px] font-bold text-white/30">#{i + 1}</span>
                     <span className="ml-auto text-[10px]" style={{ color: tweet.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{tweet.length}/280</span>
                     {threadTweets.length > 2 && (
                       <button onClick={() => setThreadTweets(prev => prev.filter((_, xi) => xi !== i))}
