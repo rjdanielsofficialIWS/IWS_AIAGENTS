@@ -2120,7 +2120,7 @@ function InlinePostComposer({
                 </button>
                 {threadVideoMode && <span className="text-xs" style={{ color: GOLD + 'aa' }}>AI will use your uploaded video as source</span>}
               </div>
-              {(!threadVideoMode || mediaFiles.length === 0) && (
+              {(!threadVideoMode || !mediaFiles || mediaFiles.length === 0) && (
                 <input value={threadTopic} onChange={e => { setThreadTopic(e.target.value); setThreadTopicError(false); }}
                   placeholder={threadVideoMode ? "Optional: add context..." : "Thread topic or idea..."}
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/20 outline-none"
