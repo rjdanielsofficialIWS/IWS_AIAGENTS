@@ -7406,20 +7406,3 @@ export function MediaDistributionPage() {
     </div>
   );
 }
-leDisconnectPlatform}
-        currentUser={currentUser}
-        workspaceId={activeWorkspaceId}
-        isSubscriptionActive={!!(subscription?.status === 'active' || subscription?.stripe_customer_id?.startsWith('promo_') || (subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date()))}
-        onNeedsPricing={() => setPricingOpen(true)}
-      />
-
-      <MediaMachineAuthModal
-        open={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        onSuccess={() => {
-          setAuthModalOpen(false);
-        }}
-      />
-    </div>
-  );
-}
