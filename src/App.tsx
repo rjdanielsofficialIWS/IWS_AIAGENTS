@@ -108,7 +108,7 @@ function Dashboard() {
 
   return (
     <DashboardLayout currentPage={currentPage} onPageChange={setCurrentPage}>
-      {currentPage === 'dashboard' && <DashboardOverview />}
+      {currentPage === 'dashboard' && <DashboardOverview onNavigate={setCurrentPage} />}
       {currentPage === 'assistants' && (
         <AssistantsList onCreateNew={handleCreateAssistant} onEdit={handleEditAssistant} />
       )}
