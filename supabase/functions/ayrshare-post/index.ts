@@ -1,14 +1,13 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const LATE_API_KEY=Deno.env.get("LATE_API_KEY")??"";
 if(!LATE_API_KEY){console.error("LATE_API_KEY environment variable is not set");}
-const LATE_API_URL="https://zernio.com/api/v1";
+const LATE_API_URL="https://getlate.dev/api/v1";
 const MEDIA_REQUIRED=new Set(["youtube","tiktok","instagram"]);
 const VIDEO_ONLY=new Set(["youtube","tiktok"]);
 const PLAN_LIMITS={starter:{posts:100,platforms:3},viral:{posts:100,platforms:-1},agency:{posts:-1,platforms:-1}};
 function getPeriod(){const d=new Date();return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}
 Deno.serve(async(req)=>{
-  const _o=req.headers.get("Origin")??"";
-  const _allowed=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"].includes(_o)?_o:"https://infinitewealthsolutionsai.com";
+  const _o=req.headers.get("Origin")??"";const _allowed=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"].includes(_o)?_o:"https://infinitewealthsolutionsai.com";
   const cors={"Access-Control-Allow-Origin":_allowed,"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Content-Type":"application/json"};
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
   const respond=(code,data)=>new Response(JSON.stringify(data),{status:code,headers:cors});
@@ -34,30 +33,39 @@ Deno.serve(async(req)=>{
   const scheduleDate=body.scheduleDate??"";
   const threadPosts:string[]=Array.isArray(body.thread)?body.thread.filter((t:unknown)=>typeof t==="string"&&(t as string).trim()):[];
   const isCarousel:boolean=body.carousel===true;
-  // Keep original IDs (e.g. "x") for cache lookup; map to Late API name only for the request
-  const cleanPlatforms=platforms.filter((p:unknown)=>typeof p==="string"&&(p as string).trim().length>0);
-  const latePlatformName=(p:string)=>p==="x"?"twitter":p;
+  // Keep original platform IDs for cache lookup; map to API names only in the request
+  const rawPlatforms=platforms.filter((p:unknown)=>typeof p==="string"&&(p as string).trim().length>0);
+  const toApiName=(p:string)=>p==="x"?"twitter":p;
+  const cleanPlatforms=rawPlatforms.map(toApiName);
   if(limits.platforms!==-1&&cleanPlatforms.length>limits.platforms)return respond(403,{error:"platform_limit",feature:"platforms",message:"Your "+plan+" plan supports up to "+limits.platforms+" platform(s) per post.",plan});
   if(!cleanPlatforms.length||!post)return respond(400,{error:"platforms and post required"});
   if(post.length>50000)return respond(400,{error:"Post content exceeds maximum length"});
   if(mediaUrls.length>10)return respond(400,{error:"Too many media URLs"});
   const invalidMedia=mediaUrls.find((u:unknown)=>typeof u!=="string"||(u as string).length>2000);
   if(invalidMedia!==undefined)return respond(400,{error:"Invalid media URL"});
-  const needsMedia=cleanPlatforms.map(latePlatformName).filter((p:string)=>MEDIA_REQUIRED.has(p));
-  if(needsMedia.length>0&&mediaUrls.length===0)return respond(400,{error:needsMedia.map((p:string)=>p[0].toUpperCase()+p.slice(1)).join(", ")+" require media."});
+  const needsMedia=cleanPlatforms.filter(p=>MEDIA_REQUIRED.has(p));
+  if(needsMedia.length>0&&mediaUrls.length===0)return respond(400,{error:needsMedia.map(p=>p[0].toUpperCase()+p.slice(1)).join(", ")+" require media."});
   const isVideoUrl=(url:string)=>/\.(mp4|mov|webm|avi|mkv|m4v)/i.test(url);
   const hasVideo=mediaUrls.some(isVideoUrl);
-  const voP=cleanPlatforms.map(latePlatformName).filter((p:string)=>VIDEO_ONLY.has(p));
-  if(voP.length>0&&mediaUrls.length>0&&!hasVideo)return respond(400,{error:voP.map((p:string)=>p[0].toUpperCase()+p.slice(1)).join(", ")+" only accept video files."});
+  const voP=cleanPlatforms.filter(p=>VIDEO_ONLY.has(p));
+  if(voP.length>0&&mediaUrls.length>0&&!hasVideo)return respond(400,{error:voP.map(p=>p[0].toUpperCase()+p.slice(1)).join(", ")+" only accept video files."});
   try{
     const{data:profile}=await supabase.from("ayrshare_profiles").select("profile_key,cached_channels").eq("supabase_user_id",userId).maybeSingle();
     if(!profile?.profile_key)return respond(400,{error:"No connected accounts found."});
     const cc=Array.isArray(profile.cached_channels)?profile.cached_channels:[];
-    // Lookup uses original ID (e.g. "x"), then maps to Late API platform name (e.g. "twitter")
-    const pp=cleanPlatforms.map((p:string)=>{
-      const c=cc.find((ch:{id?:string;profile?:string;platform?:string;accountId?:string})=>(ch.id||"").toLowerCase()===p||(ch.profile||"").toLowerCase()===p||(ch.platform||"").toLowerCase()===p);
-      return{platform:latePlatformName(p),accountId:c?.accountId||""};
-    }).filter((p:{platform:string;accountId:string})=>p.accountId);
+    // Look up by both original ID (e.g. "x") and API name (e.g. "twitter") to handle reconnects
+    const pp=rawPlatforms.map((raw:string)=>{
+      const api=toApiName(raw);
+      const c=cc.find((ch:{id?:string;profile?:string;platform?:string;accountId?:string})=>
+        (ch.id||"").toLowerCase()===raw||
+        (ch.id||"").toLowerCase()===api||
+        (ch.profile||"").toLowerCase()===raw||
+        (ch.profile||"").toLowerCase()===api||
+        (ch.platform||"").toLowerCase()===raw||
+        (ch.platform||"").toLowerCase()===api
+      );
+      return{platform:api,accountId:c?.accountId||c?.id||""};
+    }).filter((p:{platform:string;accountId:string})=>p.accountId&&p.accountId!==p.platform);
     if(pp.length===0)return respond(400,{error:"No connected accounts for selected platforms."});
     let lb:Record<string,unknown>;
     if(threadPosts.length>0){
@@ -76,13 +84,13 @@ Deno.serve(async(req)=>{
       }
     }
     if(scheduleDate){lb.scheduledFor=new Date(scheduleDate).toISOString();}else{lb.publishNow=true;}
-    console.log("Late API request:",JSON.stringify(lb));
-    const lateRes=await fetch(LATE_API_URL+"/posts",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb)});
+    console.log("API request:",JSON.stringify(lb));
+    const lateRes=await fetch(LATE_API_URL+"/posts",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb),redirect:"follow"});
     const result=await lateRes.json();
     const isError=!lateRes.ok;
-    const errorMsg=isError?(result.message||result.error||"Late API error "+lateRes.status):null;
-    if(isError)console.error("Late API error response:",JSON.stringify(result));
-    try{await supabase.from("scheduled_posts").insert({supabase_user_id:userId,profile_key:profile.profile_key,ayrshare_post_id:result._id??result.id??null,platforms:cleanPlatforms,content:post,media_urls:mediaUrls,scheduled_at:scheduleDate?new Date(scheduleDate).toISOString():new Date().toISOString(),status:isError?"error":(scheduleDate?"scheduled":"published"),error:errorMsg??null});}catch(e){console.error("DB insert failed:",e);}
+    const errorMsg=isError?(result.message||result.error||"API error "+lateRes.status):null;
+    if(isError)console.error("API error:",lateRes.status,JSON.stringify(result),"sent:",JSON.stringify(lb));
+    try{await supabase.from("scheduled_posts").insert({supabase_user_id:userId,profile_key:profile.profile_key,ayrshare_post_id:result._id??result.id??null,platforms:rawPlatforms,content:post,media_urls:mediaUrls,scheduled_at:scheduleDate?new Date(scheduleDate).toISOString():new Date().toISOString(),status:isError?"error":(scheduleDate?"scheduled":"published"),error:errorMsg??null});}catch(e){console.error("DB insert failed:",e);}
     if(!isError){try{await supabase.rpc("increment_usage",{p_user_id:userId,p_period:period,p_field:"posts_scheduled"});}catch(e){console.error("Usage increment failed:",e);}}
     if(isError)return respond(500,{error:errorMsg,detail:result});
     return respond(200,{success:true,postId:result._id||result.id,result});
