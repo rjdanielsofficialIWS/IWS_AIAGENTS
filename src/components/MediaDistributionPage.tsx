@@ -6380,6 +6380,12 @@ export function MediaDistributionPage() {
   const [oauthError, setOauthError]             = useState<string | null>(null);
   const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string; } | null>(null);
   const [trialLoading, setTrialLoading]         = useState<string | null>(null);
+  const [phoneVerifyOpen, setPhoneVerifyOpen]   = useState(false);
+  const [phoneVerifyPlan, setPhoneVerifyPlan]   = useState<string | null>(null);
+  const [phoneInput, setPhoneInput]             = useState('');
+  const [otpInput, setOtpInput]                 = useState('');
+  const [otpSent, setOtpSent]                   = useState(false);
+  const [phoneOtpLoading, setPhoneOtpLoading]   = useState(false);
   const [globalUsage, setGlobalUsage]           = useState<{ plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null>(null);
   const [creditsOpen, setCreditsOpen]           = useState(false);
   const [upsellShown, setUpsellShown]           = useState(false);
@@ -6664,26 +6670,53 @@ export function MediaDistributionPage() {
     }
   };
 
-  const handleStartTrial = async (planKey: string) => {
+  const handleStartTrial = (planKey: string) => {
     if (!currentUser) { setAuthModalOpen(true); return; }
-    setTrialLoading(planKey);
+    setPhoneVerifyPlan(planKey);
+    setPhoneInput('');
+    setOtpInput('');
+    setOtpSent(false);
+    setPhoneVerifyOpen(true);
+  };
+
+  const handleSendOtp = async () => {
+    if (!phoneInput.trim()) return;
+    setPhoneOtpLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-phone-otp`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: phoneInput }),
+      });
+      const d = await res.json();
+      if (!res.ok) { alert(d.message || 'Could not send code. Please try again.'); return; }
+      setOtpSent(true);
+    } catch { alert('Something went wrong. Please try again.'); }
+    finally { setPhoneOtpLoading(false); }
+  };
+
+  const handleVerifyAndStartTrial = async () => {
+    if (!otpInput.trim() || !phoneVerifyPlan) return;
+    setTrialLoading(phoneVerifyPlan);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/start-trial`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ plan: planKey }),
+        body: JSON.stringify({ plan: phoneVerifyPlan, phone: phoneInput, code: otpInput }),
       });
       const d = await res.json();
       if (!res.ok) {
-        if (d.error === 'trial_already_used') alert('You have already used your free trial. Please subscribe to continue.');
+        if (d.error === 'trial_already_used') alert('A free trial has already been used with this phone number. Only one trial per person is allowed.');
         else if (d.error === 'already_subscribed') alert('You already have an active subscription.');
+        else if (d.error === 'invalid_code') alert('That code is invalid or has expired. Please request a new one.');
+        else if (d.error === 'disposable_email') alert(d.message || 'Please sign up with a permanent email address.');
         else alert(d.message || 'Could not start trial. Please try again.');
         return;
       }
-      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUser.id).maybeSingle();
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUser!.id).maybeSingle();
       if (data) setSubscription(data);
-      // Refresh usage so CreditsWidget reflects the new active trial
       try {
         const { data: { session: s2 } } = await supabase.auth.getSession();
         const ur = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${s2?.access_token}` } });
@@ -6692,6 +6725,7 @@ export function MediaDistributionPage() {
           setGlobalUsage({ plan: ud.plan ?? 'free', isActive: ud.isActive ?? false, captions: { used: ud.usage?.ai_captions_used ?? 0, limit: ud.limits?.ai_captions_per_month ?? 0 }, video: { used: ud.usage?.video_seconds_used ?? 0, limit: ud.limits?.video_seconds_per_month ?? 0 }, strategies: { used: ud.usage?.strategies_used ?? 0, limit: ud.limits?.strategies_per_month ?? 0 }, posts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.posts_per_month ?? 0 }, textPosts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.text_posts_per_month ?? ud.limits?.posts_per_month ?? 0 } });
         }
       } catch (_) {}
+      setPhoneVerifyOpen(false);
       setPricingOpen(false);
     } catch { alert('Something went wrong. Please try again.'); }
     finally { setTrialLoading(null); }
@@ -7121,6 +7155,85 @@ export function MediaDistributionPage() {
             onAddon={handleAddonCheckout}
             onManage={handlePortal}
           />
+        </div>
+      )}
+
+      {/* ── Phone Verification Modal ── */}
+      {phoneVerifyOpen && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center"
+          style={{ background: 'rgba(0,0,0,0.92)', backdropFilter: 'blur(10px)' }}
+          onClick={e => { if (e.target === e.currentTarget) setPhoneVerifyOpen(false); }}>
+          <div className="w-full max-w-sm mx-4 rounded-2xl border p-6 space-y-5"
+            style={{ background: '#1a1a1a', borderColor: GOLD + '40' }}>
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black text-white">Verify Your Phone</h2>
+                <p className="text-xs mt-0.5" style={{ color: 'rgba(255,255,255,0.35)' }}>One free trial per person</p>
+              </div>
+              <button onClick={() => setPhoneVerifyOpen(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 transition"
+                style={{ color: 'rgba(255,255,255,0.4)' }}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {!otpSent ? (
+              <>
+                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>Enter your phone number to receive a 6-digit verification code.</p>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.4)' }}>Phone Number</label>
+                  <input
+                    type="tel"
+                    value={phoneInput}
+                    onChange={e => setPhoneInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
+                    placeholder="+1 (555) 000-0000"
+                    className="w-full rounded-xl px-4 py-3 text-sm text-white placeholder-white/20 outline-none"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)' }}
+                  />
+                </div>
+                <button onClick={handleSendOtp}
+                  disabled={!phoneInput.trim() || phoneOtpLoading}
+                  className="w-full py-3 rounded-xl text-sm font-black transition hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: `linear-gradient(135deg,${GOLD_D},${GOLD},${GOLD_L})`, color: '#000' }}>
+                  {phoneOtpLoading ? 'Sending…' : 'Send Verification Code'}
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm" style={{ color: 'rgba(255,255,255,0.55)' }}>
+                  Code sent to <span className="font-semibold text-white">{phoneInput}</span>. Check your messages.
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'rgba(255,255,255,0.4)' }}>Verification Code</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    value={otpInput}
+                    onChange={e => setOtpInput(e.target.value.replace(/\D/g, ''))}
+                    onKeyDown={e => e.key === 'Enter' && otpInput.length === 6 && handleVerifyAndStartTrial()}
+                    placeholder="000000"
+                    className="w-full rounded-xl px-4 py-3 text-2xl font-mono text-center text-white placeholder-white/20 outline-none tracking-widest"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: `1px solid ${GOLD}60` }}
+                    autoFocus
+                  />
+                </div>
+                <button onClick={handleVerifyAndStartTrial}
+                  disabled={otpInput.length < 6 || !!trialLoading}
+                  className="w-full py-3 rounded-xl text-sm font-black transition hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ background: `linear-gradient(135deg,${GOLD_D},${GOLD},${GOLD_L})`, color: '#000' }}>
+                  {trialLoading ? 'Starting Trial…' : 'Verify & Start Free Trial'}
+                </button>
+                <button onClick={() => { setOtpSent(false); setOtpInput(''); }}
+                  className="w-full py-1 text-xs transition"
+                  style={{ color: 'rgba(255,255,255,0.3)' }}
+                  onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.6)')}
+                  onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.3)')}>
+                  Wrong number? Go back
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
 
