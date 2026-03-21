@@ -1360,6 +1360,7 @@ function InlinePostComposer({
   const [threadTopicError, setThreadTopicError] = useState(false);
   const [threadVideoMode, setThreadVideoMode] = useState(false);
   const [threadVideoFile, setThreadVideoFile] = useState<File|null>(null);
+  const [threadVideoUrl, setThreadVideoUrl] = useState<string>('');
   const [threadVideoTranscript, setThreadVideoTranscript] = useState('');
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
@@ -2082,7 +2083,7 @@ function InlinePostComposer({
                 <div className="flex items-center gap-2">
                   <button onClick={async () => {
                     const desc = threadTopic.trim();
-                    if (!desc) return;
+                    if (!desc && !threadVideoMode) return;
                     setTextAiLoading(true); setTextAiError(null);
                     try {
                       const { data: { session } } = await supabase.auth.getSession();
@@ -2099,9 +2100,8 @@ function InlinePostComposer({
                     finally { setTextAiLoading(false); }
                   }}
                   disabled={textAiLoading}
-                  style={{ background: GOLD + '22', border: '1.5px solid ' + GOLD + '88', color: GOLD }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40"
-                    style={{ background: GOLD + '22', border: '1.5px solid ' + GOLD + '88', color: GOLD }}>
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40"
+                  style={{ background: GOLD + '33', border: '1.5px solid ' + GOLD, color: GOLD }}>
                     {textAiLoading ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</> : <><Sparkles className="w-3 h-3" /> AI Thread</>}
                   </button>
                   <button onClick={() => setThreadTweets(prev => [...prev, ''])}
@@ -2133,7 +2133,9 @@ function InlinePostComposer({
                         onChange={e => {
                           const file = e.target.files?.[0];
                           if (!file) return;
+                          if (threadVideoUrl) URL.revokeObjectURL(threadVideoUrl);
                           setThreadVideoFile(file);
+                          setThreadVideoUrl(URL.createObjectURL(file));
                           setThreadVideoTranscript('Video: ' + file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + 'MB). Repurpose the key insights, story and talking points from this video into a viral thread.');
                         }} />
                       <div className="flex flex-col items-center gap-1">
@@ -2144,9 +2146,9 @@ function InlinePostComposer({
                     </label>
                   ) : (
                     <div className="relative rounded-xl overflow-hidden mb-2" style={{ border: '1.5px solid ' + GOLD + '60' }}>
-                      <video src={URL.createObjectURL(threadVideoFile)} controls
-                        className="w-full max-h-48 object-cover" style={{ background: '#000' }} />
-                      <button onClick={() => { setThreadVideoFile(null); setThreadVideoTranscript(''); }}
+                      <video src={threadVideoUrl} controls
+                        className="w-full" style={{ background: '#000', display: 'block', maxHeight: '60vh' }} />
+                      <button onClick={() => { if (threadVideoUrl) URL.revokeObjectURL(threadVideoUrl); setThreadVideoFile(null); setThreadVideoUrl(''); setThreadVideoTranscript(''); }}
                         className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-black/70 hover:bg-red-500/80 transition"
                         style={{ color: 'white' }}>
                         <X className="w-3 h-3" />
