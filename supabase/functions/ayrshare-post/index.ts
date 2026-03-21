@@ -34,39 +34,45 @@ Deno.serve(async(req)=>{
   const scheduleDate=body.scheduleDate??"";
   const threadPosts:string[]=Array.isArray(body.thread)?body.thread.filter((t:unknown)=>typeof t==="string"&&(t as string).trim()):[];
   const isCarousel:boolean=body.carousel===true;
-  const cleanPlatforms=platforms.filter(p=>typeof p==="string"&&p.trim().length>0);
+  // Keep original IDs (e.g. "x") for cache lookup; map to Late API name only for the request
+  const cleanPlatforms=platforms.filter((p:unknown)=>typeof p==="string"&&(p as string).trim().length>0);
   const latePlatformName=(p:string)=>p==="x"?"twitter":p;
   if(limits.platforms!==-1&&cleanPlatforms.length>limits.platforms)return respond(403,{error:"platform_limit",feature:"platforms",message:"Your "+plan+" plan supports up to "+limits.platforms+" platform(s) per post.",plan});
   if(!cleanPlatforms.length||!post)return respond(400,{error:"platforms and post required"});
   if(post.length>50000)return respond(400,{error:"Post content exceeds maximum length"});
   if(mediaUrls.length>10)return respond(400,{error:"Too many media URLs"});
-  const invalidMedia=mediaUrls.find(u=>typeof u!=="string"||u.length>2000);
+  const invalidMedia=mediaUrls.find((u:unknown)=>typeof u!=="string"||(u as string).length>2000);
   if(invalidMedia!==undefined)return respond(400,{error:"Invalid media URL"});
-  const needsMedia=cleanPlatforms.map(latePlatformName).filter(p=>MEDIA_REQUIRED.has(p));
-  if(needsMedia.length>0&&mediaUrls.length===0)return respond(400,{error:needsMedia.map(p=>p[0].toUpperCase()+p.slice(1)).join(", ")+" require media."});
+  const needsMedia=cleanPlatforms.map(latePlatformName).filter((p:string)=>MEDIA_REQUIRED.has(p));
+  if(needsMedia.length>0&&mediaUrls.length===0)return respond(400,{error:needsMedia.map((p:string)=>p[0].toUpperCase()+p.slice(1)).join(", ")+" require media."});
   const isVideoUrl=(url:string)=>/\.(mp4|mov|webm|avi|mkv|m4v)/i.test(url);
   const hasVideo=mediaUrls.some(isVideoUrl);
-  const voP=cleanPlatforms.map(latePlatformName).filter(p=>VIDEO_ONLY.has(p));
-  if(voP.length>0&&mediaUrls.length>0&&!hasVideo)return respond(400,{error:voP.map(p=>p[0].toUpperCase()+p.slice(1)).join(", ")+" only accept video files."});
+  const voP=cleanPlatforms.map(latePlatformName).filter((p:string)=>VIDEO_ONLY.has(p));
+  if(voP.length>0&&mediaUrls.length>0&&!hasVideo)return respond(400,{error:voP.map((p:string)=>p[0].toUpperCase()+p.slice(1)).join(", ")+" only accept video files."});
   try{
     const{data:profile}=await supabase.from("ayrshare_profiles").select("profile_key,cached_channels").eq("supabase_user_id",userId).maybeSingle();
     if(!profile?.profile_key)return respond(400,{error:"No connected accounts found."});
     const cc=Array.isArray(profile.cached_channels)?profile.cached_channels:[];
-    const connectedIds=new Set(cc.map((ch:Record<string,string>)=>(ch.id||"").toLowerCase()));
-    const validPlatforms=cleanPlatforms.filter(p=>connectedIds.has(p));
-    if(validPlatforms.length===0)return respond(400,{error:"No connected accounts for selected platforms."});
-    const lateNames=validPlatforms.map(latePlatformName);
-    const lb:Record<string,unknown>={content:post,platforms:lateNames};
+    // Lookup uses original ID (e.g. "x"), then maps to Late API platform name (e.g. "twitter")
+    const pp=cleanPlatforms.map((p:string)=>{
+      const c=cc.find((ch:{id?:string;profile?:string;platform?:string;accountId?:string})=>(ch.id||"").toLowerCase()===p||(ch.profile||"").toLowerCase()===p||(ch.platform||"").toLowerCase()===p);
+      return{platform:latePlatformName(p),accountId:c?.accountId||""};
+    }).filter((p:{platform:string;accountId:string})=>p.accountId);
+    if(pp.length===0)return respond(400,{error:"No connected accounts for selected platforms."});
+    let lb:Record<string,unknown>;
     if(threadPosts.length>0){
       const firstItem:Record<string,unknown>={content:post};
       if(mediaUrls.length>0)firstItem.mediaItems=mediaUrls.map((url:string)=>({type:isVideoUrl(url)?"video":"image",url}));
       const threadItems=[firstItem,...threadPosts.map((t:string)=>({content:t}))];
-      lb.platforms=lateNames.map((p:string)=>({platform:p,platformSpecificData:{threadItems}}));
-    }else if(mediaUrls.length>0){
-      if(isCarousel){
-        lb.mediaItems=mediaUrls.map((url:string)=>({type:"image",url}));
-      }else{
-        lb.mediaItems=mediaUrls.map((url:string)=>({type:isVideoUrl(url)?"video":"image",url}));
+      lb={platforms:pp.map((p:{platform:string;accountId:string})=>({...p,platformSpecificData:{threadItems}}))};
+    }else{
+      lb={content:post,platforms:pp};
+      if(mediaUrls.length>0){
+        if(isCarousel){
+          lb.mediaItems=mediaUrls.map((url:string)=>({type:"image",url}));
+        }else{
+          lb.mediaItems=mediaUrls.map((url:string)=>({type:isVideoUrl(url)?"video":"image",url}));
+        }
       }
     }
     if(scheduleDate){lb.scheduledFor=new Date(scheduleDate).toISOString();}else{lb.publishNow=true;}
