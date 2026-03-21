@@ -5822,10 +5822,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
   return (
     <div className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
       <div className="flex items-center gap-3">
-        <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-white transition">
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Back</span>
-        </Link>
+
         <div className="flex md:hidden items-center gap-2">
           <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
             style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>

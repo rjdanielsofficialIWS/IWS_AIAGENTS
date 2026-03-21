@@ -159,23 +159,7 @@ export function MediaMachineAuthModal({ open, onClose, onSuccess }: Props) {
               <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 10, marginTop: 2, fontWeight: 600, letterSpacing: '0.06em' }}>by Infinite Wealth Solutions AI</div>
             </div>
 
-            {sent ? (
-              <div style={{ textAlign: 'center', paddingTop: 8, paddingBottom: 4 }}>
-                <div style={{ fontSize: 44, marginBottom: 18 }}>📬</div>
-                <div style={{ fontSize: 19, fontWeight: 800, color: 'white', marginBottom: 10 }}>Check your email</div>
-                <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.45)', lineHeight: 1.65, marginBottom: 28 }}>
-                  We sent a confirmation link to{' '}
-                  <strong style={{ color: GOLD_L }}>{email}</strong>.
-                  Click it to finish creating your account.
-                </p>
-                <button
-                  onClick={handleClose}
-                  style={{ width: '100%', padding: '14px 0', borderRadius: 14, border: 'none', fontSize: 14, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg,${GOLD_D},${GOLD} 50%,${GOLD_L})`, color: '#000' }}
-                >
-                  Got it
-                </button>
-              </div>
-            ) : (
+            {false ? null : (
               <>
                 {/* Heading */}
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
