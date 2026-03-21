@@ -2159,10 +2159,9 @@ function InlinePostComposer({
           )}
 
           {/* AI Generate section — hidden in carousel mode */}
-          {postFormat !== 'carousel' && <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
+          {postFormat !== 'carousel' && postFormat !== 'thread' && <div className="rounded-xl border overflow-hidden" style={{ borderColor: `${GOLD}30`, background: `${GOLD}05` }}>
             <button onClick={() => { setShowTextAi(v => !v); }} className="w-full flex items-center justify-between px-4 py-3 hover:bg-white/4 transition">
               <div className="flex items-center gap-2">
-                <Sparkles className="w-4 h-4" style={{ color: GOLD }} />
                 <span className="text-xs font-bold uppercase tracking-wider" style={{ color: GOLD }}>
                   {showTextAi ? 'Write Manually Instead' : 'AI Generate Posts'}
                 </span>
