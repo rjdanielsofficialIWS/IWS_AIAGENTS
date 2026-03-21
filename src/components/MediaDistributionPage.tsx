@@ -3535,6 +3535,69 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
   );
 }
 
+// ─── ReferralBanner ──────────────────────────────────────────────────────────
+
+function ReferralBanner({ userId }: { userId: string | null }) {
+  const [referralLink, setReferralLink] = React.useState<string | null>(null);
+  const [copied, setCopied] = React.useState(false);
+  const [dismissed, setDismissed] = React.useState(() => {
+    try { return localStorage.getItem('mm_referral_banner_dismissed') === '1'; } catch { return false; }
+  });
+
+  React.useEffect(() => {
+    if (!userId || dismissed) return;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
+          headers: { Authorization: `Bearer ${session?.access_token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.referralLink) setReferralLink(data.referralLink);
+        }
+      } catch {}
+    })();
+  }, [userId, dismissed]);
+
+  const copy = () => {
+    if (!referralLink) return;
+    navigator.clipboard.writeText(referralLink).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  const dismiss = () => {
+    try { localStorage.setItem('mm_referral_banner_dismissed', '1'); } catch {}
+    setDismissed(true);
+  };
+
+  if (dismissed || !referralLink) return null;
+
+  return (
+    <div className="mb-5 rounded-2xl border overflow-hidden" style={{ background: `linear-gradient(135deg, ${GOLD}12, rgba(0,0,0,0.3))`, borderColor: `${GOLD}40` }}>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${GOLD}20` }}>
+          <Gift className="w-4 h-4" style={{ color: GOLD }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-black" style={{ color: GOLD_L }}>💸 Earn 20% per referral — forever</div>
+          <div className="text-[10px] text-white/40 truncate mt-0.5">{referralLink}</div>
+        </div>
+        <button onClick={copy}
+          className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
+          style={{ background: copied ? 'rgba(34,197,94,0.2)' : `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: copied ? '#86efac' : '#000' }}>
+          {copied ? <><CheckCircle2 className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Link</>}
+        </button>
+        <button onClick={dismiss} className="w-6 h-6 rounded-md flex items-center justify-center hover:bg-white/10 text-white/20 hover:text-white/50 transition shrink-0">
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed, onUpgrade, workspaceId }: {
   integrations: PostizIntegration[];
   userId: string | null;
@@ -3644,6 +3707,8 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 
         {composerPanelTab === 'post' && (
           <div className="px-4 md:px-8 py-6 w-full">
+            {/* Referral Banner — always visible */}
+            <ReferralBanner userId={userId} />
             <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} workspaceId={workspaceId} />
           </div>
         )}
@@ -6028,6 +6093,7 @@ export function MediaDistributionPage() {
   const [trialLoading, setTrialLoading]         = useState<string | null>(null);
   const [globalUsage, setGlobalUsage]           = useState<{ plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null>(null);
   const [creditsOpen, setCreditsOpen]           = useState(false);
+  const [upsellShown, setUpsellShown]           = useState(false);
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
   const [cancelModalOpen, setCancelModalOpen]   = useState(false);
@@ -6102,7 +6168,25 @@ export function MediaDistributionPage() {
         });
         if (res.ok) {
           const d = await res.json();
-          setGlobalUsage({
+          const _usage = {
+            plan: d.plan ?? 'free',
+            isActive: d.isActive ?? false,
+            captions:  { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 },
+            video:     { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 },
+            strategies:{ used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 },
+            posts:     { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 },
+            textPosts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.text_posts_per_month ?? d.limits?.posts_per_month ?? 0 },
+          };
+          setGlobalUsage(_usage);
+          // Trigger upsell at 80% caption usage — only once per session
+          if (_usage.isActive && _usage.captions.limit > 0 && _usage.captions.limit !== -1) {
+            const pct = _usage.captions.used / _usage.captions.limit;
+            if (pct >= 0.8) {
+              setUpsellShown(prev => { if (!prev) { setTimeout(() => setPricingOpen(true), 1500); return true; } return prev; });
+            }
+          }
+          // REMOVE the old setGlobalUsage line below — replaced above
+          if (false) setGlobalUsage({
             plan: d.plan ?? 'free',
             isActive: d.isActive ?? false,
             captions:  { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 },
