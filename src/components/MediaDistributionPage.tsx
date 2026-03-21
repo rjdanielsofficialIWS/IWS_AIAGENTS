@@ -1481,12 +1481,23 @@ function InlinePostComposer({
         sourceText = aiDescription;
       }
       const mode = captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description';
-      const { data: { session: capSession } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession?.access_token ?? ''}` },
+      let { data: { session: capSession } } = await supabase.auth.getSession();
+      if (!capSession) { const r = await supabase.auth.refreshSession(); capSession = r.data.session; }
+      if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
+      let res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` },
         body: JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
       });
-      if (!res.ok) throw new Error('Generation failed');
+      if (res.status === 401) {
+        const r = await supabase.auth.refreshSession();
+        capSession = r.data.session;
+        if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
+        res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` },
+          body: JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
+        });
+      }
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || d.error || `Generation failed (${res.status})`); }
       const data = await res.json();
       if (data.captions) setGeneratedCaptions(data.captions);
       if (data.youTubeTitle) setYouTubeTitle(data.youTubeTitle);
@@ -1517,17 +1528,27 @@ function InlinePostComposer({
         if (!textAiDesc.trim()) throw new Error('Enter a description');
         source = textAiDesc;
       }
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
-        body: JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone, platforms: selPlatformKeys }),
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
+      const body = JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone, platforms: selPlatformKeys });
+      let res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body,
       });
+      if (res.status === 401) {
+        const r = await supabase.auth.refreshSession();
+        session = r.data.session;
+        if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
+        res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body,
+        });
+      }
       const data = await res.json();
       if (data.error === 'upgrade_required') {
         setTextAiError('upgrade_required');
         return;
       }
-      if (!res.ok) throw new Error(data.error || 'Generation failed');
+      if (!res.ok) throw new Error(data.message || data.error || `Generation failed (${res.status})`);
       if (!data.posts) throw new Error('No posts returned');
       setTextAiPosts(data.posts);
       const firstKey = Object.keys(data.posts)[0];
