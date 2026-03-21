@@ -1360,7 +1360,6 @@ function InlinePostComposer({
   const [threadTopicError, setThreadTopicError] = useState(false);
   const [threadVideoMode, setThreadVideoMode] = useState(false);
   const [threadTopicError, setThreadTopicError] = useState(false);
-  const [threadVideoMode, setThreadVideoMode] = useState(false);
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
