@@ -67,7 +67,11 @@ Deno.serve(async(req)=>{
       const raw=await callClaude("You are a content strategist. Return ONLY valid JSON.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\nReturn JSON: {\"short_clips\":[{\"title\":\"string\",\"angle\":\"string\",\"platform\":\"string\"}],\"blog_angles\":[{\"headline\":\"string\",\"angle\":\"string\"}],\"social_hooks\":[\"string\"],\"series_ideas\":[{\"series_name\":\"string\",\"concept\":\"string\"}],\"other_formats\":[{\"format\":\"string\",\"concept\":\"string\"}]}\n3-4 items per section.");
       result={ideas:JSON.parse(raw)};
     }else if(mode==="repurpose_posts"){
-      const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\nReturn JSON: {\"twitter\":[\"t1\",\"t2\",\"t3\",\"t4\",\"t5\",\"t6\",\"t7\",\"t8\",\"t9\",\"t10\"],\"linkedin\":[\"p1\",\"p2\",\"p3\",\"p4\",\"p5\",\"p6\",\"p7\",\"p8\",\"p9\",\"p10\"]}\nTweets under 270 chars. LinkedIn 100-300 words each.",4000);
+      const POSTS_STYLE:Record<string,string>={twitter:"10 X/Twitter posts. Each strictly under 270 characters. Sharp hook, punchy, one strong insight per post. No thread format.",linkedin:"10 LinkedIn posts. Each 100-300 words. Professional but human tone. Strong first line that makes people click 'see more'. Line breaks between short paragraphs. End with a CTA or question.",threads:"10 Threads posts. Each under 500 characters. Casual and conversational, like a text to a friend."};
+      const postPlatforms=[...new Set((selP.length>0?selP:["twitter","linkedin"]).map(p=>{const lp=p.toLowerCase();if(lp==="x"||lp==="twitter")return"twitter";if(lp==="linkedin")return"linkedin";if(lp==="threads")return"threads";return"twitter";}))];
+      const schema="{"+postPlatforms.map(p=>`"${p}":["post1","post2","post3","post4","post5","post6","post7","post8","post9","post10"]`).join(",")+"}" ;
+      const instructions=postPlatforms.map(p=>POSTS_STYLE[p]||p+": Write 10 engaging posts.").join("\n\n");
+      const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\n"+instructions+"\n\nReturn JSON: "+schema,4000);
       result={posts:JSON.parse(raw)};
     }else return new Response(JSON.stringify({error:"Invalid mode"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     return new Response(JSON.stringify(result),{headers:{...cors,"Content-Type":"application/json"}});

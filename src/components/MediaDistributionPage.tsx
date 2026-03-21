@@ -1422,7 +1422,7 @@ function InlinePostComposer({
     })();
   }, [userId, workspaceId]);
 
-  const [textTab, setTextTab]           = useState<'twitter' | 'linkedin'>('twitter');
+  const [textTab, setTextTab]           = useState<string>('twitter');
   const [xText, setXText]               = useState('');
   const [linkedinText, setLinkedinText] = useState('');
   const [showTextAi, setShowTextAi]     = useState(false);
@@ -1433,8 +1433,8 @@ function InlinePostComposer({
   const [textAiVideoObjectUrl, setTextAiVideoObjectUrl] = useState<string | null>(null);
   const [textAiLoading, setTextAiLoading] = useState(false);
   const [textAiError, setTextAiError]   = useState<string | null>(null);
-  const [textAiPosts, setTextAiPosts]   = useState<{ twitter: string[]; linkedin: string[] } | null>(null);
-  const [textAiSelected, setTextAiSelected] = useState<{ twitter: number | null; linkedin: number | null }>({ twitter: null, linkedin: null });
+  const [textAiPosts, setTextAiPosts]   = useState<Record<string, string[]> | null>(null);
+  const [textAiSelected, setTextAiSelected] = useState<Record<string, number | null>>({});
 
 
   // Multi-select for text post accounts
@@ -1443,7 +1443,7 @@ function InlinePostComposer({
 
   // AI edit state
   const [aiEditText, setAiEditText] = useState('');
-  const [editingIdx, setEditingIdx] = useState<{ tab: 'twitter' | 'linkedin'; idx: number } | null>(null);
+  const [editingIdx, setEditingIdx] = useState<{ tab: string; idx: number } | null>(null);
 
   const textPostAccounts = integrations
     .filter(i => ['x','twitter','linkedin','threads'].includes((i.profile||i.identifier||'').toLowerCase()))
@@ -1495,8 +1495,18 @@ function InlinePostComposer({
   };
 
   const handleTextAiGenerate = async () => {
+    const selPlatformKeys = [...new Set(
+      selectedTextAccounts
+        .map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return a?.platform || ''; })
+        .filter(Boolean)
+        .map(p => (p === 'x' || p === 'twitter') ? 'twitter' : p)
+    )];
+    if (selPlatformKeys.length === 0) {
+      setTextAiError('Select at least one account above first.');
+      return;
+    }
     setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null);
-    setTextAiSelected({ twitter: null, linkedin: null });
+    setTextAiSelected({});
     try {
       let source = '';
       if (textAiMode === 'from_video') {
@@ -1510,7 +1520,7 @@ function InlinePostComposer({
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
-        body: JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone }),
+        body: JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone, platforms: selPlatformKeys }),
       });
       const data = await res.json();
       if (data.error === 'upgrade_required') {
@@ -1520,17 +1530,18 @@ function InlinePostComposer({
       if (!res.ok) throw new Error(data.error || 'Generation failed');
       if (!data.posts) throw new Error('No posts returned');
       setTextAiPosts(data.posts);
+      const firstKey = Object.keys(data.posts)[0];
+      if (firstKey) setTextTab(firstKey);
     } catch (e: any) { setTextAiError(e.message || 'Something went wrong'); }
     finally { setTextAiLoading(false); }
   };
 
-  const useTextAiPost = (platform: 'twitter' | 'linkedin', idx: number) => {
+  const useTextAiPost = (platform: string, idx: number) => {
     const text = textAiPosts?.[platform]?.[idx] ?? '';
-    if (platform === 'twitter') setXText(text); else setLinkedinText(text);
+    if (platform === 'linkedin') setLinkedinText(text); else setXText(text);
     setTextAiSelected(prev => ({ ...prev, [platform]: idx }));
     setTextTab(platform);
     setAiEditText(text);
-    
     setEditingIdx(null);
   };
 
@@ -2317,32 +2328,37 @@ function InlinePostComposer({
                   <span className="flex items-center gap-2">
                     {textAiLoading
                       ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Analyzing…' : 'Generating…'}</>
-                      : <><Sparkles className="w-3.5 h-3.5" /> Generate 10 Posts Each</>}
+                      : <><Sparkles className="w-3.5 h-3.5" /> {(() => {
+                          const names = [...new Set(selectedTextAccounts.map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return a?.platform || ''; }).filter(Boolean).map(p => (p === 'x' || p === 'twitter') ? 'X' : p === 'linkedin' ? 'LinkedIn' : p === 'threads' ? 'Threads' : p.charAt(0).toUpperCase() + p.slice(1)))];
+                          return names.length > 0 ? `Generate 10 ${names.join(' & ')} Posts` : 'Select accounts above first';
+                        })()}</>}
                   </span>
                   {textAiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
                 </button>
 
                 {textAiPosts && (
                   <div className="space-y-3 pt-1">
-                    {/* Tab: X posts vs LinkedIn posts */}
+                    {/* Tabs: one per generated platform */}
                     <div className="flex gap-2">
-                      {([['twitter', 'x'] , ['linkedin', 'linkedin']] as [string, PlatformId][]).map(([key, iconId]) => (
-                        <button key={key} onClick={() => { setTextTab(key as any); setEditingIdx(null); }}
-                          className="flex-1 py-2 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5"
-                          style={{ borderColor: textTab === key ? GOLD : BORDER, background: textTab === key ? `${GOLD}15` : 'transparent', color: textTab === key ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                          <PlatformIcon id={iconId} size="sm" />
-                          {key === 'twitter'
-                            ? `X Posts (${textAiPosts.twitter.length})`
-                            : `LinkedIn Posts (${textAiPosts.linkedin.length})`}
-                        </button>
-                      ))}
+                      {Object.entries(textAiPosts).map(([key, posts]) => {
+                        const iconId: PlatformId = key === 'twitter' ? 'x' : key as PlatformId;
+                        const label = key === 'twitter' ? 'X' : key === 'linkedin' ? 'LinkedIn' : key === 'threads' ? 'Threads' : key.charAt(0).toUpperCase() + key.slice(1);
+                        return (
+                          <button key={key} onClick={() => { setTextTab(key); setEditingIdx(null); }}
+                            className="flex-1 py-2 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5"
+                            style={{ borderColor: textTab === key ? GOLD : BORDER, background: textTab === key ? `${GOLD}15` : 'transparent', color: textTab === key ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                            <PlatformIcon id={iconId} size="sm" />
+                            {label} ({posts.length})
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <div className="text-xs text-white/25">Click a post to select it · click ✏️ to edit inline</div>
 
                     <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1">
-                      {(textTab === 'twitter' ? textAiPosts.twitter : textAiPosts.linkedin).map((post, idx) => {
-                        const platform = textTab as 'twitter' | 'linkedin';
+                      {(textAiPosts[textTab] ?? []).map((post, idx) => {
+                        const platform = textTab;
                         const isSel     = textAiSelected[platform] === idx;
                         const isEditing = editingIdx?.tab === platform && editingIdx?.idx === idx;
                         const liveText  = isEditing ? aiEditText : post;
@@ -2410,7 +2426,7 @@ function InlinePostComposer({
                                 <span className="text-[10px] font-bold text-amber-400/70">editing…</span>
                               )}
                               <button
-                                onClick={e => { e.stopPropagation(); savePost(liveText, textTab === 'twitter' ? 'X Post' : 'LinkedIn Post'); }}
+                                onClick={e => { e.stopPropagation(); savePost(liveText, textTab === 'linkedin' ? 'LinkedIn Post' : textTab === 'threads' ? 'Threads Post' : 'X Post'); }}
                                 className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition hover:bg-white/8"
                                 style={{ color: GOLD_L, border: `1px solid ${GOLD}25` }}
                                 title="Save for later">
