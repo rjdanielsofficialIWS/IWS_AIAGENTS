@@ -2100,8 +2100,8 @@ function InlinePostComposer({
                   }}
                   disabled={textAiLoading}
                   style={{ background: GOLD + '22', border: '1.5px solid ' + GOLD + '88', color: GOLD }}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition hover:bg-white/8 disabled:opacity-40"
-                    style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)' }}>
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40"
+                    style={{ background: GOLD + '22', border: '1.5px solid ' + GOLD + '88', color: GOLD }}>
                     {textAiLoading ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</> : <><Sparkles className="w-3 h-3" /> AI Thread</>}
                   </button>
                   <button onClick={() => setThreadTweets(prev => [...prev, ''])}
@@ -2124,35 +2124,46 @@ function InlinePostComposer({
                 {threadVideoMode && threadVideoFile && <span className="text-xs" style={{ color: GOLD }}>&#10003; {threadVideoFile.name}</span>}
               </div>
               {threadVideoMode && (
-                <label className="flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed cursor-pointer transition-all py-4 mb-2"
-                  style={{ borderColor: threadVideoFile ? GOLD : GOLD + '40', background: threadVideoFile ? GOLD + '0a' : 'transparent' }}>
-                  <input type="file" accept="video/*,audio/*" className="hidden"
-                    onChange={async e => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      setThreadVideoFile(file);
-                      // Read as base64 for description fallback
-                      setThreadVideoTranscript('Video: ' + file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + 'MB). Repurpose into a viral thread based on the video title and context.');
-                    }} />
-                  {threadVideoFile ? (
-                    <div className="flex items-center gap-2">
-                      <Video className="w-4 h-4" style={{ color: GOLD }} />
-                      <span className="text-xs font-medium" style={{ color: GOLD }}>{threadVideoFile.name}</span>
-                      <button onClick={e => { e.preventDefault(); setThreadVideoFile(null); setThreadVideoTranscript(''); }}
-                        className="ml-1 text-white/30 hover:text-red-400 transition text-xs">&#x2715;</button>
-                    </div>
+                <>
+                  {/* Video upload dropzone */}
+                  {!threadVideoFile ? (
+                    <label className="flex flex-col items-center justify-center w-full rounded-xl border-2 border-dashed cursor-pointer transition-all py-4 mb-2"
+                      style={{ borderColor: GOLD + '40', background: 'transparent' }}>
+                      <input type="file" accept="video/*,audio/*" className="hidden"
+                        onChange={e => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          setThreadVideoFile(file);
+                          setThreadVideoTranscript('Video: ' + file.name + ' (' + (file.size / 1024 / 1024).toFixed(1) + 'MB). Repurpose the key insights, story and talking points from this video into a viral thread.');
+                        }} />
+                      <div className="flex flex-col items-center gap-1">
+                        <Video className="w-5 h-5" style={{ color: GOLD + '80' }} />
+                        <span className="text-xs" style={{ color: GOLD + '99' }}>Click to upload video or audio</span>
+                        <span className="text-[10px]" style={{ color: GOLD + '55' }}>MP4, MOV, MP3, M4A supported</span>
+                      </div>
+                    </label>
                   ) : (
-                    <div className="flex flex-col items-center gap-1">
-                      <Video className="w-5 h-5" style={{ color: GOLD + '80' }} />
-                      <span className="text-xs" style={{ color: GOLD + '99' }}>Click to upload video or audio</span>
-                      <span className="text-[10px]" style={{ color: GOLD + '55' }}>MP4, MOV, MP3, M4A supported</span>
+                    <div className="relative rounded-xl overflow-hidden mb-2" style={{ border: '1.5px solid ' + GOLD + '60' }}>
+                      <video src={URL.createObjectURL(threadVideoFile)} controls
+                        className="w-full max-h-48 object-cover" style={{ background: '#000' }} />
+                      <button onClick={() => { setThreadVideoFile(null); setThreadVideoTranscript(''); }}
+                        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-black/70 hover:bg-red-500/80 transition"
+                        style={{ color: 'white' }}>
+                        <X className="w-3 h-3" />
+                      </button>
+                      <div className="px-3 py-1.5 text-[10px] font-medium truncate" style={{ color: GOLD, background: GOLD + '10' }}>{threadVideoFile.name}</div>
                     </div>
                   )}
-                </label>
+                  {/* Optional context input always shown in video mode */}
+                  <input value={threadTopic} onChange={e => { setThreadTopic(e.target.value); setThreadTopicError(false); }}
+                    placeholder="Optional: describe what the video is about..."
+                    className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/20 outline-none mb-2"
+                    style={{ borderColor: BORDER }} />
+                </>
               )}
-              {(!threadVideoMode || !mediaFiles || mediaFiles.length === 0) && (
+              {!threadVideoMode && (
                 <input value={threadTopic} onChange={e => { setThreadTopic(e.target.value); setThreadTopicError(false); }}
-                  placeholder={threadVideoMode ? "Optional: add context..." : "Thread topic or idea..."}
+                  placeholder="Thread topic or idea..."
                   className="w-full rounded-lg border bg-black/30 px-3 py-2 text-xs text-white placeholder-white/20 outline-none"
                   style={{ borderColor: threadTopicError ? '#ef4444' : BORDER }}
                 />
