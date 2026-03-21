@@ -1,6 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-const LATE_API_KEY=Deno.env.get("LATE_API_KEY")??"";
-if(!LATE_API_KEY){console.error("LATE_API_KEY environment variable is not set");}
+const LATE_API_KEY="sk_1adb5186f3be9a2321b4c2ede480187d250c324f03fce819cc22632d19abb7c2";
 const LATE_API_URL="https://getlate.dev/api/v1";
 const MEDIA_REQUIRED=new Set(["youtube","tiktok","instagram"]);
 const VIDEO_ONLY=new Set(["youtube","tiktok"]);
@@ -85,7 +84,7 @@ Deno.serve(async(req)=>{
     }
     if(scheduleDate){lb.scheduledFor=new Date(scheduleDate).toISOString();}else{lb.publishNow=true;}
     console.log("API request:",JSON.stringify(lb));
-    const lateRes=await fetch(LATE_API_URL+"/posts",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb),redirect:"follow"});
+    const lateRes=await fetch(LATE_API_URL+"/posts?profileId="+profile.profile_key,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb),redirect:"follow"});
     const result=await lateRes.json();
     const isError=!lateRes.ok;
     const errorMsg=isError?(result.message||result.error||"API error "+lateRes.status):null;
