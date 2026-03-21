@@ -1108,7 +1108,7 @@ function ImagePreviewCard({
 
   return (
     <div className="relative rounded-xl border overflow-hidden group" style={{ borderColor: BORDER }}>
-      <img src={objectUrl} className="w-full object-cover max-h-64" alt={file.name} />
+      <img src={objectUrl} className="w-full block" style={{ maxHeight: '60vh', objectFit: 'contain' }} alt={file.name} />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition" />
       <button onClick={onRemove}
         className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
