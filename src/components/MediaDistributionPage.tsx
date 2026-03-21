@@ -899,6 +899,23 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
   );
 }
 
+// ─── ThreadVideoPlayer ────────────────────────────────────────────────────────
+const ThreadVideoPlayer = React.memo(function ThreadVideoPlayer({
+  src, fileName, onRemove,
+}: { src: string; fileName: string; onRemove: () => void }) {
+  return (
+    <div className="relative rounded-xl overflow-hidden mb-2" style={{ border: '1.5px solid ' + GOLD + '60' }}>
+      <video src={src} controls className="w-full" style={{ background: '#000', display: 'block', maxHeight: '60vh' }} />
+      <button onClick={onRemove}
+        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-black/70 hover:bg-red-500/80 transition"
+        style={{ color: 'white' }}>
+        <X className="w-3 h-3" />
+      </button>
+      <div className="px-3 py-1.5 text-[10px] font-medium truncate" style={{ color: GOLD, background: GOLD + '10' }}>{fileName}</div>
+    </div>
+  );
+});
+
 // ─── VideoPreviewCard ─────────────────────────────────────────────────────────
 
 function VideoPreviewCard({
@@ -911,6 +928,7 @@ function VideoPreviewCard({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration]       = useState(0);
   const [showVolume, setShowVolume]   = useState(false);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<string>('16/9');
 
   useEffect(() => {
     const v = videoRef.current;
@@ -926,7 +944,14 @@ function VideoPreviewCard({
   };
 
   const handleTimeUpdate     = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
-  const handleLoadedMetadata = () => setDuration(videoRef.current?.duration ?? 0);
+  const handleLoadedMetadata = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    setDuration(v.duration ?? 0);
+    if (v.videoWidth && v.videoHeight) {
+      setVideoAspectRatio(`${v.videoWidth}/${v.videoHeight}`);
+    }
+  };
   const handleEnded          = () => { setPlaying(false); };
 
   const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -968,7 +993,7 @@ function VideoPreviewCard({
 
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: '#000' }}>
-      <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
+      <div className="relative bg-black" style={{ aspectRatio: videoAspectRatio }}>
         <video
           ref={videoRef}
           src={objectUrl}
@@ -2083,7 +2108,8 @@ function InlinePostComposer({
                 <div className="flex items-center gap-2">
                   <button onClick={async () => {
                     const desc = threadTopic.trim();
-                    if (!desc && !threadVideoMode) return;
+                    if (threadVideoMode && !threadVideoFile) return;
+                    if (!threadVideoMode && !desc) { setThreadTopicError(true); return; }
                     setTextAiLoading(true); setTextAiError(null);
                     try {
                       const { data: { session } } = await supabase.auth.getSession();
@@ -2145,16 +2171,11 @@ function InlinePostComposer({
                       </div>
                     </label>
                   ) : (
-                    <div className="relative rounded-xl overflow-hidden mb-2" style={{ border: '1.5px solid ' + GOLD + '60' }}>
-                      <video src={threadVideoUrl} controls
-                        className="w-full" style={{ background: '#000', display: 'block', maxHeight: '60vh' }} />
-                      <button onClick={() => { if (threadVideoUrl) URL.revokeObjectURL(threadVideoUrl); setThreadVideoFile(null); setThreadVideoUrl(''); setThreadVideoTranscript(''); }}
-                        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-black/70 hover:bg-red-500/80 transition"
-                        style={{ color: 'white' }}>
-                        <X className="w-3 h-3" />
-                      </button>
-                      <div className="px-3 py-1.5 text-[10px] font-medium truncate" style={{ color: GOLD, background: GOLD + '10' }}>{threadVideoFile.name}</div>
-                    </div>
+                    <ThreadVideoPlayer
+                      src={threadVideoUrl}
+                      fileName={threadVideoFile.name}
+                      onRemove={() => { if (threadVideoUrl) URL.revokeObjectURL(threadVideoUrl); setThreadVideoFile(null); setThreadVideoUrl(''); setThreadVideoTranscript(''); }}
+                    />
                   )}
                   {/* Optional context input always shown in video mode */}
                   <input value={threadTopic} onChange={e => { setThreadTopic(e.target.value); setThreadTopicError(false); }}
@@ -7369,6 +7390,23 @@ export function MediaDistributionPage() {
           } else { loadIntegrations(force); }
         }}
         onDisconnectPlatform={handleDisconnectPlatform}
+        currentUser={currentUser}
+        workspaceId={activeWorkspaceId}
+        isSubscriptionActive={!!(subscription?.status === 'active' || subscription?.stripe_customer_id?.startsWith('promo_') || (subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date()))}
+        onNeedsPricing={() => setPricingOpen(true)}
+      />
+
+      <MediaMachineAuthModal
+        open={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={() => {
+          setAuthModalOpen(false);
+        }}
+      />
+    </div>
+  );
+}
+leDisconnectPlatform}
         currentUser={currentUser}
         workspaceId={activeWorkspaceId}
         isSubscriptionActive={!!(subscription?.status === 'active' || subscription?.stripe_customer_id?.startsWith('promo_') || (subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date()))}
