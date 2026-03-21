@@ -1,7 +1,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const LATE_API_KEY=Deno.env.get("LATE_API_KEY")??"";
 if(!LATE_API_KEY){console.error("LATE_API_KEY environment variable is not set");}
-const LATE_API_URL="https://getlate.dev/api/v1";
+const LATE_API_URL="https://zernio.com/api/v1";
 const MEDIA_REQUIRED=new Set(["youtube","tiktok","instagram"]);
 const VIDEO_ONLY=new Set(["youtube","tiktok"]);
 const PLAN_LIMITS={starter:{posts:100,platforms:3},viral:{posts:100,platforms:-1},agency:{posts:-1,platforms:-1}};
