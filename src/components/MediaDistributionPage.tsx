@@ -1352,6 +1352,9 @@ function InlinePostComposer({
   }, [initialVideoUrl]);
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
+  type PostFormat = 'standard' | 'carousel' | 'thread';
+  const [postFormat, setPostFormat]     = useState<PostFormat>('standard');
+  const [threadTweets, setThreadTweets] = useState<string[]>(['', '']);
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
@@ -1530,6 +1533,13 @@ function InlinePostComposer({
       setSubmitError(`${names} only accept video files, not images. Please upload a video instead.`);
       return;
     }
+    // Thread format validation
+    if (postFormat === 'thread') {
+      const validTweets = threadTweets.filter(t => t.trim());
+      if (validTweets.length < 2) { setSubmitError('Add at least 2 tweets to create a thread.'); return; }
+      if (validTweets.some(t => t.length > 280)) { setSubmitError('One or more tweets exceed 280 characters.'); return; }
+    }
+
     setSubmitting(true); setSubmitError(null);
     try {
       const mediaUrls: string[] = [];
@@ -1537,12 +1547,18 @@ function InlinePostComposer({
       if (videoUpload.status === 'done' && (videoUpload as any).url) mediaUrls.push((videoUpload as any).url);
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
 
-      if (captionType === 'manual') {
+      // Handle thread format — post as thread to all selected platforms
+      if (postFormat === 'thread') {
+        const validTweets = threadTweets.filter(t => t.trim());
+        const platformIds = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean);
+        await ayrsharePost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null });
+      } else if (captionType === 'manual') {
         if (selectedIntegrations.length === 1) {
           const platforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean);
           const isYT = platforms.includes('youtube');
           const cap = manualCaptions[platforms[0]] || content;
-          await ayrsharePost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}) });
+          const isCarousel = postFormat === 'carousel' && mediaUrls.length > 1;
+          await ayrsharePost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), ...(isCarousel ? { carousel: true } : {}) });
         } else {
           const postPromises = selectedIntegrations.map(async (integId) => {
             const integ = integrations.find(i => i.id === integId);
@@ -1580,6 +1596,7 @@ function InlinePostComposer({
         setContent(''); setVideoFile(null); setVideoObjectUrl(null);
         setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]);
         setGeneratedCaptions(null); setManualCaptions({}); setSelectedIntegrations([]);
+        setPostFormat('standard'); setThreadTweets(['', '']);
         onSuccess?.();
       }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
@@ -1674,6 +1691,72 @@ function InlinePostComposer({
               </div>
             )}
           </div>
+
+          {/* Post Format Selector */}
+          {(() => {
+            const selPlatforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return (i?.profile || i?.id || '').toLowerCase(); });
+            const hasCarousel = selPlatforms.some(p => ['instagram','facebook','linkedin','threads'].includes(p));
+            const hasThread   = selPlatforms.some(p => ['twitter','x','threads','linkedin','bluesky'].includes(p));
+            if (!hasCarousel && !hasThread) return null;
+            return (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Format</span>
+                <button onClick={() => setPostFormat('standard')}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                  style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                  Standard
+                </button>
+                {hasCarousel && (
+                  <button onClick={() => setPostFormat('carousel')}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                    style={{ borderColor: postFormat === 'carousel' ? '#38bdf8' : BORDER, background: postFormat === 'carousel' ? 'rgba(56,189,248,0.15)' : 'transparent', color: postFormat === 'carousel' ? '#7dd3fc' : 'rgba(255,255,255,0.4)' }}>
+                    🖼 Carousel
+                  </button>
+                )}
+                {hasThread && (
+                  <button onClick={() => setPostFormat('thread')}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
+                    style={{ borderColor: postFormat === 'thread' ? '#a78bfa' : BORDER, background: postFormat === 'thread' ? 'rgba(167,139,250,0.15)' : 'transparent', color: postFormat === 'thread' ? '#c4b5fd' : 'rgba(255,255,255,0.4)' }}>
+                    🧵 Thread
+                  </button>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Thread composer — shown when thread format selected */}
+          {postFormat === 'thread' && (
+            <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: 'rgba(167,139,250,0.3)', background: 'rgba(167,139,250,0.05)' }}>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase tracking-wider" style={{ color: '#c4b5fd' }}>🧵 Thread Posts</span>
+                <button onClick={() => setThreadTweets(prev => [...prev, ''])}
+                  disabled={threadTweets.length >= 10}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40"
+                  style={{ background: 'rgba(167,139,250,0.2)', color: '#c4b5fd' }}>
+                  <Plus className="w-3 h-3" /> Add Tweet
+                </button>
+              </div>
+              {threadTweets.map((tweet, i) => (
+                <div key={i} className="rounded-xl border overflow-hidden" style={{ borderColor: tweet.length > 280 ? '#f87171' : 'rgba(167,139,250,0.25)' }}>
+                  <div className="flex items-center gap-2 px-3 py-1.5 border-b" style={{ borderColor: 'rgba(167,139,250,0.15)', background: 'rgba(0,0,0,0.2)' }}>
+                    <span className="text-[10px] font-black" style={{ color: '#a78bfa' }}>#{i + 1}</span>
+                    <span className="ml-auto text-[10px]" style={{ color: tweet.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{tweet.length}/280</span>
+                    {threadTweets.length > 2 && (
+                      <button onClick={() => setThreadTweets(prev => prev.filter((_, xi) => xi !== i))}
+                        className="w-4 h-4 flex items-center justify-center rounded hover:bg-red-500/20 text-white/20 hover:text-red-400 transition">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                  <textarea value={tweet}
+                    onChange={e => setThreadTweets(prev => prev.map((x, xi) => xi === i ? e.target.value : x))}
+                    placeholder={i === 0 ? 'Start your thread here…' : `Tweet ${i + 1}…`}
+                    rows={3}
+                    className="w-full bg-transparent px-3 py-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="flex items-center gap-2 px-1">
             <span className="text-xs font-bold text-white/25 uppercase tracking-wider mr-1">Add media</span>
