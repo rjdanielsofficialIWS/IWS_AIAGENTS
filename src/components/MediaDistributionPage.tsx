@@ -6025,49 +6025,52 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
 
   return (
     <>
-      <aside className="hidden md:flex shrink-0 flex-col border-r h-full overflow-hidden" style={{ width: 220, background: 'rgba(255,255,255,0.018)', borderColor: 'rgba(255,255,255,0.07)' }}>
-        {/* Logo */}
-        <div style={{ padding: '20px 20px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 34, height: 34, borderRadius: 11, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 4px 16px ${GOLD}40`, flexShrink: 0 }}>
+      <aside className="hidden md:flex w-52 shrink-0 flex-col border-r h-full overflow-hidden" style={{ background: SURFACE, borderColor: BORDER }}>
+        <div className="px-5 py-5 border-b" style={{ borderColor: BORDER }}>
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+              style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
               <Send className="w-4 h-4 text-black" />
             </div>
-            <div style={{ lineHeight: 1 }}>
-              <div style={{ fontSize: 12, fontWeight: 900, color: 'white', letterSpacing: '0.06em' }}>INFINITE</div>
-              <div style={{ fontSize: 10, fontWeight: 800, marginTop: 2, color: GOLD, letterSpacing: '0.12em' }}>MEDIA</div>
+            <div className="leading-none">
+              <div className="text-xs font-black text-white">INFINITE</div>
+              <div className="text-xs font-bold mt-0.5" style={{ color: GOLD }}>MEDIA</div>
             </div>
           </div>
         </div>
-
-        {/* Workspace switcher */}
         {workspaces.length > 0 && (
-          <div style={{ padding: '12px 12px 0', position: 'relative' }}>
+          <div className="px-3 pt-3 relative">
             <button
               onClick={() => setWsSwitcherOpen(v => !v)}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 10, fontSize: 11, fontWeight: 700, cursor: 'pointer', background: activeWs ? `${activeWs.color}10` : 'rgba(255,255,255,0.04)', border: `1px solid ${activeWs ? activeWs.color + '35' : 'rgba(255,255,255,0.09)'}`, color: activeWs ? activeWs.color : 'rgba(255,255,255,0.35)', transition: 'all 0.15s' }}>
-              {activeWs && <span style={{ width: 7, height: 7, borderRadius: '50%', background: activeWs.color, flexShrink: 0 }} />}
-              <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{activeWs ? activeWs.name : 'Personal'}</span>
-              <ChevronDown className="w-3 h-3 shrink-0" style={{ opacity: 0.5 }} />
+              className="w-full flex items-center gap-2 px-2.5 py-2 rounded-xl text-xs font-bold transition hover:bg-white/5"
+              style={{ border: `1px solid ${activeWs ? activeWs.color + '40' : BORDER}`, color: activeWs ? activeWs.color : 'rgba(255,255,255,0.3)', background: activeWs ? `${activeWs.color}0d` : 'transparent' }}>
+              {activeWs && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: activeWs.color }} />}
+              <span className="truncate flex-1 text-left">{activeWs ? activeWs.name : 'Personal'}</span>
+              <ChevronDown className="w-3 h-3 shrink-0 opacity-50" />
             </button>
             {wsSwitcherOpen && (
-              <div style={{ position: 'absolute', left: 12, right: 12, top: 'calc(100% + 4px)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.1)', background: '#1a1a1f', boxShadow: '0 12px 40px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 50 }}>
-                <button onClick={() => { onSwitchWorkspace(null); setWsSwitcherOpen(false); }}
-                  style={{ width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 11, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', color: !activeWorkspaceId ? GOLD_L : 'rgba(255,255,255,0.45)', transition: 'background 0.15s' }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+              <div className="absolute left-3 right-3 top-full mt-1 rounded-xl border z-50 overflow-hidden shadow-xl"
+                style={{ background: '#1a1a1f', borderColor: BORDER }}>
+                <button
+                  onClick={() => { onSwitchWorkspace(null); setWsSwitcherOpen(false); }}
+                  className="w-full text-left px-3 py-2 text-xs font-bold transition hover:bg-white/5"
+                  style={{ color: !activeWorkspaceId ? GOLD_L : 'rgba(255,255,255,0.5)' }}>
                   Personal
                 </button>
                 {workspaces.map(ws => (
-                  <button key={ws.id} onClick={() => { onSwitchWorkspace(ws.id); setWsSwitcherOpen(false); }}
-                    style={{ width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 11, fontWeight: 700, background: 'none', border: 'none', cursor: 'pointer', color: activeWorkspaceId === ws.id ? GOLD_L : 'rgba(255,255,255,0.45)', display: 'flex', alignItems: 'center', gap: 8, transition: 'background 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: ws.color, flexShrink: 0 }} />
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ws.name}</span>
+                  <button key={ws.id}
+                    onClick={() => { onSwitchWorkspace(ws.id); setWsSwitcherOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs font-bold transition hover:bg-white/5 flex items-center gap-2"
+                    style={{ color: activeWorkspaceId === ws.id ? GOLD_L : 'rgba(255,255,255,0.5)' }}>
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: ws.color }} />
+                    <span className="truncate">{ws.name}</span>
                   </button>
                 ))}
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)' }}>
-                  <button onClick={() => { onManageWorkspaces(); setWsSwitcherOpen(false); }}
-                    style={{ width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 11, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.25)', transition: 'background 0.15s' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.05)')} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
+                <div className="border-t" style={{ borderColor: BORDER }}>
+                  <button
+                    onClick={() => { onManageWorkspaces(); setWsSwitcherOpen(false); }}
+                    className="w-full text-left px-3 py-2 text-xs font-semibold transition hover:bg-white/5"
+                    style={{ color: 'rgba(255,255,255,0.25)' }}>
                     Manage workspaces…
                   </button>
                 </div>
@@ -6075,51 +6078,40 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
             )}
           </div>
         )}
-
-        {/* Nav items */}
-        <nav style={{ padding: '12px 10px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {navItems.map(item => {
-            const active = view === item.id;
-            return (
-              <button key={item.id} onClick={() => setView(item.id)}
-                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 12, fontSize: 13.5, fontWeight: 700, cursor: 'pointer', border: 'none', background: active ? `linear-gradient(135deg, ${GOLD}18, ${GOLD}0a)` : 'transparent', color: active ? GOLD_L : 'rgba(255,255,255,0.38)', boxShadow: active ? `inset 0 0 0 1px ${GOLD}28` : 'none', transition: 'all 0.15s', textAlign: 'left' }}
-                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
-                onMouseLeave={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}>
-                <span style={{ color: active ? GOLD : 'rgba(255,255,255,0.3)', flexShrink: 0 }}>{item.icon}</span>
-                {item.label}
-              </button>
-            );
-          })}
+        <nav className="px-3 py-4 space-y-0.5">
+          {navItems.map(item => (
+            <button key={item.id} onClick={() => setView(item.id)}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition"
+              style={{ background: view === item.id ? `${GOLD}15` : 'transparent', color: view === item.id ? GOLD_L : 'rgba(255,255,255,0.4)', borderLeft: view === item.id ? `2px solid ${GOLD}` : '2px solid transparent' }}>
+              {item.icon} {item.label}
+            </button>
+          ))}
         </nav>
-
-        {/* Channels section */}
-        <div style={{ padding: '12px 10px 16px', borderTop: '1px solid rgba(255,255,255,0.07)', marginTop: 'auto' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', marginBottom: 10 }}>
-            <span style={{ fontSize: 10, fontWeight: 800, color: 'rgba(255,255,255,0.22)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Channels</span>
-            <button onClick={onOpenConnect} style={{ width: 22, height: 22, borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.28)', transition: 'all 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'white'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.28)'; }}>
+        <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: BORDER }}>
+          <div className="flex items-center justify-between px-1 mb-2">
+            <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Channels</span>
+            <button onClick={onOpenConnect} className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
           {integrations.length === 0 ? (
-            <button onClick={onOpenConnect} style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 10, border: '1px dashed rgba(255,255,255,0.12)', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.28)', background: 'transparent', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${GOLD}40`; (e.currentTarget as HTMLElement).style.color = GOLD; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.28)'; }}>
+            <button onClick={onOpenConnect} className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold transition hover:bg-white/5"
+              style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.3)' }}>
               <Plus className="w-3.5 h-3.5" /> Add channels
             </button>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 2, maxHeight: 176, overflowY: 'auto' }}>
+            <div className="space-y-0.5 max-h-44 overflow-y-auto">
               {integrations.map(int => (
-                <div key={int.id} className="group" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 8px', borderRadius: 9, transition: 'background 0.15s', cursor: 'default' }}
-                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'}
-                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}>
+                <div key={int.id} className="group flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-white/5 transition">
                   <PlatformIcon id={int.profile || int.identifier} size="sm" picture={int.picture} />
-                  <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.45)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{int.name}</span>
-                  <button onClick={onOpenConnect} title="Manage / Disconnect" style={{ background: 'none', border: 'none', cursor: 'pointer', opacity: 0, transition: 'opacity 0.15s' }} className="md:group-hover:opacity-100">
-                    <Link2Off className="w-3 h-3" style={{ color: 'rgba(248,113,113,0.6)' }} />
+                  <span className="text-xs text-white/50 truncate flex-1">{int.name}</span>
+                  <button
+                    onClick={onOpenConnect}
+                    className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition"
+                    title="Manage / Disconnect">
+                    <Link2Off className="w-3 h-3 text-red-400/60 hover:text-red-400" />
                   </button>
-                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} className="md:group-hover:hidden" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0 md:group-hover:hidden" />
                 </div>
               ))}
             </div>
@@ -6127,25 +6119,25 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
         </div>
       </aside>
 
-      {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch"
-        style={{ background: 'rgba(10,10,12,0.97)', borderTop: '1px solid rgba(255,255,255,0.08)', paddingBottom: 'env(safe-area-inset-bottom)', backdropFilter: 'blur(20px)' }}>
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t"
+        style={{ background: '#0d0d0f', borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {navItems.map(item => (
           <button key={item.id} onClick={() => setView(item.id)}
             className="relative flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
-            style={{ color: view === item.id ? GOLD : 'rgba(255,255,255,0.3)', background: 'none', border: 'none', cursor: 'pointer' }}>
+            style={{ color: view === item.id ? GOLD : 'rgba(255,255,255,0.35)' }}>
             {view === item.id && (
-              <span style={{ position: 'absolute', top: 0, left: '50%', transform: 'translateX(-50%)', height: 2, width: 24, borderRadius: 99, background: `linear-gradient(90deg, ${GOLD_D}, ${GOLD_L})` }} />
+              <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full" style={{ background: GOLD }} />
             )}
             {item.icon}
-            <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.02em' }}>{item.label}</span>
+            <span className="text-[10px] font-bold tracking-wide">{item.label}</span>
           </button>
         ))}
+
         <button onClick={onOpenConnect}
-          className="flex-1 flex flex-col items-center justify-center gap-1 py-3"
-          style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.3)' : GOLD, background: 'none', border: 'none', cursor: 'pointer' }}>
+          className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
+          style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
           <Link2 className="w-5 h-5" />
-          <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.02em' }}>
+          <span className="text-[10px] font-bold tracking-wide">
             {integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}
           </span>
         </button>
@@ -6169,46 +6161,42 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { ema
   return (
     <div ref={ref} style={{ position: 'relative' }}>
       <button onClick={() => setOpen(v => !v)}
-        style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '4px 8px 4px 4px', borderRadius: 10, background: open ? 'rgba(255,255,255,0.07)' : 'transparent', border: `1px solid ${open ? `${GOLD}40` : 'rgba(255,255,255,0.09)'}`, cursor: 'pointer', transition: 'all 0.15s' }}>
-        <div style={{ width: 28, height: 28, borderRadius: 8, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10.5, fontWeight: 900, color: '#0d0d0d', flexShrink: 0, letterSpacing: '0.02em' }}>
+        style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 8px 4px 4px', borderRadius: 10, background: open ? 'rgba(255,255,255,0.08)' : 'transparent', border: `1px solid ${open ? 'rgba(214,178,94,0.3)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer', transition: 'all 0.15s' }}>
+        <div style={{ width: 26, height: 26, borderRadius: 7, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 800, color: '#0d0d0d', flexShrink: 0 }}>
           {initials}
         </div>
-        <span className="hidden sm:block" style={{ fontSize: 12, color: 'rgba(255,255,255,0.5)', maxWidth: 130, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
-        {(() => {
-          const _tbPromo = subscription?.stripe_customer_id?.startsWith('promo_');
-          const _tbTrial = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date();
-          const _tbActive = subscription?.status === 'active' || _tbPromo || _tbTrial;
-          return _tbActive ? (
-            <button onClick={onManagePlan} title={_tbTrial ? 'Free trial active' : 'Manage subscription'}
-              style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', letterSpacing: '0.07em', textTransform: 'uppercase', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
-              {subscription!.plan}{_tbTrial ? ' trial' : ''}
-            </button>
-          ) : user ? (
-            <button onClick={onManagePlan} title="Upgrade plan"
-              style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.45)', letterSpacing: '0.07em', textTransform: 'uppercase', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', flexShrink: 0, transition: 'all 0.15s' }}>
-              upgrade
-            </button>
-          ) : null;
-        })()}
-        <ChevronDown className="w-3 h-3 hidden sm:block" style={{ color: 'rgba(255,255,255,0.25)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+        <span className="hidden sm:block" style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</span>
+        {(() => { const _tbPromo = subscription?.stripe_customer_id?.startsWith('promo_'); const _tbTrial = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date(); const _tbActive = subscription?.status === 'active' || _tbPromo || _tbTrial; return _tbActive ? (
+          <button onClick={onManagePlan} title={_tbTrial ? 'Free trial active' : 'Manage subscription'}
+            style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', letterSpacing: '0.06em', textTransform: 'uppercase', border: 'none', cursor: 'pointer', flexShrink: 0 }}>
+            {subscription!.plan}{_tbTrial ? ' trial' : ''}
+          </button>
+        ) : user ? (
+          <button onClick={onManagePlan} title="Upgrade plan"
+            style={{ fontSize: 9, fontWeight: 800, padding: '2px 7px', borderRadius: 20, background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.5)', letterSpacing: '0.06em', textTransform: 'uppercase', border: '1px solid rgba(255,255,255,0.12)', cursor: 'pointer', flexShrink: 0 }}>
+            upgrade
+          </button>
+        ) : null; })()}
+        <ChevronDown className="w-3 h-3 hidden sm:block" style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 8px)', right: 0, minWidth: 210, borderRadius: 14, background: 'linear-gradient(160deg, #1c1c1c, #141414)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.04)', overflow: 'hidden', zIndex: 200, animation: 'dropIn 0.15s cubic-bezier(0.34,1.56,0.64,1)' }}>
-          <div style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-            <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)', marginBottom: 3, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Signed in as</div>
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, borderRadius: 12, background: 'linear-gradient(160deg, #1a1a1a, #161616)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 200, animation: 'dropIn 0.15s cubic-bezier(0.34,1.56,0.64,1)' }}>
+          <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+            <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Signed in as</div>
             <div style={{ fontSize: 13, color: 'white', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
           </div>
           <div style={{ padding: '6px' }}>
             <button onClick={() => { setOpen(false); onSignOut(); }}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 12px', borderRadius: 9, fontSize: 13, fontWeight: 600, color: '#fca5a5', background: 'transparent', border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.1)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 8, fontSize: 13, fontWeight: 600, color: '#fca5a5', background: 'transparent', border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
+              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(239,68,68,0.12)')}
+              onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            >
               <LogOut className="w-3.5 h-3.5" /> Sign Out
             </button>
           </div>
         </div>
       )}
-      <style>{`@keyframes dropIn { from { opacity: 0; transform: translateY(-8px) scale(0.96); } to { opacity: 1; transform: none; } }`}</style>
+      <style>{`@keyframes dropIn { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }`}</style>
     </div>
   );
 }
@@ -6223,53 +6211,46 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
   onManagePlan?: () => void;
 }) {
   return (
-    <div className="shrink-0 flex items-center justify-between px-4 md:px-5" style={{ height: 54, background: 'rgba(255,255,255,0.018)', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-        <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.28)', transition: 'color 0.15s', textDecoration: 'none' }}
-          onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.7)')}
-          onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.28)')}>
+    <div className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
+      <div className="flex items-center gap-3">
+        <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-white transition">
           <ArrowLeft className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">Home</span>
+          <span className="hidden sm:inline">Back</span>
         </Link>
         <div className="flex md:hidden items-center gap-2">
-          <div style={{ width: 26, height: 26, borderRadius: 8, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 2px 10px ${GOLD}40` }}>
+          <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: `linear-gradient(135deg, ${GOLD}, ${GOLD_L})` }}>
             <Send className="w-3 h-3 text-black" />
           </div>
-          <span style={{ fontSize: 12, fontWeight: 900, letterSpacing: '0.08em', color: 'white' }}>INFINITE <span style={{ color: GOLD }}>MEDIA</span></span>
+          <span className="text-xs font-black tracking-widest text-white">INFINITE <span style={{ color: GOLD }}>MEDIA</span></span>
         </div>
       </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div className="flex items-center gap-2">
         {user ? (
           <>
             {integrations.length > 0 && (
-              <div className="hidden sm:flex items-center gap-1.5" style={{ fontSize: 11, fontWeight: 700, color: '#4ade80', marginRight: 4 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', display: 'inline-block' }} />
+              <div className="hidden sm:flex items-center gap-1.5 text-xs text-green-400 font-semibold mr-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-400" />
                 <span>{integrationsLoading ? 'Syncing…' : `${integrations.length} channel${integrations.length !== 1 ? 's' : ''}`}</span>
               </div>
             )}
             <button onClick={() => onRefresh()} disabled={integrationsLoading}
-              style={{ width: 30, height: 30, borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.28)', transition: 'all 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; (e.currentTarget as HTMLElement).style.color = 'white'; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.28)'; }}>
+              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition disabled:opacity-30">
               <RefreshCw className={`w-3.5 h-3.5 ${integrationsLoading ? 'animate-spin' : ''}`} />
             </button>
             <button onClick={onOpenConnect}
-              className="hidden sm:flex items-center gap-1.5"
-              style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid rgba(255,255,255,0.1)', fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.45)', background: 'transparent', cursor: 'pointer', transition: 'all 0.15s' }}
-              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${GOLD}50`; (e.currentTarget as HTMLElement).style.color = GOLD_L; }}
-              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}>
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-bold transition hover:bg-white/5"
+              style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
               <Plus className="w-3 h-3" /> {integrations.length > 0 ? 'Add Channel' : 'Connect'}
             </button>
             <UserMenu user={user} onSignOut={onSignOut} subscription={subscription} onManagePlan={onManagePlan} />
           </>
         ) : (
           <button onClick={onSignIn}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 800, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000', border: 'none', cursor: 'pointer', boxShadow: `0 2px 12px ${GOLD}40`, transition: 'filter 0.15s' }}
-            onMouseEnter={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'}
-            onMouseLeave={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'}>
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
             <Link2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Sign In to Connect</span>
+            <span className="hidden sm:inline">Already have an account? Sign In to Connect</span>
             <span className="sm:hidden">Sign In</span>
           </button>
         )}
@@ -6917,22 +6898,20 @@ export function MediaDistributionPage() {
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: BG, backgroundAttachment: 'fixed', fontFamily: "'DM Sans', sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
         * { box-sizing: border-box; }
         html, body {
           background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
           min-height: 100vh;
         }
-        @keyframes mmFadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
-        @keyframes mmPulse  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.08); } }
-        @keyframes mmFloatOrb { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-16px); } }
+        @keyframes mmFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+        @keyframes mmPulse  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
         @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
-        @keyframes mmCardIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-        .mm-hero-layout { display: flex; flex-direction: column; align-items: center; width: 100%; height: 100%; padding: clamp(28px,5vw,56px) clamp(16px,4vw,48px); }
+        .mm-hero-layout { display: flex; flex-direction: column; align-items: center; width: 100%; height: 100%; padding: clamp(28px,5vw,48px) clamp(16px,4vw,48px); }
         @media (min-width: 900px) {
-          .mm-hero-layout { flex-direction: row; align-items: stretch; gap: 64px; justify-content: center; }
-          .mm-hero-left  { flex: 0 0 480px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; }
-          .mm-hero-right { flex: 1; max-width: 540px; display: flex; flex-direction: column; justify-content: center; }
+          .mm-hero-layout { flex-direction: row; align-items: stretch; gap: 60px; justify-content: center; }
+          .mm-hero-left  { flex: 0 0 460px; display: flex; flex-direction: column; justify-content: center; align-items: flex-start; text-align: left; }
+          .mm-hero-right { flex: 1; max-width: 560px; display: flex; flex-direction: column; justify-content: center; }
           .mm-hero-left .mm-hero-badge, .mm-hero-left .mm-hero-headline, .mm-hero-left .mm-hero-tagline { text-align: left !important; }
           .mm-hero-left .mm-hero-badge { justify-content: flex-start !important; }
         }
@@ -6944,18 +6923,16 @@ export function MediaDistributionPage() {
           .mm-pricing-backdrop { align-items: center !important; padding: 16px !important; }
           .mm-pricing-sheet { border-radius: 24px !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; max-height: 90vh !important; }
         }
-        .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 5s ease-in-out infinite; }
-        .mm-feature-card { background: rgba(255,255,255,0.025); border: 1px solid rgba(255,255,255,0.07); border-radius: 18px; padding: 22px; display: flex; flex-direction: column; gap: 14px; transition: border-color 0.25s, background 0.25s, transform 0.25s; cursor: default; animation: mmCardIn 0.5s ease both; }
-        .mm-feature-card:hover { border-color: rgba(214,178,94,0.32); background: rgba(214,178,94,0.06); transform: translateY(-2px); }
+        .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
         .lg\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
+        /* Platform icon strip visibility */
         .mm-icons-mobile  { display: block; }
         .mm-icons-desktop { display: none;  }
         @media (min-width: 900px) {
           .mm-icons-mobile  { display: none;  }
           .mm-icons-desktop { display: block; }
         }
-        .mm-stat-item { flex: 1; padding: 16px 10px; text-align: center; }
-        .mm-stat-item + .mm-stat-item { border-left: 1px solid rgba(255,255,255,0.06); }
+
       `}</style>
 
       {oauthLoading && (
@@ -7008,27 +6985,27 @@ export function MediaDistributionPage() {
               </div>
 
               {/* Badge */}
-              <div className="mm-hero-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: `${GOLD}0d`, border: `1px solid ${GOLD}28`, borderRadius: 999, padding: '5px 14px', marginBottom: 20 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, display: 'inline-block', animation: 'mmPulse 2.5s ease-in-out infinite' }} />
-                <span style={{ color: GOLD, fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em' }}>AI-Powered Content Engine</span>
+              <div className="mm-hero-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${GOLD}10`, border: `1px solid ${GOLD}22`, borderRadius: 999, padding: '4px 12px', marginBottom: 16 }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, display: 'inline-block', animation: 'mmPulse 2s ease-in-out infinite' }} />
+                <span style={{ color: GOLD, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em' }}>AI-Powered Content Engine</span>
               </div>
 
               {/* Headline */}
-              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 'clamp(32px, 5vw, 70px)', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 0.95, marginBottom: 10 }}>Infinite Media</span>
-              <span style={{ display: 'block', fontSize: 9, fontWeight: 800, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.22)', textTransform: 'uppercase', marginBottom: 18 }}>By Infinite Wealth Solutions AI</span>
+              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontSize: 'clamp(28px, 4.5vw, 64px)', fontWeight: 900, letterSpacing: '-0.03em', lineHeight: 1.05, marginBottom: 8 }}>Infinite Media</span>
+              <span style={{ display: 'block', fontSize: 9, fontWeight: 900, letterSpacing: '0.14em', color: 'rgba(255,255,255,0.28)', textTransform: 'uppercase', marginBottom: 14 }}>By Infinite Wealth Solutions AI</span>
 
               {/* Tagline */}
-              <p className="mm-hero-tagline" style={{ fontSize: 'clamp(15px, 2vw, 21px)', color: 'rgba(255,255,255,0.75)', marginBottom: 24, lineHeight: 1.55, fontWeight: 700, letterSpacing: '-0.02em', maxWidth: 400 }}>
+              <p className="mm-hero-tagline" style={{ fontSize: 'clamp(15px, 2.2vw, 22px)', color: 'rgba(255,255,255,0.85)', marginBottom: 20, lineHeight: 1.5, fontWeight: 800, letterSpacing: '-0.02em', maxWidth: 400 }}>
                 An entire marketing department on one platform.
               </p>
 
 
               {/* Stats */}
-              <div style={{ display: 'flex', marginBottom: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, overflow: 'hidden', width: '100%', maxWidth: 420 }}>
-                {[{ v: '12', l: 'Platforms' }, { v: '24/7', l: 'AI Strategist' }, { v: '6-in-1', l: 'AI Tools' }].map((s) => (
-                  <div key={s.l} className="mm-stat-item">
-                    <div style={{ fontFamily: "'DM Serif Display', Georgia, serif", color: GOLD, fontWeight: 400, fontSize: 22, letterSpacing: '-0.01em' }}>{s.v}</div>
-                    <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, marginTop: 4, fontWeight: 600 }}>{s.l}</div>
+              <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden', width: '100%', maxWidth: 400 }}>
+                {[{ v: '12', l: 'Platforms' }, { v: '24/7', l: 'Content Strategist' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
+                  <div key={s.l} style={{ flex: 1, padding: '14px 8px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
+                    <div style={{ color: GOLD, fontWeight: 900, fontSize: 20, letterSpacing: '-0.02em' }}>{s.v}</div>
+                    <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, marginTop: 3 }}>{s.l}</div>
                   </div>
                 ))}
               </div>
@@ -7050,29 +7027,29 @@ export function MediaDistributionPage() {
               </div>
 
               {/* CTAs */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 420, marginBottom: 24 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9, width: '100%', maxWidth: 400, marginBottom: 20 }}>
                 <button
                   onClick={() => setAuthModalOpen(true)}
-                  style={{ width: '100%', padding: '17px 0', borderRadius: 15, fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 16, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}45`, letterSpacing: '-0.01em', transition: 'filter 0.15s, transform 0.15s' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'; (e.currentTarget as HTMLElement).style.transform = 'none'; }}
+                  style={{ width: '100%', padding: '16px 0', borderRadius: 14, fontSize: 16, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 28px ${GOLD}40`, letterSpacing: '-0.01em', transition: 'filter 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'}
+                  onMouseLeave={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'}
                 >
                   Start Multiplying Your Content
                 </button>
                 <button
                   onClick={() => setAuthModalOpen(true)}
-                  style={{ width: '100%', padding: '14px 0', borderRadius: 15, fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'rgba(255,255,255,0.04)', color: 'rgba(255,255,255,0.42)', border: '1px solid rgba(255,255,255,0.1)', transition: 'all 0.15s' }}
-                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.2)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.7)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)'; }}
-                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.42)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
+                  style={{ width: '100%', padding: '14px 0', borderRadius: 14, fontSize: 14, fontWeight: 700, cursor: 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.45)', border: '1px solid rgba(255,255,255,0.1)', transition: 'border-color 0.15s, color 0.15s' }}
+                  onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.22)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.75)'; }}
+                  onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.1)'; (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}
                 >
                   Already have an account? Sign In
                 </button>
               </div>
 
               {/* Referral nudge */}
-              <div style={{ padding: '14px 18px', borderRadius: 14, background: `${GOLD}07`, border: `1px solid ${GOLD}1c`, maxWidth: 380, width: '100%' }}>
-                <div style={{ fontSize: 12, color: GOLD_L, fontWeight: 800, marginBottom: 5, letterSpacing: '-0.01em' }}>💸 2-for-20 Affiliate Program</div>
-                <p style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', margin: 0, lineHeight: 1.65 }}>
+              <div style={{ padding: '12px 16px', borderRadius: 12, background: `${GOLD}07`, border: `1px solid ${GOLD}18`, maxWidth: 300, width: '100%' }}>
+                <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 2-for-20 Affiliate Program</div>
+                <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)', margin: 0, lineHeight: 1.6 }}>
                   Earn 20% recurring commission for every referral. Your audience gets 20% off their first month.
                 </p>
               </div>
@@ -7095,26 +7072,27 @@ export function MediaDistributionPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12, width: '100%' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, width: '100%' }}>
                 {[
-                  { icon: <Video size={16} />,      title: 'AI Video Generation',       desc: 'Cinematic AI video from a single image. No editing required.' },
-                  { icon: <Sparkles size={16} />,   title: 'AI Caption Generator',      desc: 'Platform-specific captions engineered to stop the scroll.' },
-                  { icon: <Calendar size={16} />,   title: 'AI Content Strategist',     desc: '7-day calendars with viral hooks and trend research for your niche.' },
-                  { icon: <TrendingUp size={16} />, title: 'Multi-Platform Posting',    desc: 'Auto-publish to Instagram, TikTok, LinkedIn, YouTube and more.' },
-                  { icon: <Film size={16} />,       title: 'Content Repurposing',       desc: 'Extract clips, tweets, blogs and threads from any video.' },
-                  { icon: <Users size={16} />,      title: 'AI Voice Agents',           desc: '24/7 automated conversations that qualify and close leads.' },
-                ].map((f, idx) => (
+                  { icon: <Video size={15} />,      title: 'AI Video Generation',       desc: 'Cinematic AI video from a single image. No editing required.' },
+                  { icon: <Sparkles size={15} />,   title: 'AI Caption Generator',      desc: 'Platform-specific captions engineered to stop the scroll.' },
+                  { icon: <Calendar size={15} />,   title: 'AI Content Strategist',     desc: '7-day content calendars with viral hooks and trend research for your niche.' },
+                  { icon: <TrendingUp size={15} />, title: 'Multi-Platform Publishing',  desc: 'Auto-publish to Instagram, TikTok, LinkedIn, YouTube and more.' },
+                  { icon: <Film size={15} />,       title: 'Content Repurposing',        desc: 'Extract clips, tweets, blogs and threads from any video.' },
+                  { icon: <Users size={15} />,      title: 'AI Voice Agents',            desc: '24/7 automated conversations that qualify and close leads.' },
+                ].map(f => (
                   <div
                     key={f.title}
-                    className="mm-feature-card"
-                    style={{ animationDelay: `${idx * 0.07}s` }}
+                    style={{ padding: '20px', borderRadius: 16, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 12, transition: 'border-color 0.2s, background 0.2s', cursor: 'default' }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${GOLD}35`; (e.currentTarget as HTMLElement).style.background = `${GOLD}07`; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
                   >
-                    <div style={{ width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${GOLD_D}22, ${GOLD}18)`, border: `1px solid ${GOLD}28`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD, flexShrink: 0 }}>
+                    <div style={{ width: 32, height: 32, borderRadius: 9, background: `${GOLD}14`, border: `1px solid ${GOLD}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD }}>
                       {f.icon}
                     </div>
                     <div>
-                      <div style={{ color: 'rgba(255,255,255,0.92)', fontWeight: 700, fontSize: 13, marginBottom: 5, letterSpacing: '-0.01em' }}>{f.title}</div>
-                      <div style={{ color: 'rgba(255,255,255,0.32)', fontSize: 12, lineHeight: 1.65 }}>{f.desc}</div>
+                      <div style={{ color: 'white', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{f.title}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.32)', fontSize: 12, lineHeight: 1.6 }}>{f.desc}</div>
                     </div>
                   </div>
                 ))}
