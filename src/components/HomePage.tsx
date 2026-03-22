@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
+import { motion, AnimatePresence, useInView } from 'framer-motion';
 import {
   Phone, PhoneOff, Mail, User, Building, Globe,
   MessageSquare, CheckCircle, AlertCircle, Loader, ArrowLeft, ArrowRight,
@@ -22,32 +23,32 @@ const HOME_VAPI_FIRST_MESSAGE = 'Infinite Wealth Solutions AI, Alex speaking, ho
 
 const useCases = [
   {
-    scenario: 'A lead calls at midnight. Your AI agent answers, qualifies them, and books the appointment without you lifting a finger.',
+    scenario: 'A lead calls at midnight. Your AI voice agent answers, qualifies them with smart conversation, and books the appointment — without you lifting a finger.',
     service: 'AI Phone Agents',
     icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'Your sales rep is busy. AI dials the prospect list, handles objections, and hands off only the interested ones, warm and ready to close.',
+    scenario: 'Your sales pipeline needs calls made. AI dials your prospect list, handles objections naturally, and transfers only the warm, interested leads directly to you.',
     service: 'AI Phone Agents',
     icon: <Phone className="h-4 w-4" />,
   },
   {
-    scenario: 'You record one video. AI extracts the transcript, writes platform-specific captions, and schedules posts across every channel automatically.',
+    scenario: 'You record one video. Our AI caption generator extracts the transcript, writes platform-specific posts, and auto-schedules them across 15+ channels instantly.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'You take a week off. Your content calendar stays full, posts go out on schedule, and your audience keeps growing without you.',
+    scenario: 'You take a week off. Your AI-powered content calendar stays full, posts publish on schedule, and your audience keeps growing — on autopilot.',
     service: 'Social Media Manager',
     icon: <Share2 className="h-4 w-4" />,
   },
   {
-    scenario: 'Your competitor has a slick website. Yours actually converts because it was built around your specific audience and buying journey.',
+    scenario: 'Your competitor has a website. Yours has an AI-powered 24/7 receptionist that answers questions, builds trust, and drops a booking link before visitors even think of leaving.',
     service: 'Web Design',
     icon: <Zap className="h-4 w-4" />,
   },
   {
-    scenario: 'A prospect visits at 2am and has questions. Your site answers them, builds trust, and drops a booking link before they even think about leaving.',
+    scenario: 'You need leads, not just traffic. We build conversion-first websites engineered around your specific audience, buying journey, and AI automation stack.',
     service: 'Web Design',
     icon: <Zap className="h-4 w-4" />,
   },
@@ -196,7 +197,7 @@ export function HomePage() {
   return (
     <div className="min-h-screen text-white overflow-x-hidden" style={{ background: 'linear-gradient(to bottom, #080808, #0d0d0d)' }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
         .gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 5s ease-in-out infinite; }
         @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
         @keyframes iwsFadeUp { from { opacity: 0; transform: translateY(28px); } to { opacity: 1; transform: none; } }
@@ -222,15 +223,19 @@ export function HomePage() {
       </div>
 
       {/* NAV */}
-      <nav style={{ position: 'sticky', top: 0, zIndex: 20, borderBottom: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(24px)', background: 'rgba(8,8,8,0.88)', height: 68, display: 'flex', alignItems: 'center' }}>
+      <motion.nav
+        initial={{ y: -68, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        style={{ position: 'sticky', top: 0, zIndex: 20, borderBottom: '1px solid rgba(255,255,255,0.06)', backdropFilter: 'blur(24px)', background: 'rgba(8,8,8,0.88)', height: 68, display: 'flex', alignItems: 'center' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto', width: '100%', padding: '0 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
             <div style={{ width: 36, height: 36, borderRadius: 11, background: 'linear-gradient(135deg, #7a5c18, #C8A24A, #E3C36A)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 18px rgba(200,162,74,0.38)', flexShrink: 0 }}>
               <Zap className="h-5 w-5 text-black" />
             </div>
             <div>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 800, color: 'white', letterSpacing: '0.05em', lineHeight: 1.15 }}>INFINITE WEALTH</div>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 9.5, fontWeight: 700, color: '#C8A24A', letterSpacing: '0.14em', lineHeight: 1.15 }}>SOLUTIONS AI</div>
+              <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 13, fontWeight: 800, color: 'white', letterSpacing: '0.05em', lineHeight: 1.15 }}>INFINITE WEALTH</div>
+              <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 9.5, fontWeight: 700, color: '#C8A24A', letterSpacing: '0.14em', lineHeight: 1.15 }}>SOLUTIONS AI</div>
             </div>
           </div>
 
@@ -242,7 +247,7 @@ export function HomePage() {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <Link to="/InfiniteMedia" className="hidden sm:flex items-center gap-2"
-              style={{ padding: '9px 20px', borderRadius: 99, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 13, fontFamily: "'Syne', sans-serif", boxShadow: '0 4px 18px rgba(200,162,74,0.32)', transition: 'filter 0.15s, transform 0.15s' }}
+              style={{ padding: '9px 20px', borderRadius: 99, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 13, fontFamily: "'DM Sans', system-ui, sans-serif", boxShadow: '0 4px 18px rgba(200,162,74,0.32)', transition: 'filter 0.15s, transform 0.15s' }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'; (e.currentTarget as HTMLElement).style.transform = 'none'; }}>
               Infinite Media
@@ -253,64 +258,87 @@ export function HomePage() {
           </div>
         </div>
 
+        <AnimatePresence>
         {mobileMenuOpen && (
-          <div className="lg:hidden" style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'rgba(8,8,8,0.98)', borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '10px 16px 16px' }}>
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="lg:hidden" style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'rgba(8,8,8,0.98)', borderBottom: '1px solid rgba(255,255,255,0.07)', padding: '10px 16px 16px' }}>
             <a href="#use-cases" onClick={() => setMobileMenuOpen(false)} className="block" style={{ padding: '12px 16px', fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.6)', fontFamily: "'DM Sans', system-ui, sans-serif" }}>Use Cases</a>
             <Link to="/InfiniteMedia" onClick={() => setMobileMenuOpen(false)} className="block" style={{ padding: '12px 16px', fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.6)', fontFamily: "'DM Sans', system-ui, sans-serif" }}>Infinite Media</Link>
             <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block" style={{ padding: '12px 16px', fontSize: 14, fontWeight: 600, color: 'rgba(255,255,255,0.6)', fontFamily: "'DM Sans', system-ui, sans-serif" }}>Pricing</a>
             <div style={{ marginTop: 10, padding: '0 16px' }}>
-              <Link to="/InfiniteMedia" style={{ display: 'block', textAlign: 'center', padding: '13px 0', borderRadius: 14, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 14, fontFamily: "'Syne', sans-serif" }}>Infinite Media</Link>
+              <Link to="/InfiniteMedia" style={{ display: 'block', textAlign: 'center', padding: '13px 0', borderRadius: 14, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 14, fontFamily: "'DM Sans', system-ui, sans-serif" }}>Infinite Media</Link>
             </div>
-          </div>
+          </motion.div>
         )}
-      </nav>
+        </AnimatePresence>
+      </motion.nav>
 
       {/* HERO */}
       <section style={{ position: 'relative', zIndex: 1, minHeight: 'calc(100dvh - 68px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '80px 24px' }}>
-        <div style={{ maxWidth: 900, width: '100%', textAlign: 'center', animation: 'iwsFadeUp 0.75s ease both' }}>
-          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(200,162,74,0.08)', border: '1px solid rgba(200,162,74,0.22)', borderRadius: 99, padding: '6px 18px', marginBottom: 36 }}>
+        <motion.div
+          initial="hidden"
+          animate="visible"
+          variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.12, delayChildren: 0.15 } } }}
+          style={{ maxWidth: 900, width: '100%', textAlign: 'center' }}>
+          <motion.div
+            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } } }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(200,162,74,0.08)', border: '1px solid rgba(200,162,74,0.22)', borderRadius: 99, padding: '6px 18px', marginBottom: 36 }}>
             <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#C8A24A', display: 'inline-block', animation: 'iwsPulseGold 2.5s ease-in-out infinite' }} />
-            <span style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: '#C8A24A', fontSize: 12, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>The AI Growth Stack for Modern Businesses</span>
-          </div>
+            <span style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: '#C8A24A', fontSize: 12, fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase' }}>AI Voice Agents · Social Media Automation · Lead Generation</span>
+          </motion.div>
 
-          <h1 style={{ margin: '0 0 10px', lineHeight: 1 }}>
-            <span className="gold-shimmer" style={{ display: 'block', fontFamily: "'Syne', sans-serif", fontSize: 'clamp(52px, 10vw, 120px)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 0.92 }}>
+          <motion.h1
+            variants={{ hidden: { opacity: 0, y: 30 }, visible: { opacity: 1, y: 0, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] } } }}
+            style={{ margin: '0 0 10px', lineHeight: 1 }}>
+            <span className="gold-shimmer" style={{ display: 'block', fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 'clamp(52px, 10vw, 120px)', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 0.92 }}>
               Infinite Wealth
             </span>
-          </h1>
-          <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 'clamp(18px, 3.2vw, 38px)', fontWeight: 700, color: 'rgba(255,255,255,0.6)', letterSpacing: '-0.025em', marginBottom: 32, lineHeight: 1.2 }}>
+          </motion.h1>
+          <motion.div
+            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } } }}
+            style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 'clamp(18px, 3.2vw, 38px)', fontWeight: 400, color: 'rgba(255,255,255,0.55)', letterSpacing: '-0.01em', marginBottom: 32, lineHeight: 1.2, fontStyle: 'italic' }}>
             Solutions AI
-          </div>
+          </motion.div>
 
-          <p style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 'clamp(16px, 2vw, 21px)', color: 'rgba(255,255,255,0.48)', lineHeight: 1.7, maxWidth: 680, margin: '0 auto 48px', fontWeight: 400 }}>
-            We build AI systems that multiply your output. One video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
-          </p>
+          <motion.p
+            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.7, ease: [0.16, 1, 0.3, 1] } } }}
+            style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 'clamp(16px, 2vw, 21px)', color: 'rgba(255,255,255,0.48)', lineHeight: 1.7, maxWidth: 680, margin: '0 auto 48px', fontWeight: 400 }}>
+            AI voice agents that answer calls and book appointments 24/7. Social media automation that turns one video into 30 platform-optimized posts. Custom AI systems that grow your business around the clock — without you being in the room.
+          </motion.p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginBottom: 60 }} className="sm:flex-row sm:justify-center">
+          <motion.div
+            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } } }}
+            style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, marginBottom: 60 }} className="sm:flex-row sm:justify-center">
             <button data-track="cta" data-track-label="Get a Package Quote"
               onClick={() => document.getElementById('lead-capture')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '18px 36px', borderRadius: 16, background: 'linear-gradient(135deg, #14532d, #16a34a)', color: 'white', fontWeight: 800, fontSize: 16, border: 'none', cursor: 'pointer', boxShadow: '0 8px 32px rgba(22,163,74,0.28)', transition: 'filter 0.15s, transform 0.15s', width: '100%', maxWidth: 280, fontFamily: "'Syne', sans-serif" }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '18px 36px', borderRadius: 16, background: 'linear-gradient(135deg, #14532d, #16a34a)', color: 'white', fontWeight: 800, fontSize: 16, border: 'none', cursor: 'pointer', boxShadow: '0 8px 32px rgba(22,163,74,0.28)', transition: 'filter 0.15s, transform 0.15s', width: '100%', maxWidth: 280, fontFamily: "'DM Sans', system-ui, sans-serif" }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'; (e.currentTarget as HTMLElement).style.transform = 'none'; }}>
               <MessageSquare className="h-5 w-5" /><span>Get a Free AI Demo</span>
             </button>
             <Link to="/InfiniteMedia"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '18px 36px', borderRadius: 16, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 16, boxShadow: '0 8px 32px rgba(200,162,74,0.22)', transition: 'filter 0.15s, transform 0.15s', width: '100%', maxWidth: 280, fontFamily: "'Syne', sans-serif" }}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '18px 36px', borderRadius: 16, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 16, boxShadow: '0 8px 32px rgba(200,162,74,0.22)', transition: 'filter 0.15s, transform 0.15s', width: '100%', maxWidth: 280, fontFamily: "'DM Sans', system-ui, sans-serif" }}
               onMouseEnter={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1.08)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; }}
               onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'; (e.currentTarget as HTMLElement).style.transform = 'none'; }}>
               <Share2 className="h-5 w-5" /><span>Infinite Media</span>
             </Link>
-          </div>
+          </motion.div>
 
-          <div style={{ display: 'flex', justifyContent: 'center', background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 18, overflow: 'hidden', maxWidth: 440, margin: '0 auto' }}>
+          <motion.div
+            variants={{ hidden: { opacity: 0, y: 20 }, visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } } }}
+            style={{ display: 'flex', justifyContent: 'center', background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 18, overflow: 'hidden', maxWidth: 440, margin: '0 auto' }}>
             {[{ value: '24/7', label: 'Always On' }, { value: '3×', label: 'Services, 1 Stack' }, { value: '∞', label: 'Growth Potential' }].map((s, i) => (
               <div key={s.label} style={{ flex: 1, padding: '20px 12px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
-                <div style={{ fontFamily: "'Syne', sans-serif", color: '#C8A24A', fontWeight: 800, fontSize: 26, letterSpacing: '-0.02em' }}>{s.value}</div>
+                <div style={{ fontFamily: "'DM Serif Display', Georgia, serif", color: '#C8A24A', fontWeight: 400, fontSize: 26, letterSpacing: '-0.01em' }}>{s.value}</div>
                 <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.28)', fontSize: 11, marginTop: 4, fontWeight: 600 }}>{s.label}</div>
               </div>
             ))}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* USE CASES */}
@@ -320,12 +348,12 @@ export function HomePage() {
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.035)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 99, padding: '4px 14px', marginBottom: 22 }}>
               <span style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.38)', letterSpacing: '0.1em', textTransform: 'uppercase' }}>Real-World Scenarios</span>
             </div>
-            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 'clamp(30px, 5vw, 58px)', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.06, marginBottom: 16 }}>
+            <h2 style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 'clamp(30px, 5vw, 58px)', fontWeight: 400, letterSpacing: '-0.01em', lineHeight: 1.06, marginBottom: 16 }}>
               One Input.{' '}
               <span style={{ background: 'linear-gradient(135deg, #C8A24A, #E3C36A)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Infinite Output.</span>
             </h2>
             <p style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.38)', fontSize: 18, maxWidth: 560, margin: '0 auto' }}>
-              See how our AI systems turn a single action into compounding results across your entire business.
+              Real scenarios where AI voice agents, social media automation, and AI content generation compound your results across every channel.
             </p>
           </div>
 
@@ -334,15 +362,21 @@ export function HomePage() {
               const tag = serviceTagColors[uc.service];
               const num = String(i + 1).padStart(2, '0');
               return (
-                <div key={i} className="iws-use-card">
+                <motion.div
+                  key={i}
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: '-40px' }}
+                  transition={{ duration: 0.55, delay: (i % 3) * 0.1, ease: [0.16, 1, 0.3, 1] }}
+                  className="iws-use-card">
                   <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 18 }}>
-                    <span style={{ fontFamily: "'Syne', sans-serif", fontSize: 38, fontWeight: 800, color: 'rgba(255,255,255,0.055)', letterSpacing: '-0.02em', lineHeight: 1 }}>{num}</span>
+                    <span style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 38, fontWeight: 400, color: 'rgba(255,255,255,0.055)', letterSpacing: '-0.01em', lineHeight: 1 }}>{num}</span>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700, border: '1px solid', background: tag.bg, color: tag.text, borderColor: tag.border, fontFamily: "'DM Sans', system-ui, sans-serif" }}>
                       {uc.icon}{uc.service}
                     </span>
                   </div>
                   <p style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.55)', fontSize: 14.5, lineHeight: 1.75, fontStyle: 'italic' }}>"{uc.scenario}"</p>
-                </div>
+                </motion.div>
               );
             })}
           </div>
@@ -352,7 +386,12 @@ export function HomePage() {
       {/* INFINITE MEDIA SPOTLIGHT */}
       <section style={{ position: 'relative', zIndex: 1, padding: '80px 24px' }}>
         <div style={{ maxWidth: 1200, margin: '0 auto' }}>
-          <div style={{ background: 'linear-gradient(135deg, rgba(200,162,74,0.055) 0%, rgba(255,255,255,0.015) 100%)', border: '1px solid rgba(200,162,74,0.16)', borderRadius: 28, padding: 'clamp(32px, 5vw, 64px)', overflow: 'hidden', position: 'relative' }}>
+          <motion.div
+            initial={{ opacity: 0, y: 32 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+            style={{ background: 'linear-gradient(135deg, rgba(200,162,74,0.055) 0%, rgba(255,255,255,0.015) 100%)', border: '1px solid rgba(200,162,74,0.16)', borderRadius: 28, padding: 'clamp(32px, 5vw, 64px)', overflow: 'hidden', position: 'relative' }}>
             <div style={{ position: 'absolute', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(200,162,74,0.07), transparent 65%)', top: '-100px', right: '-100px', pointerEvents: 'none' }} />
 
             <div className="block lg:grid" style={{ gap: 64, alignItems: 'center' }}>
@@ -361,21 +400,21 @@ export function HomePage() {
                   <Share2 className="h-4 w-4" style={{ color: '#C8A24A' }} />
                   <span style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: '#C8A24A', fontSize: 12, fontWeight: 700 }}>Content Multiplication Engine</span>
                 </div>
-                <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 'clamp(26px, 4vw, 44px)', fontWeight: 800, letterSpacing: '-0.03em', lineHeight: 1.1, marginBottom: 20 }}>
+                <h2 style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 'clamp(26px, 4vw, 44px)', fontWeight: 400, letterSpacing: '-0.01em', lineHeight: 1.1, marginBottom: 20 }}>
                   Turn One Video Into{' '}
                   <span style={{ background: 'linear-gradient(135deg, #C8A24A, #E3C36A)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>30 Assets</span>
                   {' '}Across Every Platform
                 </h2>
                 <p style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.5)', fontSize: 16, lineHeight: 1.75, marginBottom: 28 }}>
-                  Upload once. AI extracts your transcript, builds platform-specific captions, and schedules everything automatically. 10–20 assets from a single upload.
+                  Upload once. Our AI content repurposing engine extracts your transcript, generates platform-specific captions optimized for each audience, and auto-schedules across 15+ networks simultaneously. One upload, unlimited reach.
                 </p>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 13, marginBottom: 36 }}>
                   {[
-                    'AI captions engineered per platform — not one-size-fits-all',
-                    'Auto-schedules to TikTok, Instagram, LinkedIn, YouTube, X and 15+ more',
-                    'Visual content calendar shows your full pipeline at a glance',
-                    'AI content strategy based on your niche and trending topics',
-                    'Agencies can manage multiple brands from one dashboard',
+                    'AI caption generator — custom hooks, CTAs, and hashtags per platform',
+                    'Auto-publishes to TikTok, Instagram, LinkedIn, YouTube, X, Threads & 12+ more',
+                    'Visual content calendar — see your full multi-platform pipeline at a glance',
+                    'AI content repurposing & strategy built around your niche and trending topics',
+                    'Agency dashboard — manage unlimited brands and clients from one workspace',
                   ].map(f => (
                     <div key={f} style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                       <div style={{ width: 20, height: 20, borderRadius: 99, background: 'rgba(200,162,74,0.14)', border: '1px solid rgba(200,162,74,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
@@ -386,7 +425,7 @@ export function HomePage() {
                   ))}
                 </div>
                 <Link to="/InfiniteMedia"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '16px 32px', borderRadius: 15, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 15, fontFamily: "'Syne', sans-serif", boxShadow: '0 6px 24px rgba(200,162,74,0.28)', transition: 'filter 0.15s, transform 0.15s' }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '16px 32px', borderRadius: 15, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 15, fontFamily: "'DM Sans', system-ui, sans-serif", boxShadow: '0 6px 24px rgba(200,162,74,0.28)', transition: 'filter 0.15s, transform 0.15s' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'; (e.currentTarget as HTMLElement).style.transform = 'none'; }}>
                   <Share2 className="h-5 w-5" /><span>Start Multiplying Your Content</span><ArrowRight className="h-5 w-5" />
@@ -413,14 +452,14 @@ export function HomePage() {
                         <path d={p.svg} />
                       </svg>
                     ) : (
-                      <span style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800, color: p.color, fontFamily: "'Syne', sans-serif" }}>+</span>
+                      <span style={{ width: 34, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, fontWeight: 800, color: p.color, fontFamily: "'DM Sans', system-ui, sans-serif" }}>+</span>
                     )}
                     <span style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 10, fontWeight: 600, color: 'rgba(255,255,255,0.38)', textAlign: 'center', lineHeight: 1.3 }}>{p.name}</span>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -428,16 +467,22 @@ export function HomePage() {
       <section style={{ position: 'relative', zIndex: 1, padding: '80px 24px' }}>
         <div style={{ maxWidth: 680, margin: '0 auto' }}>
           <div style={{ textAlign: 'center', marginBottom: 48 }}>
-            <h2 style={{ fontFamily: "'Syne', sans-serif", fontSize: 'clamp(26px, 4vw, 46px)', fontWeight: 800, letterSpacing: '-0.03em', marginBottom: 12 }}>
+            <h2 style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 'clamp(26px, 4vw, 46px)', fontWeight: 400, letterSpacing: '-0.01em', marginBottom: 12 }}>
               Get Your{' '}
               <span style={{ background: 'linear-gradient(135deg, #C8A24A, #E3C36A)', WebkitBackgroundClip: 'text', backgroundClip: 'text', color: 'transparent' }}>Free AI Demo</span>
             </h2>
             <p style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.38)', fontSize: 16 }}>
-              Tell us about your business and we'll build you a custom AI demo. Free, no strings attached.
+              Tell us about your business and we'll build you a custom AI voice agent demo — trained on your services, ready to book appointments. Free, no strings attached.
             </p>
           </div>
 
-          <div id="lead-capture" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 24, padding: 'clamp(24px, 5vw, 48px)', backdropFilter: 'blur(12px)' }}>
+          <motion.div
+            id="lead-capture"
+            initial={{ opacity: 0, y: 32 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+            style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 24, padding: 'clamp(24px, 5vw, 48px)', backdropFilter: 'blur(12px)' }}>
             {submitStatus === 'error' && (
               <div style={{ marginBottom: 24, padding: '14px 18px', background: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.22)', borderRadius: 13, display: 'flex', alignItems: 'center', gap: 12 }}>
                 <AlertCircle className="h-5 w-5 shrink-0" style={{ color: '#f87171' }} />
@@ -450,7 +495,7 @@ export function HomePage() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 10 }}>
                   {questions.map((_, i) => (
                     <React.Fragment key={i}>
-                      <div style={{ width: 36, height: 36, borderRadius: 99, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, transition: 'all 0.3s', background: i < currentStep ? '#16a34a' : i === currentStep ? '#C8A24A' : 'rgba(255,255,255,0.07)', color: i < currentStep ? 'white' : i === currentStep ? '#000' : 'rgba(255,255,255,0.28)', fontFamily: "'Syne', sans-serif" }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 99, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 14, transition: 'all 0.3s', background: i < currentStep ? '#16a34a' : i === currentStep ? '#C8A24A' : 'rgba(255,255,255,0.07)', color: i < currentStep ? 'white' : i === currentStep ? '#000' : 'rgba(255,255,255,0.28)', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
                         {i < currentStep ? <CheckCircle className="h-4 w-4" /> : i + 1}
                       </div>
                       {i < questions.length - 1 && <div style={{ width: 36, height: 1, background: i < currentStep ? '#16a34a' : 'rgba(255,255,255,0.09)', transition: 'background 0.3s' }} />}
@@ -466,11 +511,11 @@ export function HomePage() {
                 <div style={{ width: 80, height: 80, borderRadius: 99, background: 'rgba(22,163,74,0.1)', border: '1px solid rgba(22,163,74,0.28)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px' }}>
                   <CheckCircle className="h-10 w-10" style={{ color: '#4ade80' }} />
                 </div>
-                <h4 style={{ fontFamily: "'Syne', sans-serif", fontSize: 28, fontWeight: 800, marginBottom: 12 }}>You're In. Let's Build.</h4>
+                <h4 style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 28, fontWeight: 400, marginBottom: 12 }}>You're In. Let's Build.</h4>
                 <p style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.45)', fontSize: 16, marginBottom: 28 }}>Your custom AI agent is being built. Test it out here:</p>
                 <a href={createdSlug ? `https://infinitewealthsolutionsai.com/demo/${createdSlug}` : 'https://infinitewealthsolutionsai.com/demo'}
                   target="_blank" rel="noopener noreferrer"
-                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '16px 32px', borderRadius: 14, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 16, fontFamily: "'Syne', sans-serif", transition: 'filter 0.15s' }}>
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '16px 32px', borderRadius: 14, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: '#000', fontWeight: 800, fontSize: 16, fontFamily: "'DM Sans', system-ui, sans-serif", transition: 'filter 0.15s' }}>
                   <span>View Your Demo</span><ArrowRight className="h-5 w-5" />
                 </a>
               </div>
@@ -481,7 +526,7 @@ export function HomePage() {
                     <div key={question.id} style={{ width: '100%', flexShrink: 0, padding: '0 2px' }}>
                       {question.title && (
                         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-                          <h4 style={{ fontFamily: "'Syne', sans-serif", fontSize: 22, fontWeight: 800, marginBottom: 6 }}>{question.title}</h4>
+                          <h4 style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 22, fontWeight: 400, marginBottom: 6 }}>{question.title}</h4>
                           {question.subtitle && <span style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.38)', fontSize: 13 }}>{question.subtitle}</span>}
                         </div>
                       )}
@@ -538,7 +583,7 @@ export function HomePage() {
                   <ArrowLeft className="h-4 w-4" /><span>Previous</span>
                 </button>
                 <button type="button" onClick={handleNext} disabled={!isStepValid || isSubmitting}
-                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 28px', borderRadius: 14, background: !isStepValid || isSubmitting ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: !isStepValid || isSubmitting ? 'rgba(255,255,255,0.22)' : '#000', border: 'none', cursor: !isStepValid || isSubmitting ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: 15, transition: 'all 0.15s', fontFamily: "'Syne', sans-serif" }}>
+                  style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 28px', borderRadius: 14, background: !isStepValid || isSubmitting ? 'rgba(255,255,255,0.05)' : 'linear-gradient(135deg, #7a5c18, #C8A24A)', color: !isStepValid || isSubmitting ? 'rgba(255,255,255,0.22)' : '#000', border: 'none', cursor: !isStepValid || isSubmitting ? 'not-allowed' : 'pointer', fontWeight: 800, fontSize: 15, transition: 'all 0.15s', fontFamily: "'DM Sans', system-ui, sans-serif" }}>
                   {isSubmitting ? (<><Loader className="h-4 w-4 animate-spin" /><span>Submitting...</span></>) :
                    currentStep === 2 ? (<><span>Submit</span><ArrowRight className="h-4 w-4" /></>) :
                    (<><span>Next</span><ArrowRight className="h-4 w-4" /></>)}
@@ -550,7 +595,7 @@ export function HomePage() {
                 Building your custom AI agent. This may take up to 60 seconds…
               </p>
             )}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -565,14 +610,14 @@ export function HomePage() {
                 <div style={{ width: 32, height: 32, borderRadius: 9, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                   <Zap className="h-4 w-4 text-black" />
                 </div>
-                <span style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, color: '#C8A24A', fontSize: 13 }}>Infinite Wealth Solutions AI</span>
+                <span style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 800, color: '#C8A24A', fontSize: 13 }}>Infinite Wealth Solutions AI</span>
               </div>
               <p style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.28)', fontSize: 13, lineHeight: 1.75 }}>
                 AI systems that multiply your output, capture every lead, and keep your business growing around the clock.
               </p>
             </div>
             <div>
-              <h4 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: 'rgba(255,255,255,0.38)', marginBottom: 18, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Services</h4>
+              <h4 style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 700, color: 'rgba(255,255,255,0.38)', marginBottom: 18, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Services</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <button onClick={() => setPhoneModal('voice')} style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.28)', fontSize: 13, background: 'none', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0, transition: 'color 0.15s' }} onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.6)')} onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.28)')}>AI Voice Agents</button>
                 <Link to="/InfiniteMedia" style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.28)', fontSize: 13, transition: 'color 0.15s' }} onMouseEnter={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.6)')} onMouseLeave={e => (e.currentTarget.style.color = 'rgba(255,255,255,0.28)')}>Infinite Media</Link>
@@ -580,7 +625,7 @@ export function HomePage() {
               </div>
             </div>
             <div>
-              <h4 style={{ fontFamily: "'Syne', sans-serif", fontWeight: 700, color: 'rgba(255,255,255,0.38)', marginBottom: 18, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Legal</h4>
+              <h4 style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 700, color: 'rgba(255,255,255,0.38)', marginBottom: 18, fontSize: 11, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Legal</h4>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                 <Link to="/privacy-policy" style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.28)', fontSize: 13, transition: 'color 0.15s' }}>Privacy Policy</Link>
                 <Link to="/terms-and-conditions" style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.28)', fontSize: 13, transition: 'color 0.15s' }}>Terms & Conditions</Link>
@@ -595,7 +640,11 @@ export function HomePage() {
       </footer>
 
       {/* FLOATING PHONE AGENT */}
-      <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 60 }}>
+      <motion.div
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 1.2, duration: 0.5, type: 'spring', stiffness: 200, damping: 18 }}
+        style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 60 }}>
         <button onClick={() => setPhoneModal('voice')}
           style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'rgba(8,8,8,0.92)', border: '1px solid rgba(200,162,74,0.32)', borderRadius: 18, padding: '12px 18px', backdropFilter: 'blur(20px)', boxShadow: '0 16px 48px rgba(0,0,0,0.55)', cursor: 'pointer', transition: 'border-color 0.2s, box-shadow 0.2s' }}
           onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(200,162,74,0.6)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 16px 48px rgba(0,0,0,0.7), 0 0 0 1px rgba(200,162,74,0.18)'; }}
@@ -604,18 +653,29 @@ export function HomePage() {
             <Phone className="h-5 w-5" style={{ color: GOLD_HOVER }} />
           </div>
           <div style={{ textAlign: 'left' }}>
-            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 13, fontWeight: 800, color: GOLD_HOVER, lineHeight: 1.2 }}>Talk to Our AI Agent</div>
+            <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 13, fontWeight: 800, color: GOLD_HOVER, lineHeight: 1.2 }}>Talk to Our AI Agent</div>
             <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 11, color: 'rgba(255,255,255,0.38)', lineHeight: 1.3 }}>Available 24/7. Try it now.</div>
           </div>
         </button>
-      </div>
+      </motion.div>
 
       {/* PHONE MODAL */}
+      <AnimatePresence>
       {phoneModal === 'voice' && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(10px)', padding: 16 }}>
-          <div style={{ background: 'linear-gradient(160deg, #111111, #0c0c0c)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 24, width: '100%', maxWidth: 420, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.85)' }}>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.82)', backdropFilter: 'blur(10px)', padding: 16 }}>
+          <motion.div
+            initial={{ opacity: 0, scale: 0.92, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.92, y: 20 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            style={{ background: 'linear-gradient(160deg, #111111, #0c0c0c)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 24, width: '100%', maxWidth: 420, overflow: 'hidden', boxShadow: '0 24px 80px rgba(0,0,0,0.85)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-              <div style={{ fontFamily: "'Syne', sans-serif", fontWeight: 800, fontSize: 16 }}>Talk to Our AI Agent</div>
+              <div style={{ fontFamily: "'DM Sans', system-ui, sans-serif", fontWeight: 800, fontSize: 16 }}>Talk to Our AI Agent</div>
               <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.38)', padding: 4, display: 'flex' }} onClick={closePhoneModal}><X className="h-5 w-5" /></button>
             </div>
             <div style={{ padding: 28 }}>
@@ -623,7 +683,7 @@ export function HomePage() {
                 <div style={{ width: 64, height: 64, borderRadius: 20, background: 'linear-gradient(135deg, #7a5c18, #C8A24A)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 18, boxShadow: '0 8px 32px rgba(200,162,74,0.32)' }}>
                   <Phone className="h-8 w-8 text-black" />
                 </div>
-                <h3 style={{ fontFamily: "'Syne', sans-serif", fontSize: 20, fontWeight: 800, color: '#C8A24A', marginBottom: 10 }}>Alex, AI Voice Agent</h3>
+                <h3 style={{ fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 20, fontWeight: 400, color: '#C8A24A', marginBottom: 10 }}>Alex, AI Voice Agent</h3>
                 <p style={{ fontFamily: "'DM Sans', system-ui, sans-serif", color: 'rgba(255,255,255,0.45)', fontSize: 15, marginBottom: 32 }}>
                   {voiceStatus === 'connecting' && 'Connecting…'}
                   {voiceStatus === 'live' && '● Live. Speak normally.'}
@@ -644,9 +704,10 @@ export function HomePage() {
                 </p>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }

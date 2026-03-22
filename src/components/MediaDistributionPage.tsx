@@ -6917,7 +6917,7 @@ export function MediaDistributionPage() {
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: BG, backgroundAttachment: 'fixed', fontFamily: "'DM Sans', sans-serif" }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&family=Syne:wght@700;800&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
         * { box-sizing: border-box; }
         html, body {
           background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
@@ -7014,7 +7014,7 @@ export function MediaDistributionPage() {
               </div>
 
               {/* Headline */}
-              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontFamily: "'Syne', sans-serif", fontSize: 'clamp(32px, 5vw, 70px)', fontWeight: 800, letterSpacing: '-0.04em', lineHeight: 0.95, marginBottom: 10 }}>Infinite Media</span>
+              <span className="mm-gold-shimmer mm-hero-headline" style={{ display: 'block', fontFamily: "'DM Serif Display', Georgia, serif", fontSize: 'clamp(32px, 5vw, 70px)', fontWeight: 400, letterSpacing: '-0.02em', lineHeight: 0.95, marginBottom: 10 }}>Infinite Media</span>
               <span style={{ display: 'block', fontSize: 9, fontWeight: 800, letterSpacing: '0.16em', color: 'rgba(255,255,255,0.22)', textTransform: 'uppercase', marginBottom: 18 }}>By Infinite Wealth Solutions AI</span>
 
               {/* Tagline */}
@@ -7027,7 +7027,7 @@ export function MediaDistributionPage() {
               <div style={{ display: 'flex', marginBottom: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, overflow: 'hidden', width: '100%', maxWidth: 420 }}>
                 {[{ v: '12', l: 'Platforms' }, { v: '24/7', l: 'AI Strategist' }, { v: '6-in-1', l: 'AI Tools' }].map((s) => (
                   <div key={s.l} className="mm-stat-item">
-                    <div style={{ fontFamily: "'Syne', sans-serif", color: GOLD, fontWeight: 800, fontSize: 22, letterSpacing: '-0.02em' }}>{s.v}</div>
+                    <div style={{ fontFamily: "'DM Serif Display', Georgia, serif", color: GOLD, fontWeight: 400, fontSize: 22, letterSpacing: '-0.01em' }}>{s.v}</div>
                     <div style={{ color: 'rgba(255,255,255,0.28)', fontSize: 10, marginTop: 4, fontWeight: 600 }}>{s.l}</div>
                   </div>
                 ))}
@@ -7053,7 +7053,7 @@ export function MediaDistributionPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10, width: '100%', maxWidth: 420, marginBottom: 24 }}>
                 <button
                   onClick={() => setAuthModalOpen(true)}
-                  style={{ width: '100%', padding: '17px 0', borderRadius: 15, fontFamily: "'Syne', sans-serif", fontSize: 16, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}45`, letterSpacing: '-0.01em', transition: 'filter 0.15s, transform 0.15s' }}
+                  style={{ width: '100%', padding: '17px 0', borderRadius: 15, fontFamily: "'DM Sans', system-ui, sans-serif", fontSize: 16, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 32px ${GOLD}45`, letterSpacing: '-0.01em', transition: 'filter 0.15s, transform 0.15s' }}
                   onMouseEnter={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'; (e.currentTarget as HTMLElement).style.transform = 'translateY(-1px)'; }}
                   onMouseLeave={e => { (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'; (e.currentTarget as HTMLElement).style.transform = 'none'; }}
                 >
