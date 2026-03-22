@@ -165,9 +165,12 @@ const MEDIA_REQUIRED_PLATFORMS = new Set(['youtube', 'tiktok', 'instagram']);
 
 async function fetchChannels(userId: string, force = false, workspaceId?: string | null): Promise<PostizIntegration[]> {
   if (!userId) return [];
+  const { data: { session } } = await supabase.auth.getSession();
   const wsParam = workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : '';
   const url = `${SUPABASE_URL}/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}${wsParam}`;
-  const res = await fetch(url);
+  const res = await fetch(url, {
+    headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+  });
   if (!res.ok) return [];
   const data = await res.json();
   const channels: PostizIntegration[] = Array.isArray(data?.channels) ? data.channels : [];
@@ -807,9 +810,12 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     if (!userId || !open) return;
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`);
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+      });
       const data = res.ok ? await res.json() : { posts: [] };
       const now = new Date();
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -1322,7 +1328,7 @@ function SavedPostCard({
 // Inline version of PostComposerModal (no modal wrapper)
 
 function InlinePostComposer({
-  integrations, userId, onSuccess, initialVideoUrl, initialMode, workspaceId,
+  integrations, userId, onSuccess, initialVideoUrl, initialMode, workspaceId, onUpgrade,
 }: {
   integrations: PostizIntegration[];
   userId: string | null;
@@ -1330,6 +1336,7 @@ function InlinePostComposer({
   initialVideoUrl?: string | null;
   initialMode?: 'media' | 'text' | 'saved';
   workspaceId?: string | null;
+  onUpgrade?: () => void;
 }) {
   type PostType = 'media' | 'text' | 'saved';
   type SavedPost = { id: string; text: string; label: string; savedAt: Date };
@@ -1377,6 +1384,12 @@ function InlinePostComposer({
   }, [initialVideoUrl]);
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
+  const [carouselObjectUrls, setCarouselObjectUrls] = useState<string[]>([]);
+  useEffect(() => {
+    const urls = imageFiles.map(f => f ? URL.createObjectURL(f) : '');
+    setCarouselObjectUrls(urls);
+    return () => { urls.forEach(u => { if (u) URL.revokeObjectURL(u); }); };
+  }, [imageFiles]);
   type PostFormat = 'standard' | 'carousel' | 'thread';
   const [postFormat, setPostFormat]     = useState<PostFormat>('standard');
   const [threadTweets, setThreadTweets] = useState<string[]>(['', '']);
@@ -1673,23 +1686,34 @@ function InlinePostComposer({
       if (validTweets.length < 2) { setSubmitError('Add at least 2 posts to create a thread.'); return; }
       if (validTweets.some(t => t.length > 280)) { setSubmitError('One or more posts exceed 280 characters.'); return; }
     } else {
-      const text = editingIdx ? aiEditText : xText;
-      if (!text.trim()) { setSubmitError('Write something first.'); return; }
+      const hasLinkedInSelected = selectedTextAccounts.some(id => textPostAccounts.find(a => a.integ.id === id)?.platform === 'linkedin');
+      const hasNonLinkedInSelected = selectedTextAccounts.some(id => textPostAccounts.find(a => a.integ.id === id)?.platform !== 'linkedin');
+      const liText = editingIdx ? aiEditText : linkedinText;
+      const otText = editingIdx ? aiEditText : xText;
+      const hasContent = (hasLinkedInSelected && liText.trim()) || (hasNonLinkedInSelected && otText.trim());
+      if (!hasContent) { setSubmitError('Write something first.'); return; }
     }
     if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account to post to.'); return; }
     setSubmitting(true); setSubmitError(null);
     try {
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      const platformIds = selectedTextAccounts.map(id => {
+      const allAccounts = selectedTextAccounts.map(id => {
         const acct = textPostAccounts.find(a => a.integ.id === id);
-        return acct?.integ.profile || acct?.integ.id || acct?.platform || '';
-      }).filter(Boolean);
+        return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
+      }).filter(a => a.platformId);
       if (postFormat === 'thread') {
         const validTweets = threadTweets.filter(t => t.trim());
+        const platformIds = allAccounts.map(a => a.platformId);
         await ayrsharePost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), scheduleDate: sd, workspaceId: workspaceId ?? null });
       } else {
-      const text = editingIdx ? aiEditText : xText;
-      await ayrsharePost({ platforms: platformIds, post: text, scheduleDate: sd, workspaceId: workspaceId ?? null });
+        const liIds = allAccounts.filter(a => a.isLinkedIn).map(a => a.platformId);
+        const otIds = allAccounts.filter(a => !a.isLinkedIn).map(a => a.platformId);
+        const liText = editingIdx ? aiEditText : linkedinText;
+        const otText = editingIdx ? aiEditText : xText;
+        const posts: Promise<unknown>[] = [];
+        if (otIds.length > 0 && otText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: otText, scheduleDate: sd, workspaceId: workspaceId ?? null }));
+        if (liIds.length > 0 && liText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: liText, scheduleDate: sd, workspaceId: workspaceId ?? null }));
+        await Promise.all(posts);
       }
       setSubmitOk(true);
       setXText(''); setLinkedinText('');
@@ -1809,7 +1833,7 @@ function InlinePostComposer({
                   if (file) {
                     return (
                       <div key={i} className="relative w-16 h-16 rounded-lg overflow-hidden border shrink-0" style={{ borderColor: BORDER }}>
-                        <img src={URL.createObjectURL(file)} className="w-full h-full object-cover" alt={`Slide ${i+1}`} />
+                        <img src={carouselObjectUrls[i] ?? ''} className="w-full h-full object-cover" alt={`Slide ${i+1}`} />
                         <div className="absolute top-0 left-0 w-4 h-4 flex items-center justify-center rounded-br text-[8px] font-black" style={{ background: 'rgba(0,0,0,0.7)', color: 'rgba(255,255,255,0.7)' }}>{i+1}</div>
                         {uploadState.status === 'uploading' && <div className="absolute inset-0 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}><Loader className="w-3 h-3 animate-spin text-white" /></div>}
                         {uploadState.status === 'done' && <div className="absolute bottom-0 right-0 w-4 h-4 flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.8)' }}><CheckCircle2 className="w-2.5 h-2.5 text-white" /></div>}
@@ -3941,9 +3965,12 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     if (!userId) return;
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`);
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+      });
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
@@ -3952,7 +3979,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       }));
     } catch (e) {}
     finally { setLoading(false); }
-  }, [userId]);
+  }, [userId, workspaceId]);
 
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
@@ -4035,7 +4062,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 
         {composerPanelTab === 'post' && (
           <div className="px-4 md:px-8 py-6 w-full">
-            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} workspaceId={workspaceId} />
+            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} workspaceId={workspaceId} onUpgrade={onUpgrade} />
           </div>
         )}
 
@@ -4065,7 +4092,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 
 // ─── CalendarView ─────────────────────────────────────────────────────────────
 
-function CalendarView({ integrations, userId, workspaceId }: { integrations: PostizIntegration[]; userId: string | null; workspaceId?: string | null }) {
+function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integrations: PostizIntegration[]; userId: string | null; workspaceId?: string | null; onUpgrade?: () => void }) {
   const [posts, setPosts]               = useState<ScheduledPost[]>([]);
   const [loading, setLoading]           = useState(false);
   const [currentDate, setCurrentDate]   = useState(new Date());
@@ -4085,9 +4112,12 @@ function CalendarView({ integrations, userId, workspaceId }: { integrations: Pos
     if (!userId) return;
     setLoading(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-      const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`);
+      const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
+        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+      });
       const data  = res.ok ? await res.json() : { posts: [] };
       const list  = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
@@ -4261,7 +4291,7 @@ function CalendarView({ integrations, userId, workspaceId }: { integrations: Pos
               <button onClick={() => setComposerOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 md:p-6">
-              <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); setComposerOpen(false); }} workspaceId={workspaceId} />
+              <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); setComposerOpen(false); }} workspaceId={workspaceId} onUpgrade={onUpgrade} />
             </div>
           </div>
         </div>
@@ -5206,7 +5236,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
         if (pd.status === 'succeed' && pd.videoUrl) {
           clearInterval(interval);
           setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: pd.videoUrl } : v));
-          addToHistory(brief, pd.videoUrl, frameUrl);
+          addToHistory(promptText, pd.videoUrl, frameUrl);
           setStep('done'); // Audio already baked into video by Kling 3.0 Pro
         } else if (pd.status === 'failed') {
           clearInterval(interval);
@@ -6148,7 +6178,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
 
 // ─── UserMenu ─────────────────────────────────────────────────────────────────
 
-function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { email: string }; onSignOut: () => void; subscription?: { plan: string; status: string } | null; onManagePlan?: () => void }) {
+function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { email: string }; onSignOut: () => void; subscription?: { plan: string; status: string; stripe_customer_id?: string; current_period_end?: string } | null; onManagePlan?: () => void }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const initials = user.email.slice(0, 2).toUpperCase();
@@ -6423,7 +6453,7 @@ export function MediaDistributionPage() {
   const [otpInput, setOtpInput]                 = useState('');
   const [otpSent, setOtpSent]                   = useState(false);
   const [phoneOtpLoading, setPhoneOtpLoading]   = useState(false);
-  const [globalUsage, setGlobalUsage]           = useState<{ plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number } } | null>(null);
+  const [globalUsage, setGlobalUsage]           = useState<{ plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number }; textPosts: { used: number; limit: number } } | null>(null);
   const [creditsOpen, setCreditsOpen]           = useState(false);
   const [upsellShown, setUpsellShown]           = useState(false);
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
@@ -6842,7 +6872,7 @@ export function MediaDistributionPage() {
     if (portalUrlRef.current) window.location.href = portalUrlRef.current;
   };
 
-  const handleAddonCheckout = async (addonKey) => {
+  const handleAddonCheckout = async (addonKey: string) => {
     if (!currentUser) { setAuthModalOpen(true); return; }
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -6854,7 +6884,7 @@ export function MediaDistributionPage() {
       const data = await res.json();
       if (data.url) window.location.href = data.url;
       else throw new Error(data.error || 'Checkout failed');
-    } catch (e) { setOauthError(e.message); }
+    } catch (e: any) { setOauthError(e.message); }
   };
 
   const handlePromoRedeem = async () => {
@@ -7163,7 +7193,7 @@ export function MediaDistributionPage() {
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
             {/* K — pass activeIntegrations to ComposerPanel */}
             {view === 'composer' && <ComposerPanel key={activeWorkspaceId ?? 'personal'} integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
-            {view === 'calendar' && <CalendarView key={activeWorkspaceId ?? 'personal'}  integrations={activeIntegrations} userId={currentUser?.id ?? null} workspaceId={activeWorkspaceId} />}
+            {view === 'calendar' && <CalendarView key={activeWorkspaceId ?? 'personal'}  integrations={activeIntegrations} userId={currentUser?.id ?? null} workspaceId={activeWorkspaceId} onUpgrade={() => setPricingOpen(true)} />}
             {view === 'planner'  && <PlannerPanel key={activeWorkspaceId ?? 'personal'}  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
             {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
               if (url.startsWith('repurpose:')) {

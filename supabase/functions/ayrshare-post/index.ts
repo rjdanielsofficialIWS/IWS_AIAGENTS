@@ -71,7 +71,7 @@ Deno.serve(async(req)=>{
       const firstItem:Record<string,unknown>={content:post};
       if(mediaUrls.length>0)firstItem.mediaItems=mediaUrls.map((url:string)=>({type:isVideoUrl(url)?"video":"image",url}));
       const threadItems=[firstItem,...threadPosts.map((t:string)=>({content:t}))];
-      lb={platforms:pp.map((p:{platform:string;accountId:string})=>({...p,platformSpecificData:{threadItems}}))};
+      lb={content:post,platforms:pp.map((p:{platform:string;accountId:string})=>({...p,platformSpecificData:{threadItems}}))};
     }else{
       lb={content:post,platforms:pp};
       if(mediaUrls.length>0){
