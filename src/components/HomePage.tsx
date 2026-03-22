@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import { motion, AnimatePresence, useMotionValue, useMotionTemplate, useSpring } from 'framer-motion';
 import {
   Phone, PhoneOff, Mail, User, Building, Globe,
   MessageSquare, CheckCircle, AlertCircle, Loader, ArrowLeft, ArrowRight,
@@ -59,6 +60,54 @@ const serviceTagColors: Record<string, { bg: string; text: string; border: strin
   'Web Design':           { bg: 'rgba(34,197,94,0.10)',  text: '#4ade80', border: 'rgba(34,197,94,0.30)'  },
 };
 
+// 21.dev-style cursor-spotlight card — the radial glow follows the mouse
+function SpotlightCard({ children, ...props }: any) {
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const bg = useMotionTemplate`radial-gradient(220px circle at ${mouseX}px ${mouseY}px, rgba(200,162,74,0.10), transparent 80%)`;
+
+  return (
+    <motion.div
+      {...props}
+      className={`relative overflow-hidden ${props.className ?? ''}`}
+      onMouseMove={(e: React.MouseEvent<HTMLDivElement>) => {
+        const { left, top } = e.currentTarget.getBoundingClientRect();
+        mouseX.set(e.clientX - left);
+        mouseY.set(e.clientY - top);
+      }}
+    >
+      <motion.div className="pointer-events-none absolute inset-0 z-0" style={{ background: bg }} />
+      <div className="relative z-10 flex flex-col gap-4 h-full">{children}</div>
+    </motion.div>
+  );
+}
+
+// Magnetic wrapper — button/link subtly follows the cursor
+function useMagnetic() {
+  const rawX = useMotionValue(0);
+  const rawY = useMotionValue(0);
+  const x = useSpring(rawX, { stiffness: 380, damping: 26 });
+  const y = useSpring(rawY, { stiffness: 380, damping: 26 });
+  const handlers = {
+    onMouseMove: (e: React.MouseEvent<HTMLElement>) => {
+      const { left, top, width, height } = e.currentTarget.getBoundingClientRect();
+      rawX.set((e.clientX - (left + width / 2)) * 0.28);
+      rawY.set((e.clientY - (top + height / 2)) * 0.28);
+    },
+    onMouseLeave: () => { rawX.set(0); rawY.set(0); },
+  };
+  return { x, y, handlers };
+}
+
+const heroStagger = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.11, delayChildren: 0.1 } },
+};
+const heroChild = {
+  hidden: { opacity: 0, y: 22 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.65, ease: [0.16, 1, 0.3, 1] } },
+};
+
 export function HomePage() {
   const [bgOffset, setBgOffset] = useState(0);
   const [currentStep, setCurrentStep] = useState(0);
@@ -73,6 +122,9 @@ export function HomePage() {
   const vapiRef = React.useRef<Vapi | null>(null);
   const [voiceStatus, setVoiceStatus] = useState<'idle' | 'connecting' | 'live' | 'ended' | 'error'>('idle');
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const magCta1 = useMagnetic();
+  const magCta2 = useMagnetic();
+  const magFloat = useMagnetic();
 
   const questions = [
     {
@@ -205,7 +257,11 @@ export function HomePage() {
       </div>
 
       {/* NAV */}
-      <nav className="relative z-20 border-b border-white/5 backdrop-blur-md bg-black/20 sticky top-0">
+      <motion.nav
+        initial={{ y: -64, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+        className="relative z-20 border-b border-white/5 backdrop-blur-md bg-black/20 sticky top-0">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center space-x-2">
@@ -229,73 +285,112 @@ export function HomePage() {
             </div>
           </div>
         </div>
-        {mobileMenuOpen && (
-          <div className="lg:hidden border-t border-white/5 bg-black/90 backdrop-blur-md">
-            <div className="px-4 py-3 space-y-1">
-              <a href="#use-cases" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
-              <Link to="/InfiniteMedia" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Infinite Media</Link>
-              <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Pricing</a>
-              <div className="pt-2">
-                <Link to="/InfiniteMedia"
-                  className="flex items-center justify-center space-x-2 bg-[#C8A24A] text-black font-bold py-2.5 px-4 rounded-xl text-sm">
-                  <span>Infinite Media</span>
-                </Link>
+        <AnimatePresence>
+          {mobileMenuOpen && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+              className="lg:hidden border-t border-white/5 bg-black/90 backdrop-blur-md overflow-hidden">
+              <div className="px-4 py-3 space-y-1">
+                <a href="#use-cases" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Use Cases</a>
+                <Link to="/InfiniteMedia" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Infinite Media</Link>
+                <a href="#pricing" onClick={() => setMobileMenuOpen(false)} className="block px-4 py-2.5 rounded-lg text-sm font-medium text-gray-300 hover:text-white hover:bg-white/5 transition-all">Pricing</a>
+                <div className="pt-2">
+                  <Link to="/InfiniteMedia"
+                    className="flex items-center justify-center space-x-2 bg-[#C8A24A] text-black font-bold py-2.5 px-4 rounded-xl text-sm">
+                    <span>Infinite Media</span>
+                  </Link>
+                </div>
               </div>
-            </div>
-          </div>
-        )}
-      </nav>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.nav>
 
       {/* HERO */}
       <section className="relative z-10 py-16 sm:py-24 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <div className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-8">
+        <motion.div
+          className="max-w-4xl mx-auto text-center"
+          variants={heroStagger}
+          initial="hidden"
+          animate="visible">
+          <motion.div variants={heroChild} className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-8">
             <Sparkles className="h-4 w-4 text-[#C8A24A]" />
             <span className="text-sm text-[#C8A24A] font-semibold">The AI Growth Stack for Modern Businesses</span>
-          </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
+          </motion.div>
+          <motion.h1 variants={heroChild} className="text-4xl sm:text-5xl lg:text-6xl font-bold mb-8 leading-tight">
             <span className="gold-shimmer block font-extrabold">Infinite Wealth Solutions</span>
             <span className="block mt-3 text-white font-bold">Your business runs. We make sure it never stops.</span>
-          </h1>
-          <p className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed max-w-3xl mx-auto">
+          </motion.h1>
+          <motion.p variants={heroChild} className="text-lg sm:text-xl text-gray-300 mb-12 leading-relaxed max-w-3xl mx-auto">
             We build AI systems that multiply your output. One video becomes 30 pieces of content, every missed call becomes a booked appointment, and your business grows even when you're offline.
-          </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-10">
-            <button data-track="cta" data-track-label="Get a Package Quote"
+          </motion.p>
+          <motion.div variants={heroChild} className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-10">
+            <motion.button
+              data-track="cta" data-track-label="Get a Package Quote"
+              style={{ x: magCta1.x, y: magCta1.y }}
+              {...magCta1.handlers}
+              whileTap={{ scale: 0.97 }}
               onClick={() => document.getElementById('lead-capture')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3">
+              className="w-full sm:w-auto bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white font-bold py-4 px-8 rounded-xl transition-colors duration-300 hover:shadow-xl hover:shadow-green-500/25 flex items-center justify-center space-x-3">
               <MessageSquare className="h-6 w-6" /><span>Get a Free AI Demo</span>
-            </button>
-            <Link to="/InfiniteMedia"
-              className="w-full sm:w-auto bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02] hover:shadow-xl hover:shadow-black/30 flex items-center justify-center space-x-3">
-              <span>Infinite Media</span>
-            </Link>
-          </div>
-          <div className="flex flex-wrap justify-center gap-8">
-            {[{ value: '24/7', label: 'Always On' }, { value: '3x', label: 'Services, 1 Stack' }, { value: '100%', label: 'Built for Growth' }].map(s => (
-              <div key={s.label}><div className="text-2xl font-black text-[#C8A24A]">{s.value}</div><div className="text-xs text-gray-500 mt-0.5">{s.label}</div></div>
+            </motion.button>
+            <motion.div
+              style={{ x: magCta2.x, y: magCta2.y }}
+              {...magCta2.handlers}
+              whileTap={{ scale: 0.97 }}
+              className="w-full sm:w-auto">
+              <Link to="/InfiniteMedia"
+                className="w-full bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-colors duration-300 hover:shadow-xl hover:shadow-black/30 flex items-center justify-center space-x-3">
+                <span>Infinite Media</span>
+              </Link>
+            </motion.div>
+          </motion.div>
+          <motion.div variants={heroChild} className="flex flex-wrap justify-center gap-8">
+            {[{ value: '24/7', label: 'Always On' }, { value: '3x', label: 'Services, 1 Stack' }, { value: '100%', label: 'Built for Growth' }].map((s, i) => (
+              <motion.div
+                key={s.label}
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.7 + i * 0.1, duration: 0.4, type: 'spring', stiffness: 260, damping: 18 }}>
+                <div className="text-2xl font-black text-[#C8A24A]">{s.value}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{s.label}</div>
+              </motion.div>
             ))}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* USE CASES */}
       <section id="use-cases" className="relative z-10 py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="text-center mb-12">
+          <motion.div
+            className="text-center mb-12"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}>
             <h2 className="text-3xl sm:text-4xl font-bold mb-4 text-white">
               One Input.{' '}
               <span className="bg-gradient-to-r from-[#C8A24A] to-[#E3C36A] bg-clip-text text-transparent">Infinite Output.</span>
             </h2>
             <p className="text-gray-400 text-lg">See how our AI systems turn a single action into compounding results across your entire business.</p>
-          </div>
+          </motion.div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {useCases.map((uc, i) => {
               const tag = serviceTagColors[uc.service];
               return (
-                <div key={i}
-                  className="border rounded-xl p-6 flex flex-col gap-4 transition-all"
-                  style={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.13)' }}>
+                <SpotlightCard
+                  key={i}
+                  className="border rounded-xl p-6"
+                  style={{ background: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.13)' }}
+                  initial={{ opacity: 0, y: 28 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: '-40px' }}
+                  transition={{ duration: 0.55, delay: (i % 3) * 0.09, ease: [0.16, 1, 0.3, 1] }}
+                  whileHover={{ y: -5, transition: { duration: 0.22, ease: 'easeOut' } }}>
                   <p className="text-gray-300 text-sm leading-relaxed flex-1">"{uc.scenario}"</p>
                   <div className="flex items-center gap-2 mt-auto">
                     <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border"
@@ -303,7 +398,7 @@ export function HomePage() {
                       {uc.icon}{uc.service}
                     </span>
                   </div>
-                </div>
+                </SpotlightCard>
               );
             })}
           </div>
@@ -313,9 +408,18 @@ export function HomePage() {
       {/* SOCIAL MEDIA SPOTLIGHT */}
       <section className="relative z-10 py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="bg-gradient-to-br from-[#C8A24A]/8 to-gray-900/50 border border-[#C8A24A]/20 rounded-2xl p-8 sm:p-12">
+          <motion.div
+            className="bg-gradient-to-br from-[#C8A24A]/8 to-gray-900/50 border border-[#C8A24A]/20 rounded-2xl p-8 sm:p-12"
+            initial={{ opacity: 0, y: 32 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-80px' }}
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}>
             <div className="grid lg:grid-cols-2 gap-12 items-center">
-              <div>
+              <motion.div
+                initial={{ opacity: 0, x: -24 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+                transition={{ duration: 0.65, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}>
                 <div className="inline-flex items-center space-x-2 bg-[#C8A24A]/10 border border-[#C8A24A]/20 rounded-full px-4 py-1.5 mb-6">
                   <Share2 className="h-4 w-4 text-[#C8A24A]" />
                   <span className="text-sm text-[#C8A24A] font-semibold">Media Machine, The Content Multiplication Engine</span>
@@ -327,7 +431,12 @@ export function HomePage() {
                 <p className="text-gray-300 text-lg leading-relaxed mb-8">
                   Most creators spend hours making content for one platform. Media Machine flips that model. Upload a video and our AI extracts the transcript, analyzes your content strategy, generates tailored posts for every platform, and schedules everything automatically. You get 10 to 20 assets from a single upload.
                 </p>
-                <div className="space-y-3 mb-8">
+                <motion.div
+                  className="space-y-3 mb-8"
+                  variants={{ visible: { transition: { staggerChildren: 0.07 } } }}
+                  initial="hidden"
+                  whileInView="visible"
+                  viewport={{ once: true }}>
                   {[
                     'AI generates platform-specific captions from your video transcript',
                     'Auto-schedules across TikTok, Instagram, LinkedIn, YouTube, X, and 15 more platforms',
@@ -335,19 +444,29 @@ export function HomePage() {
                     'AI suggests future content ideas based on your past performance',
                     'Agencies can manage multiple brands from one dashboard',
                   ].map(f => (
-                    <div key={f} className="flex items-center space-x-3">
+                    <motion.div
+                      key={f}
+                      variants={{ hidden: { opacity: 0, x: -16 }, visible: { opacity: 1, x: 0, transition: { duration: 0.45, ease: [0.16, 1, 0.3, 1] } } }}
+                      className="flex items-center space-x-3">
                       <CheckCircle className="h-5 w-5 text-[#C8A24A] shrink-0" />
                       <span className="text-gray-300 text-sm">{f}</span>
-                    </div>
+                    </motion.div>
                   ))}
-                </div>
-                <Link to="/InfiniteMedia" className="inline-flex items-center space-x-3 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-all duration-300 transform hover:scale-[1.02]">
-                  <Share2 className="h-5 w-5" /><span>Start Multiplying Your Content</span><ArrowRight className="h-5 w-5" />
-                </Link>
-              </div>
+                </motion.div>
+                <motion.div whileTap={{ scale: 0.97 }} style={{ display: 'inline-block' }}>
+                  <Link to="/InfiniteMedia" className="inline-flex items-center space-x-3 bg-[#C8A24A] hover:bg-[#E3C36A] text-black font-bold py-4 px-8 rounded-xl transition-colors duration-300">
+                    <Share2 className="h-5 w-5" /><span>Start Multiplying Your Content</span><ArrowRight className="h-5 w-5" />
+                  </Link>
+                </motion.div>
+              </motion.div>
 
               {/* Platform grid — exact SVGs from MediaDistributionPage, no boxes */}
-              <div className="grid grid-cols-4 gap-x-6 gap-y-7">
+              <motion.div
+                className="grid grid-cols-4 gap-x-6 gap-y-7"
+                variants={{ visible: { transition: { staggerChildren: 0.05, delayChildren: 0.2 } } }}
+                initial="hidden"
+                whileInView="visible"
+                viewport={{ once: true }}>
                 {[
                   { name: 'Instagram', color: '#E1306C', svg: 'M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z' },
                   { name: 'Facebook', color: '#1877F2', svg: 'M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z' },
@@ -362,8 +481,11 @@ export function HomePage() {
                   { name: 'Discord', color: '#5865F2', svg: 'M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.001.022.01.043.027.056a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z' },
                   { name: '19+ More', color: '#C8A24A', svg: null },
                 ].map(p => (
-                  <div key={p.name} className="flex flex-col items-center gap-2 cursor-default group">
-                    <div className="transition-transform group-hover:scale-110">
+                  <motion.div
+                    key={p.name}
+                    variants={{ hidden: { opacity: 0, scale: 0.6 }, visible: { opacity: 1, scale: 1, transition: { duration: 0.4, type: 'spring', stiffness: 260, damping: 18 } } }}
+                    className="flex flex-col items-center gap-2 cursor-default group">
+                    <motion.div whileHover={{ scale: 1.25, y: -3 }} transition={{ type: 'spring', stiffness: 400, damping: 17 }}>
                       {p.svg ? (
                         <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8" style={{ color: p.color }}>
                           <path d={p.svg} />
@@ -371,13 +493,13 @@ export function HomePage() {
                       ) : (
                         <span className="w-8 h-8 flex items-center justify-center text-2xl font-black" style={{ color: p.color }}>+</span>
                       )}
-                    </div>
+                    </motion.div>
                     <span className="text-[11px] font-semibold text-center leading-tight text-white/50 group-hover:text-white/80 transition-colors">{p.name}</span>
-                  </div>
+                  </motion.div>
                 ))}
-              </div>
+              </motion.div>
             </div>
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -390,7 +512,14 @@ export function HomePage() {
             </h2>
             <p className="text-gray-400">Tell us about your business and we'll build you a custom AI demo. Free, no strings attached.</p>
           </div>
-          <div id="lead-capture" className="rounded-2xl p-8 sm:p-12" style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.13)' }}>
+          <motion.div
+            id="lead-capture"
+            className="rounded-2xl p-8 sm:p-12"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.13)' }}
+            initial={{ opacity: 0, y: 28 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: '-60px' }}
+            transition={{ duration: 0.65, ease: [0.16, 1, 0.3, 1] }}>
             {submitStatus === 'error' && (
               <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded-lg flex items-center space-x-3">
                 <AlertCircle className="h-6 w-6 text-red-400" /><p className="text-red-300">Sorry, there was an error. Please try again.</p>
@@ -496,7 +625,7 @@ export function HomePage() {
                 Building your custom AI agent. This may take up to 60 seconds…
               </p>
             )}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -534,9 +663,18 @@ export function HomePage() {
       </footer>
 
       {/* FLOATING PHONE AGENT */}
-      <div className="fixed bottom-5 right-5 z-[60]">
-        <button onClick={() => setPhoneModal('voice')}
-          className="group flex items-center gap-3 rounded-2xl px-4 py-3 border backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.55)] transition"
+      <motion.div
+        className="fixed bottom-5 right-5 z-[60]"
+        initial={{ scale: 0, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ delay: 1.4, type: 'spring', stiffness: 240, damping: 18 }}
+        style={{ x: magFloat.x, y: magFloat.y }}
+        {...magFloat.handlers}>
+        <motion.button
+          onClick={() => setPhoneModal('voice')}
+          whileHover={{ scale: 1.04 }}
+          whileTap={{ scale: 0.96 }}
+          className="group flex items-center gap-3 rounded-2xl px-4 py-3 border backdrop-blur-xl shadow-[0_18px_60px_rgba(0,0,0,0.55)]"
           style={{ borderColor: 'rgba(200,162,74,0.40)', backgroundColor: 'rgba(0,0,0,0.35)' }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(227,195,106,0.65)'; e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.45)'; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'rgba(200,162,74,0.40)'; e.currentTarget.style.backgroundColor = 'rgba(0,0,0,0.35)'; }}>
@@ -547,13 +685,24 @@ export function HomePage() {
             <div className="text-sm font-bold leading-tight" style={{ color: GOLD_HOVER }}>Talk to Our AI Agent</div>
             <div className="text-[11px] text-gray-300 leading-tight">Available 24/7. Try it now.</div>
           </div>
-        </button>
-      </div>
+        </motion.button>
+      </motion.div>
 
       {/* PHONE MODAL */}
+      <AnimatePresence>
       {phoneModal === 'voice' && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
-          <div className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.88, y: 24 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.88, y: 24 }}
+            transition={{ type: 'spring', stiffness: 320, damping: 26 }}
+            className="bg-black/80 border border-gray-700 rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_80px_rgba(0,0,0,0.75)]">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700/60">
               <div className="font-bold">Talk to Our AI Agent</div>
               <button className="text-gray-300 hover:text-white" onClick={closePhoneModal}><X className="h-5 w-5" /></button>
@@ -579,9 +728,10 @@ export function HomePage() {
                 <p className="mt-6 text-xs text-gray-400 max-w-sm">Your mic may prompt for permission. If it doesn't connect, close and try again.</p>
               </div>
             </div>
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
