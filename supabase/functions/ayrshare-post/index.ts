@@ -13,7 +13,16 @@ Deno.serve(async(req)=>{
   const supabase=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"",{auth:{persistSession:false}});
   let userId="";
   const token=(req.headers.get("Authorization")??"").replace("Bearer ","").trim();
-  if(token){const{data:{user},error}=await supabase.auth.getUser(token);if(!error&&user)userId=user.id;}
+  if(token){
+    // First try decoding the JWT payload directly (fast, no network call)
+    try{
+      const payload=JSON.parse(atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));
+      // Only trust user JWTs (role="authenticated"), not anon or service_role keys
+      if(payload.role==="authenticated"&&payload.sub)userId=payload.sub;
+    }catch{}
+    // Fallback: verify via Supabase auth API (covers edge cases like JWTs with non-standard padding)
+    if(!userId){const{data:{user},error}=await supabase.auth.getUser(token);if(!error&&user)userId=user.id;}
+  }
   let body;try{body=await req.json();}catch{return respond(400,{error:"Invalid JSON"});}
   if(!userId)userId=body.userId??"";
   if(!userId)return respond(401,{error:"Not authenticated."});
