@@ -153,7 +153,7 @@ async function ayrsharePost(payload: {
     body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) throw new Error('SESSION_EXPIRED');
+  if (res.status === 401) throw new Error('Your session has expired. Please log out and log back in, then try again.');
   if (!res.ok) {
     const msg = data.error || `Post failed (${res.status})`;
     const hint = data.hint ? `\n\n💡 ${data.hint}` : '';
