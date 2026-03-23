@@ -20,7 +20,8 @@ const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
 // Resolve a raw API status against current time — if scheduled but past-due, treat as published
-const resolveStatus = (raw: string, scheduledAt: Date): 'scheduled' | 'published' | 'failed' => {
+const resolveStatus = (raw: string, scheduledAt: Date): 'scheduled' | 'published' | 'failed' | 'error' => {
+  if (raw === 'error') return 'error';
   if (raw === 'scheduled' && scheduledAt < new Date()) return 'published';
   return (raw as any) || 'scheduled';
 };
@@ -116,7 +117,8 @@ type Workspace = { id: string; name: string; color: string; assignedChannelIds: 
 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
-  scheduledAt: Date; status: 'scheduled' | 'published' | 'failed';
+  scheduledAt: Date; status: 'scheduled' | 'published' | 'failed' | 'error';
+  error?: string | null; mediaUrls?: string[];
 };
 
 type PlannerItem = {
@@ -801,9 +803,11 @@ function ConnectAccountsModal({
 function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId }: {
   open: boolean; onClose: () => void; userId: string | null; initialFilter?: string; workspaceId?: string | null;
 }) {
-  const [posts, setPosts]     = useState<ScheduledPost[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [filter, setFilter]   = useState<'all' | 'scheduled' | 'published' | 'failed'>(initialFilter as any);
+  const [posts, setPosts]       = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]   = useState(false);
+  const [filter, setFilter]     = useState<'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
+  const [retried, setRetried]   = useState<Record<string, 'ok' | 'err'>>({});
 
   useEffect(() => { if (open) setFilter(initialFilter as any); }, [open, initialFilter]);
 
@@ -822,7 +826,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt), error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
       }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
     } catch (e) {}
     finally { setLoading(false); }
@@ -832,12 +836,27 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
 
   if (!open) return null;
 
+  const handleRetry = async (post: ScheduledPost) => {
+    if (!post.mediaUrls) return;
+    setRetrying(r => ({ ...r, [post.id]: true }));
+    try {
+      await ayrsharePost({ platforms: post.platforms, post: post.content, mediaUrls: post.mediaUrls, workspaceId });
+      setRetried(r => ({ ...r, [post.id]: 'ok' }));
+      setPosts(ps => ps.map(p => p.id === post.id ? { ...p, status: 'published', error: null } : p));
+    } catch {
+      setRetried(r => ({ ...r, [post.id]: 'err' }));
+    } finally {
+      setRetrying(r => ({ ...r, [post.id]: false }));
+    }
+  };
+
   const filtered = posts.filter(p => filter === 'all' || p.status === filter);
   const counts = {
-    all: posts.length,
+    all:       posts.length,
     scheduled: posts.filter(p => p.status === 'scheduled').length,
     published: posts.filter(p => p.status === 'published').length,
     failed:    posts.filter(p => p.status === 'failed').length,
+    error:     posts.filter(p => p.status === 'error').length,
   };
 
   return (
@@ -853,11 +872,13 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex items-center gap-1 px-5 py-2.5 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
-          {(['all', 'scheduled', 'published', 'failed'] as const).map(f => (
-            <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
-              style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-              {f} {f !== 'all' && <span className="opacity-60">({counts[f]})</span>}
-            </button>
+          {(['all', 'scheduled', 'published', 'error', 'failed'] as const).map(f => (
+            counts[f as keyof typeof counts] > 0 || f === 'all' || f === 'scheduled' || f === 'published' ? (
+              <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
+                style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                {f === 'error' ? 'Failed' : f} {f !== 'all' && <span className="opacity-60">({counts[f as keyof typeof counts]})</span>}
+              </button>
+            ) : null
           ))}
           {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
         </div>
@@ -869,36 +890,55 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
               <div className="text-sm font-bold text-white/25">No {filter === 'all' ? '' : filter} posts found</div>
             </div>
           ) : (
-            filtered.map(post => (
-              <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
-                <div className="flex -space-x-1.5 shrink-0 pt-0.5">
-                  {post.platforms.slice(0, 3).map((pid, i) => (
-                    <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
-                  ))}
-                  {post.platforms.length > 3 && (
-                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
-                      +{post.platforms.length - 3}
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
-                  <div className="flex items-center gap-2 mt-1.5">
-                    <span className="text-xs text-white/25 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                    </span>
+            filtered.map(post => {
+              const isFailed = post.status === 'error' || post.status === 'failed';
+              const isRetrying = retrying[post.id];
+              const retriedResult = retried[post.id];
+              return (
+                <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: isFailed ? 'rgba(239,68,68,0.25)' : BORDER }}>
+                  <div className="flex -space-x-1.5 shrink-0 pt-0.5">
+                    {post.platforms.slice(0, 3).map((pid, i) => (
+                      <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
+                    ))}
+                    {post.platforms.length > 3 && (
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
+                        +{post.platforms.length - 3}
+                      </div>
+                    )}
                   </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
+                    {isFailed && post.error && (
+                      <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>
+                    )}
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="text-xs text-white/25 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                      {isFailed && !retriedResult && (
+                        <button
+                          onClick={() => handleRetry(post)}
+                          disabled={isRetrying}
+                          className="text-xs font-bold px-2 py-0.5 rounded-md transition"
+                          style={{ background: `${GOLD}20`, color: GOLD_L, opacity: isRetrying ? 0.5 : 1 }}>
+                          {isRetrying ? 'Posting…' : '↺ Retry Now'}
+                        </button>
+                      )}
+                      {retriedResult === 'ok' && <span className="text-xs font-bold" style={{ color: '#86efac' }}>✓ Posted!</span>}
+                      {retriedResult === 'err' && <span className="text-xs font-bold" style={{ color: '#fca5a5' }}>Retry failed</span>}
+                    </div>
+                  </div>
+                  <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
+                    style={{
+                      background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : isFailed ? 'rgba(239,68,68,0.12)' : `${GOLD}12`,
+                      color:      post.status === 'published' ? '#86efac'              : isFailed ? '#fca5a5'              : GOLD_L,
+                    }}>
+                    {isFailed ? 'Failed' : post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                  </span>
                 </div>
-                <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
-                  style={{
-                    background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : post.status === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`,
-                    color:      post.status === 'published' ? '#86efac'              : post.status === 'failed' ? '#fca5a5'              : GOLD_L,
-                  }}>
-                  {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
-                </span>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -3956,7 +3996,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   onUpgrade?: () => void;
 }) {
   const [logOpen, setLogOpen]             = useState(false);
-  const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed'>('all');
+  const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed' | 'error'>('all');
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
   const [loading, setLoading]             = useState(false);
   const [addModalOpen, setAddModalOpen]   = useState(false);
@@ -3977,7 +4017,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt), error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
       }));
     } catch (e) {}
     finally { setLoading(false); }
@@ -3988,7 +4028,8 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   const counts = {
     scheduled: posts.filter(p => p.status === 'scheduled').length,
     published: posts.filter(p => p.status === 'published').length,
-    failed:    posts.filter(p => p.status === 'failed').length,
+    failed:    posts.filter(p => p.status === 'failed' || p.status === 'error').length,
+    error:     posts.filter(p => p.status === 'failed' || p.status === 'error').length,
   };
 
   const pendingAddCallback = React.useRef<(() => void) | undefined>(undefined);
@@ -4015,7 +4056,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
         {([
           { key: 'scheduled' as const, label: 'Scheduled', color: GOLD },
           { key: 'published' as const, label: 'Published',  color: '#22c55e' },
-          { key: 'failed'    as const, label: 'Failed',     color: '#ef4444' },
+          { key: 'error'     as const, label: 'Failed',     color: '#ef4444' },
         ]).map((s, i) => (
           <button key={s.key}
             onClick={() => { setLogFilter(s.key); setLogOpen(true); }}
@@ -4124,7 +4165,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       const list  = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt) };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt), error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
       }));
     } catch (e) {}
     finally { setLoading(false); }

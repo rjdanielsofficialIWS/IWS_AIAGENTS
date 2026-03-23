@@ -62,6 +62,12 @@ Deno.serve(async(req)=>{
       profileKey=profile.profile_key;
       cc=Array.isArray(profile.cached_channels)?profile.cached_channels:[];
     }
+    // YouTube rejects < and > in both title and description
+    const sanitizeForYoutube=(s:string):string=>s.replace(/[<>]/g,"").trim();
+    const getYoutubeTitle=(content:string):string=>{
+      const firstLine=sanitizeForYoutube(content.split("\n")[0]);
+      return firstLine.slice(0,100)||"Video";
+    };
     // Look up by both original ID (e.g. "x") and API name (e.g. "twitter") to handle reconnects
     const pp=rawPlatforms.map((raw:string)=>{
       const api=toApiName(raw);
@@ -73,8 +79,10 @@ Deno.serve(async(req)=>{
         (ch.platform||"").toLowerCase()===raw||
         (ch.platform||"").toLowerCase()===api
       );
-      return{platform:api,accountId:c?.accountId||c?.id||""};
-    }).filter((p:{platform:string;accountId:string})=>p.accountId);
+      const entry:Record<string,unknown>={platform:api,accountId:c?.accountId||c?.id||""};
+      if(api==="youtube")entry.platformSpecificData={title:getYoutubeTitle(post),description:sanitizeForYoutube(post)};
+      return entry;
+    }).filter((p:Record<string,unknown>)=>p.accountId);
     if(pp.length===0)return respond(400,{error:"No connected accounts for selected platforms."});
     let lb:Record<string,unknown>;
     if(threadPosts.length>0){
@@ -99,7 +107,7 @@ Deno.serve(async(req)=>{
     const isError=!lateRes.ok;
     const errorMsg=isError?(result.message||result.error||"API error "+lateRes.status):null;
     if(isError)console.error("API error:",lateRes.status,JSON.stringify(result),"sent:",JSON.stringify(lb));
-    try{await supabase.from("scheduled_posts").insert({supabase_user_id:userId,profile_key:profileKey,ayrshare_post_id:result._id??result.id??null,platforms:rawPlatforms,content:post,media_urls:mediaUrls,scheduled_at:scheduleDate?new Date(scheduleDate).toISOString():new Date().toISOString(),status:isError?"error":(scheduleDate?"scheduled":"published"),error:errorMsg??null,workspace_id:workspaceId||null});}catch(e){console.error("DB insert failed:",e);}
+    try{await supabase.from("scheduled_posts").insert({supabase_user_id:userId,profile_key:profileKey,ayrshare_post_id:result.post?._id??result._id??result.id??null,platforms:rawPlatforms,content:post,media_urls:mediaUrls,scheduled_at:scheduleDate?new Date(scheduleDate).toISOString():new Date().toISOString(),status:isError?"error":(scheduleDate?"scheduled":"published"),error:errorMsg??null,workspace_id:workspaceId||null});}catch(e){console.error("DB insert failed:",e);}
     if(!isError){try{await supabase.rpc("increment_usage",{p_user_id:userId,p_period:period,p_field:"posts_scheduled"});}catch(e){console.error("Usage increment failed:",e);}}
     if(isError)return respond(500,{error:errorMsg,detail:result});
     return respond(200,{success:true,postId:result._id||result.id,result});
