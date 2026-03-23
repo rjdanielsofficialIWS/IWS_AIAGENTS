@@ -212,7 +212,7 @@ ${expandedTone}
 PLATFORM RULES (follow strictly):
 
 TWITTER / X (tweets):
-- 200–280 chars max when possible
+- Strictly under 280 characters — hard limit, never exceed
 - Strong hook in first 6–10 words
 - 0–1 hashtags max
 - Prefer punchy formatting: short lines, occasional bullets

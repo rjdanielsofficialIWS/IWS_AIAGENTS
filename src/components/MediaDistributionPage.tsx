@@ -2265,6 +2265,7 @@ function InlinePostComposer({
                     onChange={e => setThreadTweets(prev => prev.map((x, xi) => xi === i ? e.target.value : x))}
                     placeholder={i === 0 ? 'Start your thread here…' : `Post ${i + 1}…`}
                     rows={3}
+                    maxLength={280}
                     className="w-full bg-transparent px-3 py-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
                 </div>
               ))}
@@ -2279,12 +2280,12 @@ function InlinePostComposer({
                 onChange={e => setXText(e.target.value)}
                 placeholder="Write your post here. It will be sent to all selected accounts above."
                 rows={6}
+                maxLength={280}
                 className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
               />
               <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
-                <span className="text-xs text-white/20">{xText.length} chars</span>
+                <span className="text-xs" style={{ color: xText.length >= 270 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{xText.length}/280</span>
                 <div className="flex items-center gap-2">
-                  {xText.length > 280 && <span className="text-xs text-amber-400/80 font-bold">⚠ Over X's 280 char limit</span>}
                   <button onClick={() => { savePost(xText, 'Manual'); setXText(''); }}
                     disabled={!xText.trim()}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-30 hover:bg-white/8"

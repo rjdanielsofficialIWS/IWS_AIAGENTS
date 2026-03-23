@@ -24,7 +24,7 @@ const PR={
   instagram:"Instagram caption: FIRST LINE must be a scroll-stopping hook (no more than 10 words, leaves a curiosity gap). Then line break. Then 3-6 short punchy paragraphs or bullet points. Relatable and specific. 3-6 strategic hashtags at end. End with an engagement CTA (comment, save, or share).",
   facebook:"Facebook caption: Open with a relatable scenario or bold statement. 2-4 conversational sentences. Tell a micro-story or share a specific insight. End with a question that sparks comments. 0-2 hashtags max.",
   linkedin:"LinkedIn post: Professional but human — not corporate. Hook in first line (must make people click 'see more'). Then line breaks between short paragraphs. Share a specific insight, lesson, or story. 3-4 paragraphs. End with a clear CTA or thought-provoking question. 2-3 relevant hashtags.",
-  x:"X/Twitter: Under 270 chars. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
+  x:"X/Twitter: Strictly under 280 characters — this is a hard limit. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
   youtube:"YouTube: youtube_title under 100 chars (curiosity-driven, specific, no clickbait) and youtube description (2-3 sentences, what the video covers, natural keyword inclusion).",
   threads:"Threads: Casual, conversational. 1-3 sentences. Feels like a text to a friend. No hashtags needed.",
   bluesky:"Bluesky: Thoughtful and direct. Under 200 chars. Intellectual but approachable tone."
@@ -67,12 +67,17 @@ Deno.serve(async(req)=>{
       const raw=await callClaude("You are a content strategist. Return ONLY valid JSON.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\nReturn JSON: {\"short_clips\":[{\"title\":\"string\",\"angle\":\"string\",\"platform\":\"string\"}],\"blog_angles\":[{\"headline\":\"string\",\"angle\":\"string\"}],\"social_hooks\":[\"string\"],\"series_ideas\":[{\"series_name\":\"string\",\"concept\":\"string\"}],\"other_formats\":[{\"format\":\"string\",\"concept\":\"string\"}]}\n3-4 items per section.");
       result={ideas:JSON.parse(raw)};
     }else if(mode==="repurpose_posts"){
-      const POSTS_STYLE:Record<string,string>={twitter:"10 X/Twitter posts. Each strictly under 270 characters. Sharp hook, punchy, one strong insight per post. No thread format.",linkedin:"10 LinkedIn posts. Each 100-300 words. Professional but human tone. Strong first line that makes people click 'see more'. Line breaks between short paragraphs. End with a CTA or question.",threads:"10 Threads posts. Each under 500 characters. Casual and conversational, like a text to a friend."};
+      const POSTS_STYLE:Record<string,string>={twitter:"10 X/Twitter posts. Each strictly under 280 characters — hard limit, never exceed. Sharp hook, punchy, one strong insight per post. No thread format.",linkedin:"10 LinkedIn posts. Each 100-300 words. Professional but human tone. Strong first line that makes people click 'see more'. Line breaks between short paragraphs. End with a CTA or question.",threads:"10 Threads posts. Each under 500 characters. Casual and conversational, like a text to a friend."};
       const postPlatforms=[...new Set((selP.length>0?selP:["twitter","linkedin"]).map(p=>{const lp=p.toLowerCase();if(lp==="x"||lp==="twitter")return"twitter";if(lp==="linkedin")return"linkedin";if(lp==="threads")return"threads";return"twitter";}))];
       const schema="{"+postPlatforms.map(p=>`"${p}":["post1","post2","post3","post4","post5","post6","post7","post8","post9","post10"]`).join(",")+"}" ;
       const instructions=postPlatforms.map(p=>POSTS_STYLE[p]||p+": Write 10 engaging posts.").join("\n\n");
       const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\n"+instructions+"\n\nReturn JSON: "+schema,4000);
       result={posts:JSON.parse(raw)};
+    }else if(mode==="thread_posts"){
+      const raw=await callClaude("You are a ghostwriter. Sound like a real human. Return ONLY valid JSON.","Tone: "+toneG+"\n\nTopic/content:\n\""+source+"\"\n\nWrite a Twitter/X thread of 5-8 tweets. Rules:\n- Each tweet MUST be strictly under 280 characters — hard limit, never exceed\n- First tweet is the hook — make it impossible to scroll past\n- Each tweet stands alone but flows into the next\n- No tweet numbering (no '1/' or '1.')\n- 0-1 hashtags per tweet max\n- Sound like a real person, not an AI\n\nReturn JSON: {\"thread\":[\"tweet1\",\"tweet2\",\"tweet3\",\"tweet4\",\"tweet5\"]}",2000);
+      const parsed=JSON.parse(raw);
+      const thread:string[]=Array.isArray(parsed.thread)?parsed.thread.map((t:string)=>String(t).slice(0,280)):[];
+      result={thread};
     }else return new Response(JSON.stringify({error:"Invalid mode"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     return new Response(JSON.stringify(result),{headers:{...cors,"Content-Type":"application/json"}});
   }catch(e){return new Response(JSON.stringify({error:e.message||"Failed"}),{status:500,headers:{...cors,"Content-Type":"application/json"}});}
