@@ -64,7 +64,7 @@ Deno.serve(async(req)=>{
         (ch.platform||"").toLowerCase()===api
       );
       return{platform:api,accountId:c?.accountId||c?.id||""};
-    }).filter((p:{platform:string;accountId:string})=>p.accountId&&p.accountId!==p.platform);
+    }).filter((p:{platform:string;accountId:string})=>p.accountId);
     if(pp.length===0)return respond(400,{error:"No connected accounts for selected platforms."});
     let lb:Record<string,unknown>;
     if(threadPosts.length>0){
