@@ -49,9 +49,19 @@ Deno.serve(async(req)=>{
   const voP=cleanPlatforms.filter(p=>VIDEO_ONLY.has(p));
   if(voP.length>0&&mediaUrls.length>0&&!hasVideo)return respond(400,{error:voP.map(p=>p[0].toUpperCase()+p.slice(1)).join(", ")+" only accept video files."});
   try{
-    const{data:profile}=await supabase.from("ayrshare_profiles").select("profile_key,cached_channels").eq("supabase_user_id",userId).maybeSingle();
-    if(!profile?.profile_key)return respond(400,{error:"No connected accounts found."});
-    const cc=Array.isArray(profile.cached_channels)?profile.cached_channels:[];
+    const workspaceId:string=typeof body.workspaceId==="string"?body.workspaceId.trim():"";
+    let profileKey="";
+    let cc:Array<{id?:string;profile?:string;platform?:string;accountId?:string}>=[];
+    if(workspaceId){
+      const{data:ws}=await supabase.from("workspaces").select("profile_key,cached_channels").eq("id",workspaceId).eq("owner_user_id",userId).maybeSingle();
+      if(ws?.profile_key){profileKey=ws.profile_key;cc=Array.isArray(ws.cached_channels)?ws.cached_channels:[];}
+    }
+    if(!profileKey){
+      const{data:profile}=await supabase.from("ayrshare_profiles").select("profile_key,cached_channels").eq("supabase_user_id",userId).maybeSingle();
+      if(!profile?.profile_key)return respond(400,{error:"No connected accounts found."});
+      profileKey=profile.profile_key;
+      cc=Array.isArray(profile.cached_channels)?profile.cached_channels:[];
+    }
     // Look up by both original ID (e.g. "x") and API name (e.g. "twitter") to handle reconnects
     const pp=rawPlatforms.map((raw:string)=>{
       const api=toApiName(raw);
@@ -84,12 +94,12 @@ Deno.serve(async(req)=>{
     }
     if(scheduleDate){lb.scheduledFor=new Date(scheduleDate).toISOString();}else{lb.publishNow=true;}
     console.log("API request:",JSON.stringify(lb));
-    const lateRes=await fetch(LATE_API_URL+"/posts?profileId="+profile.profile_key,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb),redirect:"follow"});
+    const lateRes=await fetch(LATE_API_URL+"/posts?profileId="+profileKey,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+LATE_API_KEY},body:JSON.stringify(lb),redirect:"follow"});
     const result=await lateRes.json();
     const isError=!lateRes.ok;
     const errorMsg=isError?(result.message||result.error||"API error "+lateRes.status):null;
     if(isError)console.error("API error:",lateRes.status,JSON.stringify(result),"sent:",JSON.stringify(lb));
-    try{await supabase.from("scheduled_posts").insert({supabase_user_id:userId,profile_key:profile.profile_key,ayrshare_post_id:result._id??result.id??null,platforms:rawPlatforms,content:post,media_urls:mediaUrls,scheduled_at:scheduleDate?new Date(scheduleDate).toISOString():new Date().toISOString(),status:isError?"error":(scheduleDate?"scheduled":"published"),error:errorMsg??null});}catch(e){console.error("DB insert failed:",e);}
+    try{await supabase.from("scheduled_posts").insert({supabase_user_id:userId,profile_key:profileKey,ayrshare_post_id:result._id??result.id??null,platforms:rawPlatforms,content:post,media_urls:mediaUrls,scheduled_at:scheduleDate?new Date(scheduleDate).toISOString():new Date().toISOString(),status:isError?"error":(scheduleDate?"scheduled":"published"),error:errorMsg??null,workspace_id:workspaceId||null});}catch(e){console.error("DB insert failed:",e);}
     if(!isError){try{await supabase.rpc("increment_usage",{p_user_id:userId,p_period:period,p_field:"posts_scheduled"});}catch(e){console.error("Usage increment failed:",e);}}
     if(isError)return respond(500,{error:errorMsg,detail:result});
     return respond(200,{success:true,postId:result._id||result.id,result});

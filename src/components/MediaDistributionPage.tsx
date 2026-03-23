@@ -153,6 +153,7 @@ async function ayrsharePost(payload: {
     body: JSON.stringify(payload),
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401) throw new Error('SESSION_EXPIRED');
   if (!res.ok) {
     const msg = data.error || `Post failed (${res.status})`;
     const hint = data.hint ? `\n\n💡 ${data.hint}` : '';
@@ -1200,7 +1201,7 @@ function SavedPostCard({
       setPostOk(true);
       setSelectedAccounts([]);
       setTimeout(() => setPostOk(false), 3000);
-    } catch (e: any) { setPostErr(e.message || 'Post failed'); }
+    } catch (e: any) { setPostErr(e.message === 'SESSION_EXPIRED' ? 'Your session has expired. Please log out and log back in, then try again.' : (e.message || 'Post failed')); }
     finally { setPosting(false); }
   };
 
@@ -1720,7 +1721,7 @@ function InlinePostComposer({
       setAiEditText(''); setEditingIdx(null); setSelectedTextAccounts([]);
       setPostFormat('standard'); setThreadTweets(['', '']);
       setTimeout(() => setSubmitOk(false), 3000);
-    } catch (e: any) { setSubmitError(e.message || 'Post failed'); }
+    } catch (e: any) { setSubmitError(e.message === 'SESSION_EXPIRED' ? 'Your session has expired. Please log out and log back in, then try again.' : (e.message || 'Post failed')); }
     finally { setSubmitting(false); }
   };
 
