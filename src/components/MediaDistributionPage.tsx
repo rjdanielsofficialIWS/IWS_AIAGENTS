@@ -43,7 +43,8 @@ const VIRAL_ANGLES = [
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ORG_ID = '56bd14a6-07ab-4c57-bbfd-28d6d7d9eaa6';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
 
@@ -819,7 +820,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+        headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
       const now = new Date();
@@ -4011,7 +4012,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+        headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -4159,7 +4160,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+        headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
       });
       const data  = res.ok ? await res.json() : { posts: [] };
       const list  = Array.isArray(data?.posts) ? data.posts : [];
