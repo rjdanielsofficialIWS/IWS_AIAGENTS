@@ -145,20 +145,30 @@ async function ayrsharePost(payload: {
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
   workspaceId?: string | null; thread?: string[]; carousel?: boolean;
 }) {
-  const { data: { session } } = await supabase.auth.getSession();
-  const token = session?.access_token ?? '';
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+  // Always attempt a session refresh to ensure we have a fresh token
+  let { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    const refreshed = await supabase.auth.refreshSession();
+    session = refreshed.data.session;
+  }
+  if (!session?.access_token) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+  const doPost = async (token: string) => fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
-    },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify(payload),
   });
+  let res = await doPost(session.access_token);
+  // On 401, try one refresh+retry before giving up
+  if (res.status === 401) {
+    const refreshed = await supabase.auth.refreshSession();
+    const newToken = refreshed.data.session?.access_token;
+    if (!newToken) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+    res = await doPost(newToken);
+  }
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) throw new Error('Your session has expired. Please log out and log back in, then try again.');
   if (!res.ok) {
-    const msg = data.error || `Post failed (${res.status})`;
+    if (res.status === 401) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+    const msg = data.error || data.message || `Post failed (${res.status})`;
     const hint = data.hint ? `\n\n💡 ${data.hint}` : '';
     throw new Error(msg + hint);
   }
