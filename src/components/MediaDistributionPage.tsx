@@ -2226,7 +2226,9 @@ function InlinePostComposer({
                     if (!threadVideoMode && !desc) { setThreadTopicError(true); return; }
                     setTextAiLoading(true); setTextAiError(null);
                     try {
-                      const { data: { session } } = await supabase.auth.getSession();
+                      let { data: { session } } = await supabase.auth.getSession();
+                      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+                      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
                       let source = desc;
                       if (threadVideoMode && threadVideoFile) {
                         source = await transcribeVideo(threadVideoFile, session?.access_token ?? '');
