@@ -73,7 +73,6 @@ async function createSupabaseTUS(
     headers: {
       Authorization: `Bearer ${svcKey}`,
       apikey: svcKey,
-      "Content-Type": "application/json",
       "x-upsert": "true",
       "Tus-Resumable": "1.0.0",
       "Upload-Length": String(fileSize),
