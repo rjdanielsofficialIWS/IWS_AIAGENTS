@@ -1348,14 +1348,9 @@ function SavedPostCard({
           ))}
         </div>
         {scheduleType === 'schedule' && (
-          <div className="flex gap-2">
-            <input type="date" value={scheduleDateStr.slice(0, 10)} onChange={e => setScheduleDate(e.target.value + 'T' + scheduleDateStr.slice(11, 16))}
-              className="rounded-xl border bg-black/25 px-3 py-1.5 text-xs text-white outline-none"
-              style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-            <input type="time" value={scheduleDateStr.slice(11, 16)} onChange={e => setScheduleDate(scheduleDateStr.slice(0, 10) + 'T' + e.target.value)}
-              className="rounded-xl border bg-black/25 px-3 py-1.5 text-xs text-white outline-none"
-              style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-          </div>
+          <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
+            className="rounded-xl border bg-black/25 px-3 py-1.5 text-xs text-white outline-none"
+            style={{ borderColor: BORDER, colorScheme: 'dark', minWidth: '200px' }} />
         )}
       </div>
 
@@ -1796,14 +1791,9 @@ function InlinePostComposer({
         ))}
       </div>
       {scheduleType === 'schedule' && (
-        <div className="flex gap-2">
-          <input type="date" value={scheduleDateStr.slice(0, 10)} onChange={e => setScheduleDate(e.target.value + 'T' + scheduleDateStr.slice(11, 16))}
-            className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none"
-            style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-          <input type="time" value={scheduleDateStr.slice(11, 16)} onChange={e => setScheduleDate(scheduleDateStr.slice(0, 10) + 'T' + e.target.value)}
-            className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none"
-            style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-        </div>
+        <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
+          className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none"
+          style={{ borderColor: BORDER, colorScheme: 'dark', minWidth: '210px' }} />
       )}
     </div>
   );
