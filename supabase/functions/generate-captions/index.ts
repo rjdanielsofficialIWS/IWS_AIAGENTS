@@ -74,11 +74,11 @@ Deno.serve(async(req)=>{
       const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\n"+instructions+"\n\nReturn JSON: "+schema,4000);
       result={posts:JSON.parse(raw)};
     }else if(mode==="thread_posts"){
-      const tweetCount=Math.max(3,Math.min(10,parseInt(thread_count)||5));
-      const threadSchema="{\"thread\":["+Array.from({length:tweetCount},(_,i)=>`"tweet${i+1}"`).join(",")+"]}"
-      const raw=await callClaude("You are a ghostwriter. Sound like a real human. Return ONLY valid JSON.","Tone: "+toneG+"\n\nTopic/content:\n\""+source+"\"\n\nWrite a Twitter/X thread of exactly "+tweetCount+" tweets. Rules:\n- Each tweet MUST be strictly under 280 characters — hard limit, never exceed\n- First tweet is the hook — make it impossible to scroll past\n- Each tweet stands alone but flows into the next\n- No tweet numbering (no '1/' or '1.')\n- 0-1 hashtags per tweet max\n- Sound like a real person, not an AI\n- LAST TWEET must be a creative CTA — mix it up: ask them to share, follow, reply with their experience, save it, DM for more info, tag someone who needs this, try it and report back, take a screenshot and repost, quote tweet with their take, etc. Must feel human and natural, never salesy or forced\n\nReturn JSON with exactly "+tweetCount+" tweets: "+threadSchema,2500);
-      const parsed=JSON.parse(raw);
-      const thread:string[]=Array.isArray(parsed.thread)?parsed.thread.map((t:string)=>String(t).slice(0,280)):[];
+      const tweetCount=Math.max(3,Math.min(10,Number(thread_count)||5));
+      const raw=await callClaude("You are a ghostwriter. Sound like a real human. Return ONLY valid JSON.","Tone: "+toneG+"\n\nTopic/content:\n\""+source+"\"\n\nWrite a Twitter/X thread of exactly "+tweetCount+" tweets.\n\nRules:\n- Each tweet strictly under 280 characters — hard limit\n- First tweet is the hook — impossible to scroll past\n- Each tweet stands alone but flows into the next\n- No tweet numbering (no '1/' or '1.')\n- 0-1 hashtags per tweet max\n- Sound like a real person, not an AI\n- LAST TWEET must be a creative CTA — vary the style: ask them to share, follow, reply with their experience, save it, DM for more, tag someone who needs this, try it and report back, quote tweet with their take, etc. Feel human, never salesy\n\nReturn ONLY valid JSON in this exact format: {\"thread\":[\"tweet text here\",\"tweet text here\"]}",2500);
+      let parsed:any={};try{parsed=JSON.parse(raw);}catch(_){throw new Error("Failed to generate thread — please try again");}
+      const thread:string[]=Array.isArray(parsed.thread)?parsed.thread.map((t:any)=>String(t).slice(0,280)):[];
+      if(!thread.length)throw new Error("No thread content returned — please try again");
       result={thread};
     }else return new Response(JSON.stringify({error:"Invalid mode"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     return new Response(JSON.stringify(result),{headers:{...cors,"Content-Type":"application/json"}});

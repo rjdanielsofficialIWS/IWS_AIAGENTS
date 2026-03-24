@@ -2215,7 +2215,7 @@ function InlinePostComposer({
                 <button
                   onClick={() => { setThreadVideoMode(v => !v); setThreadTopicError(false); }}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all shrink-0"
-                  style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + (threadVideoMode ? GOLD : GOLD + '40'), color: threadVideoMode ? GOLD : GOLD + '99' }}
+                  style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + GOLD, color: GOLD }}
                 >
                   <Video className="w-3 h-3" /> Repurpose Video
                 </button>
