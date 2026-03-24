@@ -2210,9 +2210,7 @@ function InlinePostComposer({
           {/* Thread composer for text posts */}
           {postFormat === 'thread' && (
             <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-bold text-white/40 uppercase tracking-wider">🧵 Thread</span>
-                <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 justify-end">
                   <button onClick={async () => {
                     const desc = threadTopic.trim();
                     if (threadVideoMode && !threadVideoFile) return;
@@ -2220,10 +2218,14 @@ function InlinePostComposer({
                     setTextAiLoading(true); setTextAiError(null);
                     try {
                       const { data: { session } } = await supabase.auth.getSession();
+                      let source = desc;
+                      if (threadVideoMode && threadVideoFile) {
+                        source = await transcribeVideo(threadVideoFile, session?.access_token ?? '');
+                      }
                       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
-                        body: JSON.stringify({ mode: 'thread_posts', description: threadVideoMode ? (threadVideoTranscript || desc || 'Generate a viral thread') : desc, tone: textAiTone, video_repurpose: threadVideoMode }),
+                        body: JSON.stringify({ mode: 'thread_posts', description: source, tone: textAiTone, video_repurpose: threadVideoMode }),
                       });
                       const data = await res.json();
                       if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
@@ -2243,7 +2245,6 @@ function InlinePostComposer({
                     style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)' }}>
                     <Plus className="w-3 h-3" /> Add
                   </button>
-                </div>
               </div>
               <div className="mb-3">
                 <div className="flex items-center gap-2 mb-1">
