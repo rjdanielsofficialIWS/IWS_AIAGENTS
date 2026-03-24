@@ -966,7 +966,7 @@ const ThreadVideoPlayer = React.memo(function ThreadVideoPlayer({
 }: { src: string; fileName: string; onRemove: () => void }) {
   return (
     <div className="relative rounded-xl overflow-hidden mb-2" style={{ border: '1.5px solid ' + GOLD + '60' }}>
-      <video src={src} controls className="w-full" style={{ background: '#000', display: 'block', maxHeight: '60vh' }} />
+      <video src={src} autoPlay muted playsInline controls className="w-full" style={{ background: '#000', display: 'block', maxHeight: '60vh' }} />
       <button onClick={onRemove}
         className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-black/70 hover:bg-red-500/80 transition"
         style={{ color: 'white' }}>
@@ -1060,6 +1060,7 @@ function VideoPreviewCard({
           src={objectUrl}
           className="w-full block object-contain"
           playsInline
+          autoPlay
           muted
           preload="auto"
           onTimeUpdate={handleTimeUpdate}
@@ -2178,7 +2179,7 @@ function InlinePostComposer({
                   return (
                     <button key={integ.id}
                       onClick={() => { toggleTextAccount(integ.id); setSubmitError(null); }}
-                      className="flex items-center gap-2 px-3 py-2 rounded-xl border font-semibold transition"
+                      className="flex items-center gap-2 px-3 py-2.5 rounded-xl border font-semibold transition min-h-[42px]"
                       style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
                       <PlatformIcon id={platform} size="sm" picture={integ.picture} />
                       <span className="max-w-[90px] truncate text-xs">{integ.name}</span>
@@ -2192,32 +2193,24 @@ function InlinePostComposer({
 
           {/* ── Step 2: Write manually OR use AI ── */}
 
-          {/* Thread format toggle for text posts */}
-          {(() => {
-            const selPlatforms = selectedTextAccounts.map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return (a?.integ.profile || a?.integ.id || '').toLowerCase(); });
-            const hasThread = selPlatforms.some(p => ['twitter','x','threads','linkedin','bluesky'].includes(p));
-            if (!hasThread || selectedTextAccounts.length === 0) return null;
-            return (
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Format</span>
-                <button onClick={() => setPostFormat('standard')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                  style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
-                  Standard
-                </button>
-                <button onClick={() => setPostFormat('thread')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold border transition"
-                  style={{ borderColor: postFormat === 'thread' ? '#a78bfa' : BORDER, background: postFormat === 'thread' ? 'rgba(167,139,250,0.15)' : 'transparent', color: postFormat === 'thread' ? '#c4b5fd' : 'rgba(255,255,255,0.4)' }}>
-                  🧵 Thread
-                </button>
-              </div>
-            );
-          })()}
+          {/* Format toggle for text posts — always visible */}
+          <div className="flex gap-2">
+            <button onClick={() => setPostFormat('standard')}
+              className="flex-1 px-3 py-2.5 rounded-xl text-xs font-bold border transition"
+              style={{ borderColor: postFormat === 'standard' ? GOLD : BORDER, background: postFormat === 'standard' ? `${GOLD}18` : 'transparent', color: postFormat === 'standard' ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+              Standard
+            </button>
+            <button onClick={() => setPostFormat('thread')}
+              className="flex-1 px-3 py-2.5 rounded-xl text-xs font-bold border transition"
+              style={{ borderColor: postFormat === 'thread' ? '#a78bfa' : BORDER, background: postFormat === 'thread' ? 'rgba(167,139,250,0.15)' : 'transparent', color: postFormat === 'thread' ? '#c4b5fd' : 'rgba(255,255,255,0.4)' }}>
+              🧵 Thread
+            </button>
+          </div>
 
           {/* Thread composer for text posts */}
           {postFormat === 'thread' && (
             <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="text-xs font-bold text-white/40 uppercase tracking-wider">🧵 Thread</span>
                 <div className="flex items-center gap-2">
                   <button onClick={async () => {
@@ -2240,28 +2233,31 @@ function InlinePostComposer({
                     finally { setTextAiLoading(false); }
                   }}
                   disabled={textAiLoading}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition disabled:opacity-40"
                   style={{ background: GOLD + '33', border: '1.5px solid ' + GOLD, color: GOLD }}>
                     {textAiLoading ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</> : <><Sparkles className="w-3 h-3" /> AI Thread</>}
                   </button>
                   <button onClick={() => setThreadTweets(prev => [...prev, ''])}
                     disabled={threadTweets.length >= 10}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-40 hover:bg-white/8"
+                    className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-bold transition disabled:opacity-40 hover:bg-white/8"
                     style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)' }}>
                     <Plus className="w-3 h-3" /> Add
                   </button>
                 </div>
               </div>
-              <div className="flex items-center gap-2 mb-2">
-                <button
-                  onClick={() => { setThreadVideoMode(v => !v); setThreadTopicError(false); }}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all"
-                  style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + (threadVideoMode ? GOLD : GOLD + '40'), color: threadVideoMode ? GOLD : GOLD + '99' }}
-                >
-                  <Video className="w-3 h-3" /> Repurpose Video
-                </button>
-                {threadVideoMode && !threadVideoFile && <span className="text-xs" style={{ color: GOLD + 'aa' }}>Upload a video to repurpose</span>}
-                {threadVideoMode && threadVideoFile && <span className="text-xs" style={{ color: GOLD }}>&#10003; {threadVideoFile.name}</span>}
+              <div className="mb-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <button
+                    onClick={() => { setThreadVideoMode(v => !v); setThreadTopicError(false); }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + (threadVideoMode ? GOLD : GOLD + '40'), color: threadVideoMode ? GOLD : GOLD + '99' }}
+                  >
+                    <Video className="w-3 h-3" /> Repurpose Video
+                  </button>
+                  {threadVideoMode && !threadVideoFile && <span className="text-xs" style={{ color: GOLD + 'aa' }}>Upload a video to repurpose</span>}
+                  {threadVideoMode && threadVideoFile && <span className="text-xs truncate max-w-[140px]" style={{ color: GOLD }}>&#10003; {threadVideoFile.name}</span>}
+                </div>
+                <p className="text-[10px] pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>Must be a talking video.</p>
               </div>
               {threadVideoMode && (
                 <>
@@ -2272,6 +2268,7 @@ function InlinePostComposer({
                       <input type="file" accept="video/*,audio/*" className="hidden"
                         onChange={e => {
                           const file = e.target.files?.[0];
+                          e.target.value = '';
                           if (!file) return;
                           if (threadVideoUrl) URL.revokeObjectURL(threadVideoUrl);
                           setThreadVideoFile(file);
@@ -2314,7 +2311,7 @@ function InlinePostComposer({
                     <span className="ml-auto text-[10px]" style={{ color: tweet.length > 280 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{tweet.length}/280</span>
                     {threadTweets.length > 2 && (
                       <button onClick={() => setThreadTweets(prev => prev.filter((_, xi) => xi !== i))}
-                        className="w-4 h-4 flex items-center justify-center rounded hover:bg-red-500/20 text-white/20 hover:text-red-400 transition">
+                        className="w-7 h-7 flex items-center justify-center rounded hover:bg-red-500/20 text-white/20 hover:text-red-400 transition">
                         <X className="w-3 h-3" />
                       </button>
                     )}
@@ -2322,9 +2319,9 @@ function InlinePostComposer({
                   <textarea value={tweet}
                     onChange={e => setThreadTweets(prev => prev.map((x, xi) => xi === i ? e.target.value : x))}
                     placeholder={i === 0 ? 'Start your thread here…' : `Post ${i + 1}…`}
-                    rows={3}
+                    rows={4}
                     maxLength={280}
-                    className="w-full bg-transparent px-3 py-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                    className="w-full bg-transparent px-3 py-3 text-sm text-white placeholder-white/20 outline-none resize-none" />
                 </div>
               ))}
             </div>
@@ -2337,7 +2334,7 @@ function InlinePostComposer({
                 value={xText}
                 onChange={e => setXText(e.target.value)}
                 placeholder="Write your post here. It will be sent to all selected accounts above."
-                rows={6}
+                rows={4}
                 maxLength={280}
                 className="w-full bg-transparent px-4 pt-4 pb-3 text-sm text-white placeholder-white/20 outline-none resize-none"
               />
@@ -2388,6 +2385,7 @@ function InlinePostComposer({
                       <span className="text-xs text-white/40">Click to select your talking video</span>
                       <input type="file" accept="video/*" className="hidden" onChange={e => {
                         const f = e.target.files?.[0];
+                        e.target.value = '';
                         if (f) {
                           if (textAiVideoObjectUrl) URL.revokeObjectURL(textAiVideoObjectUrl);
                           const url = URL.createObjectURL(f);
@@ -2460,7 +2458,7 @@ function InlinePostComposer({
 
                     <div className="text-xs text-white/25">Click a post to select it · click ✏️ to edit inline</div>
 
-                    <div className="space-y-1.5 max-h-[480px] overflow-y-auto pr-1">
+                    <div className="space-y-1.5 max-h-[320px] md:max-h-[480px] overflow-y-auto pr-1">
                       {(textAiPosts[textTab] ?? []).map((post, idx) => {
                         const platform = textTab;
                         const isSel     = textAiSelected[platform] === idx;
