@@ -211,6 +211,7 @@ async function uploadViaNativeXHR(
     return new Promise<string>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', EDGE);
+      xhr.setRequestHeader('Authorization', `Bearer ${SUPABASE_ANON_KEY}`);
       xhr.setRequestHeader('x-file-path', filePath);
       xhr.setRequestHeader('content-type', contentType);
       if (onProgress) xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100)); };
@@ -232,7 +233,7 @@ async function uploadViaNativeXHR(
 
   const initRes = await fetch(EDGE, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
     body: JSON.stringify({ action: 'init', filePath, contentType, fileSize }),
   });
   if (!initRes.ok) {
@@ -254,6 +255,7 @@ async function uploadViaNativeXHR(
     const chunkRes = await new Promise<Response>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', EDGE);
+      xhr.setRequestHeader('Authorization', `Bearer ${SUPABASE_ANON_KEY}`);
       xhr.setRequestHeader('x-action', 'chunk');
       xhr.setRequestHeader('x-file-path', filePath);
       xhr.setRequestHeader('x-provider', provider || 'supabase');
@@ -275,7 +277,7 @@ async function uploadViaNativeXHR(
     if (!chunkRes.ok) {
       const e = await chunkRes.json().catch(() => ({}));
       if (uploadId) {
-        fetch(EDGE, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'abort', filePath, uploadId }) }).catch(() => {});
+        fetch(EDGE, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }, body: JSON.stringify({ action: 'abort', filePath, uploadId }) }).catch(() => {});
       }
       throw new Error(e.error || `Chunk ${partNo} failed (${chunkRes.status})`);
     }
@@ -291,7 +293,7 @@ async function uploadViaNativeXHR(
 
   const completeRes = await fetch(EDGE, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
     body: JSON.stringify({ action: 'complete', filePath, uploadId, parts }),
   });
   if (!completeRes.ok) {
@@ -2091,12 +2093,13 @@ function InlinePostComposer({
                     </span>
                   </div>
                 )}
-                <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
+                <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0 || (captionMode === 'from_video' && videoUpload.status === 'uploading')}
                   className="w-full flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
                   <span className="flex items-center gap-2">
                     {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Analyzing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
                   </span>
+                  {captionMode === 'from_video' && videoUpload.status === 'uploading' && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Waiting for video to finish uploading…</span>}
                   {aiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}

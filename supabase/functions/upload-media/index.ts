@@ -68,29 +68,38 @@ async function createSupabaseTUS(
   contentType: string,
   fileSize: number,
 ): Promise<string> {
-  const r = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${svcKey}`,
-      apikey: svcKey,
-      "x-upsert": "true",
-      "Tus-Resumable": "1.0.0",
-      "Upload-Length": String(fileSize),
-      "Upload-Metadata": [
-        `bucketName ${btoa(BUCKET)}`,
-        `objectName ${btoa(filePath)}`,
-        `contentType ${btoa(contentType ?? "application/octet-stream")}`,
-        `cacheControl ${btoa("3600")}`,
-      ].join(","),
-    },
-  });
-  if (!r.ok) {
+  const MAX_ATTEMPTS = 3;
+  let lastError = "";
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const r = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${svcKey}`,
+        apikey: svcKey,
+        "x-upsert": "true",
+        "Tus-Resumable": "1.0.0",
+        "Upload-Length": String(fileSize),
+        "Upload-Metadata": [
+          `bucketName ${btoa(BUCKET)}`,
+          `objectName ${btoa(filePath)}`,
+          `contentType ${btoa(contentType ?? "application/octet-stream")}`,
+          `cacheControl ${btoa("3600")}`,
+        ].join(","),
+      },
+    });
+    if (r.ok) {
+      const tusUrl = r.headers.get("Location") ?? "";
+      if (!tusUrl) throw new Error("Supabase TUS returned no Location header");
+      return tusUrl;
+    }
     const t = await r.text();
-    throw new Error(`Supabase TUS init failed (${r.status}): ${t.slice(0, 200)}`);
+    lastError = `Supabase TUS init failed (${r.status}): ${t.slice(0, 200)}`;
+    console.error(`TUS init attempt ${attempt}/${MAX_ATTEMPTS} failed:`, lastError);
+    if (attempt < MAX_ATTEMPTS) {
+      await new Promise<void>((res) => setTimeout(res, 1000 * attempt));
+    }
   }
-  const tusUrl = r.headers.get("Location") ?? "";
-  if (!tusUrl) throw new Error("Supabase TUS returned no Location header");
-  return tusUrl;
+  throw new Error(lastError);
 }
 
 // ---------------------------------------------------------------------------

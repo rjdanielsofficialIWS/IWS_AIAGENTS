@@ -12,19 +12,29 @@ Deno.serve(async(req)=>{
   const respond=(code,data)=>new Response(JSON.stringify(data),{status:code,headers:cors});
   const supabase=createClient(Deno.env.get("SUPABASE_URL")??"",Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")??"",{auth:{persistSession:false}});
   let userId="";
-  const token=(req.headers.get("Authorization")??"").replace("Bearer ","").trim();
+  const authHeader=req.headers.get("Authorization")??"";
+  const token=authHeader.replace("Bearer ","").trim();
+  console.log("auth-debug: header present=",!!authHeader,"token len=",token.length);
   if(token){
-    // First try decoding the JWT payload directly (fast, no network call)
+    // Decode JWT payload directly — Supabase infra already verified the signature
     try{
-      const payload=JSON.parse(atob(token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/")));
+      const b64=token.split(".")[1].replace(/-/g,"+").replace(/_/g,"/");
+      const padded=b64+"=".repeat((4-b64.length%4)%4);
+      const payload=JSON.parse(atob(padded));
+      console.log("auth-debug: jwt role=",payload.role,"sub present=",!!payload.sub);
       // Only trust user JWTs (role="authenticated"), not anon or service_role keys
       if(payload.role==="authenticated"&&payload.sub)userId=payload.sub;
-    }catch{}
-    // Fallback: verify via Supabase auth API (covers edge cases like JWTs with non-standard padding)
-    if(!userId){const{data:{user},error}=await supabase.auth.getUser(token);if(!error&&user)userId=user.id;}
+    }catch(e){console.error("JWT decode failed:",e);}
+    // Fallback: verify via Supabase auth API
+    if(!userId){
+      const{data:{user},error}=await supabase.auth.getUser(token);
+      console.log("auth-debug: getUser userId=",user?.id,"error=",error?.message);
+      if(!error&&user)userId=user.id;
+    }
   }
   let body;try{body=await req.json();}catch{return respond(400,{error:"Invalid JSON"});}
   if(!userId)userId=body.userId??"";
+  console.log("auth-debug: final userId=",userId?userId.slice(0,8)+"...":"empty");
   if(!userId)return respond(401,{error:"Not authenticated."});
   const{data:sub}=await supabase.from("subscriptions").select("plan,status,stripe_customer_id,current_period_end").eq("supabase_user_id",userId).maybeSingle();
   const isPromo=sub?.stripe_customer_id?.startsWith("promo_");
