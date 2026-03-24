@@ -2210,7 +2210,19 @@ function InlinePostComposer({
           {/* Thread composer for text posts */}
           {postFormat === 'thread' && (
             <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
-              <div className="flex items-center gap-2 justify-end">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => { setThreadVideoMode(v => !v); setThreadTopicError(false); }}
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + (threadVideoMode ? GOLD : GOLD + '40'), color: threadVideoMode ? GOLD : GOLD + '99' }}
+                  >
+                    <Video className="w-3 h-3" /> Repurpose Video
+                  </button>
+                  {threadVideoMode && !threadVideoFile && <span className="text-xs" style={{ color: GOLD + 'aa' }}>Upload a video</span>}
+                  {threadVideoMode && threadVideoFile && <span className="text-xs truncate max-w-[120px]" style={{ color: GOLD }}>&#10003; {threadVideoFile.name}</span>}
+                </div>
+                <div className="flex items-center gap-2">
                   <button onClick={async () => {
                     const desc = threadTopic.trim();
                     if (threadVideoMode && !threadVideoFile) return;
@@ -2245,21 +2257,9 @@ function InlinePostComposer({
                     style={{ border: `1px solid ${BORDER}`, color: 'rgba(255,255,255,0.4)' }}>
                     <Plus className="w-3 h-3" /> Add
                   </button>
-              </div>
-              <div className="mb-3">
-                <div className="flex items-center gap-2 mb-1">
-                  <button
-                    onClick={() => { setThreadVideoMode(v => !v); setThreadTopicError(false); }}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all"
-                    style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + (threadVideoMode ? GOLD : GOLD + '40'), color: threadVideoMode ? GOLD : GOLD + '99' }}
-                  >
-                    <Video className="w-3 h-3" /> Repurpose Video
-                  </button>
-                  {threadVideoMode && !threadVideoFile && <span className="text-xs" style={{ color: GOLD + 'aa' }}>Upload a video to repurpose</span>}
-                  {threadVideoMode && threadVideoFile && <span className="text-xs truncate max-w-[140px]" style={{ color: GOLD }}>&#10003; {threadVideoFile.name}</span>}
                 </div>
-                <p className="text-[10px] pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>Must be a talking video.</p>
               </div>
+              <p className="text-[10px] pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>Must be a talking video.</p>
               {threadVideoMode && (
                 <>
                   {/* Video upload dropzone */}
