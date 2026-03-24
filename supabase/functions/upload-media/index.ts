@@ -36,17 +36,27 @@ async function awaitCFStream(accountId: string, token: string, uid: string): Pro
     if (result?.state === "error") throw new Error("CF Stream transcoding failed");
 
     if (result?.readyToStream) {
-      // Enable MP4 download so the URL has an explicit .mp4 extension.
+      // Enable MP4 download (idempotent — safe to call even if already enabled).
       await fetch(`${apiBase}/downloads`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: "{}",
       }).catch(() => {});
 
-      const hls: string = result.playback?.hls ?? "";
-      const m = hls.match(/https:\/\/(customer-[^.]+\.cloudflarestream\.com)\//);
-      const host = m ? m[1] : "videodelivery.net";
-      return `https://${host}/${uid}/downloads/default.mp4`;
+      // Poll until the MP4 download is fully generated and the URL is live.
+      while (Date.now() < deadline) {
+        const dr = await fetch(`${apiBase}/downloads`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (dr.ok) {
+          const { result: dl } = await dr.json();
+          if (dl?.default?.status === "ready" && dl?.default?.url) {
+            return dl.default.url as string;
+          }
+        }
+        await new Promise<void>((res) => setTimeout(res, POLL_MS));
+      }
+      throw new Error("CF Stream MP4 download generation timed out");
     }
 
     await new Promise<void>((res) => setTimeout(res, POLL_MS));
