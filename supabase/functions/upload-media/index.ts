@@ -1,55 +1,52 @@
 // upload-media — handles all media upload paths for InfiniteMedia
 // Calling convention (from MediaDistributionPage.uploadViaNativeXHR):
 //
-//  1. Direct upload  (<4 MB)  : POST with raw file body, headers: x-file-path, content-type
-//  2. Init           (>4 MB)  : POST JSON { action:'init', filePath, contentType, fileSize }
-//  3. Chunk                   : POST binary body, headers: x-action:chunk, x-file-path,
-//                               x-provider, x-upload-id, x-part-number, content-type
-//  4. Complete (CF Stream)    : POST JSON { action:'complete', filePath, uploadId, parts }
-//  5. Abort                   : POST JSON { action:'abort', filePath, uploadId }
+//  1. Direct upload (<4 MB)  : POST raw file body, headers: x-file-path, content-type
+//  2. Init          (>4 MB)  : POST JSON { action:'init', filePath, contentType, fileSize }
+//  3. Chunk                  : POST binary, headers: x-action:chunk, x-file-path,
+//                              x-provider, x-upload-id, x-part-number, content-type
+//  4. Complete               : POST JSON { action:'complete', filePath, uploadId, parts }
+//  5. Abort                  : POST JSON { action:'abort', filePath, uploadId }
 //
-// For videos:
-//   - Direct (<4 MB) : upload to Supabase storage → CF Stream copy-from-URL → AWAIT readyToStream → return CF Stream URL
-//   - Large  (>4 MB) : CF Stream TUS init → chunk PATCHes → complete + AWAIT readyToStream → return CF Stream URL
-// For images (any size):
-//   - Supabase storage TUS → return public URL immediately
+// Upload paths:
+//   Video direct  (<4 MB): Supabase storage → CF Stream copy-from-URL → AWAIT readyToStream
+//   Video large   (>4 MB): Supabase TUS (provider='supabase-video') → all chunks sent
+//                           → complete: CF Stream copy-from-URL → AWAIT readyToStream
+//   Image (any size):       Supabase TUS (provider='supabase') → return URL from first chunk
 
 const CORS_ORIGINS = [
   "https://infinitewealthsolutionsai.com",
   "https://www.infinitewealthsolutionsai.com",
 ];
-const BUCKET      = "media";
-const CHUNK_SIZE  = 5 * 1024 * 1024; // must match frontend CHUNK_SIZE
-const POLL_MS     = 5_000;            // how often to check readyToStream
-const POLL_MAX_MS = 240_000;          // 4-minute wall-clock limit for transcoding
+const BUCKET     = "media";
+const CHUNK_SIZE = 5 * 1024 * 1024; // must match frontend CHUNK_SIZE
+const POLL_MS    = 5_000;
+const POLL_MAX_MS = 240_000; // 4-minute transcoding timeout
 
 // ---------------------------------------------------------------------------
-// Poll CF Stream until the video is fully transcoded, then return the
-// download URL (ends in .mp4 so isVideoUrl() in ayrshare-post matches it).
+// Poll CF Stream until readyToStream, enable MP4 download, return the URL.
+// The returned URL ends in /downloads/default.mp4 so isVideoUrl() matches it.
 // ---------------------------------------------------------------------------
 async function awaitCFStream(accountId: string, token: string, uid: string): Promise<string> {
   const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${uid}`;
   const deadline = Date.now() + POLL_MAX_MS;
 
   while (Date.now() < deadline) {
-    const r = await fetch(apiBase, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!r.ok) throw new Error(`CF Stream status ${r.status}`);
+    const r = await fetch(apiBase, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new Error(`CF Stream status check failed (${r.status})`);
     const d = await r.json();
     const v = d.result;
     if (v?.state === "error") throw new Error("CF Stream transcoding failed");
 
     if (v?.readyToStream) {
-      // Enable MP4 download (idempotent — safe to call even if already enabled).
+      // Enable MP4 download — idempotent, safe to call repeatedly.
       await fetch(`${apiBase}/downloads`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: "{}",
-      }).catch(() => {/* best-effort */});
+      }).catch(() => {});
 
-      // Derive the customer-specific CDN subdomain from the HLS URL so the
-      // returned URL has an explicit .mp4 extension that isVideoUrl() matches.
+      // Extract customer CDN subdomain from the HLS URL for the .mp4 download URL.
       const hls: string = v.playback?.hls ?? "";
       const m = hls.match(/https:\/\/(customer-[^.]+\.cloudflarestream\.com)\//);
       const host = m ? m[1] : "videodelivery.net";
@@ -62,14 +59,79 @@ async function awaitCFStream(accountId: string, token: string, uid: string): Pro
 }
 
 // ---------------------------------------------------------------------------
-// Deno.serve entry point
+// Create a Supabase Storage TUS session and return the upload URL.
+// ---------------------------------------------------------------------------
+async function createSupabaseTUS(
+  supabaseUrl: string,
+  svcKey: string,
+  filePath: string,
+  contentType: string,
+  fileSize: number,
+): Promise<string> {
+  const r = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${svcKey}`,
+      apikey: svcKey,
+      "Content-Type": "application/json",
+      "x-upsert": "true",
+      "Tus-Resumable": "1.0.0",
+      "Upload-Length": String(fileSize),
+      "Upload-Metadata": [
+        `bucketName ${btoa(BUCKET)}`,
+        `objectName ${btoa(filePath)}`,
+        `contentType ${btoa(contentType ?? "application/octet-stream")}`,
+        `cacheControl ${btoa("3600")}`,
+      ].join(","),
+    },
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    throw new Error(`Supabase TUS init failed (${r.status}): ${t.slice(0, 200)}`);
+  }
+  const tusUrl = r.headers.get("Location") ?? "";
+  if (!tusUrl) throw new Error("Supabase TUS returned no Location header");
+  return tusUrl;
+}
+
+// ---------------------------------------------------------------------------
+// Copy a Supabase-storage URL into CF Stream, await transcoding, return URL.
+// Falls back to supabasePublicUrl on any CF Stream error.
+// ---------------------------------------------------------------------------
+async function copyToStream(
+  accountId: string,
+  token: string,
+  supabasePublicUrl: string,
+  filePath: string,
+): Promise<string> {
+  const cr = await fetch(
+    `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/copy`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ url: supabasePublicUrl, meta: { name: filePath } }),
+    },
+  );
+  if (!cr.ok) {
+    console.error("CF Stream copy failed:", cr.status, await cr.text().catch(() => ""));
+    return supabasePublicUrl;
+  }
+  const uid = (await cr.json()).result?.uid as string | undefined;
+  if (!uid) return supabasePublicUrl;
+
+  try {
+    return await awaitCFStream(accountId, token, uid);
+  } catch (e) {
+    console.error("CF Stream await failed:", (e as Error).message);
+    return supabasePublicUrl; // fallback so the UI always unblocks
+  }
+}
+
 // ---------------------------------------------------------------------------
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin") ?? "";
   const cors = {
-    "Access-Control-Allow-Origin": CORS_ORIGINS.includes(origin)
-      ? origin
-      : CORS_ORIGINS[0],
+    "Access-Control-Allow-Origin": CORS_ORIGINS.includes(origin) ? origin : CORS_ORIGINS[0],
     "Access-Control-Allow-Headers":
       "authorization, x-client-info, apikey, content-type, " +
       "x-file-path, x-action, x-provider, x-upload-id, x-part-number",
@@ -78,8 +140,10 @@ Deno.serve(async (req) => {
 
   if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: cors });
 
-  const ok  = (body: unknown)  => new Response(JSON.stringify(body),        { headers: { ...cors, "Content-Type": "application/json" } });
-  const err = (msg: string, s = 500) => new Response(JSON.stringify({ error: msg }), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
+  const ok  = (body: unknown) =>
+    new Response(JSON.stringify(body), { headers: { ...cors, "Content-Type": "application/json" } });
+  const err = (msg: string, s = 500) =>
+    new Response(JSON.stringify({ error: msg }), { status: s, headers: { ...cors, "Content-Type": "application/json" } });
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const svcKey      = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -88,72 +152,56 @@ Deno.serve(async (req) => {
   const hasCF       = !!(accountId && cfToken);
 
   // ------------------------------------------------------------------
-  // Route: CHUNK  (binary body, action in header)
+  // Route: CHUNK  (binary body, x-action header)
   // ------------------------------------------------------------------
-  const xAction = req.headers.get("x-action");
-  if (xAction === "chunk") {
-    const provider  = req.headers.get("x-provider") ?? "supabase";
-    const uploadId  = req.headers.get("x-upload-id") ?? "";
-    const filePath  = req.headers.get("x-file-path") ?? "";
-    const partNo    = parseInt(req.headers.get("x-part-number") ?? "1", 10);
-    const offset    = (partNo - 1) * CHUNK_SIZE;
-    const bytes     = await req.arrayBuffer();
+  if (req.headers.get("x-action") === "chunk") {
+    const provider = req.headers.get("x-provider") ?? "supabase";
+    const uploadId = req.headers.get("x-upload-id") ?? "";
+    const filePath = req.headers.get("x-file-path") ?? "";
+    const partNo   = parseInt(req.headers.get("x-part-number") ?? "1", 10);
+    const offset   = (partNo - 1) * CHUNK_SIZE;
+    const bytes    = await req.arrayBuffer();
 
-    if (provider === "cfstream" && uploadId) {
-      // Forward PATCH to CF Stream TUS endpoint
-      const pr = await fetch(uploadId, {
-        method: "PATCH",
-        headers: {
-          "Tus-Resumable":   "1.0.0",
-          "Upload-Offset":   String(offset),
-          "Content-Type":    "application/offset+octet-stream",
-          "Content-Length":  String(bytes.byteLength),
-        },
+    if (!uploadId) {
+      // No TUS session — direct single upload (fallback for very small files).
+      const ct = req.headers.get("content-type") ?? "application/octet-stream";
+      const ur = await fetch(`${supabaseUrl}/storage/v1/object/${BUCKET}/${filePath}`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${svcKey}`, apikey: svcKey, "Content-Type": ct, "x-upsert": "true" },
         body: bytes,
       });
-      if (!pr.ok) {
-        const t = await pr.text();
-        return err(`CF Stream chunk ${partNo} failed (${pr.status}): ${t.slice(0, 200)}`);
-      }
-      return ok({ etag: pr.headers.get("ETag") ?? "" });
+      if (!ur.ok) return err(`Storage upload failed (${ur.status})`);
+      return ok({ url: `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${filePath}` });
     }
 
-    if (provider === "supabase" && uploadId) {
-      // Forward PATCH to Supabase Storage TUS endpoint
-      const pr = await fetch(uploadId, {
-        method: "PATCH",
-        headers: {
-          Authorization:    `Bearer ${svcKey}`,
-          apikey:            svcKey,
-          "Tus-Resumable":  "1.0.0",
-          "Upload-Offset":  String(offset),
-          "Content-Type":   "application/offset+octet-stream",
-          "Content-Length": String(bytes.byteLength),
-        },
-        body: bytes,
-      });
-      if (!pr.ok) {
-        const t = await pr.text();
-        return err(`Supabase chunk ${partNo} failed (${pr.status}): ${t.slice(0, 200)}`);
-      }
-      // URL is predictable from filePath; return it on every chunk so the
-      // frontend's `if (provider === 'supabase') return chunkData.url` works.
-      const publicUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${filePath}`;
-      return ok({ url: publicUrl, offset: pr.headers.get("Upload-Offset") });
-    }
-
-    // Fallback: no uploadId → direct single-chunk upload to Supabase storage
-    const ct = req.headers.get("content-type") ?? "application/octet-stream";
-    const ur = await fetch(`${supabaseUrl}/storage/v1/object/${BUCKET}/${filePath}`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${svcKey}`, apikey: svcKey, "Content-Type": ct, "x-upsert": "true" },
+    // Proxy the PATCH to Supabase Storage TUS (used for both 'supabase' and 'supabase-video').
+    const pr = await fetch(uploadId, {
+      method: "PATCH",
+      headers: {
+        Authorization:    `Bearer ${svcKey}`,
+        apikey:            svcKey,
+        "Tus-Resumable":  "1.0.0",
+        "Upload-Offset":  String(offset),
+        "Content-Type":   "application/offset+octet-stream",
+        "Content-Length": String(bytes.byteLength),
+      },
       body: bytes,
     });
-    if (!ur.ok) {
-      const t = await ur.text();
-      return err(`Storage upload failed (${ur.status}): ${t.slice(0, 200)}`);
+    if (!pr.ok) {
+      const t = await pr.text();
+      return err(`Supabase chunk ${partNo} failed (${pr.status}): ${t.slice(0, 200)}`);
     }
-    return ok({ url: `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${filePath}` });
+
+    if (provider === "supabase") {
+      // Images: return the predictable public URL so the frontend exits the chunk loop.
+      return ok({
+        url: `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${filePath}`,
+        offset: pr.headers.get("Upload-Offset"),
+      });
+    }
+
+    // provider === 'supabase-video': return no URL — frontend keeps sending chunks.
+    return ok({ etag: "", offset: pr.headers.get("Upload-Offset") });
   }
 
   // ------------------------------------------------------------------
@@ -172,83 +220,40 @@ Deno.serve(async (req) => {
       const fileSize    = body.fileSize    as number;
       const isVideo     = contentType?.startsWith("video/");
 
-      if (isVideo && hasCF) {
-        // Create a CF Stream TUS upload session
-        const ir = await fetch(
-          `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream?direct_user=true`,
-          {
-            method: "POST",
-            headers: {
-              Authorization:     `Bearer ${cfToken}`,
-              "Tus-Resumable":   "1.0.0",
-              "Upload-Length":   String(fileSize),
-              "Upload-Metadata": `name ${btoa(filePath)}`,
-            },
-          }
-        );
-        if (!ir.ok) {
-          const t = await ir.text();
-          return err(`CF Stream TUS init failed (${ir.status}): ${t.slice(0, 200)}`);
-        }
-        const tusUrl = ir.headers.get("Location") ?? "";
-        if (!tusUrl) return err("CF Stream returned no TUS Location");
-        return ok({ provider: "cfstream", uploadId: tusUrl });
+      try {
+        const tusUrl = await createSupabaseTUS(supabaseUrl, svcKey, filePath, contentType, fileSize);
+        // Videos use provider 'supabase-video' so the frontend sends ALL chunks
+        // then calls the 'complete' action (where CF Stream copy + await happens).
+        // Images use provider 'supabase' so the frontend exits after the first chunk.
+        return ok({ provider: isVideo ? "supabase-video" : "supabase", uploadId: tusUrl });
+      } catch (e) {
+        return err((e as Error).message);
       }
-
-      // Image (or video without CF configured): Supabase Storage TUS
-      const tr = await fetch(`${supabaseUrl}/storage/v1/upload/resumable`, {
-        method: "POST",
-        headers: {
-          Authorization:    `Bearer ${svcKey}`,
-          apikey:            svcKey,
-          "Content-Type":   "application/json",
-          "x-upsert":       "true",
-          "Tus-Resumable":  "1.0.0",
-          "Upload-Length":  String(fileSize),
-          "Upload-Metadata": [
-            `bucketName ${btoa(BUCKET)}`,
-            `objectName ${btoa(filePath)}`,
-            `contentType ${btoa(contentType ?? "application/octet-stream")}`,
-            `cacheControl ${btoa("3600")}`,
-          ].join(","),
-        },
-      });
-      if (!tr.ok) {
-        const t = await tr.text();
-        return err(`Supabase TUS init failed (${tr.status}): ${t.slice(0, 200)}`);
-      }
-      const tusUrl = tr.headers.get("Location") ?? "";
-      return ok({ provider: "supabase", uploadId: tusUrl });
     }
 
     // ---- COMPLETE ---------------------------------------------------
     if (action === "complete") {
-      const uploadId = body.uploadId as string;
-      if (!uploadId) return err("uploadId required", 400);
+      const filePath = body.filePath as string;
+      if (!filePath) return err("filePath required", 400);
 
-      // Extract video UID from the CF Stream TUS URL.
-      // CF Stream TUS URLs look like: https://upload.videodelivery.net/tus/{uid}
-      const uid = uploadId.split("/").pop();
-      if (!uid) return err("Cannot extract video UID from uploadId", 400);
+      const supabasePublicUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${filePath}`;
 
-      if (!hasCF) return err("CF Stream not configured (CF_ACCOUNT_ID / CF_STREAM_TOKEN missing)", 500);
-
-      try {
-        const url = await awaitCFStream(accountId, cfToken, uid);
-        return ok({ url });
-      } catch (e) {
-        return err((e as Error).message);
+      if (!hasCF) {
+        // CF Stream not configured — just return the Supabase URL.
+        return ok({ url: supabasePublicUrl });
       }
+
+      const url = await copyToStream(accountId, cfToken, supabasePublicUrl, filePath);
+      return ok({ url });
     }
 
     // ---- ABORT ------------------------------------------------------
     if (action === "abort") {
       const uploadId = body.uploadId as string;
       if (uploadId) {
-        // Attempt TUS DELETE; ignore errors (best-effort cleanup)
         await fetch(uploadId, {
           method: "DELETE",
-          headers: { "Tus-Resumable": "1.0.0" },
+          headers: { Authorization: `Bearer ${svcKey}`, apikey: svcKey, "Tus-Resumable": "1.0.0" },
         }).catch(() => {});
       }
       return ok({ ok: true });
@@ -260,13 +265,12 @@ Deno.serve(async (req) => {
   // ------------------------------------------------------------------
   // Route: DIRECT file upload  (<4 MB, raw body)
   // ------------------------------------------------------------------
-  const filePath    = req.headers.get("x-file-path") ?? `uploads/${Date.now()}.bin`;
+  const filePath2    = req.headers.get("x-file-path") ?? `uploads/${Date.now()}.bin`;
   const contentType2 = req.headers.get("content-type") ?? "application/octet-stream";
-  const isVideo     = contentType2.startsWith("video/");
-  const bytes       = await req.arrayBuffer();
+  const isVideo2     = contentType2.startsWith("video/");
+  const bytes2       = await req.arrayBuffer();
 
-  // 1. Store in Supabase storage (source of truth / fallback URL)
-  const ur = await fetch(`${supabaseUrl}/storage/v1/object/${BUCKET}/${filePath}`, {
+  const ur2 = await fetch(`${supabaseUrl}/storage/v1/object/${BUCKET}/${filePath2}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${svcKey}`,
@@ -274,46 +278,17 @@ Deno.serve(async (req) => {
       "Content-Type": contentType2,
       "x-upsert":     "true",
     },
-    body: bytes,
+    body: bytes2,
   });
-  if (!ur.ok) {
-    const t = await ur.text();
-    return err(`Storage upload failed (${ur.status}): ${t.slice(0, 200)}`);
+  if (!ur2.ok) {
+    const t = await ur2.text();
+    return err(`Storage upload failed (${ur2.status}): ${t.slice(0, 200)}`);
   }
 
-  const supabasePublicUrl = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${filePath}`;
+  const supabasePublicUrl2 = `${supabaseUrl}/storage/v1/object/public/${BUCKET}/${filePath2}`;
 
-  // 2. For images, or when CF Stream is not configured, return Supabase URL directly.
-  if (!isVideo || !hasCF) return ok({ url: supabasePublicUrl });
+  if (!isVideo2 || !hasCF) return ok({ url: supabasePublicUrl2 });
 
-  // 3. Trigger CF Stream copy-from-URL and AWAIT transcoding synchronously.
-  const cr = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/copy`,
-    {
-      method: "POST",
-      headers: {
-        Authorization:  `Bearer ${cfToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ url: supabasePublicUrl, meta: { name: filePath } }),
-    }
-  );
-  if (!cr.ok) {
-    // CF Stream copy failed — fall back to Supabase URL so the upload still succeeds.
-    console.error("CF Stream copy failed:", cr.status, await cr.text().catch(() => ""));
-    return ok({ url: supabasePublicUrl });
-  }
-
-  const cData = await cr.json();
-  const uid   = cData.result?.uid as string | undefined;
-  if (!uid) return ok({ url: supabasePublicUrl });
-
-  try {
-    const cfUrl = await awaitCFStream(accountId, cfToken, uid);
-    return ok({ url: cfUrl });
-  } catch (e) {
-    // Transcoding timed out — return Supabase URL as fallback so the UI unblocks.
-    console.error("CF Stream await failed:", (e as Error).message);
-    return ok({ url: supabasePublicUrl });
-  }
+  const url = await copyToStream(accountId, cfToken, supabasePublicUrl2, filePath2);
+  return ok({ url });
 });
