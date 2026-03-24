@@ -286,7 +286,8 @@ async function uploadViaNativeXHR(
     uploadedBytes += (end - start);
     if (onProgress) onProgress(Math.round(uploadedBytes / fileSize * 100));
 
-    if (provider === 'supabase') return chunkData.url;
+    // Images use Supabase TUS — return the public URL after the last chunk.
+    if (provider === 'supabase' && i === totalChunks - 1) return chunkData.url;
 
     if (chunkData.etag) parts.push({ partNumber: partNo, etag: chunkData.etag });
   }
