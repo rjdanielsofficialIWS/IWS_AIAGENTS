@@ -1456,6 +1456,7 @@ function InlinePostComposer({
   const [threadVideoFile, setThreadVideoFile] = useState<File|null>(null);
   const [threadVideoUrl, setThreadVideoUrl] = useState<string>('');
   const [threadVideoTranscript, setThreadVideoTranscript] = useState('');
+  const [threadTweetCount, setThreadTweetCount] = useState(5);
   type CaptionType = 'manual' | 'ai';
   const [captionType, setCaptionType]   = useState<CaptionType>('manual');
   type CaptionMode = 'from_video' | 'from_description';
@@ -2210,19 +2211,15 @@ function InlinePostComposer({
           {/* Thread composer for text posts */}
           {postFormat === 'thread' && (
             <div className="space-y-3 rounded-2xl border p-4" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => { setThreadVideoMode(v => !v); setThreadTopicError(false); }}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all"
-                    style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + (threadVideoMode ? GOLD : GOLD + '40'), color: threadVideoMode ? GOLD : GOLD + '99' }}
-                  >
-                    <Video className="w-3 h-3" /> Repurpose Video
-                  </button>
-                  {threadVideoMode && !threadVideoFile && <span className="text-xs" style={{ color: GOLD + 'aa' }}>Upload a video</span>}
-                  {threadVideoMode && threadVideoFile && <span className="text-xs truncate max-w-[120px]" style={{ color: GOLD }}>&#10003; {threadVideoFile.name}</span>}
-                </div>
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  onClick={() => { setThreadVideoMode(v => !v); setThreadTopicError(false); }}
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all shrink-0"
+                  style={{ background: threadVideoMode ? GOLD + '22' : 'transparent', border: '1px solid ' + (threadVideoMode ? GOLD : GOLD + '40'), color: threadVideoMode ? GOLD : GOLD + '99' }}
+                >
+                  <Video className="w-3 h-3" /> Repurpose Video
+                </button>
+                <div className="flex items-center gap-2 shrink-0">
                   <button onClick={async () => {
                     const desc = threadTopic.trim();
                     if (threadVideoMode && !threadVideoFile) return;
@@ -2237,7 +2234,7 @@ function InlinePostComposer({
                       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
-                        body: JSON.stringify({ mode: 'thread_posts', description: source, tone: textAiTone, video_repurpose: threadVideoMode }),
+                        body: JSON.stringify({ mode: 'thread_posts', description: source, tone: textAiTone, video_repurpose: threadVideoMode, thread_count: threadTweetCount }),
                       });
                       const data = await res.json();
                       if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
@@ -2248,7 +2245,7 @@ function InlinePostComposer({
                   }}
                   disabled={textAiLoading}
                   className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold transition disabled:opacity-40"
-                  style={{ background: GOLD + '33', border: '1.5px solid ' + GOLD, color: GOLD }}>
+                  style={{ background: textAiLoading ? GOLD + '22' : 'transparent', border: '1px solid ' + GOLD, color: GOLD }}>
                     {textAiLoading ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</> : <><Sparkles className="w-3 h-3" /> AI Thread</>}
                   </button>
                   <button onClick={() => setThreadTweets(prev => [...prev, ''])}
@@ -2259,7 +2256,25 @@ function InlinePostComposer({
                   </button>
                 </div>
               </div>
-              <p className="text-[10px] pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>Must be a talking video.</p>
+              {threadVideoMode && (
+                <div className="flex items-center gap-1.5">
+                  {!threadVideoFile
+                    ? <span className="text-xs" style={{ color: GOLD + 'aa' }}>Upload a video to repurpose</span>
+                    : <span className="text-xs truncate max-w-[200px]" style={{ color: GOLD }}>&#10003; {threadVideoFile.name}</span>}
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase tracking-wider" style={{ color: 'rgba(255,255,255,0.25)' }}>AI tweets:</span>
+                <button onClick={() => setThreadTweetCount(c => Math.max(3, c - 1))}
+                  className="w-6 h-6 flex items-center justify-center rounded border text-xs font-bold hover:bg-white/8 transition"
+                  style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>−</button>
+                <span className="text-sm font-bold w-4 text-center" style={{ color: GOLD_L }}>{threadTweetCount}</span>
+                <button onClick={() => setThreadTweetCount(c => Math.min(10, c + 1))}
+                  className="w-6 h-6 flex items-center justify-center rounded border text-xs font-bold hover:bg-white/8 transition"
+                  style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>+</button>
+                <span className="text-[10px]" style={{ color: 'rgba(255,255,255,0.2)' }}>min 3 · max 10</span>
+              </div>
+              <p className="text-[10px] pl-1" style={{ color: 'rgba(255,255,255,0.3)' }}>Must be a talking video when using Repurpose Video.</p>
               {threadVideoMode && (
                 <>
                   {/* Video upload dropzone */}
