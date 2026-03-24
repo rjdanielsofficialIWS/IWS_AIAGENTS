@@ -179,11 +179,12 @@ Deno.serve(async (req) => {
     const offset   = (partNo - 1) * CHUNK_SIZE;
     const bytes    = await req.arrayBuffer();
 
-    // CF Stream TUS: proxy PATCH to CF Stream (no auth on upload URL).
+    // CF Stream TUS: proxy PATCH to CF Stream (account-level TUS requires auth).
     if (provider === "cfstream") {
       const pr = await fetch(uploadId, {
         method: "PATCH",
         headers: {
+          Authorization:    `Bearer ${cfToken}`,
           "Tus-Resumable":  "1.0.0",
           "Upload-Offset":  String(offset),
           "Content-Type":   "application/offset+octet-stream",
