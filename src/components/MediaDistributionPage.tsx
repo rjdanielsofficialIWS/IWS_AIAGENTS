@@ -1350,7 +1350,7 @@ function SavedPostCard({
         {scheduleType === 'schedule' && (
           <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
             className="rounded-xl border bg-black/25 px-3 py-1.5 text-xs text-white outline-none"
-            style={{ borderColor: BORDER, colorScheme: 'dark', width: 'fit-content' }} />
+            style={{ borderColor: BORDER, colorScheme: 'dark', minWidth: '200px' }} />
         )}
       </div>
 
@@ -1793,7 +1793,7 @@ function InlinePostComposer({
       {scheduleType === 'schedule' && (
         <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
           className="rounded-xl border bg-black/25 px-3 py-2 text-sm text-white outline-none"
-          style={{ borderColor: BORDER, colorScheme: 'dark', width: 'fit-content' }} />
+          style={{ borderColor: BORDER, colorScheme: 'dark', minWidth: '210px' }} />
       )}
     </div>
   );
@@ -1940,6 +1940,7 @@ function InlinePostComposer({
               <input type="file" accept="image/*" multiple className="hidden"
                 onChange={e => {
                   const files = Array.from(e.target.files || []);
+                  e.target.value = '';
                   setImageFiles(files);
                   setImageUploads(files.map(() => ({ status: 'idle' })));
                   files.forEach((f, i) => uploadFileForPost(f, 'image', s => setImageUploads(prev => prev.map((x, xi) => xi === i ? s : x))));
@@ -1950,6 +1951,7 @@ function InlinePostComposer({
               <input type="file" accept="video/*" className="hidden"
                 onChange={e => {
                   const f = e.target.files?.[0];
+                  e.target.value = '';
                   if (f) {
                     if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
                     const url = URL.createObjectURL(f);
