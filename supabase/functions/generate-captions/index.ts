@@ -29,7 +29,7 @@ const PR={
   threads:"Threads: Casual, conversational. 1-3 sentences. Feels like a text to a friend. No hashtags needed.",
   bluesky:"Bluesky: Thoughtful and direct. Under 200 chars. Intellectual but approachable tone."
 };
-async function callClaude(sys,usr,max=3000){const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:max,system:sys,messages:[{role:"user",content:usr}]})});if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();return(d.content?.[0]?.text||"{}").replace(/```json|```/g,"").trim();}
+async function callClaude(sys,usr,max=3000){const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:max,system:sys,messages:[{role:"user",content:usr}]})});if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();const txt=(d.content?.[0]?.text||"{}").replace(/```json|```/g,"").trim();const s=txt.indexOf("{"),e=txt.lastIndexOf("}");return(s!==-1&&e!==-1)?txt.slice(s,e+1):txt;}
 Deno.serve(async(req)=>{
   cors=corsFor(req);
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
