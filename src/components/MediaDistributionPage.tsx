@@ -3088,47 +3088,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
               )}
 
               {/* Platform trends */}
-              {trendsResults.platform_trends?.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2.5">📱 Platform-Specific Trends</div>
-                  <div className="space-y-2">
-                    {trendsResults.platform_trends.map((pt: any, i: number) => (
-                      <div key={i} className="rounded-xl p-3.5 border flex gap-3" style={{ background: 'rgba(255,255,255,0.025)', borderColor: BORDER }}>
-                        <div className="shrink-0 mt-0.5">
-                          <PlatformIcon id={pt.platform?.toLowerCase()} size="sm" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-white capitalize">{pt.platform}: <span className="text-white/70 font-semibold">{pt.trend}</span></div>
-                          {pt.tip && <div className="text-xs text-white/40 mt-0.5 leading-relaxed">{pt.tip}</div>}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Competitor gaps */}
-              {trendsResults.competitor_gaps?.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2.5">🎯 Content Gaps to Own</div>
-                  <div className="space-y-2">
-                    {trendsResults.competitor_gaps.map((gap: string, i: number) => (
-                      <div key={i} className="flex items-start gap-2.5 rounded-xl px-3.5 py-2.5 border" style={{ background: 'rgba(251,146,60,0.05)', borderColor: 'rgba(251,146,60,0.15)' }}>
-                        <span className="text-orange-400 mt-0.5 shrink-0">→</span>
-                        <span className="text-sm text-white/70 leading-relaxed">{gap}</span>
-                        <button onClick={() => handleAdd(`gap-${i}`, gap, undefined, 'idea', 'Trends Gap')}
-                          disabled={added.has(`gap-${i}`)}
-                          className="shrink-0 text-[10px] font-bold px-2 py-1 rounded-lg border ml-auto transition"
-                          style={{ borderColor: added.has(`gap-${i}`) ? 'rgba(34,197,94,0.4)' : BORDER, color: added.has(`gap-${i}`) ? '#86efac' : 'rgba(255,255,255,0.4)', background: added.has(`gap-${i}`) ? 'rgba(34,197,94,0.08)' : 'transparent' }}>
-                          {added.has(`gap-${i}`) ? '✓' : '+ Plan'}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Timestamps */}
               {trendsResults.researched_at && (
                 <div className="text-center text-[10px] text-white/15 pt-2">
                   Researched {new Date(trendsResults.researched_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
