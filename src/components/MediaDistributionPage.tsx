@@ -7481,7 +7481,7 @@ export function MediaDistributionPage() {
                 })}
               </div>
               {([
-                ["AI Captions / mo",["15","100","Unlimited"]],
+                ["AI Captions / mo",["30","100","Unlimited"]],
                 ["Scheduled Media Posts",["30","100","Unlimited"]],
                 ["Text Posts / mo",["60","200","Unlimited"]],
                 ["Social Media Accounts",["3","All","All"]],
