@@ -143,7 +143,7 @@ function generateState() {
 async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
-  workspaceId?: string | null; thread?: string[]; carousel?: boolean;
+  workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
 }) {
   // Always attempt a session refresh to ensure we have a fresh token
   let { data: { session } } = await supabase.auth.getSession();
@@ -1668,7 +1668,8 @@ function InlinePostComposer({
       return;
     }
     // Thread format validation
-    if (postFormat === 'thread') {
+    const postGroupId = crypto.randomUUID();
+      if (postFormat === 'thread') {
       const validTweets = threadTweets.filter(t => t.trim());
       if (validTweets.length < 2) { setSubmitError('Add at least 2 tweets to create a thread.'); return; }
       if (validTweets.some(t => t.length > 280)) { setSubmitError('One or more tweets exceed 280 characters.'); return; }
@@ -1682,17 +1683,18 @@ function InlinePostComposer({
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
 
       // Handle thread format — post as thread to all selected platforms
+      const postGroupId = crypto.randomUUID();
       if (postFormat === 'thread') {
         const validTweets = threadTweets.filter(t => t.trim());
         const platformIds = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean);
-        await ayrsharePost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null });
+        await ayrsharePost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId });
       } else if (captionType === 'manual') {
         if (selectedIntegrations.length === 1) {
           const platforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean);
           const isYT = platforms.includes('youtube');
           const cap = manualCaptions[platforms[0]] || content;
           const isCarousel = postFormat === 'carousel' && mediaUrls.length > 1;
-          await ayrsharePost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), ...(isCarousel ? { carousel: true } : {}) });
+          await ayrsharePost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), ...(isCarousel ? { carousel: true } : {}), postGroupId });
         } else {
           const postPromises = selectedIntegrations.map(async (integId) => {
             const integ = integrations.find(i => i.id === integId);
@@ -1701,7 +1703,7 @@ function InlinePostComposer({
             const cap = manualCaptions[platformId] || content || '';
             if (!cap) return;
             const isYT = platformId === 'youtube';
-            await ayrsharePost({ platforms: [platformId], post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}) });
+            await ayrsharePost({ platforms: [platformId], post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), postGroupId });
           });
           await Promise.all(postPromises);
         }
@@ -1718,7 +1720,7 @@ function InlinePostComposer({
           const isYT = platformId === 'youtube';
           await ayrsharePost({
             platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null,
-            ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}),
+            ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}), postGroupId,
           });
         });
         await Promise.all(postPromises);
@@ -1738,7 +1740,8 @@ function InlinePostComposer({
   };
 
   const handleTextSubmit = async () => {
-    if (postFormat === 'thread') {
+    const postGroupId = crypto.randomUUID();
+      if (postFormat === 'thread') {
       const validTweets = threadTweets.filter(t => t.trim());
       if (validTweets.length < 2) { setSubmitError('Add at least 2 posts to create a thread.'); return; }
       if (validTweets.some(t => t.length > 280)) { setSubmitError('One or more posts exceed 280 characters.'); return; }
@@ -1758,6 +1761,7 @@ function InlinePostComposer({
         const acct = textPostAccounts.find(a => a.integ.id === id);
         return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
       }).filter(a => a.platformId);
+      const postGroupId = crypto.randomUUID();
       if (postFormat === 'thread') {
         const validTweets = threadTweets.filter(t => t.trim());
         const platformIds = allAccounts.map(a => a.platformId);
@@ -1768,8 +1772,9 @@ function InlinePostComposer({
         const liText = editingIdx ? aiEditText : linkedinText;
         const otText = editingIdx ? aiEditText : xText;
         const posts: Promise<unknown>[] = [];
-        if (otIds.length > 0 && otText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: otText, scheduleDate: sd, workspaceId: workspaceId ?? null }));
-        if (liIds.length > 0 && liText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: liText, scheduleDate: sd, workspaceId: workspaceId ?? null }));
+        const textPostGroupId = crypto.randomUUID();
+        if (otIds.length > 0 && otText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: otText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
+        if (liIds.length > 0 && liText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: liText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
         await Promise.all(posts);
       }
       setSubmitOk(true);
