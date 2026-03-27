@@ -827,6 +827,7 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
   const [rows, setRows]       = useState<{ platform: string; content: string }[]>([]);
   const [mediaUrls, setMediaUrls]       = useState<string[]>([]);
   const [scheduleDateStr, setScheduleDate] = useState('');
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [submitting, setSubmitting]     = useState(false);
   const [submitError, setSubmitError]   = useState<string | null>(null);
   const [submitOk, setSubmitOk]         = useState(false);
@@ -853,6 +854,7 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
           content: perPlatform[p.toLowerCase()] ?? data.content ?? '',
         }));
         setRows(builtRows);
+        setSelectedPlatforms(builtRows.map(r => r.platform));
         setMediaUrls(Array.isArray(data.mediaUrls) ? data.mediaUrls : []);
         // Convert UTC scheduledAt to local datetime-local string
         try {
@@ -867,7 +869,7 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
 
   const handleSave = async () => {
     if (!scheduleDateStr) { setSubmitError('Pick a schedule date and time.'); return; }
-    const filledRows = rows.filter(r => r.content.trim());
+    const filledRows = rows.filter(r => selectedPlatforms.includes(r.platform) && r.content.trim());
     if (!filledRows.length) { setSubmitError('At least one caption is required.'); return; }
     setSubmitting(true); setSubmitError(null);
     try {
@@ -924,12 +926,45 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
           )}
           {!loading && !error && rows.length > 0 && (
             <>
-              {/* Per-platform captions */}
-              {rows.map((row, i) => {
+              {/* Platform selector */}
+              <div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
+                <div className="flex flex-wrap gap-2">
+                  {integrations.map(integ => {
+                    const isSelected = selectedPlatforms.includes(integ.profile || integ.id || '');
+                    const p = PLATFORMS[integ.identifier as PlatformId];
+                    return (
+                      <button key={integ.id}
+                        onClick={() => {
+                          const pid = integ.profile || integ.id || '';
+                          setSelectedPlatforms(prev =>
+                            prev.includes(pid) ? prev.filter(x => x !== pid) : [...prev, pid]
+                          );
+                          setRows(prev => {
+                            const exists = prev.find(r => r.platform === pid);
+                            if (exists) return prev.filter(r => r.platform !== pid);
+                            const key = pid.toLowerCase();
+                            const fallback = prev[0]?.content || '';
+                            return [...prev, { platform: pid, content: fallback }];
+                          });
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition"
+                        style={{ borderColor: isSelected ? (p?.color || GOLD) : BORDER, background: isSelected ? (p?.bg || `${GOLD}15`) : 'transparent', color: isSelected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
+                        <PlatformIcon id={integ.profile || integ.identifier} size="sm" picture={integ.picture} />
+                        <span className="max-w-[80px] truncate">{integ.name}</span>
+                        {isSelected && <CheckCircle2 className="w-3 h-3 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* Per-platform captions — only for selected platforms */}
+              {rows.filter(r => selectedPlatforms.includes(r.platform)).map((row, i) => {
                 const key = row.platform.toLowerCase();
                 const label = LABELS[key] || row.platform;
                 const limit = LIMITS[key] || 2200;
                 const p = PLATFORMS[row.platform as PlatformId];
+                const rowIdx = rows.findIndex(r => r.platform === row.platform);
                 return (
                   <div key={row.platform}>
                     <div className="flex items-center gap-2 mb-1.5">
@@ -941,7 +976,7 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
                     </div>
                     <textarea
                       value={row.content}
-                      onChange={e => setRows(prev => prev.map((r, ri) => ri === i ? { ...r, content: e.target.value } : r))}
+                      onChange={e => setRows(prev => prev.map((r, ri) => ri === rowIdx ? { ...r, content: e.target.value } : r))}
                       rows={5}
                       className="w-full rounded-xl border bg-transparent px-3 pt-3 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none"
                       style={{ borderColor: row.content.length > limit ? '#f87171' : BORDER }}
@@ -950,19 +985,10 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
                   </div>
                 );
               })}
-              {/* Media preview */}
+              {/* Media note */}
               {mediaUrls.length > 0 && (
-                <div>
-                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Media (read-only)</div>
-                  <div className="flex gap-2 flex-wrap">
-                    {mediaUrls.slice(0, 4).map((url, i) => (
-                      <div key={i} className="w-16 h-16 rounded-lg border overflow-hidden" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.4)' }}>
-                        {/\.(mp4|mov|webm)/i.test(url) || url.includes('videodelivery') || url.includes('cloudflarestream')
-                          ? <div className="w-full h-full flex items-center justify-center"><Video className="w-5 h-5 text-white/30" /></div>
-                          : <img src={url} alt="" className="w-full h-full object-cover" />}
-                      </div>
-                    ))}
-                  </div>
+                <div className="text-xs text-white/30 px-1">
+                  📎 This post has media attached. To change the media, delete this post and create a new one.
                 </div>
               )}
               {/* Schedule time */}
