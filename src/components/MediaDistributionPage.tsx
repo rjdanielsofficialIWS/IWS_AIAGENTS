@@ -1468,7 +1468,7 @@ const ThreadVideoPlayer = React.memo(function ThreadVideoPlayer({
 
 // ─── UploadETA ───────────────────────────────────────────────────────────────
 function UploadETA({ uploadState }: { uploadState: UploadState }) {
-  const BASELINE_SECS = 240;
+  const BASELINE_SECS = 60;
   const [secs, setSecs] = useState(BASELINE_SECS);
   // floorSecs lives outside the effect so it never resets on re-render
   const floorSecs = useRef(BASELINE_SECS);
