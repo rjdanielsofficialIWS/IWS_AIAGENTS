@@ -921,6 +921,11 @@ function EditComposer({
   onCancel: () => void;
 }) {
   const toApiName = (p: string) => p === 'x' ? 'twitter' : p;
+  const TEXT_PLATFORMS = new Set(['x', 'twitter', 'linkedin', 'threads']);
+
+  // Determine if this is a text post (no media, all platforms are text-only)
+  const isTextPost = groupData.mediaUrls.length === 0 &&
+    groupData.platforms.every(p => TEXT_PLATFORMS.has(p.toLowerCase()));
 
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>(() =>
     integrations
@@ -931,26 +936,48 @@ function EditComposer({
       }))
       .map(i => i.id)
   );
-  const [content, setContent]             = useState(groupData.content);
+
+  // Shared caption (media posts) — single field for all platforms
+  const [content, setContent] = useState(groupData.content);
+
+  // Per-platform captions (text posts) — one field per platform type
+  const [perPlatformCaptions, setPerPlatformCaptions] = useState<Record<string, string>>(() => {
+    // Pre-fill: the DB stores one content per row. For text posts the group
+    // data returns the first row's content. We set all to same initial value
+    // and let user adjust per platform if needed.
+    const caps: Record<string, string> = {};
+    groupData.platforms.forEach(p => { caps[p.toLowerCase()] = groupData.content; });
+    return caps;
+  });
+
   const [scheduleDateStr, setScheduleDate] = useState(() => {
     try { return new Date(groupData.scheduledAt).toISOString().slice(0, 16); } catch { return ''; }
   });
-  const mediaUrls                         = groupData.mediaUrls;
-  const [submitting, setSubmitting]       = useState(false);
-  const [submitError, setSubmitError]     = useState<string | null>(null);
-  const [submitOk, setSubmitOk]           = useState(false);
+  const mediaUrls     = groupData.mediaUrls;
+  const [submitting, setSubmitting]   = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitOk, setSubmitOk]       = useState(false);
 
   const handleSave = async () => {
-    if (!content.trim())             { setSubmitError('Caption cannot be empty.'); return; }
-    if (!selectedIntegrations.length){ setSubmitError('Select at least one platform.'); return; }
-    if (!scheduleDateStr)            { setSubmitError('Pick a schedule date and time.'); return; }
+    if (!selectedIntegrations.length) { setSubmitError('Select at least one platform.'); return; }
+    if (!scheduleDateStr)             { setSubmitError('Pick a schedule date and time.'); return; }
+    if (!isTextPost && !content.trim()) { setSubmitError('Caption cannot be empty.'); return; }
+    if (isTextPost) {
+      const hasAny = selectedIntegrations.some(id => {
+        const integ = integrations.find(x => x.id === id);
+        const prof = (integ?.profile || integ?.id || '').toLowerCase();
+        return (perPlatformCaptions[prof] || '').trim().length > 0;
+      });
+      if (!hasAny) { setSubmitError('Write a caption for at least one platform.'); return; }
+    }
+
     setSubmitting(true); setSubmitError(null);
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!session?.access_token) throw new Error('Session expired. Please log out and back in.');
 
-      // Step 1: cancel old Ayrshare posts for this group
+      // Step 1: cancel old Ayrshare posts
       const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
@@ -961,21 +988,44 @@ function EditComposer({
         throw new Error(d.error || 'Failed to cancel existing post');
       }
 
-      // Step 2: resubmit each platform with updated data, same postGroupId
-      const platformIds = selectedIntegrations
-        .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
-        .filter(Boolean);
       const scheduleISO = new Date(scheduleDateStr).toISOString();
-      await Promise.all(platformIds.map(platformId =>
-        ayrsharePost({
-          platforms: [platformId],
-          post: content,
-          mediaUrls,
-          scheduleDate: scheduleISO,
-          workspaceId: workspaceId ?? null,
-          postGroupId,
-        })
-      ));
+
+      if (isTextPost) {
+        // Text post: post each platform with its own caption (same as original text composer)
+        const posts: Promise<unknown>[] = [];
+        for (const integId of selectedIntegrations) {
+          const integ = integrations.find(x => x.id === integId);
+          if (!integ) continue;
+          const platformId = integ.profile || integ.id || '';
+          const prof = platformId.toLowerCase();
+          const cap = perPlatformCaptions[prof] || content;
+          if (!cap.trim()) continue;
+          posts.push(ayrsharePost({
+            platforms: [platformId],
+            post: cap,
+            scheduleDate: scheduleISO,
+            workspaceId: workspaceId ?? null,
+            postGroupId,
+          }));
+        }
+        await Promise.all(posts);
+      } else {
+        // Media post: same caption to all platforms
+        const platformIds = selectedIntegrations
+          .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
+          .filter(Boolean);
+        await Promise.all(platformIds.map(platformId =>
+          ayrsharePost({
+            platforms: [platformId],
+            post: content,
+            mediaUrls,
+            scheduleDate: scheduleISO,
+            workspaceId: workspaceId ?? null,
+            postGroupId,
+          })
+        ));
+      }
+
       setSubmitOk(true);
       setTimeout(onSuccess, 900);
     } catch (e: any) {
@@ -985,41 +1035,95 @@ function EditComposer({
     }
   };
 
+  const PLATFORM_LIMITS: Record<string, number> = {
+    x: 280, twitter: 280, threads: 500, linkedin: 3000,
+    instagram: 2200, facebook: 63206, tiktok: 2200, youtube: 5000,
+  };
+  const PLATFORM_LABELS: Record<string, string> = {
+    x: 'X (Twitter)', twitter: 'X (Twitter)', linkedin: 'LinkedIn',
+    threads: 'Threads', instagram: 'Instagram', facebook: 'Facebook',
+    tiktok: 'TikTok', youtube: 'YouTube',
+  };
+
   return (
     <div className="space-y-5">
+      {/* Platform selector */}
       <div>
         <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
         <div className="flex flex-wrap gap-2">
-          {integrations.map(int => {
-            const selected = selectedIntegrations.includes(int.id);
-            const p = PLATFORMS[int.identifier as PlatformId];
-            return (
-              <button key={int.id}
-                onClick={() => setSelectedIntegrations(prev =>
-                  prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]
-                )}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
-                style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                <PlatformIcon id={int.profile || int.identifier} size="sm" picture={int.picture} />
-                <span className="max-w-[90px] truncate text-xs">{int.name}</span>
-                {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
-              </button>
-            );
+          {integrations
+            .filter(i => isTextPost ? TEXT_PLATFORMS.has((i.profile || i.id || '').toLowerCase()) : true)
+            .map(int => {
+              const selected = selectedIntegrations.includes(int.id);
+              const p = PLATFORMS[int.identifier as PlatformId];
+              return (
+                <button key={int.id}
+                  onClick={() => setSelectedIntegrations(prev =>
+                    prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]
+                  )}
+                  className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
+                  style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
+                  <PlatformIcon id={int.profile || int.identifier} size="sm" picture={int.picture} />
+                  <span className="max-w-[90px] truncate text-xs">{int.name}</span>
+                  {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
+                </button>
+              );
           })}
         </div>
       </div>
-      <div>
-        <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
-        <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-          <textarea value={content} onChange={e => setContent(e.target.value)} rows={6}
-            placeholder="Write your caption…"
-            className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
-          <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
-            <span className="text-xs" style={{ color: content.length > 2200 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{content.length} chars</span>
+
+      {/* Caption(s) */}
+      {isTextPost ? (
+        <div className="space-y-3">
+          <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Captions</div>
+          {selectedIntegrations.map(integId => {
+            const integ = integrations.find(x => x.id === integId);
+            if (!integ) return null;
+            const prof = (integ.profile || integ.id || '').toLowerCase();
+            const label = PLATFORM_LABELS[prof] || prof;
+            const limit = PLATFORM_LIMITS[prof] || 2200;
+            const val = perPlatformCaptions[prof] || '';
+            const p = PLATFORMS[integ.identifier as PlatformId];
+            return (
+              <div key={integId} className="rounded-xl border overflow-hidden"
+                style={{ borderColor: val.length > limit ? '#f87171' : BORDER }}>
+                <div className="flex items-center gap-2 px-3 py-2 border-b"
+                  style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
+                  <PlatformIcon id={integ.profile || integ.identifier} size="sm" picture={integ.picture} />
+                  <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
+                  <span className="ml-auto text-xs" style={{ color: val.length > limit ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
+                    {val.length}/{limit}
+                  </span>
+                </div>
+                <textarea
+                  value={val}
+                  onChange={e => setPerPlatformCaptions(prev => ({ ...prev, [prof]: e.target.value }))}
+                  rows={4}
+                  placeholder={`Write your ${label} caption…`}
+                  className="w-full bg-transparent px-4 pt-3 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none"
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div>
+          <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
+          <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
+            <textarea value={content} onChange={e => setContent(e.target.value)} rows={6}
+              placeholder="Write your caption…"
+              className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+            <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+              <span className="text-xs" style={{ color: content.length > 2200 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
+                {content.length} chars
+              </span>
+            </div>
           </div>
         </div>
-      </div>
-      {mediaUrls.length > 0 && (
+      )}
+
+      {/* Media preview (media posts only, read-only) */}
+      {!isTextPost && mediaUrls.length > 0 && (
         <div>
           <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">
             Media <span className="font-normal opacity-50">(to change media, delete and create a new post)</span>
@@ -1036,17 +1140,21 @@ function EditComposer({
           </div>
         </div>
       )}
+
+      {/* Schedule time */}
       <div>
         <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Schedule Date &amp; Time</div>
         <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
           className="w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
           style={{ borderColor: BORDER, colorScheme: 'dark' }} />
       </div>
+
       {submitError && (
         <div className="flex items-center gap-2 p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">
           <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {submitError}
         </div>
       )}
+
       <div className="flex gap-2 pt-1">
         <button onClick={onCancel}
           className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white/40 hover:text-white hover:bg-white/8 transition border"
