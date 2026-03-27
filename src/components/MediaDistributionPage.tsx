@@ -1011,7 +1011,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt), error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null };
       }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
     } catch (e) {}
     finally { setLoading(false); }
@@ -4224,7 +4224,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt), error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
       }));
     } catch (e) {}
     finally { setLoading(false); }
@@ -4372,7 +4372,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       const list  = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt), error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
       }));
     } catch (e) {}
     finally { setLoading(false); }
