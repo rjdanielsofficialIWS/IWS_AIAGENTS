@@ -1466,6 +1466,52 @@ const ThreadVideoPlayer = React.memo(function ThreadVideoPlayer({
 
 // ─── VideoPreviewCard ─────────────────────────────────────────────────────────
 
+// ─── UploadETA ───────────────────────────────────────────────────────────────
+// Smooth countdown that starts from a 4-minute baseline and ticks down every
+// second. Blends in real measured speed gradually so it self-corrects without
+// jumping around.
+function UploadETA({ uploadState }: { uploadState: UploadState }) {
+  const BASELINE_SECS = 240; // 4 minutes default
+  const [display, setDisplay] = useState('');
+
+  useEffect(() => {
+    if (uploadState.status !== 'uploading') { setDisplay(''); return; }
+    const pct = (uploadState as any).progress ?? 0;
+    const startedAt = (uploadState as any).startedAt ?? Date.now();
+
+    if (pct >= 100) { setDisplay('⚙️ Processing video… usually 30–60s'); return; }
+
+    const tick = () => {
+      const currentPct = (uploadState as any).progress ?? 0;
+      if (currentPct >= 100) { setDisplay('⚙️ Processing video… usually 30–60s'); return; }
+      const elapsed = (Date.now() - startedAt) / 1000;
+      // Measured rate-based estimate
+      const measuredRemaining = currentPct > 2 && elapsed > 3
+        ? (100 - currentPct) / (currentPct / elapsed)
+        : null;
+      // Blend: start at baseline, converge toward measured over ~60s
+      const blendFactor = Math.min(elapsed / 60, 1);
+      const remaining = measuredRemaining !== null
+        ? Math.round(BASELINE_SECS * (1 - blendFactor) + measuredRemaining * blendFactor)
+        : Math.max(0, BASELINE_SECS - elapsed);
+
+      if (remaining < 60) {
+        setDisplay(`Uploading… ${currentPct}% — ${Math.max(1, Math.round(remaining))}s remaining`);
+      } else {
+        const mins = Math.ceil(remaining / 60);
+        setDisplay(`Uploading… ${currentPct}% — ~${mins}m remaining`);
+      }
+    };
+
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [uploadState]);
+
+  if (!display) return null;
+  return <div className="text-[10px] text-white/30">{display}</div>;
+}
+
 function VideoPreviewCard({
   file, objectUrl, uploadState, onRemove,
 }: { file: File; objectUrl: string; uploadState: UploadState; onRemove: () => void }) {
@@ -1628,20 +1674,7 @@ function VideoPreviewCard({
               <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                 <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(uploadState as any).progress ?? 0}%` }} />
               </div>
-              <div className="text-[10px] text-white/30">
-                {(() => {
-                  const pct = (uploadState as any).progress ?? 0;
-                  const startedAt = (uploadState as any).startedAt;
-                  if (pct <= 0 || !startedAt) return `Uploading… ${pct}%`;
-                  const elapsed = (Date.now() - startedAt) / 1000;
-                  const rate = pct / elapsed; // % per second
-                  const remaining = rate > 0 ? Math.ceil((100 - pct) / rate) : null;
-                  if (pct >= 100) return '⚙️ Processing video… usually 30–60s';
-                  if (!remaining || remaining > 3600) return `Uploading… ${pct}%`;
-                  if (remaining < 60) return `Uploading… ${pct}% — ${remaining}s remaining`;
-                  return `Uploading… ${pct}% — ${Math.ceil(remaining / 60)}m remaining`;
-                })()}
-              </div>
+              <UploadETA uploadState={uploadState} />
             </div>
           )}
         </div>
