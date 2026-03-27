@@ -1288,7 +1288,7 @@ function VideoPreviewCard({
     if (!v) return;
     v.muted = true;
     v.play().catch(() => setPlaying(false));
-  }, [objectUrl]);
+  }, []);
 
   const togglePlay = () => {
     const v = videoRef.current; if (!v) return;
@@ -6845,7 +6845,7 @@ export function MediaDistributionPage() {
     // Persist ?ref= code before sign-up so it survives the auth flow
     const refParam = new URLSearchParams(window.location.search).get('ref');
     if (refParam) localStorage.setItem('mm_ref_code', refParam);
-  }, [objectUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentUserId = currentUser?.id ?? null;
 
@@ -7017,7 +7017,7 @@ export function MediaDistributionPage() {
       setConnectModalOpen(false);
       pollForChannels();
     }
-  }, [objectUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Signal 2: localStorage flag — works when popup closes or tab regains focus on desktop
   useEffect(() => {
@@ -7031,7 +7031,7 @@ export function MediaDistributionPage() {
       setConnectModalOpen(false);
       pollForChannels();
     }
-  }, [objectUrl]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Signal 3: visibilitychange — works on desktop when popup tab closes
   useEffect(() => {
