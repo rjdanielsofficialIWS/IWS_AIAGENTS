@@ -2028,9 +2028,10 @@ function InlinePostComposer({
   const isYouTubeSelected = getSelectedPlatforms().includes('youtube');
 
   const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
-    setU({ status: 'uploading', progress: 0, startedAt: Date.now() });
+    const startedAt = Date.now(); // capture once, close over it in the progress callback
+    setU({ status: 'uploading', progress: 0, startedAt } as any);
     try {
-      const url = await uploadViaNativeXHR(file, kind, pct => setU(prev => ({ status: 'uploading', progress: pct, startedAt: (prev as any).startedAt ?? Date.now() })));
+      const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct, startedAt } as any));
       setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
     } catch (e: any) {
       setU({ status: 'error', message: e.message || 'Upload failed' });
