@@ -988,11 +988,13 @@ function EditPostModal({
 function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId }: {
   open: boolean; onClose: () => void; userId: string | null; initialFilter?: string; workspaceId?: string | null;
 }) {
-  const [posts, setPosts]       = useState<ScheduledPost[]>([]);
-  const [loading, setLoading]   = useState(false);
-  const [filter, setFilter]     = useState<'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
-  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
-  const [retried, setRetried]   = useState<Record<string, 'ok' | 'err'>>({});
+  const [posts, setPosts]           = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [filter, setFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
+  const [retrying, setRetrying]     = useState<Record<string, boolean>>({});
+  const [retried, setRetried]       = useState<Record<string, 'ok' | 'err'>>({});
+  const [deleting, setDeleting]     = useState<Record<string, boolean>>({});
+  const [editingPost, setEditingPost] = useState<(ScheduledPost & { postGroupId?: string | null }) | null>(null);
 
   useEffect(() => { if (open) setFilter(initialFilter as any); }, [open, initialFilter]);
 
@@ -1114,19 +1116,27 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
               <div className="text-sm font-bold text-white/25">No {filter === 'all' ? '' : filter} posts found</div>
             </div>
           ) : (
-            filtered.map(post => {
-              const isFailed = post.status === 'error' || post.status === 'failed';
-              const isRetrying = retrying[post.id];
+            dedupedFiltered.map(post => {
+              const isFailed    = post.status === 'error' || post.status === 'failed';
+              const isScheduled = post.status === 'scheduled';
+              const isRetrying  = retrying[post.id];
+              const isDeleting  = deleting[post.id];
               const retriedResult = retried[post.id];
+              const allPlatforms = (post as any).postGroupId
+                ? [...new Set(posts.filter((p: any) => p.postGroupId === (post as any).postGroupId).flatMap(p => p.platforms))]
+                : post.platforms;
+              const siblingCount = (post as any).postGroupId
+                ? posts.filter((p: any) => p.postGroupId === (post as any).postGroupId).length
+                : 1;
               return (
-                <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: isFailed ? 'rgba(239,68,68,0.25)' : BORDER }}>
+                <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border group" style={{ borderColor: isFailed ? 'rgba(239,68,68,0.25)' : isScheduled ? `${GOLD}20` : BORDER }}>
                   <div className="flex -space-x-1.5 shrink-0 pt-0.5">
-                    {post.platforms.slice(0, 3).map((pid, i) => (
+                    {allPlatforms.slice(0, 3).map((pid: string, i: number) => (
                       <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
                     ))}
-                    {post.platforms.length > 3 && (
+                    {allPlatforms.length > 3 && (
                       <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
-                        +{post.platforms.length - 3}
+                        +{allPlatforms.length - 3}
                       </div>
                     )}
                   </div>
@@ -1140,10 +1150,13 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
                         <Clock className="w-3 h-3" />
                         {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </span>
+                      {siblingCount > 1 && (
+                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>
+                          {siblingCount} platforms
+                        </span>
+                      )}
                       {isFailed && !retriedResult && (
-                        <button
-                          onClick={() => handleRetry(post)}
-                          disabled={isRetrying}
+                        <button onClick={() => handleRetry(post)} disabled={isRetrying}
                           className="text-xs font-bold px-2 py-0.5 rounded-md transition"
                           style={{ background: `${GOLD}20`, color: GOLD_L, opacity: isRetrying ? 0.5 : 1 }}>
                           {isRetrying ? 'Posting…' : '↺ Retry Now'}
@@ -1160,6 +1173,20 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
                     }}>
                     {isFailed ? 'Failed' : post.status.charAt(0).toUpperCase() + post.status.slice(1)}
                   </span>
+                  {isScheduled && (
+                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition">
+                      <button onClick={() => setEditingPost(post as any)}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition"
+                        style={{ color: GOLD }} title="Edit post">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleDelete(post as any)} disabled={isDeleting}
+                        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/60 hover:text-red-400 disabled:opacity-40"
+                        title="Delete post">
+                        {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  )}
                 </div>
               );
             })
@@ -1167,6 +1194,16 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
         </div>
       </div>
     </div>
+    {editingPost && (
+      <EditPostModal
+        open={!!editingPost}
+        onClose={() => setEditingPost(null)}
+        post={editingPost}
+        workspaceId={workspaceId}
+        onSaved={() => { setEditingPost(null); loadPosts(); }}
+      />
+    )}
+  </>
   );
 }
 
