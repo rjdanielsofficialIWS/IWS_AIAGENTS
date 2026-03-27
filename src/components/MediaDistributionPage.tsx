@@ -19,6 +19,12 @@ const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)'
 const SURFACE = 'rgba(255,255,255,0.04)';
 const BORDER  = 'rgba(255,255,255,0.08)';
 
+function generateUUID(): string {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) return generateUUID();
+  return "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c: any) =>
+    (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
+}
+
 // Resolve a raw API status against current time — if scheduled but past-due, treat as published
 const resolveStatus = (raw: string, scheduledAt: Date): 'scheduled' | 'published' | 'failed' | 'error' => {
   if (raw === 'error') return 'error';
@@ -1976,7 +1982,7 @@ function InlinePostComposer({
       return;
     }
     // Thread format validation
-    const postGroupId = crypto.randomUUID();
+    const postGroupId = generateUUID();
       if (postFormat === 'thread') {
       const validTweets = threadTweets.filter(t => t.trim());
       if (validTweets.length < 2) { setSubmitError('Add at least 2 tweets to create a thread.'); return; }
@@ -1991,7 +1997,7 @@ function InlinePostComposer({
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
 
       // Handle thread format — post as thread to all selected platforms
-      const postGroupId = crypto.randomUUID();
+      const postGroupId = generateUUID();
       if (postFormat === 'thread') {
         const validTweets = threadTweets.filter(t => t.trim());
         const platformIds = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean);
@@ -2048,7 +2054,7 @@ function InlinePostComposer({
   };
 
   const handleTextSubmit = async () => {
-    const postGroupId = crypto.randomUUID();
+    const postGroupId = generateUUID();
       if (postFormat === 'thread') {
       const validTweets = threadTweets.filter(t => t.trim());
       if (validTweets.length < 2) { setSubmitError('Add at least 2 posts to create a thread.'); return; }
@@ -2069,7 +2075,7 @@ function InlinePostComposer({
         const acct = textPostAccounts.find(a => a.integ.id === id);
         return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
       }).filter(a => a.platformId);
-      const postGroupId = crypto.randomUUID();
+      const postGroupId = generateUUID();
       if (postFormat === 'thread') {
         const validTweets = threadTweets.filter(t => t.trim());
         const platformIds = allAccounts.map(a => a.platformId);
@@ -2080,7 +2086,7 @@ function InlinePostComposer({
         const liText = editingIdx ? aiEditText : linkedinText;
         const otText = editingIdx ? aiEditText : xText;
         const posts: Promise<unknown>[] = [];
-        const textPostGroupId = crypto.randomUUID();
+        const textPostGroupId = generateUUID();
         if (otIds.length > 0 && otText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: otText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
         if (liIds.length > 0 && liText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: liText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
         await Promise.all(posts);
