@@ -1467,39 +1467,52 @@ const ThreadVideoPlayer = React.memo(function ThreadVideoPlayer({
 // ─── VideoPreviewCard ─────────────────────────────────────────────────────────
 
 // ─── UploadETA ───────────────────────────────────────────────────────────────
-// Smooth countdown that starts from a 4-minute baseline and ticks down every
-// second. Blends in real measured speed gradually so it self-corrects without
-// jumping around.
+// Smooth countdown from a 4-minute baseline. The displayed time only ever
+// decreases — we track a floor and never let it go up.
 function UploadETA({ uploadState }: { uploadState: UploadState }) {
-  const BASELINE_SECS = 240; // 4 minutes default
+  const BASELINE_SECS = 240;
   const [display, setDisplay] = useState('');
+  const floorRef = useRef<number>(BASELINE_SECS);
 
   useEffect(() => {
-    if (uploadState.status !== 'uploading') { setDisplay(''); return; }
-    const pct = (uploadState as any).progress ?? 0;
-    const startedAt = (uploadState as any).startedAt ?? Date.now();
+    if (uploadState.status !== 'uploading') {
+      floorRef.current = BASELINE_SECS;
+      setDisplay('');
+      return;
+    }
 
-    if (pct >= 100) { setDisplay('⚙️ Processing video… usually 30–60s'); return; }
+    const retrying = (uploadState as any).retrying;
+    if (retrying) {
+      setDisplay(`Connection dropped — retrying (attempt ${retrying}/3)\u2026`);
+      return;
+    }
+
+    const startedAt = (uploadState as any).startedAt ?? Date.now();
 
     const tick = () => {
       const currentPct = (uploadState as any).progress ?? 0;
-      if (currentPct >= 100) { setDisplay('⚙️ Processing video… usually 30–60s'); return; }
+      if (currentPct >= 100) { setDisplay('\u2699\ufe0f Processing video\u2026 usually 30\u201360s'); return; }
+
       const elapsed = (Date.now() - startedAt) / 1000;
-      // Measured rate-based estimate
       const measuredRemaining = currentPct > 2 && elapsed > 3
         ? (100 - currentPct) / (currentPct / elapsed)
         : null;
-      // Blend: start at baseline, converge toward measured over ~60s
       const blendFactor = Math.min(elapsed / 60, 1);
-      const remaining = measuredRemaining !== null
-        ? Math.round(BASELINE_SECS * (1 - blendFactor) + measuredRemaining * blendFactor)
+      const rawRemaining = measuredRemaining !== null
+        ? BASELINE_SECS * (1 - blendFactor) + measuredRemaining * blendFactor
         : Math.max(0, BASELINE_SECS - elapsed);
 
-      if (remaining < 60) {
-        setDisplay(`Uploading… ${currentPct}% — ${Math.max(1, Math.round(remaining))}s remaining`);
+      // Never increase — only count down
+      const clamped = Math.min(rawRemaining, floorRef.current);
+      floorRef.current = clamped;
+
+      const secs = Math.max(1, Math.round(clamped));
+      if (secs < 60) {
+        setDisplay(`Uploading\u2026 ${currentPct}% \u2014 ${secs}s remaining`);
       } else {
-        const mins = Math.ceil(remaining / 60);
-        setDisplay(`Uploading… ${currentPct}% — ~${mins}m remaining`);
+        const mins = Math.floor(secs / 60);
+        const rem  = secs % 60;
+        setDisplay(`Uploading\u2026 ${currentPct}% \u2014 ~${mins}m${rem > 0 ? ` ${rem}s` : ''} remaining`);
       }
     };
 
@@ -2061,13 +2074,30 @@ function InlinePostComposer({
   const isYouTubeSelected = getSelectedPlatforms().includes('youtube');
 
   const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
-    const startedAt = Date.now(); // capture once, close over it in the progress callback
+    const startedAt = Date.now();
     setU({ status: 'uploading', progress: 0, startedAt } as any);
-    try {
-      const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct, startedAt } as any));
-      setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
-    } catch (e: any) {
-      setU({ status: 'error', message: e.message || 'Upload failed' });
+    const MAX_RETRIES = 3;
+    let attempt = 0;
+    while (attempt <= MAX_RETRIES) {
+      try {
+        const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct, startedAt } as any));
+        setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
+        return;
+      } catch (e: any) {
+        attempt++;
+        const isNetworkError = !e.message?.includes('Upload failed:'); // XHR HTTP errors vs network drop
+        if (attempt <= MAX_RETRIES && isNetworkError) {
+          // Exponential backoff: 2s, 4s, 8s
+          const delay = Math.pow(2, attempt) * 1000;
+          setU({ status: 'uploading', progress: 0, startedAt, retrying: attempt } as any);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        setU({ status: 'error', message: attempt > MAX_RETRIES
+          ? `Upload failed after ${MAX_RETRIES} retries. Check your connection and try again.`
+          : (e.message || 'Upload failed') });
+        return;
+      }
     }
   };
 
