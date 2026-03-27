@@ -814,12 +814,7 @@ function ConnectAccountsModal({
 }
 
 // ─── EditPostModal ────────────────────────────────────────────────────────────
-// Opens the full composer pre-filled with the existing post data.
-// Flow: fetch group data → cancel old Ayrshare posts → resubmit with same postGroupId.
-
-function EditPostModal({
-  open, onClose, post, onSaved, integrations, workspaceId,
-}: {
+function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId }: {
   open: boolean;
   onClose: () => void;
   post: ScheduledPost & { postGroupId?: string | null };
@@ -827,16 +822,18 @@ function EditPostModal({
   integrations: PostizIntegration[];
   workspaceId?: string | null;
 }) {
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState<string | null>(null);
-  const [groupData, setGroupData] = useState<{
-    platforms: string[]; content: string; perPlatformContent: Record<string,string>;
-    mediaUrls: string[]; scheduledAt: string; workspaceId: string | null;
-  } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError]     = useState<string | null>(null);
+  const [rows, setRows]       = useState<{ platform: string; content: string }[]>([]);
+  const [mediaUrls, setMediaUrls]       = useState<string[]>([]);
+  const [scheduleDateStr, setScheduleDate] = useState('');
+  const [submitting, setSubmitting]     = useState(false);
+  const [submitError, setSubmitError]   = useState<string | null>(null);
+  const [submitOk, setSubmitOk]         = useState(false);
 
   useEffect(() => {
     if (!open || !post.postGroupId) return;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setSubmitOk(false); setSubmitError(null);
     (async () => {
       try {
         let { data: { session } } = await supabase.auth.getSession();
@@ -849,623 +846,151 @@ function EditPostModal({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed to load post');
-        setGroupData({
-          platforms: data.platforms || [],
-          content: data.content || '',
-          perPlatformContent: data.perPlatformContent || {},
-          mediaUrls: data.mediaUrls || [],
-          scheduledAt: data.scheduledAt || '',
-          workspaceId: data.workspaceId || null,
-        });
+        // Build one row per platform with its own caption
+        const perPlatform: Record<string,string> = data.perPlatformContent || {};
+        const builtRows = (data.platforms as string[]).map(p => ({
+          platform: p,
+          content: perPlatform[p.toLowerCase()] ?? data.content ?? '',
+        }));
+        setRows(builtRows);
+        setMediaUrls(Array.isArray(data.mediaUrls) ? data.mediaUrls : []);
+        // Convert UTC scheduledAt to local datetime-local string
+        try {
+          const d = new Date(data.scheduledAt);
+          const localMs = d.getTime() - d.getTimezoneOffset() * 60000;
+          setScheduleDate(new Date(localMs).toISOString().slice(0, 16));
+        } catch { setScheduleDate(''); }
       } catch (e: any) { setError(e.message || 'Failed to load post data'); }
       finally { setLoading(false); }
     })();
   }, [open, post.postGroupId]);
 
+  const handleSave = async () => {
+    if (!scheduleDateStr) { setSubmitError('Pick a schedule date and time.'); return; }
+    const filledRows = rows.filter(r => r.content.trim());
+    if (!filledRows.length) { setSubmitError('At least one caption is required.'); return; }
+    setSubmitting(true); setSubmitError(null);
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session?.access_token) throw new Error('Session expired.');
+      // Cancel old posts (preserve media)
+      const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: 'delete_post', postGroupId: post.postGroupId, skipMediaCleanup: true }),
+      });
+      if (!delRes.ok) { const d = await delRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
+      // Re-post each platform
+      const scheduleISO = new Date(scheduleDateStr).toISOString();
+      await Promise.all(filledRows.map(row =>
+        ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null, postGroupId: post.postGroupId! })
+      ));
+      setSubmitOk(true);
+      setTimeout(onSaved, 800);
+    } catch (e: any) {
+      setSubmitError(e.message || 'Failed to save');
+    } finally { setSubmitting(false); }
+  };
+
   if (!open) return null;
+
+  const LABELS: Record<string,string> = { x: 'X (Twitter)', twitter: 'X (Twitter)', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', linkedin: 'LinkedIn', threads: 'Threads', youtube: 'YouTube' };
+  const LIMITS: Record<string,number> = { x: 280, twitter: 280, threads: 500, linkedin: 3000, instagram: 2200, facebook: 63206, tiktok: 2200, youtube: 5000 };
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[92vh]"
         style={{ background: 'rgba(13,13,13,0.99)', borderColor: `${GOLD}40` }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0"
-          style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
-          <div>
-            <div className="text-sm font-black text-white flex items-center gap-2">
-              <Edit3 className="w-4 h-4" style={{ color: GOLD }} />
-              Edit Scheduled Post
-            </div>
-            <div className="text-xs text-white/35 mt-0.5">Changes will cancel and reschedule the post</div>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <div className="text-sm font-black text-white flex items-center gap-2">
+            <Edit3 className="w-4 h-4" style={{ color: GOLD }} /> Edit Scheduled Post
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center h-40 gap-3 text-white/30">
-              <Loader className="w-5 h-5 animate-spin" style={{ color: GOLD }} /> Loading post data…
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+          {loading && (
+            <div className="flex items-center justify-center h-32 gap-2 text-white/30">
+              <Loader className="w-4 h-4 animate-spin" style={{ color: GOLD }} /> Loading…
             </div>
-          ) : error ? (
-            <div className="p-6">
-              <div className="flex items-center gap-2 p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">
-                <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {error}
-              </div>
-            </div>
-          ) : groupData ? (
-            <div className="px-5 py-5">
-              <EditComposer
-                integrations={integrations}
-                groupData={groupData}
-                postGroupId={post.postGroupId!}
-                workspaceId={workspaceId}
-                onSuccess={onSaved}
-                onCancel={onClose}
-              />
-            </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function EditComposer({
-  integrations, groupData, postGroupId, workspaceId, onSuccess, onCancel,
-}: {
-  integrations: PostizIntegration[];
-  groupData: { platforms: string[]; content: string; perPlatformContent?: Record<string,string>; mediaUrls: string[]; scheduledAt: string; workspaceId: string | null };
-  postGroupId: string;
-  workspaceId?: string | null;
-  onSuccess: () => void;
-  onCancel: () => void;
-}) {
-  const toApiName = (p: string) => p === 'x' ? 'twitter' : p;
-  const TEXT_PLATFORMS = new Set(['x', 'twitter', 'linkedin', 'threads']);
-
-  // Determine if this is a text post (no media, all platforms are text-only)
-  const isTextPost = groupData.mediaUrls.length === 0 &&
-    groupData.platforms.every(p => TEXT_PLATFORMS.has(p.toLowerCase()));
-
-  // Show per-platform caption fields for text posts OR any multi-platform post
-  const captionValues = Object.values(groupData.perPlatformContent ?? {});
-  const showPerPlatform = isTextPost ||
-    selectedIntegrations.length > 1 ||
-    (captionValues.length > 1 && new Set(captionValues).size > 1);
-
-  const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>(() =>
-    integrations
-      .filter(i => groupData.platforms.some(p => {
-        const prof = (i.profile || i.id || '').toLowerCase();
-        const api = toApiName(p);
-        return prof === p || prof === api || prof.includes(p) || prof.includes(api);
-      }))
-      .map(i => i.id)
-  );
-
-  // Shared caption (media posts) — single field for all platforms
-  const [content, setContent] = useState(groupData.content);
-
-  // Per-platform captions (text posts) — one field per platform type
-  const [perPlatformCaptions, setPerPlatformCaptions] = useState<Record<string, string>>(() => {
-    // Use per-platform content from backend if available (v74+), else fall back to shared content
-    const caps: Record<string, string> = {};
-    groupData.platforms.forEach(p => {
-      const key = p.toLowerCase();
-      caps[key] = groupData.perPlatformContent?.[key] ?? groupData.content ?? '';
-    });
-    return caps;
-  });
-
-  const [scheduleDateStr, setScheduleDate] = useState(() => {
-    try {
-      const d = new Date(groupData.scheduledAt);
-      // datetime-local needs local time, not UTC — subtract timezone offset
-      const localMs = d.getTime() - d.getTimezoneOffset() * 60000;
-      return new Date(localMs).toISOString().slice(0, 16);
-    } catch { return ''; }
-  });
-  const mediaUrls     = groupData.mediaUrls;
-  const [submitting, setSubmitting]   = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-  const [submitOk, setSubmitOk]       = useState(false);
-
-  const handleSave = async () => {
-    if (!selectedIntegrations.length) { setSubmitError('Select at least one platform.'); return; }
-    if (!scheduleDateStr)             { setSubmitError('Pick a schedule date and time.'); return; }
-    if (!showPerPlatform && !content.trim()) { setSubmitError('Caption cannot be empty.'); return; }
-    if (isTextPost) {
-      const hasAny = selectedIntegrations.some(id => {
-        const integ = integrations.find(x => x.id === id);
-        const prof = (integ?.profile || integ?.id || '').toLowerCase();
-        return (perPlatformCaptions[prof] || '').trim().length > 0;
-      });
-      if (!hasAny) { setSubmitError('Write a caption for at least one platform.'); return; }
-    }
-
-    setSubmitting(true); setSubmitError(null);
-    try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session?.access_token) throw new Error('Session expired. Please log out and back in.');
-
-      // Step 1: cancel old Ayrshare posts
-      const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ action: 'delete_post', postGroupId, skipMediaCleanup: true }),
-      });
-      if (!delRes.ok) {
-        const d = await delRes.json().catch(() => ({}));
-        throw new Error(d.error || 'Failed to cancel existing post');
-      }
-
-      const scheduleISO = new Date(scheduleDateStr).toISOString();
-
-      if (showPerPlatform) {
-        // Text post: post each platform with its own caption (same as original text composer)
-        const posts: Promise<unknown>[] = [];
-        for (const integId of selectedIntegrations) {
-          const integ = integrations.find(x => x.id === integId);
-          if (!integ) continue;
-          const platformId = integ.profile || integ.id || '';
-          const prof = platformId.toLowerCase();
-          const cap = perPlatformCaptions[prof] || content;
-          if (!cap.trim()) continue;
-          posts.push(ayrsharePost({
-            platforms: [platformId],
-            post: cap,
-            scheduleDate: scheduleISO,
-            workspaceId: workspaceId ?? null,
-            postGroupId,
-          }));
-        }
-        await Promise.all(posts);
-      } else {
-        // Media post: same caption to all platforms
-        const platformIds = selectedIntegrations
-          .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
-          .filter(Boolean);
-        await Promise.all(platformIds.map(platformId =>
-          ayrsharePost({
-            platforms: [platformId],
-            post: content,
-            mediaUrls,
-            scheduleDate: scheduleISO,
-            workspaceId: workspaceId ?? null,
-            postGroupId,
-          })
-        ));
-      }
-
-      // After re-post succeeds, clean up any media that is no longer used.
-      // This happens when the user deselects a platform that had media attached —
-      // the old CF video is preserved by skipMediaCleanup during delete, but if
-      // no new post references it anymore, we clean it up now.
-      try {
-        const newPlatformIds = selectedIntegrations
-          .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
-          .filter(Boolean);
-        // If no new post uses media (e.g. all remaining platforms are text-only)
-        // and the old post had media, those CF URLs are now orphaned — clean them up.
-        const newPostsHaveMedia = newPlatformIds.length > 0 && mediaUrls.length > 0;
-        if (!newPostsHaveMedia && mediaUrls.length > 0 && session?.access_token) {
-          // Fire-and-forget: delete orphaned CF media via a regular delete_post-style cleanup
-          // We do this by calling the edge function with just the media URLs to clean
-          fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-            body: JSON.stringify({ action: 'cleanup_orphaned_media', mediaUrls }),
-          }).catch(() => {});
-        }
-      } catch (_) {}
-
-      // Clean up any media that is no longer referenced after platform deselection.
-      // skipMediaCleanup preserved the CF video during delete, but if the new
-      // post doesn't use media (e.g. user removed a media platform), clean it up now.
-      if (mediaUrls.length > 0 && session?.access_token) {
-        const newPlatformIds = selectedIntegrations
-          .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
-          .filter(Boolean);
-        const newPostUsesMedia = newPlatformIds.length > 0 && mediaUrls.length > 0;
-        if (!newPostUsesMedia) {
-          fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-            body: JSON.stringify({ action: 'cleanup_orphaned_media', mediaUrls }),
-          }).catch(() => {});
-        }
-      }
-
-      setSubmitOk(true);
-      setTimeout(onSuccess, 900);
-    } catch (e: any) {
-      setSubmitError(e.message || 'Failed to save changes');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const PLATFORM_LIMITS: Record<string, number> = {
-    x: 280, twitter: 280, threads: 500, linkedin: 3000,
-    instagram: 2200, facebook: 63206, tiktok: 2200, youtube: 5000,
-  };
-  const PLATFORM_LABELS: Record<string, string> = {
-    x: 'X (Twitter)', twitter: 'X (Twitter)', linkedin: 'LinkedIn',
-    threads: 'Threads', instagram: 'Instagram', facebook: 'Facebook',
-    tiktok: 'TikTok', youtube: 'YouTube',
-  };
-
-  return (
-    <div className="space-y-5">
-      {/* Platform selector */}
-      <div>
-        <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
-        <div className="flex flex-wrap gap-2">
-          {integrations
-            .filter(i => isTextPost ? TEXT_PLATFORMS.has((i.profile || i.id || '').toLowerCase()) : true)
-            .map(int => {
-              const selected = selectedIntegrations.includes(int.id);
-              const p = PLATFORMS[int.identifier as PlatformId];
-              return (
-                <button key={int.id}
-                  onClick={() => setSelectedIntegrations(prev =>
-                    prev.includes(int.id) ? prev.filter(x => x !== int.id) : [...prev, int.id]
-                  )}
-                  className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
-                  style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                  <PlatformIcon id={int.profile || int.identifier} size="sm" picture={int.picture} />
-                  <span className="max-w-[90px] truncate text-xs">{int.name}</span>
-                  {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
-                </button>
-              );
-          })}
-        </div>
-      </div>
-
-      {/* Caption(s) */}
-      {showPerPlatform ? (
-        <div className="space-y-3">
-          <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Captions</div>
-          {selectedIntegrations.map(integId => {
-            const integ = integrations.find(x => x.id === integId);
-            if (!integ) return null;
-            const prof = (integ.profile || integ.id || '').toLowerCase();
-            const label = PLATFORM_LABELS[prof] || prof;
-            const limit = PLATFORM_LIMITS[prof] || 2200;
-            const val = perPlatformCaptions[prof] || '';
-            const p = PLATFORMS[integ.identifier as PlatformId];
-            return (
-              <div key={integId} className="rounded-xl border overflow-hidden"
-                style={{ borderColor: val.length > limit ? '#f87171' : BORDER }}>
-                <div className="flex items-center gap-2 px-3 py-2 border-b"
-                  style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
-                  <PlatformIcon id={integ.profile || integ.identifier} size="sm" picture={integ.picture} />
-                  <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
-                  <span className="ml-auto text-xs" style={{ color: val.length > limit ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
-                    {val.length}/{limit}
-                  </span>
-                </div>
-                <textarea
-                  value={val}
-                  onChange={e => setPerPlatformCaptions(prev => ({ ...prev, [prof]: e.target.value }))}
-                  rows={4}
-                  placeholder={`Write your ${label} caption…`}
-                  className="w-full bg-transparent px-4 pt-3 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none"
-                />
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <div>
-          <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Caption</div>
-          <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
-            <textarea value={content} onChange={e => setContent(e.target.value)} rows={6}
-              placeholder="Write your caption…"
-              className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
-            <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
-              <span className="text-xs" style={{ color: content.length > 2200 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
-                {content.length} chars
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Media preview (media posts only, read-only) */}
-      {!isTextPost && mediaUrls.length > 0 && (
-        <div>
-          <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">
-            Media <span className="font-normal opacity-50">(to change media, delete and create a new post)</span>
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {mediaUrls.slice(0, 4).map((url, i) => (
-              <div key={i} className="w-16 h-16 rounded-lg border overflow-hidden shrink-0"
-                style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.4)' }}>
-                {url.includes('videodelivery') || url.includes('cloudflarestream') || /\.(mp4|mov|webm)/i.test(url)
-                  ? <div className="w-full h-full flex items-center justify-center"><Video className="w-5 h-5 text-white/30" /></div>
-                  : <img src={url} alt="" className="w-full h-full object-cover" />}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Schedule time */}
-      <div>
-        <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Schedule Date &amp; Time</div>
-        <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
-          className="w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
-          style={{ borderColor: BORDER, colorScheme: 'dark' }} />
-      </div>
-
-      {submitError && (
-        <div className="flex items-center gap-2 p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">
-          <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {submitError}
-        </div>
-      )}
-
-      <div className="flex gap-2 pt-1">
-        <button onClick={onCancel}
-          className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white/40 hover:text-white hover:bg-white/8 transition border"
-          style={{ borderColor: BORDER }}>Cancel</button>
-        <button onClick={handleSave} disabled={submitting || submitOk}
-          className="flex-1 py-2.5 rounded-xl text-sm font-black transition hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
-          style={{ background: submitOk ? '#22c55e' : `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>
-          {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Saving…</>
-            : submitOk ? <><CheckCircle2 className="w-4 h-4" /> Saved!</>
-            : <><CheckCircle2 className="w-4 h-4" /> Save Changes</>}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// ─── PostLogModal ─────────────────────────────────────────────────────────────
-
-function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId, integrations = [] }: {
-  open: boolean; onClose: () => void; userId: string | null; initialFilter?: string; workspaceId?: string | null; integrations?: PostizIntegration[];
-}) {
-  const [posts, setPosts]           = useState<ScheduledPost[]>([]);
-  const [loading, setLoading]       = useState(false);
-  const [filter, setFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
-  const [retrying, setRetrying]     = useState<Record<string, boolean>>({});
-  const [retried, setRetried]       = useState<Record<string, 'ok' | 'err'>>({});
-  const [deleting, setDeleting]     = useState<Record<string, boolean>>({});
-  const [editingPost, setEditingPost] = useState<(ScheduledPost & { postGroupId?: string | null }) | null>(null);
-
-  useEffect(() => { if (open) setFilter(initialFilter as any); }, [open, initialFilter]);
-
-  const loadPosts = useCallback(async () => {
-    if (!userId || !open) return;
-    setLoading(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const end   = new Date(); end.setMonth(end.getMonth() + 3);
-      const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
-      });
-      const data = res.ok ? await res.json() : { posts: [] };
-      const now = new Date();
-      const list = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => {
-        const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null };
-      }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
-    } catch (e) {}
-    finally { setLoading(false); }
-  }, [userId, open, workspaceId]);
-
-  useEffect(() => { loadPosts(); }, [loadPosts]);
-
-  if (!open) return null;
-
-  const handleRetry = async (post: ScheduledPost) => {
-    if (!post.mediaUrls) return;
-    setRetrying(r => ({ ...r, [post.id]: true }));
-    try {
-      await ayrsharePost({ platforms: post.platforms, post: post.content, mediaUrls: post.mediaUrls, workspaceId });
-      setRetried(r => ({ ...r, [post.id]: 'ok' }));
-      setPosts(ps => ps.map(p => p.id === post.id ? { ...p, status: 'published', error: null } : p));
-    } catch {
-      setRetried(r => ({ ...r, [post.id]: 'err' }));
-    } finally {
-      setRetrying(r => ({ ...r, [post.id]: false }));
-    }
-  };
-
-  const handleDelete = async (post: ScheduledPost & { postGroupId?: string | null }) => {
-    if (!confirm('Delete this scheduled post? This will cancel it on all platforms and cannot be undone.')) return;
-    setDeleting(d => ({ ...d, [post.id]: true }));
-    try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session?.access_token) throw new Error('Session expired');
-      const payload: Record<string, unknown> = { action: 'delete_post' };
-      if (post.postGroupId) payload.postGroupId = post.postGroupId;
-      else payload.postId = post.id;
-      if (workspaceId) payload.workspaceId = workspaceId;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error(d.error || 'Delete failed');
-      }
-      setPosts(ps => ps.filter(p =>
-        post.postGroupId ? p.postGroupId !== post.postGroupId : p.id !== post.id
-      ));
-    } catch (e: any) {
-      alert(e.message || 'Failed to delete post');
-    } finally {
-      setDeleting(d => ({ ...d, [post.id]: false }));
-    }
-  };
-
-  const filtered = posts.filter(p => filter === 'all' || p.status === filter);
-  const counts = {
-    all:       posts.length,
-    scheduled: posts.filter(p => p.status === 'scheduled').length,
-    published: posts.filter(p => p.status === 'published').length,
-    failed:    posts.filter(p => p.status === 'failed').length,
-    error:     posts.filter(p => p.status === 'error').length,
-  };
-
-  const seenGroups = new Set<string>();
-  const dedupedFiltered = filtered.filter(p => {
-    if (!p.postGroupId) return true;
-    if (seenGroups.has(p.postGroupId)) return false;
-    seenGroups.add(p.postGroupId);
-    return true;
-  });
-
-  return (
-    <>
-    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
-      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
-        style={{ background: SURFACE, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-          <div>
-            <h2 className="text-base font-bold text-white">Post Log</h2>
-            <p className="text-xs text-white/35 mt-0.5">Your recent and upcoming posts</p>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
-        </div>
-        <div className="flex items-center gap-1 px-5 py-2.5 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
-          {(['all', 'scheduled', 'published', 'error', 'failed'] as const).map(f => (
-            counts[f as keyof typeof counts] > 0 || f === 'all' || f === 'scheduled' || f === 'published' ? (
-              <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
-                style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                {f === 'error' ? 'Failed' : f} {f !== 'all' && <span className="opacity-60">({counts[f as keyof typeof counts]})</span>}
-              </button>
-            ) : null
-          ))}
-          {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
-        </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-          {loading && posts.length === 0 ? (
-            <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading…</div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 text-center">
-              <div className="text-sm font-bold text-white/25">No {filter === 'all' ? '' : filter} posts found</div>
-            </div>
-          ) : (
-            dedupedFiltered.map(post => {
-              const isFailed    = post.status === 'error' || post.status === 'failed';
-              const isScheduled = post.status === 'scheduled';
-              const isRetrying  = retrying[post.id];
-              const isDeleting  = deleting[post.id];
-              const retriedResult = retried[post.id];
-              const allPlatforms = (post as any).postGroupId
-                ? [...new Set(posts.filter((p: any) => p.postGroupId === (post as any).postGroupId).flatMap(p => p.platforms))]
-                : post.platforms;
-              const siblingCount = (post as any).postGroupId
-                ? posts.filter((p: any) => p.postGroupId === (post as any).postGroupId).length
-                : 1;
-              return (
-                <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border group" style={{ borderColor: isFailed ? 'rgba(239,68,68,0.25)' : isScheduled ? `${GOLD}20` : BORDER }}>
-                  <div className="flex -space-x-1.5 shrink-0 pt-0.5">
-                    {allPlatforms.slice(0, 3).map((pid: string, i: number) => (
-                      <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
-                    ))}
-                    {allPlatforms.length > 3 && (
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
-                        +{allPlatforms.length - 3}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
-                    {isFailed && post.error && (
-                      <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      <span className="text-xs text-white/25 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+          )}
+          {error && (
+            <div className="p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">{error}</div>
+          )}
+          {!loading && !error && rows.length > 0 && (
+            <>
+              {/* Per-platform captions */}
+              {rows.map((row, i) => {
+                const key = row.platform.toLowerCase();
+                const label = LABELS[key] || row.platform;
+                const limit = LIMITS[key] || 2200;
+                const p = PLATFORMS[row.platform as PlatformId];
+                return (
+                  <div key={row.platform}>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <PlatformIcon id={row.platform} size="sm" />
+                      <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
+                      <span className="ml-auto text-[10px]" style={{ color: row.content.length > limit ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
+                        {row.content.length}/{limit}
                       </span>
-                      {siblingCount > 1 && (
-                        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>
-                          {siblingCount} platforms
-                        </span>
-                      )}
-                      {isFailed && !retriedResult && (
-                        <button onClick={() => handleRetry(post)} disabled={isRetrying}
-                          className="text-xs font-bold px-2 py-0.5 rounded-md transition"
-                          style={{ background: `${GOLD}20`, color: GOLD_L, opacity: isRetrying ? 0.5 : 1 }}>
-                          {isRetrying ? 'Posting…' : '↺ Retry Now'}
-                        </button>
-                      )}
-                      {retriedResult === 'ok' && <span className="text-xs font-bold" style={{ color: '#86efac' }}>✓ Posted!</span>}
-                      {retriedResult === 'err' && <span className="text-xs font-bold" style={{ color: '#fca5a5' }}>Retry failed</span>}
                     </div>
+                    <textarea
+                      value={row.content}
+                      onChange={e => setRows(prev => prev.map((r, ri) => ri === i ? { ...r, content: e.target.value } : r))}
+                      rows={5}
+                      className="w-full rounded-xl border bg-transparent px-3 pt-3 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none"
+                      style={{ borderColor: row.content.length > limit ? '#f87171' : BORDER }}
+                      placeholder={`Write your ${label} caption…`}
+                    />
                   </div>
-                  <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
-                    style={{
-                      background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : isFailed ? 'rgba(239,68,68,0.12)' : `${GOLD}12`,
-                      color:      post.status === 'published' ? '#86efac'              : isFailed ? '#fca5a5'              : GOLD_L,
-                    }}>
-                    {isFailed ? 'Failed' : post.status.charAt(0).toUpperCase() + post.status.slice(1)}
-                  </span>
-                  {isScheduled && (
-                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition">
-                      <button onClick={() => setEditingPost(post as any)}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition"
-                        style={{ color: GOLD }} title="Edit post">
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button onClick={() => handleDelete(post as any)} disabled={isDeleting}
-                        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/60 hover:text-red-400 disabled:opacity-40"
-                        title="Delete post">
-                        {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                      </button>
-                    </div>
-                  )}
+                );
+              })}
+              {/* Media preview */}
+              {mediaUrls.length > 0 && (
+                <div>
+                  <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Media (read-only)</div>
+                  <div className="flex gap-2 flex-wrap">
+                    {mediaUrls.slice(0, 4).map((url, i) => (
+                      <div key={i} className="w-16 h-16 rounded-lg border overflow-hidden" style={{ borderColor: BORDER, background: 'rgba(0,0,0,0.4)' }}>
+                        {/\.(mp4|mov|webm)/i.test(url) || url.includes('videodelivery') || url.includes('cloudflarestream')
+                          ? <div className="w-full h-full flex items-center justify-center"><Video className="w-5 h-5 text-white/30" /></div>
+                          : <img src={url} alt="" className="w-full h-full object-cover" />}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              );
-            })
+              )}
+              {/* Schedule time */}
+              <div>
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Schedule Date & Time</div>
+                <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
+                  className="w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
+                  style={{ borderColor: BORDER, colorScheme: 'dark' }} />
+              </div>
+              {submitError && <div className="p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">{submitError}</div>}
+              {/* Buttons */}
+              <div className="flex gap-2">
+                <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white/40 hover:text-white transition border" style={{ borderColor: BORDER }}>Cancel</button>
+                <button onClick={handleSave} disabled={submitting || submitOk}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-black transition disabled:opacity-50 flex items-center justify-center gap-2"
+                  style={{ background: submitOk ? '#22c55e' : `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>
+                  {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Saving…</>
+                    : submitOk ? <><CheckCircle2 className="w-4 h-4" /> Saved!</>
+                    : 'Save Changes'}
+                </button>
+              </div>
+            </>
           )}
         </div>
       </div>
     </div>
-    {editingPost && (
-      <EditPostModal
-        open={!!editingPost}
-        onClose={() => setEditingPost(null)}
-        post={editingPost}
-        workspaceId={workspaceId}
-        integrations={integrations}
-        onSaved={() => { setEditingPost(null); loadPosts(); }}
-      />
-    )}
-  </>
   );
 }
-
-// ─── ThreadVideoPlayer ────────────────────────────────────────────────────────
-const ThreadVideoPlayer = React.memo(function ThreadVideoPlayer({
-  src, fileName, onRemove,
-}: { src: string; fileName: string; onRemove: () => void }) {
-  return (
-    <div className="relative rounded-xl overflow-hidden mb-2" style={{ border: '1.5px solid ' + GOLD + '60' }}>
-      <video src={src} autoPlay muted playsInline controls className="w-full" style={{ background: '#000', display: 'block', maxHeight: '60vh' }} />
-      <button onClick={onRemove}
-        className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full bg-black/70 hover:bg-red-500/80 transition"
-        style={{ color: 'white' }}>
-        <X className="w-3 h-3" />
-      </button>
-      <div className="px-3 py-1.5 text-[10px] font-medium truncate" style={{ color: GOLD, background: GOLD + '10' }}>{fileName}</div>
-    </div>
-  );
-});
-
-// ─── VideoPreviewCard ─────────────────────────────────────────────────────────
 
 // ─── UploadETA ───────────────────────────────────────────────────────────────
 function UploadETA({ uploadState }: { uploadState: UploadState }) {
