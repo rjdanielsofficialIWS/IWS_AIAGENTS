@@ -1032,6 +1032,45 @@ function EditComposer({
         ));
       }
 
+      // After re-post succeeds, clean up any media that is no longer used.
+      // This happens when the user deselects a platform that had media attached —
+      // the old CF video is preserved by skipMediaCleanup during delete, but if
+      // no new post references it anymore, we clean it up now.
+      try {
+        const newPlatformIds = selectedIntegrations
+          .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
+          .filter(Boolean);
+        // If no new post uses media (e.g. all remaining platforms are text-only)
+        // and the old post had media, those CF URLs are now orphaned — clean them up.
+        const newPostsHaveMedia = newPlatformIds.length > 0 && mediaUrls.length > 0;
+        if (!newPostsHaveMedia && mediaUrls.length > 0 && session?.access_token) {
+          // Fire-and-forget: delete orphaned CF media via a regular delete_post-style cleanup
+          // We do this by calling the edge function with just the media URLs to clean
+          fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ action: 'cleanup_orphaned_media', mediaUrls }),
+          }).catch(() => {});
+        }
+      } catch (_) {}
+
+      // Clean up any media that is no longer referenced after platform deselection.
+      // skipMediaCleanup preserved the CF video during delete, but if the new
+      // post doesn't use media (e.g. user removed a media platform), clean it up now.
+      if (mediaUrls.length > 0 && session?.access_token) {
+        const newPlatformIds = selectedIntegrations
+          .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
+          .filter(Boolean);
+        const newPostUsesMedia = newPlatformIds.length > 0 && mediaUrls.length > 0;
+        if (!newPostUsesMedia) {
+          fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+            body: JSON.stringify({ action: 'cleanup_orphaned_media', mediaUrls }),
+          }).catch(() => {});
+        }
+      }
+
       setSubmitOk(true);
       setTimeout(onSuccess, 900);
     } catch (e: any) {
