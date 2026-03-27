@@ -830,8 +830,8 @@ function EditPostModal({
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState<string | null>(null);
   const [groupData, setGroupData] = useState<{
-    platforms: string[]; content: string; mediaUrls: string[];
-    scheduledAt: string; workspaceId: string | null;
+    platforms: string[]; content: string; perPlatformContent: Record<string,string>;
+    mediaUrls: string[]; scheduledAt: string; workspaceId: string | null;
   } | null>(null);
 
   useEffect(() => {
@@ -852,6 +852,7 @@ function EditPostModal({
         setGroupData({
           platforms: data.platforms || [],
           content: data.content || '',
+          perPlatformContent: data.perPlatformContent || {},
           mediaUrls: data.mediaUrls || [],
           scheduledAt: data.scheduledAt || '',
           workspaceId: data.workspaceId || null,
