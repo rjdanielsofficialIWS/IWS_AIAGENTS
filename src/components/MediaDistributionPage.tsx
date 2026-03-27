@@ -1467,62 +1467,75 @@ const ThreadVideoPlayer = React.memo(function ThreadVideoPlayer({
 // ─── VideoPreviewCard ─────────────────────────────────────────────────────────
 
 // ─── UploadETA ───────────────────────────────────────────────────────────────
-// Smooth countdown from a 4-minute baseline. The displayed time only ever
-// decreases — we track a floor and never let it go up.
 function UploadETA({ uploadState }: { uploadState: UploadState }) {
   const BASELINE_SECS = 240;
-  const [display, setDisplay] = useState('');
-  const floorRef = useRef<number>(BASELINE_SECS);
+  const [secs, setSecs] = useState(BASELINE_SECS);
+  // floorSecs lives outside the effect so it never resets on re-render
+  const floorSecs = useRef(BASELINE_SECS);
+  const startedAtRef = useRef<number | null>(null);
 
+  // Reset floor when a fresh upload begins
   useEffect(() => {
-    if (uploadState.status !== 'uploading') {
-      floorRef.current = BASELINE_SECS;
-      setDisplay('');
-      return;
+    if (uploadState.status === 'uploading') {
+      const st = (uploadState as any).startedAt;
+      if (st && st !== startedAtRef.current) {
+        startedAtRef.current = st;
+        floorSecs.current = BASELINE_SECS;
+        setSecs(BASELINE_SECS);
+      }
+    } else {
+      startedAtRef.current = null;
+      floorSecs.current = BASELINE_SECS;
+      setSecs(BASELINE_SECS);
     }
+  }, [(uploadState as any).startedAt, uploadState.status]);
 
-    const retrying = (uploadState as any).retrying;
-    if (retrying) {
-      setDisplay(`Connection dropped — retrying (attempt ${retrying}/3)\u2026`);
-      return;
-    }
-
-    const startedAt = (uploadState as any).startedAt ?? Date.now();
-
-    const tick = () => {
+  // Tick every second independently of uploadState changes
+  useEffect(() => {
+    if (uploadState.status !== 'uploading') return;
+    const interval = setInterval(() => {
       const currentPct = (uploadState as any).progress ?? 0;
-      if (currentPct >= 100) { setDisplay('\u2699\ufe0f Processing video\u2026 usually 30\u201360s'); return; }
-
+      const startedAt  = (uploadState as any).startedAt ?? Date.now();
+      if (currentPct >= 100) { setSecs(0); return; }
       const elapsed = (Date.now() - startedAt) / 1000;
       const measuredRemaining = currentPct > 2 && elapsed > 3
         ? (100 - currentPct) / (currentPct / elapsed)
         : null;
       const blendFactor = Math.min(elapsed / 60, 1);
-      const rawRemaining = measuredRemaining !== null
+      const raw = measuredRemaining !== null
         ? BASELINE_SECS * (1 - blendFactor) + measuredRemaining * blendFactor
         : Math.max(0, BASELINE_SECS - elapsed);
-
-      // Never increase — only count down
-      const clamped = Math.min(rawRemaining, floorRef.current);
-      floorRef.current = clamped;
-
-      const secs = Math.max(1, Math.round(clamped));
-      if (secs < 60) {
-        setDisplay(`Uploading\u2026 ${currentPct}% \u2014 ${secs}s remaining`);
-      } else {
-        const mins = Math.floor(secs / 60);
-        const rem  = secs % 60;
-        setDisplay(`Uploading\u2026 ${currentPct}% \u2014 ~${mins}m${rem > 0 ? ` ${rem}s` : ''} remaining`);
-      }
-    };
-
-    tick();
-    const interval = setInterval(tick, 1000);
+      // Clamp: never go up
+      const clamped = Math.min(raw, floorSecs.current);
+      floorSecs.current = clamped;
+      setSecs(Math.max(1, Math.round(clamped)));
+    }, 1000);
     return () => clearInterval(interval);
-  }, [uploadState]);
+  }, [uploadState.status]); // only restarts if status changes, NOT on every progress tick
 
-  if (!display) return null;
-  return <div className="text-[10px] text-white/30">{display}</div>;
+  if (uploadState.status !== 'uploading') return null;
+
+  const retrying = (uploadState as any).retrying;
+  if (retrying) return (
+    <div className="text-[10px] text-white/30">Connection dropped — retrying (attempt {retrying}/3)…</div>
+  );
+
+  const currentPct = (uploadState as any).progress ?? 0;
+  if (currentPct >= 100) return (
+    <div className="text-[10px] text-white/30">⚙️ Processing video… usually 30–60s</div>
+  );
+
+  const mins = Math.floor(secs / 60);
+  const rem  = secs % 60;
+  const timeLabel = secs < 60
+    ? `${secs}s`
+    : rem > 0 ? `${mins}m ${rem}s` : `${mins}m`;
+
+  return (
+    <div className="text-[10px] text-white/30">
+      Uploading… {currentPct}% — ~{timeLabel} remaining
+    </div>
+  );
 }
 
 function VideoPreviewCard({
