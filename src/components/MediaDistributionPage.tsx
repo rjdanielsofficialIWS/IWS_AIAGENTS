@@ -914,7 +914,7 @@ function EditComposer({
   integrations, groupData, postGroupId, workspaceId, onSuccess, onCancel,
 }: {
   integrations: PostizIntegration[];
-  groupData: { platforms: string[]; content: string; mediaUrls: string[]; scheduledAt: string; workspaceId: string | null };
+  groupData: { platforms: string[]; content: string; perPlatformContent?: Record<string,string>; mediaUrls: string[]; scheduledAt: string; workspaceId: string | null };
   postGroupId: string;
   workspaceId?: string | null;
   onSuccess: () => void;
@@ -942,16 +942,22 @@ function EditComposer({
 
   // Per-platform captions (text posts) — one field per platform type
   const [perPlatformCaptions, setPerPlatformCaptions] = useState<Record<string, string>>(() => {
-    // Pre-fill: the DB stores one content per row. For text posts the group
-    // data returns the first row's content. We set all to same initial value
-    // and let user adjust per platform if needed.
+    // Use per-platform content from backend if available (v74+), else fall back to shared content
     const caps: Record<string, string> = {};
-    groupData.platforms.forEach(p => { caps[p.toLowerCase()] = groupData.content; });
+    groupData.platforms.forEach(p => {
+      const key = p.toLowerCase();
+      caps[key] = groupData.perPlatformContent?.[key] ?? groupData.content ?? '';
+    });
     return caps;
   });
 
   const [scheduleDateStr, setScheduleDate] = useState(() => {
-    try { return new Date(groupData.scheduledAt).toISOString().slice(0, 16); } catch { return ''; }
+    try {
+      const d = new Date(groupData.scheduledAt);
+      // datetime-local needs local time, not UTC — subtract timezone offset
+      const localMs = d.getTime() - d.getTimezoneOffset() * 60000;
+      return new Date(localMs).toISOString().slice(0, 16);
+    } catch { return ''; }
   });
   const mediaUrls     = groupData.mediaUrls;
   const [submitting, setSubmitting]   = useState(false);
@@ -981,7 +987,7 @@ function EditComposer({
       const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
-        body: JSON.stringify({ action: 'delete_post', postGroupId }),
+        body: JSON.stringify({ action: 'delete_post', postGroupId, skipMediaCleanup: true }),
       });
       if (!delRes.ok) {
         const d = await delRes.json().catch(() => ({}));
