@@ -103,7 +103,7 @@ const PLATFORMS: Record<PlatformId, {
 type UploadState =
   | { status: 'idle' }
   | { status: 'preparing' }
-  | { status: 'uploading'; progress?: number }
+  | { status: 'uploading'; progress?: number; startedAt?: number }
   | { status: 'done'; path: string; url: string; fileName: string; mime: string; size: number }
   | { status: 'error'; message: string };
 
@@ -1628,7 +1628,20 @@ function VideoPreviewCard({
               <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                 <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(uploadState as any).progress ?? 0}%` }} />
               </div>
-              <div className="text-[10px] text-white/30">Uploading… {(uploadState as any).progress ?? 0}%</div>
+              <div className="text-[10px] text-white/30">
+                {(() => {
+                  const pct = (uploadState as any).progress ?? 0;
+                  const startedAt = (uploadState as any).startedAt;
+                  if (pct <= 0 || !startedAt) return `Uploading… ${pct}%`;
+                  const elapsed = (Date.now() - startedAt) / 1000;
+                  const rate = pct / elapsed; // % per second
+                  const remaining = rate > 0 ? Math.ceil((100 - pct) / rate) : null;
+                  if (pct >= 100) return '⚙️ Processing video… usually 30–60s';
+                  if (!remaining || remaining > 3600) return `Uploading… ${pct}%`;
+                  if (remaining < 60) return `Uploading… ${pct}% — ${remaining}s remaining`;
+                  return `Uploading… ${pct}% — ${Math.ceil(remaining / 60)}m remaining`;
+                })()}
+              </div>
             </div>
           )}
         </div>
@@ -2015,9 +2028,9 @@ function InlinePostComposer({
   const isYouTubeSelected = getSelectedPlatforms().includes('youtube');
 
   const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
-    setU({ status: 'uploading', progress: 0 });
+    setU({ status: 'uploading', progress: 0, startedAt: Date.now() });
     try {
-      const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct }));
+      const url = await uploadViaNativeXHR(file, kind, pct => setU(prev => ({ status: 'uploading', progress: pct, startedAt: (prev as any).startedAt ?? Date.now() })));
       setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
     } catch (e: any) {
       setU({ status: 'error', message: e.message || 'Upload failed' });
