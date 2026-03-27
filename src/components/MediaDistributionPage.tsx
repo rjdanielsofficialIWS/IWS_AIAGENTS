@@ -992,6 +992,181 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
   );
 }
 
+// ─── PostLogModal ─────────────────────────────────────────────────────────────
+function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId, integrations = [] }: {
+  open: boolean; onClose: () => void; userId: string | null; initialFilter?: string; workspaceId?: string | null; integrations?: PostizIntegration[];
+}) {
+  const [posts, setPosts]           = useState<ScheduledPost[]>([]);
+  const [loading, setLoading]       = useState(false);
+  const [filter, setFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
+  const [retrying, setRetrying]     = useState<Record<string, boolean>>({});
+  const [retried, setRetried]       = useState<Record<string, 'ok' | 'err'>>({});
+  const [deleting, setDeleting]     = useState<Record<string, boolean>>({});
+  const [editingPost, setEditingPost] = useState<(ScheduledPost & { postGroupId?: string | null }) | null>(null);
+
+  useEffect(() => { if (open) setFilter(initialFilter as any); }, [open, initialFilter]);
+
+  const loadPosts = useCallback(async () => {
+    if (!userId || !open) return;
+    setLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const end   = new Date(); end.setMonth(end.getMonth() + 3);
+      const start = new Date(); start.setMonth(start.getMonth() - 1);
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
+        headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
+      });
+      const data = res.ok ? await res.json() : { posts: [] };
+      const list = Array.isArray(data?.posts) ? data.posts : [];
+      setPosts(list.map((p: any) => {
+        const scheduledAt = new Date(p.scheduledAt);
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null };
+      }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
+    } catch (e) {}
+    finally { setLoading(false); }
+  }, [userId, open, workspaceId]);
+
+  useEffect(() => { loadPosts(); }, [loadPosts]);
+
+  if (!open) return null;
+
+  const handleRetry = async (post: ScheduledPost) => {
+    setRetrying(r => ({ ...r, [post.id]: true }));
+    try {
+      await ayrsharePost({ platforms: post.platforms, post: post.content, mediaUrls: post.mediaUrls, workspaceId });
+      setRetried(r => ({ ...r, [post.id]: 'ok' }));
+      setPosts(ps => ps.map(p => p.id === post.id ? { ...p, status: 'published', error: null } : p));
+    } catch { setRetried(r => ({ ...r, [post.id]: 'err' })); }
+    finally { setRetrying(r => ({ ...r, [post.id]: false })); }
+  };
+
+  const handleDelete = async (post: ScheduledPost & { postGroupId?: string | null }) => {
+    if (!confirm('Delete this scheduled post? This cannot be undone.')) return;
+    setDeleting(d => ({ ...d, [post.id]: true }));
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session?.access_token) throw new Error('Session expired');
+      const payload: Record<string, unknown> = { action: 'delete_post' };
+      if (post.postGroupId) payload.postGroupId = post.postGroupId;
+      else payload.postId = post.id;
+      if (workspaceId) payload.workspaceId = workspaceId;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
+      setPosts(ps => ps.filter(p => post.postGroupId ? p.postGroupId !== post.postGroupId : p.id !== post.id));
+    } catch (e: any) { alert(e.message || 'Failed to delete post'); }
+    finally { setDeleting(d => ({ ...d, [post.id]: false })); }
+  };
+
+  const filtered = posts.filter(p => filter === 'all' || p.status === filter);
+  const counts = { all: posts.length, scheduled: posts.filter(p => p.status === 'scheduled').length, published: posts.filter(p => p.status === 'published').length, failed: posts.filter(p => p.status === 'failed').length, error: posts.filter(p => p.status === 'error').length };
+  const seenGroups = new Set<string>();
+  const dedupedFiltered = filtered.filter(p => {
+    if (!p.postGroupId) return true;
+    if (seenGroups.has(p.postGroupId)) return false;
+    seenGroups.add(p.postGroupId); return true;
+  });
+
+  return (
+    <>
+    <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+        style={{ background: SURFACE, borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+          <div>
+            <h2 className="text-base font-bold text-white">Post Log</h2>
+            <p className="text-xs text-white/35 mt-0.5">Your recent and upcoming posts</p>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
+        </div>
+        <div className="flex items-center gap-1 px-5 py-2.5 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
+          {(['all', 'scheduled', 'published', 'error', 'failed'] as const).map(f => (
+            (counts[f as keyof typeof counts] > 0 || f === 'all' || f === 'scheduled' || f === 'published') ? (
+              <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
+                style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
+                {f === 'error' ? 'Failed' : f} {f !== 'all' && <span className="opacity-60">({counts[f as keyof typeof counts]})</span>}
+              </button>
+            ) : null
+          ))}
+          {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
+        </div>
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+          {loading && posts.length === 0 ? (
+            <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading…</div>
+          ) : dedupedFiltered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-40 text-center">
+              <div className="text-sm font-bold text-white/25">No {filter === 'all' ? '' : filter} posts found</div>
+            </div>
+          ) : (
+            dedupedFiltered.map(post => {
+              const isFailed = post.status === 'error' || post.status === 'failed';
+              const isScheduled = post.status === 'scheduled';
+              const isRetrying = retrying[post.id];
+              const isDeleting = deleting[post.id];
+              const retriedResult = retried[post.id];
+              const groupPlatforms = post.postGroupId
+                ? [...new Set(posts.filter(p => p.postGroupId === post.postGroupId).flatMap(p => p.platforms))]
+                : post.platforms;
+              const siblingCount = post.postGroupId ? posts.filter(p => p.postGroupId === post.postGroupId).length : 1;
+              return (
+                <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border group"
+                  style={{ borderColor: isFailed ? 'rgba(239,68,68,0.25)' : isScheduled ? `${GOLD}20` : BORDER }}>
+                  <div className="flex -space-x-1.5 shrink-0 pt-0.5">
+                    {groupPlatforms.slice(0, 3).map((pid: string, i: number) => (
+                      <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
+                    ))}
+                    {groupPlatforms.length > 3 && <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>+{groupPlatforms.length - 3}</div>}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
+                    {isFailed && post.error && <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>}
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="text-xs text-white/25 flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </span>
+                      {siblingCount > 1 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>{siblingCount} platforms</span>}
+                      {isFailed && !retriedResult && (
+                        <button onClick={() => handleRetry(post)} disabled={isRetrying} className="text-xs font-bold px-2 py-0.5 rounded-md transition" style={{ background: `${GOLD}20`, color: GOLD_L, opacity: isRetrying ? 0.5 : 1 }}>
+                          {isRetrying ? 'Posting…' : '↺ Retry Now'}
+                        </button>
+                      )}
+                      {retriedResult === 'ok' && <span className="text-xs font-bold" style={{ color: '#86efac' }}>✓ Posted!</span>}
+                      {retriedResult === 'err' && <span className="text-xs font-bold" style={{ color: '#fca5a5' }}>Retry failed</span>}
+                    </div>
+                  </div>
+                  <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0" style={{ background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : isFailed ? 'rgba(239,68,68,0.12)' : `${GOLD}12`, color: post.status === 'published' ? '#86efac' : isFailed ? '#fca5a5' : GOLD_L }}>
+                    {isFailed ? 'Failed' : post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                  </span>
+                  {isScheduled && (
+                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition">
+                      <button onClick={() => setEditingPost(post as any)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition" style={{ color: GOLD }} title="Edit post">
+                        <Edit3 className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => handleDelete(post as any)} disabled={isDeleting} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/60 hover:text-red-400 disabled:opacity-40" title="Delete post">
+                        {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+    </div>
+    {editingPost && (
+      <EditPostModal open={!!editingPost} onClose={() => setEditingPost(null)} post={editingPost} workspaceId={workspaceId} integrations={integrations} onSaved={() => { setEditingPost(null); loadPosts(); }} />
+    )}
+    </>
+  );
+}
+
 // ─── UploadETA ───────────────────────────────────────────────────────────────
 function UploadETA({ uploadState }: { uploadState: UploadState }) {
   const BASELINE_SECS = 60;
