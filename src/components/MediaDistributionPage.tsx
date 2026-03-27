@@ -1362,6 +1362,7 @@ function VideoPreviewCard({
           onTimeUpdate={handleTimeUpdate}
           onLoadedMetadata={handleLoadedMetadata}
           onEnded={handleEnded}
+          onLoadedData={() => { const v = videoRef.current; if (v) { v.muted = true; v.play().catch(() => setPlaying(false)); } }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onClick={togglePlay}
