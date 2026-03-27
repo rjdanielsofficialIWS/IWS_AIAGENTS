@@ -927,6 +927,12 @@ function EditComposer({
   const isTextPost = groupData.mediaUrls.length === 0 &&
     groupData.platforms.every(p => TEXT_PLATFORMS.has(p.toLowerCase()));
 
+  // Show per-platform caption fields for text posts OR any multi-platform post
+  const captionValues = Object.values(groupData.perPlatformContent ?? {});
+  const showPerPlatform = isTextPost ||
+    selectedIntegrations.length > 1 ||
+    (captionValues.length > 1 && new Set(captionValues).size > 1);
+
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>(() =>
     integrations
       .filter(i => groupData.platforms.some(p => {
@@ -967,7 +973,7 @@ function EditComposer({
   const handleSave = async () => {
     if (!selectedIntegrations.length) { setSubmitError('Select at least one platform.'); return; }
     if (!scheduleDateStr)             { setSubmitError('Pick a schedule date and time.'); return; }
-    if (!isTextPost && !content.trim()) { setSubmitError('Caption cannot be empty.'); return; }
+    if (!showPerPlatform && !content.trim()) { setSubmitError('Caption cannot be empty.'); return; }
     if (isTextPost) {
       const hasAny = selectedIntegrations.some(id => {
         const integ = integrations.find(x => x.id === id);
@@ -996,7 +1002,7 @@ function EditComposer({
 
       const scheduleISO = new Date(scheduleDateStr).toISOString();
 
-      if (isTextPost) {
+      if (showPerPlatform) {
         // Text post: post each platform with its own caption (same as original text composer)
         const posts: Promise<unknown>[] = [];
         for (const integId of selectedIntegrations) {
@@ -1118,7 +1124,7 @@ function EditComposer({
       </div>
 
       {/* Caption(s) */}
-      {isTextPost ? (
+      {showPerPlatform ? (
         <div className="space-y-3">
           <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Captions</div>
           {selectedIntegrations.map(integId => {
