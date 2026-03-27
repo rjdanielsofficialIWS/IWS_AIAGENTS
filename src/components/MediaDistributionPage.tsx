@@ -120,6 +120,7 @@ type ScheduledPost = {
   id: string; content: string; platforms: string[];
   scheduledAt: Date; status: 'scheduled' | 'published' | 'failed' | 'error';
   error?: string | null; mediaUrls?: string[];
+  postGroupId?: string | null;
 };
 
 type PlannerItem = {
@@ -812,6 +813,176 @@ function ConnectAccountsModal({
   );
 }
 
+// ─── EditPostModal ────────────────────────────────────────────────────────────
+
+function EditPostModal({
+  open, onClose, post, onSaved, workspaceId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  post: ScheduledPost & { postGroupId?: string | null };
+  onSaved: () => void;
+  workspaceId?: string | null;
+}) {
+  const [content, setContent]              = useState(post.content || '');
+  const [scheduleDateStr, setScheduleDate] = useState(() => {
+    try { return new Date(post.scheduledAt).toISOString().slice(0, 16); } catch { return ''; }
+  });
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  useEffect(() => {
+    setContent(post.content || '');
+    try { setScheduleDate(new Date(post.scheduledAt).toISOString().slice(0, 16)); } catch {}
+    setError(null);
+    setSuccess(false);
+  }, [post.id]);
+
+  const handleSave = async () => {
+    if (!content.trim()) { setError('Caption cannot be empty.'); return; }
+    setSaving(true); setError(null);
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session?.access_token) throw new Error('Session expired. Please log out and back in.');
+      const payload: Record<string, unknown> = {
+        action: 'update_post',
+        content,
+        scheduleDate: scheduleDateStr ? new Date(scheduleDateStr).toISOString() : undefined,
+      };
+      if (post.postGroupId) payload.postGroupId = post.postGroupId;
+      else payload.postId = post.id;
+      if (workspaceId) payload.workspaceId = workspaceId;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || data.message || `Update failed (${res.status})`);
+      setSuccess(true);
+      setTimeout(() => { onSaved(); onClose(); }, 900);
+    } catch (e: any) { setError(e.message || 'Update failed'); }
+    finally { setSaving(false); }
+  };
+
+  if (!open) return null;
+  const isPublished = post.status === 'published';
+
+  return (
+    <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center md:p-4">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full md:max-w-lg rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+        style={{ background: 'rgba(18,18,18,0.98)', borderColor: 'rgba(255,255,255,0.08)' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b shrink-0"
+          style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+          <div>
+            <div className="text-sm font-black text-white flex items-center gap-2">
+              <Edit3 className="w-4 h-4" style={{ color: GOLD }} /> Edit Scheduled Post
+            </div>
+            <div className="text-xs text-white/35 mt-0.5 flex items-center gap-1.5 flex-wrap">
+              {post.platforms.slice(0, 4).map((pid, i) => (
+                <span key={i} className="flex items-center gap-1">
+                  <PlatformIcon id={pid} size="sm" />
+                  <span className="capitalize">{pid}</span>
+                </span>
+              ))}
+              {post.platforms.length > 4 && <span>+{post.platforms.length - 4} more</span>}
+            </div>
+          </div>
+          <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {isPublished && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs text-amber-300 border border-amber-400/20 bg-amber-400/5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+              This post has already published and cannot be edited.
+            </div>
+          )}
+          <div>
+            <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Caption</label>
+            <div className="rounded-xl border overflow-hidden" style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+              <textarea
+                value={content}
+                onChange={e => setContent(e.target.value)}
+                disabled={isPublished}
+                rows={6}
+                placeholder="Write your caption..."
+                className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none disabled:opacity-40"
+              />
+              <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+                <span className="text-xs" style={{ color: content.length > 2200 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
+                  {content.length} chars
+                </span>
+              </div>
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">Schedule Date and Time</label>
+            <input
+              type="datetime-local"
+              value={scheduleDateStr}
+              onChange={e => setScheduleDate(e.target.value)}
+              disabled={isPublished}
+              className="w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none disabled:opacity-40"
+              style={{ borderColor: 'rgba(255,255,255,0.08)', colorScheme: 'dark' }}
+            />
+          </div>
+          {post.mediaUrls && post.mediaUrls.length > 0 && (
+            <div>
+              <label className="text-xs font-bold text-white/40 uppercase tracking-wider block mb-1.5">
+                Media <span className="font-normal text-white/20">(cannot be changed here)</span>
+              </label>
+              <div className="flex gap-2 flex-wrap">
+                {post.mediaUrls.slice(0, 4).map((url, i) => (
+                  <div key={i} className="w-16 h-16 rounded-lg border overflow-hidden shrink-0"
+                    style={{ borderColor: 'rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.4)' }}>
+                    {url.includes('videodelivery') || url.includes('cloudflarestream') || /.(mp4|mov|webm)/i.test(url)
+                      ? <div className="w-full h-full flex items-center justify-center"><Video className="w-5 h-5 text-white/30" /></div>
+                      : <img src={url} alt="" className="w-full h-full object-cover" />
+                    }
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0" /> {error}
+            </div>
+          )}
+          {success && (
+            <div className="flex items-center gap-2 p-3 rounded-xl text-xs text-green-300 border border-green-400/20 bg-green-400/5">
+              <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Saved successfully!
+            </div>
+          )}
+        </div>
+        {!isPublished && (
+          <div className="flex gap-2 px-5 pb-5 shrink-0">
+            <button onClick={onClose}
+              className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white/40 hover:text-white hover:bg-white/8 transition border"
+              style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={saving || success}
+              className="flex-1 py-2.5 rounded-xl text-sm font-black transition hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2"
+              style={{ background: success ? '#22c55e' : `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>
+              {saving
+                ? <><Loader className="w-4 h-4 animate-spin" /> Saving...</>
+                : success
+                ? <><CheckCircle2 className="w-4 h-4" /> Saved!</>
+                : <><CheckCircle2 className="w-4 h-4" /> Save Changes</>}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── PostLogModal ─────────────────────────────────────────────────────────────
 
 function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId }: {
@@ -840,7 +1011,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt), error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: resolveStatus(p.status || 'scheduled', scheduledAt), error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null };
       }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
     } catch (e) {}
     finally { setLoading(false); }
@@ -864,6 +1035,36 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     }
   };
 
+  const handleDelete = async (post: ScheduledPost & { postGroupId?: string | null }) => {
+    if (!confirm('Delete this scheduled post? This will cancel it on all platforms and cannot be undone.')) return;
+    setDeleting(d => ({ ...d, [post.id]: true }));
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session?.access_token) throw new Error('Session expired');
+      const payload: Record<string, unknown> = { action: 'delete_post' };
+      if (post.postGroupId) payload.postGroupId = post.postGroupId;
+      else payload.postId = post.id;
+      if (workspaceId) payload.workspaceId = workspaceId;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || 'Delete failed');
+      }
+      setPosts(ps => ps.filter(p =>
+        post.postGroupId ? p.postGroupId !== post.postGroupId : p.id !== post.id
+      ));
+    } catch (e: any) {
+      alert(e.message || 'Failed to delete post');
+    } finally {
+      setDeleting(d => ({ ...d, [post.id]: false }));
+    }
+  };
+
   const filtered = posts.filter(p => filter === 'all' || p.status === filter);
   const counts = {
     all:       posts.length,
@@ -873,14 +1074,23 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     error:     posts.filter(p => p.status === 'error').length,
   };
 
+  const seenGroups = new Set<string>();
+  const dedupedFiltered = filtered.filter(p => {
+    if (!p.postGroupId) return true;
+    if (seenGroups.has(p.postGroupId)) return false;
+    seenGroups.add(p.postGroupId);
+    return true;
+  });
+
   return (
+    <>
     <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
       <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
         <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
-            <h2 className="text-base font-bold text-white">📋 Post Log</h2>
+            <h2 className="text-base font-bold text-white">Post Log</h2>
             <p className="text-xs text-white/35 mt-0.5">Your recent and upcoming posts</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
