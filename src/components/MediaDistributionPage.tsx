@@ -1298,6 +1298,9 @@ function VideoPreviewCard({
     if (v.videoWidth && v.videoHeight) {
       setVideoAspectRatio(`${v.videoWidth}/${v.videoHeight}`);
     }
+    if (v.paused) {
+      v.play().catch(() => setPlaying(false));
+    }
   };
   const handleEnded          = () => { setPlaying(false); };
 
@@ -6031,7 +6034,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                   <div key={vid.id} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
                     <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
                       {vid.status === 'done' && vid.videoUrl
-                        ? <video src={vid.videoUrl} controls poster={vid.frameUrl} className="w-full h-full object-contain" playsInline />
+                        ? <video key={vid.videoUrl} src={vid.videoUrl} autoPlay muted loop playsInline controls poster={vid.frameUrl} className="w-full h-full object-contain" />
                         : vid.status === 'error'
                         ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"><AlertCircle className="w-5 h-5 text-red-400" /><span className="text-xs text-red-300">{vid.error}</span></div>
                         : <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4">
