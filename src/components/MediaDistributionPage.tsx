@@ -3056,6 +3056,9 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     if (!briefSnapshot.niche.trim()) return;
     if (!userId) return;
     setTrendsLoading(true); setTrendsError(null); setTrendsResults(null);
+    // Trends research uses web search and takes 40-90s — use a long timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 90000);
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
@@ -3071,13 +3074,20 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
           goals: briefSnapshot.goals,
           offer: briefSnapshot.offer,
         }),
+        signal: controller.signal,
       });
       const data = await res.json();
       if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
       if (!res.ok) throw new Error(data.error || 'Trends research failed');
       setTrendsResults(data);
-    } catch (e: any) { setTrendsError(e.message || 'Something went wrong'); }
-    finally { setTrendsLoading(false); }
+    } catch (e: any) {
+      if (e.name === 'AbortError') {
+        setTrendsError('Trend research timed out. The web search took too long — please try again.');
+      } else {
+        setTrendsError(e.message || 'Something went wrong');
+      }
+    }
+    finally { clearTimeout(timeout); setTrendsLoading(false); }
   };
 
   const handleGenerate = async () => {
@@ -3356,6 +3366,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 <span className="absolute inset-0 flex items-center justify-center text-lg">📡</span>
               </div>
               <div className="text-sm font-bold text-white/50">Researching trends across the internet…</div>
+              <div className="text-xs text-white/25 mt-1">This uses live web search and takes 30–60 seconds. Hang tight.</div>
               <div className="text-xs text-white/25">Scanning viral content, search data & platform algorithms</div>
             </div>
           )}
