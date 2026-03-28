@@ -1,3 +1,4 @@
+import AdminDashboard from './components/AdminDashboard';
 import { MediaDistributionPage } from './components/MediaDistributionPage';
 import { MetaPixel } from './components/MetaPixel';
 import { MetaPixelTracker } from './components/MetaPixelTracker';
@@ -130,7 +131,8 @@ function AppContent() {
 
       <Routes>
 
-        <Route path="/" element={<HomePage />} />
+        <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="/" element={<HomePage />} />
         <Route path="/InfiniteMedia" element={<MediaDistributionPage />} />
 
         <Route path="/onboarding-booking" element={<OnboardingBookingPage />} />
