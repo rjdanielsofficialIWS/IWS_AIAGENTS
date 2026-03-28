@@ -3092,7 +3092,11 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       });
       const data = await res.json();
       if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
-      if (!res.ok) throw new Error(data.error || 'Trends research failed');
+      if (res.status === 429 || data.error === 'rate_limited') {
+        setTrendsError('The AI is busy right now. Please wait 30 seconds and try the Trend Research button again.');
+        return;
+      }
+      if (!res.ok) throw new Error(data.error || data.message || 'Trends research failed');
       setTrendsResults(data);
     } catch (e: any) {
       if (e.name === 'AbortError') {
@@ -3110,8 +3114,8 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     }
     if (!userId) { setError('Sign in to use the AI Strategist.'); return; }
     setLoading(true); setError(null); setResults(null);
-    // Fire trends research in parallel — don't await, results land when ready
-    handleFetchTrends(brief);
+    // Stagger trends research — wait 8s after strategy fires to avoid Anthropic rate limits
+    setTimeout(() => handleFetchTrends(brief), 8000);
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
