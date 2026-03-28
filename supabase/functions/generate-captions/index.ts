@@ -14,6 +14,7 @@ const SYS=`You are an elite social media ghostwriter with a proven track record 
 Core rules (non-negotiable):
 - Sound like a real human being talking — never like a marketing bot or AI
 - Never use: game-changer, leverage, synergy, unlock, empower, transformative, elevate, cutting-edge, dive deep, journey, landscape, streamline, it's important to note, in today's fast-paced world
+- Never use em-dashes (—) in any output. Use a comma, period, or rewrite the sentence instead
 - No fake urgency or hype. No emojis unless the platform expects them
 - Use contractions (I'm, we'll, that's, you're). Short punchy sentences
 - Every first line must make the reader physically unable to scroll past
@@ -29,7 +30,7 @@ const PR={
   threads:"Threads: Casual, conversational. 1-3 sentences. Feels like a text to a friend. No hashtags needed.",
   bluesky:"Bluesky: Thoughtful and direct. Under 200 chars. Intellectual but approachable tone."
 };
-async function callClaude(sys,usr,max=3000){const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:max,system:sys,messages:[{role:"user",content:usr}]})});if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();const txt=(d.content?.[0]?.text||"{}").replace(/```json|```/g,"").trim();const s=txt.indexOf("{");if(s===-1)return"{}";let depth=0,inStr=false,esc=false;for(let i=s;i<txt.length;i++){const c=txt[i];if(esc){esc=false;continue;}if(c==="\\"&&inStr){esc=true;continue;}if(c==='"'){inStr=!inStr;continue;}if(inStr)continue;if(c==="{")depth++;else if(c==="}"){depth--;if(depth===0)return txt.slice(s,i+1);}}return txt.slice(s);}
+async function callClaude(sys,usr,max=3000){const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:max,system:sys,messages:[{role:"user",content:usr}]})});if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();const txt=(d.content?.[0]?.text||"{}").replace(/```json|```/g,"").replace(/—/g,"-").trim();const s=txt.indexOf("{");if(s===-1)return"{}";let depth=0,inStr=false,esc=false;for(let i=s;i<txt.length;i++){const c=txt[i];if(esc){esc=false;continue;}if(c==="\\"&&inStr){esc=true;continue;}if(c==='"'){inStr=!inStr;continue;}if(inStr)continue;if(c==="{")depth++;else if(c==="}"){depth--;if(depth===0)return txt.slice(s,i+1);}}return txt.slice(s);}
 Deno.serve(async(req)=>{
   cors=corsFor(req);
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
@@ -64,18 +65,18 @@ Deno.serve(async(req)=>{
       result={captions,...(youTubeTitle?{youTubeTitle}:{})};
       try{await supabase.rpc("increment_usage",{p_user_id:user.id,p_period:getPeriod(),p_field:"ai_analyses_used"});}catch(e){console.error("Usage increment failed:",e);}
     }else if(mode==="repurpose_ideas"){
-      const raw=await callClaude("You are a content strategist. Return ONLY valid JSON.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\nReturn JSON: {\"short_clips\":[{\"title\":\"string\",\"angle\":\"string\",\"platform\":\"string\"}],\"blog_angles\":[{\"headline\":\"string\",\"angle\":\"string\"}],\"social_hooks\":[\"string\"],\"series_ideas\":[{\"series_name\":\"string\",\"concept\":\"string\"}],\"other_formats\":[{\"format\":\"string\",\"concept\":\"string\"}]}\n3-4 items per section.");
+      const raw=await callClaude("You are a content strategist. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\nReturn JSON: {\"short_clips\":[{\"title\":\"string\",\"angle\":\"string\",\"platform\":\"string\"}],\"blog_angles\":[{\"headline\":\"string\",\"angle\":\"string\"}],\"social_hooks\":[\"string\"],\"series_ideas\":[{\"series_name\":\"string\",\"concept\":\"string\"}],\"other_formats\":[{\"format\":\"string\",\"concept\":\"string\"}]}\n3-4 items per section.");
       result={ideas:JSON.parse(raw)};
     }else if(mode==="repurpose_posts"){
       const POSTS_STYLE:Record<string,string>={twitter:"10 X/Twitter posts. Each strictly under 280 characters — hard limit, never exceed. Sharp hook, punchy, one strong insight per post. No thread format.",linkedin:"10 LinkedIn posts. Each 100-300 words. Professional but human tone. Strong first line that makes people click 'see more'. Line breaks between short paragraphs. End with a CTA or question.",threads:"10 Threads posts. Each under 500 characters. Casual and conversational, like a text to a friend."};
       const postPlatforms=[...new Set((selP.length>0?selP:["twitter","linkedin"]).map(p=>{const lp=p.toLowerCase();if(lp==="x"||lp==="twitter")return"twitter";if(lp==="linkedin")return"linkedin";if(lp==="threads")return"threads";return"twitter";}))];
       const schema="{"+postPlatforms.map(p=>`"${p}":["post1","post2","post3","post4","post5","post6","post7","post8","post9","post10"]`).join(",")+"}" ;
       const instructions=postPlatforms.map(p=>POSTS_STYLE[p]||p+": Write 10 engaging posts.").join("\n\n");
-      const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\n"+instructions+"\n\nReturn JSON: "+schema,4000);
+      const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\n"+instructions+"\n\nReturn JSON: "+schema,4000);
       result={posts:JSON.parse(raw)};
     }else if(mode==="thread_posts"){
       const tweetCount=Math.max(3,Math.min(10,Number(thread_count)||5));
-      const raw=await callClaude("You are a ghostwriter. Sound like a real human. Return ONLY valid JSON.","Tone: "+toneG+"\n\nTopic/content:\n\""+source+"\"\n\nWrite a Twitter/X thread of "+tweetCount+" tweets. Rules:\n- Each tweet MUST be strictly under 280 characters — hard limit, never exceed\n- First tweet is the hook — make it impossible to scroll past\n- Each tweet stands alone but flows into the next\n- No tweet numbering (no '1/' or '1.')\n- 0-1 hashtags per tweet max\n- Sound like a real person, not an AI\n- Last tweet must be a CTA (ask to share, follow, reply, save, tag someone, DM for more — feel human, never salesy)\n\nReturn JSON: {\"thread\":[\"tweet1\",\"tweet2\",\"tweet3\"]}",2000);
+      const raw=await callClaude("You are a ghostwriter. Sound like a real human. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nTopic/content:\n\""+source+"\"\n\nWrite a Twitter/X thread of "+tweetCount+" tweets. Rules:\n- Each tweet MUST be strictly under 280 characters — hard limit, never exceed\n- First tweet is the hook — make it impossible to scroll past\n- Each tweet stands alone but flows into the next\n- No tweet numbering (no '1/' or '1.')\n- 0-1 hashtags per tweet max\n- Sound like a real person, not an AI\n- Last tweet must be a CTA (ask to share, follow, reply, save, tag someone, DM for more — feel human, never salesy)\n\nReturn JSON: {\"thread\":[\"tweet1\",\"tweet2\",\"tweet3\"]}",2000);
       const parsed=JSON.parse(raw);
       const thread:string[]=Array.isArray(parsed.thread)?parsed.thread.map((t:string)=>String(t).slice(0,280)):[];
       result={thread};

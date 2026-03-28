@@ -39,7 +39,7 @@ async function callClaude(system: string, user: string, maxTokens = 4000): Promi
   });
   if (!r.ok) throw new Error("Claude error: " + await r.text());
   const d = await r.json();
-  return (d.content?.[0]?.text || "{}").replace(/```json|```/g, "").trim();
+  return (d.content?.[0]?.text || "{}").replace(/```json|```/g, "").replace(/—/g, "-").trim();
 }
 
 function stripFences(s: string): string {
@@ -125,7 +125,7 @@ Deno.serve(async (req: Request) => {
   const { mode } = body;
 
   // Mode-level plan gate
-  if ((mode === "repurpose_from_video") && !pf.repurpose)
+  if ((mode === "repurpose_from_video" || mode === "repurpose_from_description") && !pf.repurpose)
     return json({ error: "upgrade_required", message: "Content repurposing is available on the Viral and Agency plans.", plan }, 403);
   if ((mode === "trends_research") && !pf.trends)
     return json({ error: "upgrade_required", message: "Trend intelligence is available on the Viral and Agency plans.", plan }, 403);
@@ -155,7 +155,7 @@ Deno.serve(async (req: Request) => {
       const toneDesc = tone || "confident and authentic";
       const offerDesc = offer || "their core offer";
 
-      const SYS = `You are an elite social media strategist with 15+ years building 7-figure personal brands. You convert followers into paying clients through strategic content systems. Return ONLY valid JSON — no markdown, no commentary.`;
+      const SYS = `You are an elite social media strategist with 15+ years building 7-figure personal brands. You convert followers into paying clients through strategic content systems. Return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) in any output.`;
 
       const BRIEF = `BUSINESS BRIEF:
 - Niche: ${niche}
@@ -210,19 +210,21 @@ REQUIREMENTS: exactly 5 quick_wins, each under 20 words, specific and actionable
         strategy: strategyData,
       });
 
-    } else if (mode === "repurpose_from_video") {
-      const { transcript, tone = "" } = body;
-      if (!transcript || !transcript.trim()) return json({ error: "transcript is required" }, 400);
+    } else if (mode === "repurpose_from_video" || mode === "repurpose_from_description") {
+      const source: string = (mode === "repurpose_from_video" ? body.transcript : body.description) || "";
+      const { tone = "" } = body;
+      if (!source.trim()) return json({ error: mode === "repurpose_from_video" ? "transcript is required" : "description is required" }, 400);
 
       const toneDesc = tone || "authentic and engaging";
 
-      const systemPrompt = `You are an expert content repurposing strategist. You extract maximum value from video content by identifying every possible content angle, format, and platform opportunity. You always return ONLY valid JSON — no markdown, no commentary.`;
+      const systemPrompt = `You are an expert content repurposing strategist. You extract maximum value from content by identifying every possible content angle, format, and platform opportunity. You always return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) in any output.`;
 
-      const userPrompt = `Analyze this video transcript and extract a complete content repurposing strategy:
+      const sourceLabel = mode === "repurpose_from_video" ? "video transcript" : "content description";
+      const userPrompt = `Analyze this ${sourceLabel} and extract a complete content repurposing strategy:
 
-TRANSCRIPT:
+CONTENT:
 """
-${transcript.trim().slice(0, 8000)}
+${source.trim().slice(0, 8000)}
 """
 
 TONE: ${toneDesc}
@@ -296,7 +298,7 @@ REQUIREMENTS:
         model: "claude-sonnet-4-20250514",
         max_tokens: 8192,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
-        system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON.`,
+        system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON. Never use em-dashes (—) in any output.`,
         messages: [
           {
             role: "user",
@@ -376,7 +378,7 @@ REQUIREMENTS:
       const textBlock = (d.content as any[])?.filter((b: any) => b.type === "text").pop();
       if (!textBlock?.text) throw new Error("No text response from Claude");
 
-      const result = stripCites(safeParse(textBlock.text));
+      const result = stripCites(safeParse(textBlock.text.replace(/—/g, "-")));
       if (!result.researched_at) result.researched_at = new Date().toISOString();
       return json(result);
 
@@ -385,7 +387,7 @@ REQUIREMENTS:
       if (!idea || !idea.trim()) return json({ error: "idea is required" }, 400);
 
       const raw = await callClaude(
-        `You are a viral social media content strategist and on-camera coach. You craft talking points that are compelling, memorable, and engineered for maximum engagement, shareability, and audience retention. Return ONLY valid JSON — no markdown, no commentary.`,
+        `You are a viral social media content strategist and on-camera coach. You craft talking points that are compelling, memorable, and engineered for maximum engagement, shareability, and audience retention. Return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) in any output.`,
         `Generate 5 viral talking points for this content idea:
 
 IDEA: ${idea.trim()}${niche ? `\nNICHE: ${niche}` : ""}${audience ? `\nTARGET AUDIENCE: ${audience}` : ""}
@@ -406,7 +408,7 @@ REQUIREMENTS:
       return json(data);
 
     } else {
-      return json({ error: "Invalid mode. Use full_strategy, repurpose_from_video, trends_research, or talking_points." }, 400);
+      return json({ error: "Invalid mode. Use full_strategy, repurpose_from_video, repurpose_from_description, trends_research, or talking_points." }, 400);
     }
   } catch (e: any) {
     console.error("content-strategist error:", e);

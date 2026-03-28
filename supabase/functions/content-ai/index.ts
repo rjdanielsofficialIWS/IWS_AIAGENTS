@@ -287,7 +287,7 @@ Return JSON exactly in this structure:
       body: JSON.stringify({
         model: "gpt-4o-mini",
         messages: [
-          { role: "system", content: "You output strictly valid JSON only, no markdown." },
+          { role: "system", content: "You output strictly valid JSON only, no markdown. Never use em-dashes (—) in any output." },
           { role: "user", content: prompt },
         ],
         temperature: 0.7,
@@ -304,7 +304,7 @@ Return JSON exactly in this structure:
 
     const genJson = await genRes.json();
     const raw = genJson?.choices?.[0]?.message?.content || "";
-    const cleaned = stripCodeFences(raw);
+    const cleaned = stripCodeFences(raw).replace(/—/g, "-");
     const parsed = JSON.parse(cleaned);
 
     // NOTE: We intentionally do NOT return the transcript (user doesn't need to see it)

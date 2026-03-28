@@ -1287,8 +1287,12 @@ function VideoPreviewCard({
     const v = videoRef.current;
     if (!v) return;
     v.muted = true;
-    v.play().catch(() => setPlaying(false));
-  }, []);
+    // Use a short timeout so Safari has time to bind the src before play() is called
+    const t = setTimeout(() => {
+      v.play().catch(() => setPlaying(false));
+    }, 0);
+    return () => clearTimeout(t);
+  }, [objectUrl]);
 
   const togglePlay = () => {
     const v = videoRef.current; if (!v) return;
@@ -1858,8 +1862,10 @@ function InlinePostComposer({
       let sourceText = '';
       if (captionMode === 'from_video') {
         if (!videoFile) throw new Error('Add a video using the Video button above first');
-        const { data: { session: txSession } } = await supabase.auth.getSession();
-        sourceText = await transcribeVideo(videoFile, txSession?.access_token ?? '');
+        let { data: { session: txSession } } = await supabase.auth.getSession();
+        if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
+        if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
+        sourceText = await transcribeVideo(videoFile, txSession.access_token);
         setTranscript(sourceText);
       } else {
         if (!aiDescription.trim()) throw new Error('Enter a description of your video');
@@ -1907,8 +1913,10 @@ function InlinePostComposer({
       let source = '';
       if (textAiMode === 'from_video') {
         if (!textAiVideo) throw new Error('Select a video first');
-        const { data: { session: txSession2 } } = await supabase.auth.getSession();
-        source = await transcribeVideo(textAiVideo, txSession2?.access_token ?? '');
+        let { data: { session: txSession2 } } = await supabase.auth.getSession();
+        if (!txSession2) { const r = await supabase.auth.refreshSession(); txSession2 = r.data.session; }
+        if (!txSession2) throw new Error('Your session has expired. Please sign out and sign back in.');
+        source = await transcribeVideo(textAiVideo, txSession2.access_token);
       } else {
         if (!textAiDesc.trim()) throw new Error('Enter a description');
         source = textAiDesc;
@@ -3022,6 +3030,8 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   const [videoError, setVideoError]     = useState<string | null>(null);
   const [videoIdeas, setVideoIdeas]     = useState<any | null>(null);
   const [videoTone, setVideoTone]       = useState('');
+  const [repurposeInputMode, setRepurposeInputMode] = useState<'video' | 'description'>('video');
+  const [repurposeDescription, setRepurposeDescription] = useState('');
   const [added, setAdded]               = useState<Set<string>>(new Set());
 
   const SUPABASE_URL_LOCAL = import.meta.env.VITE_SUPABASE_URL as string;
@@ -3047,10 +3057,12 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     if (!userId) return;
     setTrendsLoading(true); setTrendsError(null); setTrendsResults(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({
           mode: 'trends_research',
           niche: briefSnapshot.niche,
@@ -3077,10 +3089,12 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     // Fire trends research in parallel — don't await, results land when ready
     handleFetchTrends(brief);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ mode: 'full_strategy', ...brief }),
       });
       const data = await res.json();
@@ -3098,12 +3112,35 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     if (!userId) { setVideoError('Sign in first'); return; }
     setVideoLoading(true); setVideoError(null); setVideoIdeas(null);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const transcript = await transcribeVideo(videoFile, session?.access_token ?? '');
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
+      const transcript = await transcribeVideo(videoFile, session.access_token);
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ mode: 'repurpose_from_video', transcript, tone: videoTone }),
+      });
+      const data = await res.json();
+      if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
+      if (!res.ok) throw new Error(data.error || 'Failed');
+      setVideoIdeas(data.ideas);
+    } catch (e: any) { setVideoError(e.message || 'Something went wrong'); }
+    finally { setVideoLoading(false); }
+  };
+
+  const handleDescriptionRepurpose = async () => {
+    if (!repurposeDescription.trim()) { setVideoError('Enter a description first'); return; }
+    if (!userId) { setVideoError('Sign in first'); return; }
+    setVideoLoading(true); setVideoError(null); setVideoIdeas(null);
+    try {
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
+      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ mode: 'repurpose_from_description', description: repurposeDescription.trim(), tone: videoTone }),
       });
       const data = await res.json();
       if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
@@ -3611,29 +3648,53 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       {tab === 'video' && (
         <div className="space-y-4">
           <div className="rounded-xl p-3" style={{ background: `${GOLD}08`, border: `1px solid ${GOLD}25` }}>
-            <div className="text-xs font-bold text-white">🎬 Video Repurposer</div>
-            <div className="text-[10px] text-white/45 mt-0.5 leading-relaxed">Upload a talking video and I'll extract every piece of content from it: clips, hooks, posts, blog angles, and series ideas.</div>
+            <div className="text-xs font-bold text-white">🎬 Content Repurposer</div>
+            <div className="text-[10px] text-white/45 mt-0.5 leading-relaxed">Upload a video or paste a description and I'll extract every piece of content from it: clips, hooks, posts, blog angles, and series ideas.</div>
           </div>
 
           {!videoIdeas ? (
             <div className="space-y-3">
-              {!videoFile ? (
-                <label className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
-                  <Video className="w-8 h-8 text-white/20" />
-                  <span className="text-sm font-bold text-white/35">Upload your talking video</span>
-                  <span className="text-xs text-white/20">AI will transcribe and extract content strategy</span>
-                  <input type="file" accept="video/*" className="hidden" onChange={e => {
-                    const f = e.target.files?.[0];
-                    if (f) {
-                      if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
-                      setVideoFile(f); setVideoObjectUrl(URL.createObjectURL(f));
-                    }
-                  }} />
-                </label>
+              {/* Input mode toggle */}
+              <div className="flex gap-1 p-1 rounded-xl" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${BORDER}` }}>
+                {(['video', 'description'] as const).map(m => (
+                  <button key={m} onClick={() => { setRepurposeInputMode(m); setVideoError(null); }}
+                    className="flex-1 py-2 rounded-lg text-xs font-bold transition"
+                    style={{
+                      background: repurposeInputMode === m ? `${GOLD}18` : 'transparent',
+                      border: `1px solid ${repurposeInputMode === m ? GOLD : 'transparent'}`,
+                      color: repurposeInputMode === m ? GOLD_L : 'rgba(255,255,255,0.4)',
+                    }}>
+                    {m === 'video' ? '🎬 Video' : '📝 Description'}
+                  </button>
+                ))}
+              </div>
+
+              {repurposeInputMode === 'video' ? (
+                !videoFile ? (
+                  <label className="flex flex-col items-center justify-center gap-2 p-8 rounded-xl border-2 border-dashed cursor-pointer hover:bg-white/3 transition" style={{ borderColor: BORDER }}>
+                    <Video className="w-8 h-8 text-white/20" />
+                    <span className="text-sm font-bold text-white/35">Upload your talking video</span>
+                    <span className="text-xs text-white/20">AI will transcribe and extract content strategy</span>
+                    <input type="file" accept="video/*" className="hidden" onChange={e => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
+                        setVideoFile(f); setVideoObjectUrl(URL.createObjectURL(f));
+                      }
+                    }} />
+                  </label>
+                ) : (
+                  <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl!} uploadState={{ status: 'idle' }}
+                    onRemove={() => { if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl); setVideoFile(null); setVideoObjectUrl(null); }} />
+                )
               ) : (
-                <VideoPreviewCard file={videoFile} objectUrl={videoObjectUrl!} uploadState={{ status: 'idle' }}
-                  onRemove={() => { if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl); setVideoFile(null); setVideoObjectUrl(null); }} />
+                <textarea value={repurposeDescription} onChange={e => setRepurposeDescription(e.target.value)}
+                  placeholder="Paste your content here — a blog post, podcast transcript, notes, ideas, or anything you want to repurpose into social content…"
+                  rows={6}
+                  className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                  style={{ borderColor: BORDER }} />
               )}
+
               <input value={videoTone} onChange={e => setVideoTone(e.target.value)}
                 placeholder="Tone (optional): casual, Alex Hormozi, luxury…"
                 className="w-full rounded-xl border bg-black/30 px-4 py-2.5 text-sm text-white placeholder-white/25 outline-none"
@@ -3641,26 +3702,28 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
               {videoError && videoError === 'upgrade_required' ? (
                 <div className="rounded-xl p-4 text-center space-y-2" style={{ background: `${GOLD}10`, border: `1px solid ${GOLD}30` }}>
                   <div className="text-sm font-bold" style={{ color: GOLD_L }}>Viral & Agency Feature</div>
-                  <p className="text-xs text-white/50">Video repurposing is available on Viral and Agency plans.</p>
+                  <p className="text-xs text-white/50">Content repurposing is available on Viral and Agency plans.</p>
                 </div>
               ) : videoError ? (
                 <div className="text-xs text-red-300">{videoError}</div>
               ) : null}
-              <button onClick={handleVideoRepurpose} disabled={videoLoading || !videoFile}
+              <button
+                onClick={repurposeInputMode === 'video' ? handleVideoRepurpose : handleDescriptionRepurpose}
+                disabled={videoLoading || (repurposeInputMode === 'video' ? !videoFile : !repurposeDescription.trim())}
                 className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
                 style={{ background: GOLD, color: '#000' }}>
                 <span className="flex items-center gap-2">
                   {videoLoading ? <><Loader className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Sparkles className="w-4 h-4" /> Extract All AI Strategist</>}
                 </span>
-                {videoLoading && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing. Up to 5 minutes.</span>}
+                {videoLoading && repurposeInputMode === 'video' && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing. Up to 5 minutes.</span>}
               </button>
             </div>
           ) : (
             <div className="space-y-4">
-              <button onClick={() => { setVideoIdeas(null); setVideoFile(null); if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl); setVideoObjectUrl(null); }}
+              <button onClick={() => { setVideoIdeas(null); setVideoFile(null); if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl); setVideoObjectUrl(null); setRepurposeDescription(''); }}
                 className="text-xs font-bold px-3 py-1.5 rounded-lg border transition hover:bg-white/5"
                 style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
-                ↺ Analyze another video
+                ↺ Analyze another
               </button>
 
               {videoIdeas.short_clips?.length > 0 && (
@@ -4001,10 +4064,12 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
     setTpLoadingId(itemId);
     setTpErrors(prev => { const n = { ...prev }; delete n[itemId]; return n; });
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      let { data: { session } } = await supabase.auth.getSession();
+      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
+      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const res = await fetch(`${SUPABASE_URL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session?.access_token ?? ''}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ mode: 'talking_points', idea: title }),
       });
       const data = await res.json();
@@ -5149,7 +5214,8 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   React.useEffect(() => { return () => { Object.values(pollTimers.current).forEach(clearInterval); }; }, []);
 
   const getAuthHeaders = async (): Promise<Record<string, string>> => {
-    const { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await supabase.auth.getSession();
+    if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
     return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
   };
 
