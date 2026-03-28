@@ -1875,6 +1875,8 @@ function InlinePostComposer({
       let { data: { session: capSession } } = await supabase.auth.getSession();
       if (!capSession) { const r = await supabase.auth.refreshSession(); capSession = r.data.session; }
       if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
+      // Proactively refresh token — Safari ITP causes stale sessions
+      { const r = await supabase.auth.refreshSession(); if (r.data.session) capSession = r.data.session; }
       const captionBody = JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone });
       let res = await Promise.race<Response>([
         fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
@@ -3080,6 +3082,8 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
+      // Proactively refresh token — Safari ITP causes stale sessions
+      { const r = await supabase.auth.refreshSession(); if (r.data.session) session = r.data.session; }
       const res = await Promise.race<Response>([
         fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
           method: 'POST',
