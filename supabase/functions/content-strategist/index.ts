@@ -31,7 +31,7 @@ async function callClaude(system: string, user: string, maxTokens = 4000): Promi
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: user }],
@@ -295,7 +295,7 @@ REQUIREMENTS:
 
       // Use Claude with web search to research real-time trends
       const webSearchBody = {
-        model: "claude-sonnet-4-20250514",
+        model: "claude-sonnet-4-6",
         max_tokens: 8192,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
         system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON. Never use em-dashes (—) in any output.`,
@@ -361,16 +361,28 @@ REQUIREMENTS:
         ],
       };
 
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_KEY!,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "web-search-2025-03-05",
-        },
-        body: JSON.stringify(webSearchBody),
-      });
+      const webSearchCtrl = new AbortController();
+      const webSearchTimeout = setTimeout(() => webSearchCtrl.abort(), 80000);
+      let r: Response;
+      try {
+        r = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-api-key": ANTHROPIC_KEY!,
+            "anthropic-version": "2023-06-01",
+            "anthropic-beta": "web-search-2025-03-05",
+          },
+          body: JSON.stringify(webSearchBody),
+          signal: webSearchCtrl.signal,
+        });
+      } catch (e: any) {
+        clearTimeout(webSearchTimeout);
+        if (e?.name === "AbortError") throw new Error("Trend research timed out. The web search took too long — please try again.");
+        throw e;
+      } finally {
+        clearTimeout(webSearchTimeout);
+      }
       if (!r.ok) throw new Error("Claude web search error: " + await r.text());
       const d = await r.json();
 

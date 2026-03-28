@@ -1925,9 +1925,19 @@ function InlinePostComposer({
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const body = JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone, platforms: selPlatformKeys });
-      let res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body,
-      });
+      const postCtrl = new AbortController();
+      const postTimeout = setTimeout(() => postCtrl.abort(), 60000);
+      let res: Response;
+      try {
+        res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body, signal: postCtrl.signal,
+        });
+      } catch (e: any) {
+        clearTimeout(postTimeout);
+        if (e?.name === 'AbortError') throw new Error('Generation timed out. Please try again.');
+        throw e;
+      }
+      clearTimeout(postTimeout);
       if (res.status === 401) {
         const r = await supabase.auth.refreshSession();
         session = r.data.session;
