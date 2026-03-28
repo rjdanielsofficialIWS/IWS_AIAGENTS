@@ -91,6 +91,56 @@ export default function AdminDashboard() {
   const [planFilter, setPlanFilter] = useState('all');
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
+  // Passcode gate
+  const STORAGE_KEY = 'admin_passcode_verified';
+  const [passcode, setPasscode]       = useState('');
+  const [passcodeError, setPasscodeError] = useState('');
+  const [verified, setVerified]       = useState(() => sessionStorage.getItem(STORAGE_KEY) === 'true');
+  const [savedCode, setSavedCode]     = useState('IWS');
+  const [loadingCode, setLoadingCode] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [newCode, setNewCode]         = useState('');
+  const [newCodeConfirm, setNewCodeConfirm] = useState('');
+  const [savingCode, setSavingCode]   = useState(false);
+  const [saveMsg, setSaveMsg]         = useState('');
+
+  // Load saved passcode from Supabase user metadata
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        const code = user?.user_metadata?.admin_passcode;
+        if (code) setSavedCode(code);
+      } catch {}
+      finally { setLoadingCode(false); }
+    })();
+  }, []);
+
+  const handlePasscode = () => {
+    if (passcode.trim().toUpperCase() === savedCode.toUpperCase()) {
+      sessionStorage.setItem(STORAGE_KEY, 'true');
+      setVerified(true);
+      setPasscodeError('');
+    } else {
+      setPasscodeError('Incorrect passcode. Try again.');
+      setPasscode('');
+    }
+  };
+
+  const handleSaveCode = async () => {
+    if (!newCode.trim()) { setSaveMsg('Passcode cannot be empty.'); return; }
+    if (newCode !== newCodeConfirm) { setSaveMsg('Passcodes do not match.'); return; }
+    setSavingCode(true); setSaveMsg('');
+    try {
+      await supabase.auth.updateUser({ data: { admin_passcode: newCode.trim() } });
+      setSavedCode(newCode.trim());
+      setNewCode(''); setNewCodeConfirm('');
+      setSaveMsg('Passcode updated.');
+      setTimeout(() => { setSaveMsg(''); setShowSettings(false); }, 1500);
+    } catch { setSaveMsg('Failed to save. Try again.'); }
+    finally { setSavingCode(false); }
+  };
+
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
@@ -116,6 +166,42 @@ export default function AdminDashboard() {
     const matchPlan   = planFilter === 'all' || u.plan === planFilter;
     return matchSearch && matchPlan;
   });
+
+  // Passcode gate
+  if (!verified && !loadingCode) return (
+    <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0a0a' }}>
+      <div className="w-full max-w-sm mx-auto px-6">
+        <div className="rounded-2xl border p-8 space-y-6" style={{ background: 'rgba(18,18,18,0.98)', borderColor: BORDER }}>
+          <div className="text-center space-y-1">
+            <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-black mx-auto mb-4"
+              style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>A</div>
+            <div className="text-lg font-black text-white">Admin Access</div>
+            <div className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>Enter your passcode to continue</div>
+          </div>
+          <div className="space-y-3">
+            <input
+              type="password"
+              value={passcode}
+              onChange={e => { setPasscode(e.target.value); setPasscodeError(''); }}
+              onKeyDown={e => e.key === 'Enter' && handlePasscode()}
+              placeholder="Passcode"
+              autoFocus
+              className="w-full rounded-xl border bg-black/40 px-4 py-3 text-sm text-white outline-none text-center tracking-[0.3em] placeholder:tracking-normal placeholder:text-white/20"
+              style={{ borderColor: passcodeError ? 'rgba(248,113,113,0.5)' : BORDER, colorScheme: 'dark' }}
+            />
+            {passcodeError && (
+              <div className="text-xs text-center" style={{ color: '#f87171' }}>{passcodeError}</div>
+            )}
+            <button onClick={handlePasscode}
+              className="w-full py-3 rounded-xl text-sm font-black transition hover:brightness-110"
+              style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>
+              Enter
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   if (loading && !stats) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0a0a' }}>
@@ -160,8 +246,53 @@ export default function AdminDashboard() {
             </svg>
             Refresh
           </button>
+          <button onClick={() => setShowSettings(true)}
+            className="text-xs px-3 py-1.5 rounded-xl border transition hover:bg-white/5"
+            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
+            Passcode Settings
+          </button>
           <a href="/" className="text-xs px-3 py-1.5 rounded-xl border transition hover:bg-white/5"
             style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>Back to App</a>
+
+          {/* Passcode Settings Modal */}
+          {showSettings && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setShowSettings(false)} />
+              <div className="relative w-full max-w-sm rounded-2xl border p-6 space-y-4"
+                style={{ background: 'rgba(18,18,18,0.98)', borderColor: BORDER }}>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-black text-white">Change Passcode</div>
+                  <button onClick={() => setShowSettings(false)} className="text-white/40 hover:text-white transition text-lg leading-none">x</button>
+                </div>
+                <div className="space-y-3">
+                  <input
+                    type="password"
+                    value={newCode}
+                    onChange={e => { setNewCode(e.target.value); setSaveMsg(''); }}
+                    placeholder="New passcode"
+                    className="w-full rounded-xl border bg-black/40 px-4 py-2.5 text-sm text-white outline-none"
+                    style={{ borderColor: BORDER, colorScheme: 'dark' }}
+                  />
+                  <input
+                    type="password"
+                    value={newCodeConfirm}
+                    onChange={e => { setNewCodeConfirm(e.target.value); setSaveMsg(''); }}
+                    placeholder="Confirm new passcode"
+                    className="w-full rounded-xl border bg-black/40 px-4 py-2.5 text-sm text-white outline-none"
+                    style={{ borderColor: BORDER, colorScheme: 'dark' }}
+                  />
+                  {saveMsg && (
+                    <div className="text-xs" style={{ color: saveMsg.includes('updated') ? '#86efac' : '#f87171' }}>{saveMsg}</div>
+                  )}
+                  <button onClick={handleSaveCode} disabled={savingCode}
+                    className="w-full py-2.5 rounded-xl text-sm font-black transition hover:brightness-110 disabled:opacity-50"
+                    style={{ background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, color: '#000' }}>
+                    {savingCode ? 'Saving...' : 'Save Passcode'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
