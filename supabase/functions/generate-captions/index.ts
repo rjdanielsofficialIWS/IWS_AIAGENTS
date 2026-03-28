@@ -3,7 +3,7 @@ const ANTHROPIC_API_KEY=Deno.env.get("ANTHROPIC_API_KEY");
 const SUPABASE_URL=Deno.env.get("SUPABASE_URL");
 const SERVICE_KEY=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
 const CORS_ORIGINS=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"];
-const corsFor=(req:Request)=>{const o=req.headers.get("Origin")??"";return{"Access-Control-Allow-Origin":CORS_ORIGINS.includes(o)?o:CORS_ORIGINS[0],"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type"};};
+const corsFor=(req:Request)=>{const o=req.headers.get("Origin")??"";return{"Access-Control-Allow-Origin":CORS_ORIGINS.includes(o)?o:CORS_ORIGINS[0],"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};};
 let cors:Record<string,string>={};// defined per-request inside handler
 const REPURPOSE_PLANS=new Set(["viral","agency"]);
 const CAPTION_LIMITS={starter:15,viral:100,agency:-1,free:0};

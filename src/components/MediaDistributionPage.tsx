@@ -1889,7 +1889,8 @@ function InlinePostComposer({
         });
       }
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || d.error || `Generation failed (${res.status})`); }
-      const data = await res.json();
+      let data: any;
+      try { data = await res.json(); } catch { throw new Error('Could not read server response. Please try again.'); }
       if (data.captions) setGeneratedCaptions(data.captions);
       if (data.youTubeTitle) setYouTubeTitle(data.youTubeTitle);
     } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
@@ -1925,28 +1926,28 @@ function InlinePostComposer({
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const body = JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone, platforms: selPlatformKeys });
-      const postCtrl = new AbortController();
-      const postTimeout = setTimeout(() => postCtrl.abort(), 60000);
       let res: Response;
-      try {
-        res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body, signal: postCtrl.signal,
-        });
-      } catch (e: any) {
-        clearTimeout(postTimeout);
-        if (e?.name === 'AbortError') throw new Error('Generation timed out. Please try again.');
-        throw e;
-      }
-      clearTimeout(postTimeout);
+      // Use Promise.race instead of AbortController signal — Safari has a known bug where
+      // passing signal to fetch for large/long responses can silently drop the response body.
+      res = await Promise.race<Response>([
+        fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body,
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
+      ]);
       if (res.status === 401) {
         const r = await supabase.auth.refreshSession();
         session = r.data.session;
         if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-        res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body,
-        });
+        res = await Promise.race<Response>([
+          fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body,
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
+        ]);
       }
-      const data = await res.json();
+      let data: any;
+      try { data = await res.json(); } catch { throw new Error('Could not read server response. Please try again.'); }
       if (data.error === 'upgrade_required') {
         setTextAiError('upgrade_required');
         return;
@@ -2578,7 +2579,8 @@ function InlinePostComposer({
                         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
                         body: JSON.stringify({ mode: 'thread_posts', description: source, tone: textAiTone, video_repurpose: threadVideoMode, thread_count: threadTweetCount }),
                       });
-                      const data = await res.json();
+                      let data: any;
+                      try { data = await res.json(); } catch { throw new Error('Could not read server response. Please try again.'); }
                       if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
                       if (!res.ok) throw new Error(data.error || 'Generation failed');
                       if (data.thread && Array.isArray(data.thread)) setThreadTweets(data.thread);
