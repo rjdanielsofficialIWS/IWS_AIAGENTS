@@ -1952,7 +1952,7 @@ function InlinePostComposer({
         return;
       }
       if (!res.ok) throw new Error(data.message || data.error || `Generation failed (${res.status})`);
-      if (!data.posts || Object.keys(data.posts).length === 0) throw new Error('No posts were generated. Please try again.');
+      if (!data.posts || Object.keys(data.posts).length === 0) throw new Error(data.error || data.message || 'No posts were generated. Please try again.');
       const validPosts = Object.fromEntries(Object.entries(data.posts as Record<string, any[]>).filter(([, arr]) => Array.isArray(arr) && arr.length > 0));
       if (Object.keys(validPosts).length === 0) throw new Error('No posts were generated. Please try again.');
       setTextAiPosts(validPosts);
