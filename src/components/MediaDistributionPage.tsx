@@ -1875,18 +1875,23 @@ function InlinePostComposer({
       let { data: { session: capSession } } = await supabase.auth.getSession();
       if (!capSession) { const r = await supabase.auth.refreshSession(); capSession = r.data.session; }
       if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-      let res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` },
-        body: JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
-      });
+      const captionBody = JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone });
+      let res = await Promise.race<Response>([
+        fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` }, body: captionBody,
+        }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
+      ]);
       if (res.status === 401) {
         const r = await supabase.auth.refreshSession();
         capSession = r.data.session;
         if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-        res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` },
-          body: JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone }),
-        });
+        res = await Promise.race<Response>([
+          fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` }, body: captionBody,
+          }),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
+        ]);
       }
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || d.error || `Generation failed (${res.status})`); }
       let data: any;
@@ -3070,27 +3075,28 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     if (!briefSnapshot.niche.trim()) return;
     if (!userId) return;
     setTrendsLoading(true); setTrendsError(null); setTrendsResults(null);
-    // Trends research uses web search and takes 40-90s — use a long timeout
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90000);
+    // Trends research uses web search — use Promise.race (Safari-safe, no AbortController signal)
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({
-          mode: 'trends_research',
-          niche: briefSnapshot.niche,
-          audience: briefSnapshot.audience,
-          platforms: briefSnapshot.platforms,
-          goals: briefSnapshot.goals,
-          offer: briefSnapshot.offer,
+      const res = await Promise.race<Response>([
+        fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          body: JSON.stringify({
+            mode: 'trends_research',
+            niche: briefSnapshot.niche,
+            audience: briefSnapshot.audience,
+            platforms: briefSnapshot.platforms,
+            goals: briefSnapshot.goals,
+            offer: briefSnapshot.offer,
+          }),
         }),
-        signal: controller.signal,
-      });
-      const data = await res.json();
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Trend research timed out. Please try again.')), 90000)),
+      ]);
+      let data: any;
+      try { data = await res.json(); } catch { throw new Error('Could not read server response. Please try again.'); }
       if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
       if (res.status === 429 || data.error === 'rate_limited') {
         setTrendsError('The AI is busy right now. Please wait 30 seconds and try the Trend Research button again.');
@@ -3099,11 +3105,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       if (!res.ok) throw new Error(data.error || data.message || 'Trends research failed');
       setTrendsResults(data);
     } catch (e: any) {
-      if (e.name === 'AbortError') {
-        setTrendsError('Trend research timed out. The web search took too long — please try again.');
-      } else {
-        setTrendsError(e.message || 'Something went wrong');
-      }
+      setTrendsError(e.message || 'Something went wrong');
     }
     finally { clearTimeout(timeout); setTrendsLoading(false); }
   };
