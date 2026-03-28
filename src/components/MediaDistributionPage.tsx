@@ -1952,9 +1952,11 @@ function InlinePostComposer({
         return;
       }
       if (!res.ok) throw new Error(data.message || data.error || `Generation failed (${res.status})`);
-      if (!data.posts) throw new Error('No posts returned');
-      setTextAiPosts(data.posts);
-      const firstKey = Object.keys(data.posts)[0];
+      if (!data.posts || Object.keys(data.posts).length === 0) throw new Error('No posts were generated. Please try again.');
+      const validPosts = Object.fromEntries(Object.entries(data.posts as Record<string, any[]>).filter(([, arr]) => Array.isArray(arr) && arr.length > 0));
+      if (Object.keys(validPosts).length === 0) throw new Error('No posts were generated. Please try again.');
+      setTextAiPosts(validPosts);
+      const firstKey = Object.keys(validPosts)[0];
       if (firstKey) setTextTab(firstKey);
     } catch (e: any) { setTextAiError(e.message || 'Something went wrong'); }
     finally { setTextAiLoading(false); }

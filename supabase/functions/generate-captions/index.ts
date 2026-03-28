@@ -74,7 +74,7 @@ Deno.serve(async(req)=>{
       const postPlatforms=[...new Set((selP.length>0?selP:["twitter","linkedin"]).map(p=>{const lp=p.toLowerCase();if(lp==="x"||lp==="twitter")return"twitter";if(lp==="linkedin")return"linkedin";if(lp==="threads")return"threads";return"twitter";}))];
       const schema="{"+postPlatforms.map(p=>`"${p}":["post1","post2","post3","post4","post5","post6","post7","post8","post9","post10"]`).join(",")+"}" ;
       const instructions=postPlatforms.map(p=>POSTS_STYLE[p]||p+": Write 10 engaging posts.").join("\n\n");
-      const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\n"+instructions+"\n\nReturn JSON: "+schema,4000);
+      const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\n"+instructions+"\n\nReturn JSON: "+schema,8000);
       result={posts:JSON.parse(raw)};
     }else if(mode==="thread_posts"){
       const tweetCount=Math.max(3,Math.min(10,Number(thread_count)||5));
