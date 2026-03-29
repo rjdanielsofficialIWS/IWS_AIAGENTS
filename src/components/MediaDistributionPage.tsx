@@ -3097,7 +3097,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     } catch (e: any) {
       setTrendsError(e.message || 'Something went wrong');
     }
-    finally { clearTimeout(timeout); setTrendsLoading(false); }
+    finally { setTrendsLoading(false); }
   };
 
   const handleGenerate = async () => {
