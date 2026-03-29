@@ -1911,56 +1911,44 @@ function InlinePostComposer({
         .filter(Boolean)
         .map(p => (p === 'x' || p === 'twitter') ? 'twitter' : p)
     )];
-    if (selPlatformKeys.length === 0) {
-      setTextAiError('Select at least one account above first.');
-      return;
-    }
-    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null);
-    setTextAiSelected({});
+    if (selPlatformKeys.length === 0) { setTextAiError('Select at least one account above first.'); return; }
+    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({});
     try {
+      // Build source text
       let source = '';
       if (textAiMode === 'from_video') {
         if (!textAiVideo) throw new Error('Select a video first');
-        let { data: { session: txSession2 } } = await supabase.auth.getSession();
-        if (!txSession2) { const r = await supabase.auth.refreshSession(); txSession2 = r.data.session; }
-        if (!txSession2) throw new Error('Your session has expired. Please sign out and sign back in.');
-        source = await transcribeVideo(textAiVideo, txSession2.access_token);
+        const { data: { session: vs } } = await supabase.auth.getSession();
+        const token = vs?.access_token || (await supabase.auth.refreshSession()).data.session?.access_token;
+        if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
+        source = await transcribeVideo(textAiVideo, token);
       } else {
         if (!textAiDesc.trim()) throw new Error('Enter a description');
         source = textAiDesc;
       }
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-      const body = JSON.stringify({ mode: 'repurpose_posts', transcript: textAiMode === 'from_video' ? source : undefined, description: textAiMode !== 'from_video' ? source : undefined, tone: textAiTone, platforms: selPlatformKeys });
-      let res: Response;
-      // Use Promise.race instead of AbortController signal — Safari has a known bug where
-      // passing signal to fetch for large/long responses can silently drop the response body.
-      res = await Promise.race<Response>([
-        fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body,
+      // Always force-refresh session before AI call — Safari ITP can silently expire tokens
+      const { data: { session: freshSession } } = await supabase.auth.refreshSession();
+      const token = freshSession?.access_token;
+      if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
+      // Single fetch — read body exactly once as text, then parse
+      const fetchRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({
+          mode: 'repurpose_posts',
+          transcript: textAiMode === 'from_video' ? source : undefined,
+          description: textAiMode !== 'from_video' ? source : undefined,
+          tone: textAiTone,
+          platforms: selPlatformKeys,
         }),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
-      ]);
-      if (res.status === 401) {
-        const r = await supabase.auth.refreshSession();
-        session = r.data.session;
-        if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-        res = await Promise.race<Response>([
-          fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body,
-          }),
-          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
-        ]);
-      }
+      });
+      // Read body as text once — avoids Safari double-consume bug
+      const rawText = await fetchRes.text();
       let data: any;
-      try { data = await res.json(); } catch { throw new Error('Could not read server response. Please try again.'); }
-      if (data.error === 'upgrade_required') {
-        setTextAiError('upgrade_required');
-        return;
-      }
-      if (!res.ok) throw new Error(data.message || data.error || `Generation failed (${res.status})`);
-      if (!data.posts || Object.keys(data.posts).length === 0) throw new Error(data.error || data.message || 'No posts were generated. Please try again.');
+      try { data = JSON.parse(rawText); } catch { throw new Error('Server returned an unreadable response. Please try again.'); }
+      if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
+      if (!fetchRes.ok) throw new Error(data.message || data.error || `Generation failed (${fetchRes.status})`);
+      if (!data.posts || typeof data.posts !== 'object') throw new Error('No posts were generated. Please try again.');
       const validPosts = Object.fromEntries(Object.entries(data.posts as Record<string, any[]>).filter(([, arr]) => Array.isArray(arr) && arr.length > 0));
       if (Object.keys(validPosts).length === 0) throw new Error('No posts were generated. Please try again.');
       setTextAiPosts(validPosts);
