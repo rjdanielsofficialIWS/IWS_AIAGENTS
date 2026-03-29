@@ -3084,8 +3084,9 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Trend research timed out. Please try again.')), 90000)),
       ]);
+      const rawText = await res.text();
       let data: any;
-      try { data = await res.json(); } catch { throw new Error('Could not read server response. Please try again.'); }
+      try { data = JSON.parse(rawText); } catch { throw new Error('Could not read server response. Please try again.'); }
       if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
       if (res.status === 429 || data.error === 'rate_limited') {
         setTrendsError('The AI is busy right now. Please wait 30 seconds and try the Trend Research button again.');
@@ -3105,8 +3106,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     }
     if (!userId) { setError('Sign in to use the AI Strategist.'); return; }
     setLoading(true); setError(null); setResults(null);
-    // Stagger trends research — wait 8s after strategy fires to avoid Anthropic rate limits
-    setTimeout(() => handleFetchTrends(brief), 8000);
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
@@ -3122,6 +3121,8 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       if (!res.ok) throw new Error(data.error || 'Generation failed');
       setResults(data);
       setTab('trends');
+      // Fire trends research after strategy completes — avoids Anthropic rate limit collision
+      setTimeout(() => handleFetchTrends(brief), 1000);
     } catch (e: any) { setError(e.message || 'Something went wrong'); }
     finally { setLoading(false); }
   };
