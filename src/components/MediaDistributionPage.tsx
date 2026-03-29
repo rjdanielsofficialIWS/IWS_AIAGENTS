@@ -1895,9 +1895,9 @@ function InlinePostComposer({
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
         ]);
       }
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.message || d.error || `Generation failed (${res.status})`); }
       let data: any;
       try { data = await res.json(); } catch { throw new Error('Could not read server response. Please try again.'); }
+      if (!res.ok) throw new Error(data?.message || data?.error || `Generation failed (${res.status})`);
       if (data.captions) setGeneratedCaptions(data.captions);
       if (data.youTubeTitle) setYouTubeTitle(data.youTubeTitle);
     } catch (e: any) { setAiError(e.message || 'Something went wrong'); }
