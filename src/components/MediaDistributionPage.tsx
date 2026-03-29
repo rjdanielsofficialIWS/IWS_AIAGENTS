@@ -1942,8 +1942,6 @@ function InlinePostComposer({
         }),
       });
       const rawText = await fetchRes.text();
-      // DEBUG — remove after fix confirmed
-      alert('Safari debug — status: ' + fetchRes.status + ' | body preview: ' + rawText.slice(0, 300));
       let data: any;
       try { data = JSON.parse(rawText); } catch { throw new Error('Server returned an unreadable response. Please try again.'); }
       if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
@@ -1952,8 +1950,7 @@ function InlinePostComposer({
       const validPosts = Object.fromEntries(Object.entries(data.posts as Record<string, any[]>).filter(([, arr]) => Array.isArray(arr) && arr.length > 0));
       if (Object.keys(validPosts).length === 0) throw new Error('No posts were generated. Please try again.');
       setTextAiPosts(validPosts);
-      const firstKey = Object.keys(validPosts)[0];
-      if (firstKey) setTextTab(firstKey);
+      setTextTab(Object.keys(validPosts)[0] ?? 'twitter');
     } catch (e: any) { setTextAiError(e.message || 'Something went wrong'); }
     finally { setTextAiLoading(false); }
   };
@@ -2814,7 +2811,7 @@ function InlinePostComposer({
                     <div className="text-xs text-white/25">Click a post to select it · click ✏️ to edit inline</div>
 
                     <div className="space-y-1.5 max-h-[320px] md:max-h-[480px] overflow-y-auto pr-1">
-                      {(textAiPosts[textTab] ?? []).map((post, idx) => {
+                      {(textAiPosts?.[textTab] ?? []).map((post, idx) => {
                         const platform = textTab;
                         const isSel     = textAiSelected[platform] === idx;
                         const isEditing = editingIdx?.tab === platform && editingIdx?.idx === idx;
