@@ -1926,11 +1926,10 @@ function InlinePostComposer({
         if (!textAiDesc.trim()) throw new Error('Enter a description');
         source = textAiDesc;
       }
-      // Always force-refresh session before AI call — Safari ITP can silently expire tokens
+      // Always force-refresh session before AI call
       const { data: { session: freshSession } } = await supabase.auth.refreshSession();
       const token = freshSession?.access_token;
       if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
-      // Single fetch — read body exactly once as text, then parse
       const fetchRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -1942,8 +1941,9 @@ function InlinePostComposer({
           platforms: selPlatformKeys,
         }),
       });
-      // Read body as text once — avoids Safari double-consume bug
       const rawText = await fetchRes.text();
+      // DEBUG — remove after fix confirmed
+      alert('Safari debug — status: ' + fetchRes.status + ' | body preview: ' + rawText.slice(0, 300));
       let data: any;
       try { data = JSON.parse(rawText); } catch { throw new Error('Server returned an unreadable response. Please try again.'); }
       if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
