@@ -341,7 +341,6 @@ function pcmToWav(samples: Float32Array, sampleRate = 16000): Blob {
 
 async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
   const SAMPLE_RATE = 16000;
-  const objectUrl = URL.createObjectURL(videoFile);
 
   try {
     const arrayBuffer = await videoFile.arrayBuffer();
@@ -372,66 +371,16 @@ async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
       for (let i = 0; i < data.length; i++) samples[i] += data[i] / audioBuffer.numberOfChannels;
     }
 
-    URL.revokeObjectURL(objectUrl);
     return pcmToWav(samples, SAMPLE_RATE);
 
   } catch (decodeErr) {
-    console.warn('decodeAudioData failed, falling back to live capture:', decodeErr);
+    // Safari cannot decode many video codecs via Web Audio API.
+    // Return the raw file — Whisper accepts MP4/MOV/WebM natively up to 25MB.
+    console.warn('decodeAudioData failed, sending raw video to Whisper:', decodeErr);
+    return videoFile;
   }
-
-  return new Promise<Blob>((resolve, reject) => {
-    const vid = document.createElement('video');
-    vid.src         = objectUrl;
-    vid.muted       = false;
-    vid.playsInline = true;
-    vid.preload     = 'auto';
-
-    vid.addEventListener('error', () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error('Video could not be loaded for audio extraction'));
-    });
-
-    vid.addEventListener('canplaythrough', async () => {
-      try {
-        const audioCtx   = new AudioContext({ sampleRate: SAMPLE_RATE });
-        const source     = audioCtx.createMediaElementSource(vid);
-        const bufferSize = 4096;
-        const processor  = audioCtx.createScriptProcessor(bufferSize, 1, 1);
-        const chunks: Float32Array[] = [];
-
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
-
-        processor.onaudioprocess = (e) => {
-          chunks.push(new Float32Array(e.inputBuffer.getChannelData(0)));
-        };
-
-        vid.currentTime = 0;
-        await vid.play();
-
-        vid.addEventListener('ended', async () => {
-          processor.disconnect();
-          source.disconnect();
-          await audioCtx.close();
-          URL.revokeObjectURL(objectUrl);
-
-          const total   = chunks.reduce((n, c) => n + c.length, 0);
-          const samples = new Float32Array(total);
-          let offset    = 0;
-          for (const c of chunks) { samples.set(c, offset); offset += c.length; }
-
-          resolve(pcmToWav(samples, SAMPLE_RATE));
-        }, { once: true });
-
-      } catch (err) {
-        URL.revokeObjectURL(objectUrl);
-        reject(err);
-      }
-    }, { once: true });
-
-    vid.load();
-  });
 }
+
 
 async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
   let transcribeRes: Response;
