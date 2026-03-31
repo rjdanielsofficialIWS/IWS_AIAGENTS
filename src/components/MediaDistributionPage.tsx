@@ -1641,6 +1641,54 @@ function SavedPostCard({
 // ─── InlinePostComposer ────────────────────────────────────────────────────────
 // Inline version of PostComposerModal (no modal wrapper)
 
+
+function ThreadVideoPlayer({ src, fileName, onRemove }) {
+  const videoRef = React.useRef(null);
+  const [playing, setPlaying] = React.useState(false);
+
+  React.useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = true;
+    v.play().catch(() => setPlaying(false));
+  }, [src]);
+
+  const togglePlay = () => {
+    const v = videoRef.current; if (!v) return;
+    if (v.paused) { v.play(); setPlaying(true); }
+    else { v.pause(); setPlaying(false); }
+  };
+
+  return (
+    <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: '#000' }}>
+      <div className="relative">
+        <video
+          ref={videoRef}
+          src={src}
+          className="w-full block object-contain"
+          style={{ maxHeight: '200px', cursor: 'pointer' }}
+          playsInline
+          muted
+          loop
+          onClick={togglePlay}
+          onPlay={() => setPlaying(true)}
+          onPause={() => setPlaying(false)}
+        />
+        <button onClick={onRemove}
+          className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
+          style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
+          <X className="w-3.5 h-3.5 text-white/70" />
+        </button>
+      </div>
+      <div className="px-3 py-2 flex items-center gap-2" style={{ background: 'rgba(0,0,0,0.5)' }}>
+        <Video className="w-3.5 h-3.5 shrink-0" style={{ color: GOLD }} />
+        <span className="text-xs text-white/50 truncate flex-1">{fileName}</span>
+        <span className="text-[10px] text-green-400 font-bold shrink-0">Ready</span>
+      </div>
+    </div>
+  );
+}
+
 function InlinePostComposer({
   integrations, userId, onSuccess, initialVideoUrl, initialMode, workspaceId, onUpgrade,
 }: {
