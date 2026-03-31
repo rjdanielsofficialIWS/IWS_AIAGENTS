@@ -1741,11 +1741,11 @@ function InlinePostComposer({
   // Pre-populate with AI-generated video URL if provided
   React.useEffect(() => {
     if (!initialVideoUrl) return;
-    setPostType('media');
-    setVideoUpload({ status: 'done', path: '', url: initialVideoUrl, fileName: 'ai-video.mp4', mime: 'video/mp4', size: 0 });
-    // Also pre-fill AI caption mode pointed at the video URL
-    setCaptionMode('from_description');
-    setAiDescription('AI-generated video. Write captions describing this content.');
+    // Only switch to media mode if not explicitly opened in text mode (e.g. from "Repurpose" in AI Studio)
+    if (initialMode !== 'text') {
+      setPostType('media');
+      setVideoUpload({ status: 'done', path: '', url: initialVideoUrl, fileName: 'ai-video.mp4', mime: 'video/mp4', size: 0 });
+    }
   }, [initialVideoUrl]);
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
@@ -1869,11 +1869,27 @@ function InlinePostComposer({
     try {
       let sourceText = '';
       if (captionMode === 'from_video') {
-        if (!videoFile) throw new Error('Add a video using the Video button above first');
+        const videoUrl = videoUpload.status === 'done' ? videoUpload.url : undefined;
+        if (!videoFile && !videoUrl) throw new Error('Add a video using the Video button above first');
         let { data: { session: txSession } } = await supabase.auth.getSession();
         if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
         if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-        sourceText = await transcribeVideo(videoFile, await getToken());
+        if (videoFile) {
+          sourceText = await transcribeVideo(videoFile, await getToken());
+        } else {
+          // URL-only video (e.g. from AI Video Studio) — transcribe directly from URL
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+            body: JSON.stringify({ videoUrl }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            if (err.error === 'limit_reached') throw new Error(err.message);
+            throw new Error(err.error || 'AI analysis failed');
+          }
+          sourceText = (await res.json()).transcript ?? '';
+        }
         setTranscript(sourceText);
       } else {
         if (!aiDescription.trim()) throw new Error('Enter a description of your video');
@@ -2417,9 +2433,9 @@ function InlinePostComposer({
                     </button>
                   ))}
                 </div>
-                {captionMode === 'from_video' && !videoFile && <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above. AI will analyze the spoken content to write captions.</div>}
+                {captionMode === 'from_video' && !videoFile && videoUpload.status !== 'done' && <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above. AI will analyze the spoken content to write captions.</div>}
                 {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
-                {captionMode === 'from_video' && videoFile && videoUpload.status === 'done' && <div className="text-xs text-green-400/80 px-1">✓ Video ready. Click Generate below</div>}
+                {captionMode === 'from_video' && (videoFile || videoUpload.status === 'done') && videoUpload.status !== 'uploading' && <div className="text-xs text-green-400/80 px-1">✓ Video ready. Click Generate below</div>}
                 {captionMode === 'from_description' && (
                   <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
                     placeholder="Describe your video or content. Topic, key points, your offer…" rows={3}
