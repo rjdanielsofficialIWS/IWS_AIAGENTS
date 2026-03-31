@@ -15,9 +15,9 @@ import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
 // Always fetches a fresh, auto-refreshed token — never expires mid-session
 async function getToken(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
-  if (await getToken()) return await getToken();
+  if (session?.access_token) return session.access_token;
   const { data: refreshed } = await supabase.auth.refreshSession();
-  return refreshed.await getToken() ?? '';
+  return refreshed.session?.access_token ?? '';
 }
 
 const GOLD    = '#D6B25E';
