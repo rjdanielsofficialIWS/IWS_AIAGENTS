@@ -1,10 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 
 
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const GOLD    = '#C9A84C';
