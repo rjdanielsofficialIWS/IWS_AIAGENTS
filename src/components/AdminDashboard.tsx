@@ -1,4 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
+import { createClient } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 
 
