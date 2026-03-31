@@ -176,7 +176,7 @@ async function ayrsharePost(payload: {
   // On 401, try one refresh+retry before giving up
   if (res.status === 401) {
     const refreshed = await supabase.auth.refreshSession();
-    const newToken = refreshed.data.await getToken();
+    const newToken = refreshed.data.session?.access_token;
     if (!newToken) throw new Error('Your session has expired. Please log out and log back in, then try again.');
     res = await doPost(newToken);
   }
