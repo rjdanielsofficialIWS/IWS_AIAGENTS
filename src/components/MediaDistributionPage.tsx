@@ -12,6 +12,14 @@ import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
 
+// Always fetches a fresh, auto-refreshed token — never expires mid-session
+async function getToken(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (await getToken()) return await getToken();
+  const { data: refreshed } = await supabase.auth.refreshSession();
+  return refreshed.await getToken() ?? '';
+}
+
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
 const GOLD_D  = '#8F6B1E';
@@ -158,17 +166,17 @@ async function ayrsharePost(payload: {
     const refreshed = await supabase.auth.refreshSession();
     session = refreshed.data.session;
   }
-  if (!session?.access_token) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+  if (!await getToken()) throw new Error('Your session has expired. Please log out and log back in, then try again.');
   const doPost = async (token: string) => fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
     body: JSON.stringify(payload),
   });
-  let res = await doPost(session.access_token);
+  let res = await doPost(await getToken());
   // On 401, try one refresh+retry before giving up
   if (res.status === 401) {
     const refreshed = await supabase.auth.refreshSession();
-    const newToken = refreshed.data.session?.access_token;
+    const newToken = refreshed.data.await getToken();
     if (!newToken) throw new Error('Your session has expired. Please log out and log back in, then try again.');
     res = await doPost(newToken);
   }
@@ -190,7 +198,7 @@ async function fetchChannels(userId: string, force = false, workspaceId?: string
   const wsParam = workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : '';
   const url = `${SUPABASE_URL}/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}${wsParam}`;
   const res = await fetch(url, {
-    headers: session?.access_token ? { 'Authorization': `Bearer ${session.access_token}` } : {},
+    headers: await getToken() ? { 'Authorization': `Bearer ${await getToken()}` } : {},
   });
   if (!res.ok) return [];
   const data = await res.json();
@@ -638,7 +646,7 @@ function ConnectAccountsModal({
 
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-connect`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
         body: JSON.stringify({ platform: platformId, ...(workspaceId ? { workspaceId } : {}) }),
       });
 
@@ -710,7 +718,7 @@ function ConnectAccountsModal({
                           if (sessionErr || !session) throw new Error('Not signed in');
                           const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-disconnect`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
                             body: JSON.stringify({ platform: platformId, ...(workspaceId ? { workspaceId } : {}) }),
                           });
                           if (!res.ok) {
@@ -845,10 +853,10 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
       try {
         let { data: { session } } = await supabase.auth.getSession();
         if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-        if (!session?.access_token) throw new Error('Session expired');
+        if (!await getToken()) throw new Error('Session expired');
         const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
           body: JSON.stringify({ action: 'get_post_group', postGroupId: post.postGroupId }),
         });
         const data = await res.json();
@@ -881,11 +889,11 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session?.access_token) throw new Error('Session expired.');
+      if (!await getToken()) throw new Error('Session expired.');
       // Cancel old posts (preserve media)
       const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
         body: JSON.stringify({ action: 'delete_post', postGroupId: post.postGroupId, skipMediaCleanup: true }),
       });
       if (!delRes.ok) { const d = await delRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
@@ -1046,7 +1054,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
+        headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -1078,14 +1086,14 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session?.access_token) throw new Error('Session expired');
+      if (!await getToken()) throw new Error('Session expired');
       const payload: Record<string, unknown> = { action: 'delete_post' };
       if (post.postGroupId) payload.postGroupId = post.postGroupId;
       else payload.postId = post.id;
       if (workspaceId) payload.workspaceId = workspaceId;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
         body: JSON.stringify(payload),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
@@ -1777,7 +1785,7 @@ function InlinePostComposer({
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
+          headers: { Authorization: `Bearer ${await getToken()}` },
         });
         if (res.ok) {
           const d = await res.json();
@@ -1865,7 +1873,7 @@ function InlinePostComposer({
         let { data: { session: txSession } } = await supabase.auth.getSession();
         if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
         if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-        sourceText = await transcribeVideo(videoFile, txSession.access_token);
+        sourceText = await transcribeVideo(videoFile, await getToken());
         setTranscript(sourceText);
       } else {
         if (!aiDescription.trim()) throw new Error('Enter a description of your video');
@@ -1880,7 +1888,7 @@ function InlinePostComposer({
       const captionBody = JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone });
       let res = await Promise.race<Response>([
         fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` }, body: captionBody,
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` }, body: captionBody,
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
       ]);
@@ -1890,7 +1898,7 @@ function InlinePostComposer({
         if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
         res = await Promise.race<Response>([
           fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` }, body: captionBody,
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` }, body: captionBody,
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
         ]);
@@ -1919,7 +1927,7 @@ function InlinePostComposer({
       if (textAiMode === 'from_video') {
         if (!textAiVideo) throw new Error('Select a video first');
         const { data: { session: vs } } = await supabase.auth.getSession();
-        const token = vs?.access_token || (await supabase.auth.refreshSession()).data.session?.access_token;
+        const token = await getToken() || (await supabase.auth.refreshSession()).data.await getToken();
         if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
         source = await transcribeVideo(textAiVideo, token);
       } else {
@@ -1928,7 +1936,7 @@ function InlinePostComposer({
       }
       // Always force-refresh session before AI call
       const { data: { session: freshSession } } = await supabase.auth.refreshSession();
-      const token = freshSession?.access_token;
+      const token = await getToken();
       if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
       const fetchRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
         method: 'POST',
@@ -2564,11 +2572,11 @@ function InlinePostComposer({
                       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
                       let source = desc;
                       if (threadVideoMode && threadVideoFile) {
-                        source = await transcribeVideo(threadVideoFile, session?.access_token ?? '');
+                        source = await transcribeVideo(threadVideoFile, await getToken() ?? '');
                       }
                       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken() ?? ''}` },
                         body: JSON.stringify({ mode: 'thread_posts', description: source, tone: textAiTone, video_repurpose: threadVideoMode, thread_count: threadTweetCount }),
                       });
                       let data: any;
@@ -3072,7 +3080,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       const res = await Promise.race<Response>([
         fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
           body: JSON.stringify({
             mode: 'trends_research',
             niche: briefSnapshot.niche,
@@ -3112,7 +3120,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
         body: JSON.stringify({ mode: 'full_strategy', ...brief }),
       });
       const data = await res.json();
@@ -3135,10 +3143,10 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-      const transcript = await transcribeVideo(videoFile, session.access_token);
+      const transcript = await transcribeVideo(videoFile, await getToken());
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
         body: JSON.stringify({ mode: 'repurpose_from_video', transcript, tone: videoTone }),
       });
       const data = await res.json();
@@ -3159,7 +3167,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
         body: JSON.stringify({ mode: 'repurpose_from_description', description: repurposeDescription.trim(), tone: videoTone }),
       });
       const data = await res.json();
@@ -4090,7 +4098,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const res = await fetch(`${SUPABASE_URL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
         body: JSON.stringify({ mode: 'talking_points', idea: title }),
       });
       const data = await res.json();
@@ -4337,7 +4345,7 @@ function ReferralBanner({ userId }: { userId: string | null }) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
+          headers: { Authorization: `Bearer ${await getToken()}` },
         });
         if (res.ok) {
           const data = await res.json();
@@ -4409,7 +4417,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
+        headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
       const list = Array.isArray(data?.posts) ? data.posts : [];
@@ -4557,7 +4565,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       const start = new Date(year, month, 1).toISOString();
       const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
       const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: { 'Authorization': `Bearer ${session?.access_token || SUPABASE_ANON_KEY}` },
+        headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data  = res.ok ? await res.json() : { posts: [] };
       const list  = Array.isArray(data?.posts) ? data.posts : [];
@@ -4775,7 +4783,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const headers = { Authorization: `Bearer ${session?.access_token}` };
+      const headers = { Authorization: `Bearer ${await getToken()}` };
       const [statsRes, payoutRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, { headers }),
         fetch(`${SUPABASE_URL}/functions/v1/affiliate-payout`, { headers }),
@@ -4810,7 +4818,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/referral-stats`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${await getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ customCode: trimmed }),
       });
       const json = await res.json();
@@ -4835,7 +4843,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/affiliate-payout`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${await getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ method: payoutMethod, paypalEmail, bankAccountName, bankAccountNumber, bankRoutingNumber, bankName }),
       });
       const json = await res.json();
@@ -5237,7 +5245,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   const getAuthHeaders = async (): Promise<Record<string, string>> => {
     let { data: { session } } = await supabase.auth.getSession();
     if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+    return await getToken() ? { Authorization: `Bearer ${await getToken()}` } : {};
   };
 
   const addToHistory = (brief: string, videoUrl: string, thumbnailUrl?: string) => {
@@ -6968,7 +6976,7 @@ export function MediaDistributionPage() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, {
-          headers: { Authorization: `Bearer ${session?.access_token}` },
+          headers: { Authorization: `Bearer ${await getToken()}` },
         });
         if (res.ok) {
           const d = await res.json();
@@ -7009,7 +7017,7 @@ export function MediaDistributionPage() {
       if (data) setSubscription(data);
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${session?.access_token}` } });
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${await getToken()}` } });
         if (res.ok) {
           const d = await res.json();
           setGlobalUsage({ plan: d.plan ?? 'free', isActive: d.isActive ?? false, captions: { used: d.usage?.ai_captions_used ?? 0, limit: d.limits?.ai_captions_per_month ?? 0 }, video: { used: d.usage?.video_seconds_used ?? 0, limit: d.limits?.video_seconds_per_month ?? 0 }, strategies: { used: d.usage?.strategies_used ?? 0, limit: d.limits?.strategies_per_month ?? 0 }, posts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.posts_per_month ?? 0 }, textPosts: { used: d.usage?.posts_scheduled ?? 0, limit: d.limits?.text_posts_per_month ?? 0 } });
@@ -7032,10 +7040,10 @@ export function MediaDistributionPage() {
       (async () => {
         try {
           const { data: { session } } = await supabase.auth.getSession();
-          if (session?.access_token) {
+          if (await getToken()) {
             await fetch(`${SUPABASE_URL}/functions/v1/referral-record`, {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+              headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
               body: JSON.stringify({ referralCode: refCode }),
             });
           }
@@ -7161,7 +7169,7 @@ export function MediaDistributionPage() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
+          'Authorization': `Bearer ${await getToken()}`,
         },
         body: JSON.stringify({ platform: platformId, ...(activeWorkspaceId ? { workspaceId: activeWorkspaceId } : {}) }),
       });
@@ -7195,7 +7203,7 @@ export function MediaDistributionPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/send-phone-otp`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${await getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ phone: phoneInput }),
       });
       const d = await res.json();
@@ -7212,7 +7220,7 @@ export function MediaDistributionPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/start-trial`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${session?.access_token}`, 'Content-Type': 'application/json' },
+        headers: { Authorization: `Bearer ${await getToken()}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ plan: phoneVerifyPlan, phone: phoneInput, code: otpInput }),
       });
       const d = await res.json();
@@ -7228,7 +7236,7 @@ export function MediaDistributionPage() {
       if (data) setSubscription(data);
       try {
         const { data: { session: s2 } } = await supabase.auth.getSession();
-        const ur = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${s2?.access_token}` } });
+        const ur = await fetch(`${SUPABASE_URL}/functions/v1/check-usage`, { headers: { Authorization: `Bearer ${await getToken()}` } });
         if (ur.ok) {
           const ud = await ur.json();
           setGlobalUsage({ plan: ud.plan ?? 'free', isActive: ud.isActive ?? false, captions: { used: ud.usage?.ai_captions_used ?? 0, limit: ud.limits?.ai_captions_per_month ?? 0 }, video: { used: ud.usage?.video_seconds_used ?? 0, limit: ud.limits?.video_seconds_per_month ?? 0 }, strategies: { used: ud.usage?.strategies_used ?? 0, limit: ud.limits?.strategies_per_month ?? 0 }, posts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.posts_per_month ?? 0 }, textPosts: { used: ud.usage?.posts_scheduled ?? 0, limit: ud.limits?.text_posts_per_month ?? ud.limits?.posts_per_month ?? 0 } });
@@ -7245,7 +7253,7 @@ export function MediaDistributionPage() {
     setCheckoutLoading(plan);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? '';
+      const token = await getToken() ?? '';
       const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-checkout`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -7267,7 +7275,7 @@ export function MediaDistributionPage() {
     setPortalLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? '';
+      const token = await getToken() ?? '';
       const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-portal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -7296,7 +7304,7 @@ export function MediaDistributionPage() {
     setRetentionError(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? '';
+      const token = await getToken() ?? '';
       const res = await fetch(`${SUPABASE_URL}/functions/v1/apply-retention-discount`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
@@ -7320,7 +7328,7 @@ export function MediaDistributionPage() {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-checkout`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token ?? ''}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken() ?? ''}` },
         body: JSON.stringify({ addon: addonKey, successUrl: window.location.href + '?addon_success=' + addonKey, cancelUrl: window.location.href }),
       });
       const data = await res.json();
@@ -7336,7 +7344,7 @@ export function MediaDistributionPage() {
     setPromoSuccess('');
     try {
       const session = await supabase.auth.getSession();
-      const token = session.data.session?.access_token;
+      const token = session.data.await getToken();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/redeem-promo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
