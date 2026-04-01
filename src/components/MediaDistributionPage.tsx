@@ -1642,48 +1642,144 @@ function SavedPostCard({
 // Inline version of PostComposerModal (no modal wrapper)
 
 
-function ThreadVideoPlayer({ src, fileName, onRemove }) {
-  const videoRef = React.useRef(null);
-  const [playing, setPlaying] = React.useState(false);
+function ThreadVideoPlayer({ src, fileName, onRemove }: { src: string; fileName: string; onRemove: () => void }) {
+  const videoRef   = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying]         = useState(true);
+  const [muted, setMuted]             = useState(true);
+  const [volume, setVolume]           = useState(1);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration]       = useState(0);
+  const [showVolume, setShowVolume]   = useState(false);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
     v.muted = true;
-    v.play().catch(() => setPlaying(false));
+    const t = setTimeout(() => { v.play().catch(() => setPlaying(false)); }, 0);
+    return () => clearTimeout(t);
   }, [src]);
 
   const togglePlay = () => {
     const v = videoRef.current; if (!v) return;
     if (v.paused) { v.play(); setPlaying(true); }
-    else { v.pause(); setPlaying(false); }
+    else          { v.pause(); setPlaying(false); }
+  };
+
+  const handleTimeUpdate     = () => setCurrentTime(videoRef.current?.currentTime ?? 0);
+  const handleLoadedMetadata = () => {
+    const v = videoRef.current; if (!v) return;
+    setDuration(v.duration ?? 0);
+    if (v.paused) v.play().catch(() => setPlaying(false));
+  };
+
+  const handleScrub = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const t = parseFloat(e.target.value);
+    if (videoRef.current) videoRef.current.currentTime = t;
+    setCurrentTime(t);
+  };
+
+  const toggleMute = () => {
+    const v = videoRef.current; if (!v) return;
+    const newMuted = !v.muted;
+    v.muted = newMuted;
+    setMuted(newMuted);
+    if (!newMuted && v.volume === 0) { v.volume = 1; setVolume(1); }
+  };
+
+  const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = parseFloat(e.target.value);
+    if (videoRef.current) { videoRef.current.volume = val; videoRef.current.muted = val === 0; }
+    setVolume(val);
+    setMuted(val === 0);
+  };
+
+  const handleFullscreen = () => {
+    const v = videoRef.current; if (!v) return;
+    if (v.requestFullscreen) v.requestFullscreen();
+    else if ((v as any).webkitEnterFullscreen) (v as any).webkitEnterFullscreen();
+  };
+
+  const fmt = (s: number) => {
+    if (!isFinite(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    return `${m}:${Math.floor(s % 60).toString().padStart(2, '0')}`;
   };
 
   return (
     <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER, background: '#000' }}>
-      <div className="relative">
+      <div className="relative bg-black">
         <video
           ref={videoRef}
           src={src}
           className="w-full block object-contain"
-          style={{ maxHeight: '200px', cursor: 'pointer' }}
-          playsInline
-          muted
-          loop
-          onClick={togglePlay}
+          playsInline autoPlay muted preload="auto" loop
+          onTimeUpdate={handleTimeUpdate}
+          onLoadedMetadata={handleLoadedMetadata}
+          onLoadedData={() => { const v = videoRef.current; if (v) { v.muted = true; v.play().catch(() => setPlaying(false)); } }}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
+          onClick={togglePlay}
+          style={{ cursor: 'pointer', maxHeight: '60vh' }}
         />
+        {!playing && (
+          <button onClick={togglePlay} className="absolute inset-0 flex items-center justify-center group"
+            style={{ background: 'rgba(0,0,0,0.4)' }}>
+            <div className="w-14 h-14 rounded-full flex items-center justify-center transition group-hover:scale-105"
+              style={{ background: 'rgba(0,0,0,0.75)', border: `2px solid ${GOLD}` }}>
+              <Play className="w-6 h-6 ml-0.5" style={{ color: GOLD }} />
+            </div>
+          </button>
+        )}
+        {muted && playing && (
+          <button onClick={toggleMute}
+            className="absolute bottom-3 left-3 flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-xs font-bold transition hover:scale-105"
+            style={{ background: 'rgba(0,0,0,0.75)', color: 'rgba(255,255,255,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
+            <VolumeX className="w-3.5 h-3.5" />
+            <span>Tap to unmute</span>
+          </button>
+        )}
         <button onClick={onRemove}
           className="absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center transition hover:scale-110"
           style={{ background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)' }}>
           <X className="w-3.5 h-3.5 text-white/70" />
         </button>
       </div>
-      <div className="px-3 py-2 flex items-center gap-2" style={{ background: 'rgba(0,0,0,0.5)' }}>
-        <Video className="w-3.5 h-3.5 shrink-0" style={{ color: GOLD }} />
-        <span className="text-xs text-white/50 truncate flex-1">{fileName}</span>
-        <span className="text-[10px] text-green-400 font-bold shrink-0">Ready</span>
+      <div className="px-3 py-2 space-y-1.5" style={{ background: 'rgba(0,0,0,0.7)' }}>
+        <input type="range" min={0} max={duration || 1} step={0.1} value={currentTime}
+          onChange={handleScrub}
+          className="w-full h-1 rounded-full appearance-none cursor-pointer"
+          style={{ accentColor: GOLD }} />
+        <div className="flex items-center gap-2">
+          <button onClick={togglePlay}
+            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition shrink-0"
+            style={{ color: GOLD }}>
+            {playing ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5 ml-0.5" />}
+          </button>
+          <span className="text-[10px] font-mono text-white/40 shrink-0 tabular-nums">
+            {fmt(currentTime)} / {fmt(duration)}
+          </span>
+          <div className="flex-1 min-w-0">
+            <span className="text-[10px] text-white/30 truncate block">{fileName}</span>
+          </div>
+          <div className="flex items-center gap-1"
+            onMouseEnter={() => setShowVolume(true)}
+            onMouseLeave={() => setShowVolume(false)}>
+            <button onClick={toggleMute}
+              className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/50 hover:text-white">
+              {muted || volume === 0 ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+            </button>
+            <div className={`overflow-hidden transition-all duration-200 ${showVolume ? 'w-16 opacity-100' : 'w-0 opacity-0 pointer-events-none'}`}>
+              <input type="range" min={0} max={1} step={0.05} value={muted ? 0 : volume}
+                onChange={handleVolume}
+                className="w-16 h-1 rounded-full appearance-none cursor-pointer"
+                style={{ accentColor: GOLD }} />
+            </div>
+          </div>
+          <button onClick={handleFullscreen}
+            className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition text-white/40 hover:text-white shrink-0">
+            <Maximize2 className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );
