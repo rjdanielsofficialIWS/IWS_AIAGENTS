@@ -24,7 +24,7 @@ async function getToken(): Promise<string> {
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
 const GOLD_D  = '#8F6B1E';
-const BG      = 'linear-gradient(160deg, #0f1823 0%, #162035 50%, #0b1020 100%)';
+const BG      = 'linear-gradient(135deg, #141414 0%, #2a2a2a 50%, #1a1a1a 100%)';
 const SURFACE = 'rgba(255,255,255,0.055)';
 const BORDER  = 'rgba(255,255,255,0.10)';
 
@@ -6623,7 +6623,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
               <Send className="w-4 h-4 text-black" />
             </div>
             <div className="leading-none">
-              <div className="text-xs font-black text-white">INFINITE</div>
+              <div className="text-xs font-bold tracking-widest text-white/90">INFINITE</div>
               <div className="text-xs font-bold mt-0.5" style={{ color: GOLD }}>MEDIA</div>
             </div>
           </div>
@@ -6640,7 +6640,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
             </button>
             {wsSwitcherOpen && (
               <div className="absolute left-3 right-3 top-full mt-1 rounded-xl border z-50 overflow-hidden shadow-xl"
-                style={{ background: '#141c2e', borderColor: BORDER }}>
+                style={{ background: '#1c1c1c', borderColor: BORDER }}>
                 <button
                   onClick={() => { onSwitchWorkspace(null); setWsSwitcherOpen(false); }}
                   className="w-full text-left px-3 py-2 text-xs font-bold transition hover:bg-white/5"
@@ -6681,7 +6681,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
         </nav>
         <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: BORDER }}>
           <div className="flex items-center justify-between px-1 mb-2">
-            <span className="text-xs font-bold text-white/25 uppercase tracking-wider">Channels</span>
+            <span className="text-xs font-bold text-white/40 uppercase tracking-wider">Channels</span>
             <button onClick={onOpenConnect} className="w-5 h-5 rounded-md flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition">
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -6712,7 +6712,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
       </aside>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t"
-        style={{ background: '#0d1426', borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        style={{ background: '#111111', borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)', backdropFilter: 'blur(12px)' }}>
         {navItems.map(item => (
           <button key={item.id} onClick={() => setView(item.id)}
             className="relative flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
@@ -6772,7 +6772,7 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { ema
         <ChevronDown className="w-3 h-3 hidden sm:block" style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, borderRadius: 12, background: 'linear-gradient(160deg, #141c2e, #101826)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 200, animation: 'dropIn 0.15s cubic-bezier(0.34,1.56,0.64,1)' }}>
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, borderRadius: 12, background: 'linear-gradient(160deg, #1c1c1c, #161616)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 200, animation: 'dropIn 0.15s cubic-bezier(0.34,1.56,0.64,1)' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Signed in as</div>
             <div style={{ fontSize: 13, color: 'white', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
@@ -6807,8 +6807,8 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
       initial={{ opacity: 0, y: -8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0"
-      style={{ background: SURFACE, borderColor: BORDER }}
+      className="h-14 border-b flex items-center justify-between px-4 md:px-6 shrink-0"
+      style={{ background: 'rgba(20,20,20,0.95)', borderColor: BORDER }}
     >
       <div className="flex items-center gap-3">
         <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-white transition">
@@ -7498,10 +7498,7 @@ export function MediaDistributionPage() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
         * { box-sizing: border-box; }
-        html, body {
-          background: #0f1823 fixed !important;
-          min-height: 100vh;
-        }
+        html, body { background: #141414 fixed !important; min-height: 100vh; }
         @keyframes mmFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
         @keyframes mmPulse  { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.05); } }
         @keyframes goldShimmerSweep { 0% { background-position: 0% 50%; } 55% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
@@ -7521,7 +7518,7 @@ export function MediaDistributionPage() {
           .mm-pricing-backdrop { align-items: center !important; padding: 16px !important; }
           .mm-pricing-sheet { border-radius: 24px !important; border-bottom: 1px solid rgba(255,255,255,0.1) !important; max-height: 90vh !important; }
         }
-        .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 4.8s ease-in-out infinite; }
+        .mm-gold-shimmer { background-image: linear-gradient(110deg, #b9892b 0%, #f7dc8a 20%, #ffffff 30%, #f1d27b 40%, #b9892b 60%, #f7dc8a 80%, #ffffff 90%, #b9892b 100%); background-size: 240% 100%; background-position: 0% 50%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: goldShimmerSweep 8s ease-in-out infinite; }
         .lg\:divide-x > * + * { border-left-width: 1px; border-color: rgba(255,255,255,0.08); }
         /* Platform icon strip visibility */
         .mm-icons-mobile  { display: block; }
@@ -7569,9 +7566,6 @@ export function MediaDistributionPage() {
         </div>
       ) : !currentUser ? (
         <div className="flex-1" style={{ position: 'relative', display: 'flex', alignItems: 'stretch', overflowY: 'auto', overflowX: 'hidden', WebkitOverflowScrolling: 'touch' }}>
-          {/* Background glows */}
-          <div style={{ position: 'absolute', width: 640, height: 640, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}07 0%, transparent 65%)`, top: '50%', left: '30%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
-          <div style={{ position: 'absolute', width: 300, height: 300, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}05 0%, transparent 65%)`, top: '10%', right: '8%', pointerEvents: 'none', animation: 'mmPulse 9s ease-in-out 2s infinite' }} />
 
           <div className="mm-hero-layout relative" style={{ width: '100%' }}>
 
@@ -7589,7 +7583,7 @@ export function MediaDistributionPage() {
 
               {/* Badge */}
               <div className="mm-hero-badge" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: `${GOLD}10`, border: `1px solid ${GOLD}22`, borderRadius: 999, padding: '4px 12px', marginBottom: 16 }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, display: 'inline-block', animation: 'mmPulse 2s ease-in-out infinite' }} />
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, display: 'inline-block' }} />
                 <span style={{ color: GOLD, fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em' }}>AI-Powered Content Engine</span>
               </div>
 
@@ -7604,7 +7598,7 @@ export function MediaDistributionPage() {
 
 
               {/* Stats */}
-              <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden', width: '100%', maxWidth: 400 }}>
+              <div style={{ display: 'flex', gap: 0, marginBottom: 20, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 14, overflow: 'hidden', width: '100%', maxWidth: 400 }}>
                 {[{ v: '12', l: 'Platforms' }, { v: '24/7', l: 'Content Strategist' }, { v: '6-in-1', l: 'AI Tools' }].map((s, i) => (
                   <div key={s.l} style={{ flex: 1, padding: '14px 8px', textAlign: 'center', borderLeft: i > 0 ? '1px solid rgba(255,255,255,0.06)' : 'none' }}>
                     <div style={{ color: GOLD, fontWeight: 900, fontSize: 20, letterSpacing: '-0.02em' }}>{s.v}</div>
@@ -7633,7 +7627,7 @@ export function MediaDistributionPage() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9, width: '100%', maxWidth: 400, marginBottom: 20 }}>
                 <button
                   onClick={() => setAuthModalOpen(true)}
-                  style={{ width: '100%', padding: '16px 0', borderRadius: 14, fontSize: 16, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, color: '#000', border: 'none', boxShadow: `0 8px 28px ${GOLD}40`, letterSpacing: '-0.01em', transition: 'filter 0.15s' }}
+                  style={{ width: '100%', padding: '16px 0', borderRadius: 14, fontSize: 16, fontWeight: 800, cursor: 'pointer', background: `linear-gradient(135deg, ${GOLD_D} 0%, ${GOLD_L} 100%)`, color: '#000', border: 'none', boxShadow: `0 8px 28px ${GOLD}40`, letterSpacing: '-0.01em', transition: 'filter 0.15s' }}
                   onMouseEnter={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1.1)'}
                   onMouseLeave={e => (e.currentTarget as HTMLElement).style.filter = 'brightness(1)'}
                 >
@@ -7698,7 +7692,7 @@ export function MediaDistributionPage() {
                   <motion.div
                     key={f.title}
                     variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } } }}
-                    style={{ padding: '20px', borderRadius: 16, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 12, cursor: 'default' }}
+                    style={{ padding: '20px', borderRadius: 16, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', display: 'flex', flexDirection: 'column', gap: 12, cursor: 'default' }}
                     whileHover={{ borderColor: `${GOLD}35`, background: `${GOLD}07` }}
                   >
                     <div style={{ width: 32, height: 32, borderRadius: 9, background: `${GOLD}14`, border: `1px solid ${GOLD}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD }}>
@@ -7737,7 +7731,7 @@ export function MediaDistributionPage() {
               </motion.div>
             );
             if (_isTrialing) return (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ background: `linear-gradient(90deg,${GOLD_D}22,${GOLD}18,${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '6px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: 8 }}>
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ background: `rgba(214,178,94,0.10)`, borderBottom: `1px solid ${GOLD}30`, padding: '6px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>🎉 Free trial active</span>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: `${GOLD}25`, color: GOLD_L, border: `1px solid ${GOLD}40`, textTransform: 'capitalize' }}>{subscription?.plan} Plan</span>
@@ -7753,7 +7747,7 @@ export function MediaDistributionPage() {
               </motion.div>
             );
             if (!_isActive) return (
-              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ background: `rgba(214,178,94,0.10)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
                 <button onClick={() => setPricingOpen(true)} style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>

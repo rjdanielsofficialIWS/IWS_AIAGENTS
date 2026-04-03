@@ -89,7 +89,6 @@ export function DashboardOverview({ onNavigate }: Props) {
   return (
     <>
       <style>{`
-        @keyframes ovIconPulse { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 0.85; transform: scale(1.08); } }
         .ov-stat { transition: transform 0.2s, box-shadow 0.2s; }
         .ov-stat:hover { transform: translateY(-3px); box-shadow: 0 24px 60px rgba(0,0,0,0.55) !important; }
         .ov-qs { cursor: pointer; transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s; }
@@ -103,7 +102,7 @@ export function DashboardOverview({ onNavigate }: Props) {
 
       {/* Welcome header */}
       <div style={{ marginBottom: 32 }}>
-        <div style={{ fontSize: 26, fontWeight: 900, letterSpacing: '-0.04em', color: 'white', lineHeight: 1.2, marginBottom: 8 }}>
+        <div style={{ fontSize: 24, fontWeight: 900, letterSpacing: '-0.03em', color: 'white', lineHeight: 1.2, marginBottom: 8 }}>
           Welcome to{' '}
           <span style={{
             background: `linear-gradient(90deg, ${GOLD_D} 0%, ${GOLD} 40%, ${GOLD_L} 60%, ${GOLD} 80%, ${GOLD_D} 100%)`,
@@ -133,19 +132,14 @@ export function DashboardOverview({ onNavigate }: Props) {
               variants={itemVariants}
               whileHover={{ y: -3, transition: { duration: 0.2 } }}
               style={{
-                background: 'linear-gradient(160deg, rgba(15,24,40,0.95) 0%, rgba(11,18,30,0.95) 100%)',
-                border: '1px solid rgba(255,255,255,0.07)',
+                background: 'linear-gradient(160deg, rgba(20,20,20,0.95) 0%, rgba(14,14,14,0.95) 100%)',
+                border: '1px solid rgba(255,255,255,0.09)',
                 borderRadius: 16,
-                padding: '20px',
+                padding: '22px 24px',
                 boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
               }}
             >
               <div style={{ position: 'relative', display: 'inline-flex', marginBottom: 16 }}>
-                <div style={{
-                  position: 'absolute', inset: -5, borderRadius: '50%',
-                  background: s.glow, filter: 'blur(10px)',
-                  animation: 'ovIconPulse 4s ease-in-out infinite',
-                }} />
                 <div style={{
                   position: 'relative', width: 38, height: 38, borderRadius: 10,
                   background: s.glow, border: `1px solid ${s.color}28`,
@@ -154,7 +148,7 @@ export function DashboardOverview({ onNavigate }: Props) {
                   <Icon size={17} style={{ color: s.color }} />
                 </div>
               </div>
-              <div style={{ fontSize: 34, fontWeight: 900, color: 'white', letterSpacing: '-0.06em', lineHeight: 1, marginBottom: 4 }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: 'white', letterSpacing: '-0.06em', lineHeight: 1, marginBottom: 4 }}>
                 {s.value.toLocaleString()}
               </div>
               <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.35)', fontWeight: 500, marginBottom: s.cta ? 14 : 0 }}>
@@ -210,26 +204,18 @@ export function DashboardOverview({ onNavigate }: Props) {
                 className="ov-qs"
                 onClick={() => onNavigate?.(qs.page)}
                 style={{
-                  background: 'rgba(13,20,34,0.9)',
+                  background: 'rgba(16,16,16,0.9)',
                   border: '1px solid rgba(255,255,255,0.07)',
-                  borderRadius: 14,
+                  borderRadius: 12,
                   padding: '18px',
                   display: 'flex', flexDirection: 'column', gap: 10,
                 }}
-                onMouseEnter={e => {
-                  const el = e.currentTarget as HTMLElement;
-                  el.style.borderColor = qs.border;
-                  el.style.boxShadow = `0 12px 40px ${qs.glow}`;
-                }}
-                onMouseLeave={e => {
-                  const el = e.currentTarget as HTMLElement;
-                  el.style.borderColor = 'rgba(255,255,255,0.07)';
-                  el.style.boxShadow = 'none';
-                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = qs.border; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; }}
               >
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
                   <div style={{
-                    width: 34, height: 34, borderRadius: 9,
+                    width: 32, height: 32, borderRadius: 8,
                     background: qs.glow, border: `1px solid ${qs.border}`,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                   }}>
@@ -255,7 +241,7 @@ export function DashboardOverview({ onNavigate }: Props) {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.3 }}
         style={{
-          background: 'linear-gradient(160deg, rgba(14,22,36,0.9) 0%, rgba(10,16,28,0.9) 100%)',
+          background: 'linear-gradient(160deg, rgba(18,18,18,0.9) 0%, rgba(13,13,13,0.9) 100%)',
           border: '1px solid rgba(255,255,255,0.06)',
           borderRadius: 16,
           overflow: 'hidden',
@@ -274,14 +260,14 @@ export function DashboardOverview({ onNavigate }: Props) {
         </div>
         <div style={{ padding: '44px 20px', textAlign: 'center' }}>
           <div style={{
-            width: 46, height: 46, borderRadius: 13,
+            width: 46, height: 46, borderRadius: 10,
             background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 14px',
           }}>
             <MessageSquare size={18} style={{ color: 'rgba(255,255,255,0.18)' }} />
           </div>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.22)', marginBottom: 5 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'rgba(255,255,255,0.35)', marginBottom: 5 }}>
             No activity yet
           </div>
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.14)', lineHeight: 1.7 }}>

@@ -63,15 +63,9 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
     <>
       <style>{`
         @keyframes dashFade { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-        @keyframes dashShimmer {
-          0%   { background-position: -200% center; }
-          100% { background-position:  200% center; }
-        }
         .dash-logo-text {
-          background: linear-gradient(90deg, ${GOLD_D} 0%, ${GOLD} 40%, ${GOLD_L} 55%, ${GOLD} 70%, ${GOLD_D} 100%);
-          background-size: 200% auto;
+          background: linear-gradient(135deg, ${GOLD} 0%, ${GOLD_L} 100%);
           -webkit-background-clip: text; background-clip: text; color: transparent;
-          animation: dashShimmer 4s linear infinite;
         }
         .dash-nav-item {
           width: 100%; display: flex; align-items: center; gap: 11px;
@@ -81,20 +75,20 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
           background: transparent; color: rgba(255,255,255,0.45);
         }
         .dash-nav-item:hover {
-          background: rgba(255,255,255,0.05) !important;
-          color: rgba(255,255,255,0.8) !important;
-          border-color: rgba(255,255,255,0.06) !important;
+          background: rgba(255,255,255,0.06) !important;
+          color: rgba(255,255,255,0.85) !important;
+          border-color: rgba(255,255,255,0.08) !important;
         }
         .dash-nav-item.active {
-          background: linear-gradient(135deg, ${GOLD}14, ${GOLD}08) !important;
-          border-color: ${GOLD}35 !important;
+          background: rgba(255,255,255,0.06) !important;
+          border-color: rgba(255,255,255,0.10) !important;
           color: ${GOLD_L} !important;
-          box-shadow: inset 3px 0 0 ${GOLD} !important;
+          border-left: 2px solid ${GOLD} !important;
         }
         .dash-section-label {
           display: flex; align-items: center; gap: 8px;
-          font-size: 9px; font-weight: 800; letter-spacing: 0.1em;
-          text-transform: uppercase; color: rgba(255,255,255,0.18);
+          font-size: 10px; font-weight: 800; letter-spacing: 0.1em;
+          text-transform: uppercase; color: rgba(255,255,255,0.25);
           padding: 0 8px;
         }
         .dash-section-label::before {
@@ -111,7 +105,7 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
         .dash-content { animation: dashFade 0.35s cubic-bezier(0.16,1,0.3,1) both; }
       `}</style>
 
-      <div style={{ minHeight: '100vh', background: '#0f1623', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
+      <div style={{ minHeight: '100vh', background: '#0e0e0e', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
         {/* Sidebar */}
         <motion.aside
@@ -119,8 +113,8 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
           transition={{ duration: 0.2, ease: 'easeInOut' }}
           style={{
             minHeight: '100vh',
-            background: 'rgba(10,18,38,0.98)',
-            borderRight: '1px solid rgba(255,255,255,0.06)',
+            background: 'rgba(12,12,12,0.98)',
+            borderRight: '1px solid rgba(255,255,255,0.08)',
             display: 'flex', flexDirection: 'column',
             padding: '20px 12px',
             position: 'fixed', top: 0, left: 0, bottom: 0,
@@ -130,10 +124,12 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28, paddingLeft: 4 }}>
             <div style={{ position: 'relative', flexShrink: 0 }}>
-              <div style={{ position: 'absolute', inset: -4, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}35 0%, transparent 70%)`, filter: 'blur(6px)' }} />
-              <div style={{ position: 'relative', width: 36, height: 36, borderRadius: 10, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 4px 18px ${GOLD}40` }}>
+              <motion.div
+                whileHover={{ scale: 1.05 }}
+                transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+                style={{ position: 'relative', width: 36, height: 36, borderRadius: 8, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: `0 2px 10px ${GOLD}30` }}>
                 <Zap size={17} color="#000" strokeWidth={2.5} />
-              </div>
+              </motion.div>
             </div>
             {!collapsed && (
               <div>
@@ -185,7 +181,6 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
                         >
                           <Icon size={16} style={{ flexShrink: 0 }} />
                           {!collapsed && <span>{item.label}</span>}
-                          {!collapsed && isActive && <div style={{ marginLeft: 'auto', width: 5, height: 5, borderRadius: '50%', background: GOLD, boxShadow: `0 0 6px ${GOLD}` }} />}
                         </motion.button>
                       );
                     })}
@@ -203,7 +198,7 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
             style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14 }}
           >
             {!collapsed ? (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', marginBottom: 8 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.09)', marginBottom: 8 }}>
                 <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#000', flexShrink: 0 }}>
                   {initials}
                 </div>
@@ -252,12 +247,12 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
             padding: '18px 0 14px',
             marginBottom: 24,
             borderBottom: '1px solid rgba(255,255,255,0.05)',
-            background: 'linear-gradient(to bottom, #0f1623 65%, rgba(15,22,35,0.75) 100%)',
+            background: 'linear-gradient(to bottom, #0e0e0e 65%, rgba(14,14,14,0.75) 100%)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
           }}>
             <div>
-              <h1 style={{ fontSize: 20, fontWeight: 800, color: 'white', letterSpacing: '-0.035em', margin: 0, lineHeight: 1.2 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 800, color: 'white', letterSpacing: '-0.035em', margin: 0, lineHeight: 1.2 }}>
                 {humanizePageTitle(currentPage)}
               </h1>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.22)', marginTop: 3, fontWeight: 500 }}>
