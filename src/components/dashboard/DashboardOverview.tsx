@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Brain, Phone, MessageSquare, TrendingUp, Plus, Zap, Code, ArrowRight } from 'lucide-react';
 
 const GOLD   = '#D6B25E';
@@ -8,6 +9,16 @@ const GOLD_D = '#8F6B1E';
 interface Props {
   onNavigate?: (page: string) => void;
 }
+
+const containerVariants = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.08 } },
+};
+
+const itemVariants = {
+  hidden: { opacity: 0, y: 16 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
+};
 
 export function DashboardOverview({ onNavigate }: Props) {
   const stats = [
@@ -108,15 +119,21 @@ export function DashboardOverview({ onNavigate }: Props) {
       </div>
 
       {/* Stats grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 32 }}>
+      <motion.div
+        variants={containerVariants}
+        initial="hidden"
+        animate="visible"
+        style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 14, marginBottom: 32 }}
+      >
         {stats.map(s => {
           const Icon = s.icon;
           return (
-            <div
+            <motion.div
               key={s.label}
-              className="ov-stat"
+              variants={itemVariants}
+              whileHover={{ y: -3, transition: { duration: 0.2 } }}
               style={{
-                background: 'linear-gradient(160deg, rgba(18,18,18,0.95) 0%, rgba(11,11,11,0.95) 100%)',
+                background: 'linear-gradient(160deg, rgba(15,24,40,0.95) 0%, rgba(11,18,30,0.95) 100%)',
                 border: '1px solid rgba(255,255,255,0.07)',
                 borderRadius: 16,
                 padding: '20px',
@@ -158,13 +175,18 @@ export function DashboardOverview({ onNavigate }: Props) {
                   {s.cta.label}
                 </button>
               )}
-            </div>
+            </motion.div>
           );
         })}
-      </div>
+      </motion.div>
 
       {/* Quick start */}
-      <div style={{ marginBottom: 32 }}>
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
+        style={{ marginBottom: 32 }}
+      >
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'rgba(255,255,255,0.7)', letterSpacing: '-0.02em' }}>
             Quick Start
@@ -188,7 +210,7 @@ export function DashboardOverview({ onNavigate }: Props) {
                 className="ov-qs"
                 onClick={() => onNavigate?.(qs.page)}
                 style={{
-                  background: 'rgba(13,13,13,0.9)',
+                  background: 'rgba(13,20,34,0.9)',
                   border: '1px solid rgba(255,255,255,0.07)',
                   borderRadius: 14,
                   padding: '18px',
@@ -225,15 +247,19 @@ export function DashboardOverview({ onNavigate }: Props) {
             );
           })}
         </div>
-      </div>
+      </motion.div>
 
       {/* Activity feed */}
-      <div style={{
-        background: 'linear-gradient(160deg, rgba(16,16,16,0.9) 0%, rgba(10,10,10,0.9) 100%)',
-        border: '1px solid rgba(255,255,255,0.06)',
-        borderRadius: 16,
-        overflow: 'hidden',
-      }}>
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+        style={{
+          background: 'linear-gradient(160deg, rgba(14,22,36,0.9) 0%, rgba(10,16,28,0.9) 100%)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 16,
+          overflow: 'hidden',
+        }}>
         <div style={{
           padding: '16px 20px',
           borderBottom: '1px solid rgba(255,255,255,0.05)',
@@ -262,7 +288,7 @@ export function DashboardOverview({ onNavigate }: Props) {
             Create an assistant and make your first call<br />to see your activity here.
           </div>
         </div>
-      </div>
+      </motion.div>
     </>
   );
 }

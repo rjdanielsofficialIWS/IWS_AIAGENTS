@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft, Loader, CheckCircle2, AlertCircle, Sparkles, X,
@@ -23,9 +24,9 @@ async function getToken(): Promise<string> {
 const GOLD    = '#D6B25E';
 const GOLD_L  = '#F0D27C';
 const GOLD_D  = '#8F6B1E';
-const BG      = 'linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%)';
-const SURFACE = 'rgba(255,255,255,0.04)';
-const BORDER  = 'rgba(255,255,255,0.08)';
+const BG      = 'linear-gradient(160deg, #0f1823 0%, #162035 50%, #0b1020 100%)';
+const SURFACE = 'rgba(255,255,255,0.055)';
+const BORDER  = 'rgba(255,255,255,0.10)';
 
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -6639,7 +6640,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
             </button>
             {wsSwitcherOpen && (
               <div className="absolute left-3 right-3 top-full mt-1 rounded-xl border z-50 overflow-hidden shadow-xl"
-                style={{ background: '#1a1a1f', borderColor: BORDER }}>
+                style={{ background: '#141c2e', borderColor: BORDER }}>
                 <button
                   onClick={() => { onSwitchWorkspace(null); setWsSwitcherOpen(false); }}
                   className="w-full text-left px-3 py-2 text-xs font-bold transition hover:bg-white/5"
@@ -6669,11 +6670,13 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
         )}
         <nav className="px-3 py-4 space-y-0.5">
           {navItems.map(item => (
-            <button key={item.id} onClick={() => setView(item.id)}
+            <motion.button key={item.id} onClick={() => setView(item.id)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition"
-              style={{ background: view === item.id ? `${GOLD}15` : 'transparent', color: view === item.id ? GOLD_L : 'rgba(255,255,255,0.4)', borderLeft: view === item.id ? `2px solid ${GOLD}` : '2px solid transparent' }}>
+              style={{ background: view === item.id ? `${GOLD}15` : 'transparent', color: view === item.id ? GOLD_L : 'rgba(255,255,255,0.4)', borderLeft: view === item.id ? `2px solid ${GOLD}` : '2px solid transparent' }}
+              whileHover={{ x: 3 }}
+              whileTap={{ scale: 0.97 }}>
               {item.icon} {item.label}
-            </button>
+            </motion.button>
           ))}
         </nav>
         <div className="px-3 py-4 border-t mt-auto" style={{ borderColor: BORDER }}>
@@ -6709,7 +6712,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
       </aside>
 
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t"
-        style={{ background: '#0d0d0f', borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)' }}>
+        style={{ background: '#0d1426', borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {navItems.map(item => (
           <button key={item.id} onClick={() => setView(item.id)}
             className="relative flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
@@ -6769,7 +6772,7 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { ema
         <ChevronDown className="w-3 h-3 hidden sm:block" style={{ color: 'rgba(255,255,255,0.3)', transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
       </button>
       {open && (
-        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, borderRadius: 12, background: 'linear-gradient(160deg, #1a1a1a, #161616)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 200, animation: 'dropIn 0.15s cubic-bezier(0.34,1.56,0.64,1)' }}>
+        <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, minWidth: 200, borderRadius: 12, background: 'linear-gradient(160deg, #141c2e, #101826)', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 16px 48px rgba(0,0,0,0.6)', overflow: 'hidden', zIndex: 200, animation: 'dropIn 0.15s cubic-bezier(0.34,1.56,0.64,1)' }}>
           <div style={{ padding: '12px 14px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
             <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.3)', marginBottom: 2, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Signed in as</div>
             <div style={{ fontSize: 13, color: 'white', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.email}</div>
@@ -6800,7 +6803,13 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
   onManagePlan?: () => void;
 }) {
   return (
-    <div className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0" style={{ background: SURFACE, borderColor: BORDER }}>
+    <motion.div
+      initial={{ opacity: 0, y: -8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="h-12 border-b flex items-center justify-between px-4 md:px-6 shrink-0"
+      style={{ background: SURFACE, borderColor: BORDER }}
+    >
       <div className="flex items-center gap-3">
         <Link to="/" className="flex items-center gap-1.5 text-xs font-semibold text-white/30 hover:text-white transition">
           <ArrowLeft className="w-3.5 h-3.5" />
@@ -6844,7 +6853,7 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
           </button>
         )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -7490,7 +7499,7 @@ export function MediaDistributionPage() {
         @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800;0,9..40,900;1,9..40,400&display=swap');
         * { box-sizing: border-box; }
         html, body {
-          background: linear-gradient(135deg, #0d0d0d 0%, #242424 50%, #131313 100%) fixed !important;
+          background: #0f1823 fixed !important;
           min-height: 100vh;
         }
         @keyframes mmFadeUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
@@ -7564,10 +7573,15 @@ export function MediaDistributionPage() {
           <div style={{ position: 'absolute', width: 640, height: 640, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}07 0%, transparent 65%)`, top: '50%', left: '30%', transform: 'translate(-50%,-50%)', pointerEvents: 'none', animation: 'mmPulse 6s ease-in-out infinite' }} />
           <div style={{ position: 'absolute', width: 300, height: 300, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}05 0%, transparent 65%)`, top: '10%', right: '8%', pointerEvents: 'none', animation: 'mmPulse 9s ease-in-out 2s infinite' }} />
 
-          <div className="mm-hero-layout relative" style={{ animation: 'mmFadeUp 0.5s ease both', width: '100%' }}>
+          <div className="mm-hero-layout relative" style={{ width: '100%' }}>
 
             {/* ── Left: branding + CTAs ── */}
-            <div className="mm-hero-left">
+            <motion.div
+              className="mm-hero-left"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: 'easeOut' }}
+            >
               {/* Logo */}
               <div style={{ width: 72, height: 72, borderRadius: 20, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD}, ${GOLD_L})`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 20, boxShadow: `0 12px 40px ${GOLD}40`, flexShrink: 0 }}>
                 <Send size={22} color="#000" />
@@ -7642,10 +7656,16 @@ export function MediaDistributionPage() {
                   Earn 20% recurring commission for every referral. Your audience gets 20% off their first month.
                 </p>
               </div>
-            </div>
+            </motion.div>
 
             {/* ── Right: feature cards ── */}
-            <div className="mm-hero-right" style={{ marginTop: '32px' }}>
+            <motion.div
+              className="mm-hero-right"
+              style={{ marginTop: '32px' }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, ease: 'easeOut', delay: 0.15 }}
+            >
 
               {/* Platform icons — DESKTOP ONLY (hidden on mobile, mobile shows in left col) */}
               <div className="mm-icons-desktop" style={{ marginBottom: 20, width: '100%' }}>
@@ -7661,7 +7681,12 @@ export function MediaDistributionPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, width: '100%' }}>
+              <motion.div
+                style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 14, width: '100%' }}
+                variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.07, delayChildren: 0.2 } } }}
+                initial="hidden"
+                animate="visible"
+              >
                 {[
                   { icon: <Video size={15} />,      title: 'AI Video Generation',       desc: 'Cinematic AI video from a single image. No editing required.' },
                   { icon: <Sparkles size={15} />,   title: 'AI Caption Generator',      desc: 'Platform-specific captions engineered to stop the scroll.' },
@@ -7670,11 +7695,11 @@ export function MediaDistributionPage() {
                   { icon: <Film size={15} />,       title: 'Content Repurposing',        desc: 'Extract clips, tweets, blogs and threads from any video.' },
                   { icon: <Users size={15} />,      title: 'AI Voice Agents',            desc: '24/7 automated conversations that qualify and close leads.' },
                 ].map(f => (
-                  <div
+                  <motion.div
                     key={f.title}
-                    style={{ padding: '20px', borderRadius: 16, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 12, transition: 'border-color 0.2s, background 0.2s', cursor: 'default' }}
-                    onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = `${GOLD}35`; (e.currentTarget as HTMLElement).style.background = `${GOLD}07`; }}
-                    onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.07)'; (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.025)'; }}
+                    variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0, transition: { duration: 0.35, ease: 'easeOut' } } }}
+                    style={{ padding: '20px', borderRadius: 16, background: 'rgba(255,255,255,0.025)', border: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', gap: 12, cursor: 'default' }}
+                    whileHover={{ borderColor: `${GOLD}35`, background: `${GOLD}07` }}
                   >
                     <div style={{ width: 32, height: 32, borderRadius: 9, background: `${GOLD}14`, border: `1px solid ${GOLD}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: GOLD }}>
                       {f.icon}
@@ -7683,10 +7708,10 @@ export function MediaDistributionPage() {
                       <div style={{ color: 'white', fontWeight: 700, fontSize: 13, marginBottom: 4 }}>{f.title}</div>
                       <div style={{ color: 'rgba(255,255,255,0.32)', fontSize: 12, lineHeight: 1.6 }}>{f.desc}</div>
                     </div>
-                  </div>
+                  </motion.div>
                 ))}
-              </div>
-            </div>
+              </motion.div>
+            </motion.div>
 
           </div>
         </div>
@@ -7704,15 +7729,15 @@ export function MediaDistributionPage() {
               ? Math.max(0, Math.ceil((new Date(subscription.current_period_end).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
               : null;
             if (_trialExpired) return (
-              <div style={{ background: 'linear-gradient(90deg,rgba(239,68,68,0.18),rgba(239,68,68,0.08),rgba(239,68,68,0.18))', borderBottom: '1px solid rgba(239,68,68,0.3)', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ background: 'linear-gradient(90deg,rgba(239,68,68,0.18),rgba(239,68,68,0.08),rgba(239,68,68,0.18))', borderBottom: '1px solid rgba(239,68,68,0.3)', padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
                 <span style={{ fontSize: 12, color: 'rgba(239,68,68,0.9)', fontWeight: 700 }}>⏰ Your free trial has ended.</span>
                 <button onClick={() => setPricingOpen(true)} style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0 }}>
                   Subscribe to keep access →
                 </button>
-              </div>
+              </motion.div>
             );
             if (_isTrialing) return (
-              <div style={{ background: `linear-gradient(90deg,${GOLD_D}22,${GOLD}18,${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '6px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: 8 }}>
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ background: `linear-gradient(90deg,${GOLD_D}22,${GOLD}18,${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '6px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0, gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500 }}>🎉 Free trial active</span>
                   <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20, background: `${GOLD}25`, color: GOLD_L, border: `1px solid ${GOLD}40`, textTransform: 'capitalize' }}>{subscription?.plan} Plan</span>
@@ -7725,16 +7750,16 @@ export function MediaDistributionPage() {
                     Subscribe →
                   </button>
                 </div>
-              </div>
+              </motion.div>
             );
             if (!_isActive) return (
-              <div style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} style={{ background: `linear-gradient(90deg, ${GOLD_D}22, ${GOLD}18, ${GOLD_D}22)`, borderBottom: `1px solid ${GOLD}30`, padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 0, flexWrap: 'wrap', textAlign: 'center' }}>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.65)', fontWeight: 500, whiteSpace: 'nowrap' }}>✨ Free preview</span>
                 <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.3)', display: 'inline' }}>—</span>
                 <button onClick={() => setPricingOpen(true)} style={{ fontSize: 12, fontWeight: 800, color: GOLD_L, background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline', textUnderlineOffset: 3, padding: 0, whiteSpace: 'nowrap' }}>
                   Upgrade to unlock AI video, scheduling & content repurposing
                 </button>
-              </div>
+              </motion.div>
             );
             return null;
           })()}
@@ -7750,23 +7775,34 @@ export function MediaDistributionPage() {
             onSwitchWorkspace={(id) => setActiveWorkspaceId(id)}
             onManageWorkspaces={() => setView('workspaces')} />
           <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
-            {/* K — pass activeIntegrations to ComposerPanel */}
-            {view === 'composer' && <ComposerPanel key={activeWorkspaceId ?? 'personal'} integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
-            {view === 'calendar' && <CalendarView key={activeWorkspaceId ?? 'personal'}  integrations={activeIntegrations} userId={currentUser?.id ?? null} workspaceId={activeWorkspaceId} onUpgrade={() => setPricingOpen(true)} />}
-            {view === 'planner'  && <PlannerPanel key={activeWorkspaceId ?? 'personal'}  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
-            {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
-              if (url.startsWith('repurpose:')) {
-                setVideoHandoff({ url: url.replace('repurpose:', ''), mode: 'text' });
-              } else if (url.startsWith('ideas:')) {
-                setVideoHandoff({ url: url.replace('ideas:', ''), mode: 'media' });
-              } else {
-                setVideoHandoff({ url, mode: 'media' });
-              }
-              setView('composer');
-            }} />}
-            {view === 'partner'  && <AffiliateDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
-            {/* J — WorkspacesPanel view */}
-            {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} wsChannelCounts={wsChannelCounts} />}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={view}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.2 }}
+                className="flex-1 flex flex-col min-h-0 h-full"
+              >
+                {/* K — pass activeIntegrations to ComposerPanel */}
+                {view === 'composer' && <ComposerPanel key={activeWorkspaceId ?? 'personal'} integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
+                {view === 'calendar' && <CalendarView key={activeWorkspaceId ?? 'personal'}  integrations={activeIntegrations} userId={currentUser?.id ?? null} workspaceId={activeWorkspaceId} onUpgrade={() => setPricingOpen(true)} />}
+                {view === 'planner'  && <PlannerPanel key={activeWorkspaceId ?? 'personal'}  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
+                {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
+                  if (url.startsWith('repurpose:')) {
+                    setVideoHandoff({ url: url.replace('repurpose:', ''), mode: 'text' });
+                  } else if (url.startsWith('ideas:')) {
+                    setVideoHandoff({ url: url.replace('ideas:', ''), mode: 'media' });
+                  } else {
+                    setVideoHandoff({ url, mode: 'media' });
+                  }
+                  setView('composer');
+                }} />}
+                {view === 'partner'  && <AffiliateDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
+                {/* J — WorkspacesPanel view */}
+                {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} wsChannelCounts={wsChannelCounts} />}
+              </motion.div>
+            </AnimatePresence>
           </main>
           </div>
 

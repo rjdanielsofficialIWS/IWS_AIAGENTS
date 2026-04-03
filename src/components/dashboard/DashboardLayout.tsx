@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   Brain, Phone, MessageSquare, Users, CreditCard,
   Key, Settings, LogOut, Code, Layout, ChevronRight,
@@ -62,7 +63,6 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
     <>
       <style>{`
         @keyframes dashFade { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
-        @keyframes dashOrb  { 0%,100% { transform: scale(1) translate(0,0); } 50% { transform: scale(1.1) translate(10px,-10px); } }
         @keyframes dashShimmer {
           0%   { background-position: -200% center; }
           100% { background-position:  200% center; }
@@ -111,24 +111,22 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
         .dash-content { animation: dashFade 0.35s cubic-bezier(0.16,1,0.3,1) both; }
       `}</style>
 
-      <div style={{ minHeight: '100vh', background: '#080808', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
-
-        {/* Background orbs */}
-        <div style={{ position: 'fixed', top: '20%', right: '30%', width: 600, height: 600, borderRadius: '50%', background: `radial-gradient(circle, ${GOLD}0c 0%, transparent 65%)`, filter: 'blur(80px)', animation: 'dashOrb 12s ease-in-out infinite', pointerEvents: 'none', zIndex: 0 }} />
-        <div style={{ position: 'fixed', bottom: '10%', left: '20%', width: 400, height: 400, borderRadius: '50%', background: 'radial-gradient(circle, rgba(99,102,241,0.06) 0%, transparent 65%)', filter: 'blur(60px)', pointerEvents: 'none', zIndex: 0 }} />
+      <div style={{ minHeight: '100vh', background: '#0f1623', display: 'flex', fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
         {/* Sidebar */}
-        <aside style={{
-          width: collapsed ? 68 : 232,
-          minHeight: '100vh',
-          background: 'rgba(10,10,10,0.98)',
-          borderRight: '1px solid rgba(255,255,255,0.06)',
-          display: 'flex', flexDirection: 'column',
-          padding: '20px 12px',
-          position: 'fixed', top: 0, left: 0, bottom: 0,
-          zIndex: 100, transition: 'width 0.2s ease',
-          backdropFilter: 'blur(20px)',
-        }}>
+        <motion.aside
+          animate={{ width: collapsed ? 68 : 232 }}
+          transition={{ duration: 0.2, ease: 'easeInOut' }}
+          style={{
+            minHeight: '100vh',
+            background: 'rgba(10,18,38,0.98)',
+            borderRight: '1px solid rgba(255,255,255,0.06)',
+            display: 'flex', flexDirection: 'column',
+            padding: '20px 12px',
+            position: 'fixed', top: 0, left: 0, bottom: 0,
+            zIndex: 100,
+            backdropFilter: 'blur(20px)',
+          }}>
           {/* Logo */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 28, paddingLeft: 4 }}>
             <div style={{ position: 'relative', flexShrink: 0 }}>
@@ -176,17 +174,19 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
                       const Icon = item.icon;
                       const isActive = currentPage === item.id;
                       return (
-                        <button
+                        <motion.button
                           key={item.id}
                           className={`dash-nav-item${isActive ? ' active' : ''}`}
                           onClick={() => onPageChange(item.id)}
                           title={collapsed ? item.label : undefined}
                           style={{ justifyContent: collapsed ? 'center' : 'flex-start', padding: collapsed ? '10px' : '10px 12px' }}
+                          whileHover={{ x: 2 }}
+                          whileTap={{ scale: 0.97 }}
                         >
                           <Icon size={16} style={{ flexShrink: 0 }} />
                           {!collapsed && <span>{item.label}</span>}
                           {!collapsed && isActive && <div style={{ marginLeft: 'auto', width: 5, height: 5, borderRadius: '50%', background: GOLD, boxShadow: `0 0 6px ${GOLD}` }} />}
-                        </button>
+                        </motion.button>
                       );
                     })}
                   </div>
@@ -196,7 +196,12 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
           </nav>
 
           {/* User section */}
-          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14 }}>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.2 }}
+            style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: 14 }}
+          >
             {!collapsed ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 12, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)', marginBottom: 8 }}>
                 <div style={{ width: 32, height: 32, borderRadius: 9, background: `linear-gradient(135deg, ${GOLD_D}, ${GOLD})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 800, color: '#000', flexShrink: 0 }}>
@@ -224,19 +229,19 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
               <LogOut size={15} style={{ flexShrink: 0 }} />
               {!collapsed && <span>Sign Out</span>}
             </button>
-          </div>
-        </aside>
+          </motion.div>
+        </motion.aside>
 
         {/* Main */}
-        <main
+        <motion.main
+          animate={{ marginLeft: collapsed ? 68 : 232 }}
+          transition={{ duration: 0.2, ease: 'easeInOut' }}
           style={{
             flex: 1,
-            marginLeft: collapsed ? 68 : 232,
-            transition: 'margin-left 0.2s ease',
             minHeight: '100vh',
             padding: '0 40px 48px',
             position: 'relative', zIndex: 1,
-            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.03) 1px, transparent 1px)',
+            backgroundImage: 'radial-gradient(circle, rgba(255,255,255,0.04) 1px, transparent 1px)',
             backgroundSize: '32px 32px',
           }}
         >
@@ -247,7 +252,7 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
             padding: '18px 0 14px',
             marginBottom: 24,
             borderBottom: '1px solid rgba(255,255,255,0.05)',
-            background: 'linear-gradient(to bottom, #080808 65%, rgba(8,8,8,0.75) 100%)',
+            background: 'linear-gradient(to bottom, #0f1623 65%, rgba(15,22,35,0.75) 100%)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
           }}>
@@ -275,10 +280,19 @@ export function DashboardLayout({ children, currentPage, onPageChange }: Dashboa
             </div>
           </div>
 
-          <div className="dash-content">
-            {children}
-          </div>
-        </main>
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentPage}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="dash-content"
+            >
+              {children}
+            </motion.div>
+          </AnimatePresence>
+        </motion.main>
       </div>
     </>
   );
