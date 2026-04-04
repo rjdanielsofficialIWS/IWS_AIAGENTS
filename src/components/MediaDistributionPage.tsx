@@ -4487,7 +4487,7 @@ function ReferralBanner({ userId }: { userId: string | null }) {
           <Gift className="w-4 h-4" style={{ color: GOLD }} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-xs font-black" style={{ color: GOLD_L }}>💸 Earn 20% per referral — forever</div>
+          <div className="text-xs font-black" style={{ color: GOLD_L }}>💸 Earn 20% profit share per customer</div>
           <div className="text-[10px] text-white/40 truncate mt-0.5">{referralLink}</div>
         </div>
         <button onClick={copy}
@@ -4967,7 +4967,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
 
   if (!userId) return (
     <div className="flex-1 flex items-center justify-center" style={{ color: 'rgba(255,255,255,0.3)', fontSize: 14 }}>
-      Sign in to access the Affiliate Program
+      Sign in to access the Profit Sharing Program
     </div>
   );
 
@@ -4998,10 +4998,10 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
       <div>
         <div className="flex items-center gap-2 mb-1">
           <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ color: GOLD }}><rect x="1" y="4" width="22" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M1 9h3M20 9h3M1 15h3M20 15h3"/></svg>
-          <h2 className="text-lg font-black text-white">2 for 20 Affiliate Program</h2>
+          <h2 className="text-lg font-black text-white">Profit Sharing Program</h2>
         </div>
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
-          Share your link. Earn 20% recurring commission every month they stay subscribed, forever. They get 20% off their first month automatically.
+          Share your unique link. Earn 20% of every payment your customers make, every month, for as long as they stay. They get 20% off their first month automatically.
         </p>
       </div>
 
@@ -5010,7 +5010,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
         {[
           { label: 'Total Earned', value: `$${totalEarned}`, icon: <DollarSign className="w-4 h-4" /> },
           { label: 'Available', value: `$${availablePayout}`, icon: <TrendingUp className="w-4 h-4" /> },
-          { label: 'Active Referrals', value: data?.activeReferrals ?? 0, icon: <Users className="w-4 h-4" /> },
+          { label: 'Active Customers', value: data?.activeReferrals ?? 0, icon: <Users className="w-4 h-4" /> },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-4 flex flex-col gap-1" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}>
             <div className="flex items-center gap-1.5" style={{ color: GOLD }}>{s.icon}</div>
@@ -5076,7 +5076,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
       {/* Referral link card */}
       <div className="rounded-xl p-5 space-y-3" style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)' }}>
         <div className="flex items-center justify-between mb-1">
-          <span style={{ fontSize: 12, fontWeight: 700, color: GOLD_L, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Referral Link</span>
+          <span style={{ fontSize: 12, fontWeight: 700, color: GOLD_L, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Profit Share Link</span>
           <button onClick={() => setShowCodeEditor(!showCodeEditor)}
             className="text-xs px-2.5 py-1 rounded-lg transition"
             style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -5125,9 +5125,9 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
         <p style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 14 }}>How It Works</p>
         <div className="space-y-3">
           {[
-            { step: '1', text: 'Share your link. Anyone who clicks it gets tagged as your referral.' },
-            { step: '2', text: 'They sign up and get 20% off their first month automatically at checkout.' },
-            { step: '3', text: 'You earn 20% of every payment they make, every month, for as long as they stay subscribed.' },
+            { step: '1', text: 'Share your link. Anyone who signs up through it is linked to your account.' },
+            { step: '2', text: 'They sign up and receive 20% off their first month automatically at checkout.' },
+            { step: '3', text: 'You earn 20% of every payment they make, every month, for as long as they remain a customer.' },
             { step: '4', text: 'Request a payout once you hit $25. We process via PayPal or bank transfer within 3-5 business days.' },
           ].map(s => (
             <div key={s.step} className="flex items-start gap-3">
@@ -5142,7 +5142,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
       {(data?.referrals?.length ?? 0) > 0 && (
         <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(255,255,255,0.08)' }}>
           <div className="px-4 py-3" style={{ background: 'rgba(255,255,255,0.04)', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Referrals ({data.referrals.length})</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.4)', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Customers ({data.referrals.length})</span>
           </div>
           <div className="divide-y" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
             {data.referrals.map((r: any) => (
@@ -5187,7 +5187,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
       {(data?.referrals?.length ?? 0) === 0 && (
         <div className="rounded-xl p-8 text-center" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)' }}>
           <Users className="w-8 h-8 mx-auto mb-3" style={{ color: 'rgba(255,255,255,0.15)' }} />
-          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 500 }}>No referrals yet</p>
+          <p style={{ fontSize: 14, color: 'rgba(255,255,255,0.3)', fontWeight: 500 }}>No customers yet</p>
           <p style={{ fontSize: 12, color: 'rgba(255,255,255,0.2)', marginTop: 4 }}>Share your link above to start earning</p>
         </div>
       )}
@@ -7645,9 +7645,9 @@ export function MediaDistributionPage() {
 
               {/* Referral nudge */}
               <div style={{ padding: '12px 16px', borderRadius: 12, background: `${GOLD}07`, border: `1px solid ${GOLD}18`, maxWidth: 300, width: '100%' }}>
-                <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 2-for-20 Affiliate Program</div>
+                <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 Profit Sharing Program</div>
                 <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)', margin: 0, lineHeight: 1.6 }}>
-                  Earn 20% recurring commission for every referral. Your audience gets 20% off their first month.
+                  Earn 20% profit share for every customer you bring in. They get 20% off their first month.
                 </p>
               </div>
             </motion.div>
