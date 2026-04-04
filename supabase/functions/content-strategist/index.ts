@@ -58,6 +58,18 @@ function stripCites(val: any): any {
   return val;
 }
 
+/** Recursively replace em-dashes (—) and en-dashes (–) with hyphens in all strings in an object. */
+function stripDashes(val: any): any {
+  if (typeof val === "string") return val.replace(/\u2014/g, "-").replace(/\u2013/g, "-");
+  if (Array.isArray(val)) return val.map(stripDashes);
+  if (val && typeof val === "object") {
+    const out: any = {};
+    for (const k of Object.keys(val)) out[k] = stripDashes(val[k]);
+    return out;
+  }
+  return val;
+}
+
 /** Parse JSON, and if it fails due to truncation attempt to close open structures. */
 function safeParse(raw: string): any {
   const s = stripFences(raw);
@@ -155,7 +167,7 @@ Deno.serve(async (req: Request) => {
       const toneDesc = tone || "confident and authentic";
       const offerDesc = offer || "their core offer";
 
-      const SYS = `You are an elite social media strategist with 15+ years building 7-figure personal brands. You convert followers into paying clients through strategic content systems. Return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) in any output.`;
+      const SYS = `You are an elite social media strategist with 15+ years building 7-figure personal brands. You convert followers into paying clients through strategic content systems. Return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) or en-dashes (–) in any output. Use a plain hyphen (-) instead.`;
 
       const BRIEF = `BUSINESS BRIEF:
 - Niche: ${niche}
@@ -204,11 +216,11 @@ REQUIREMENTS: exactly 5 quick_wins, each under 20 words, specific and actionable
         await supabase.rpc("increment_usage", { p_user_id: user.id, p_period: period, p_field: "strategies_used" });
       } catch { /* column not yet migrated — silent */ }
 
-      return json({
+      return json(stripDashes({
         calendar: calendarData,
         hooks:    hooksData,
         strategy: strategyData,
-      });
+      }));
 
     } else if (mode === "repurpose_from_video" || mode === "repurpose_from_description") {
       const source: string = (mode === "repurpose_from_video" ? body.transcript : body.description) || "";
@@ -217,7 +229,7 @@ REQUIREMENTS: exactly 5 quick_wins, each under 20 words, specific and actionable
 
       const toneDesc = tone || "authentic and engaging";
 
-      const systemPrompt = `You are an expert content repurposing strategist. You extract maximum value from content by identifying every possible content angle, format, and platform opportunity. You always return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) in any output.`;
+      const systemPrompt = `You are an expert content repurposing strategist. You extract maximum value from content by identifying every possible content angle, format, and platform opportunity. You always return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) or en-dashes (–) in any output. Use a plain hyphen (-) instead.`;
 
       const sourceLabel = mode === "repurpose_from_video" ? "video transcript" : "content description";
       const userPrompt = `Analyze this ${sourceLabel} and extract a complete content repurposing strategy:
@@ -283,7 +295,7 @@ REQUIREMENTS:
 - LinkedIn posts 150-300 words with clear hook, value, and CTA`;
 
       const raw = await callClaude(systemPrompt, userPrompt, 8192);
-      const ideas = safeParse(raw);
+      const ideas = stripDashes(safeParse(raw));
       return json({ ideas });
 
     } else if (mode === "trends_research") {
@@ -298,7 +310,7 @@ REQUIREMENTS:
         model: "claude-sonnet-4-6",
         max_tokens: 8192,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
-        system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON. Never use em-dashes (—) in any output.`,
+        system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON. Never use em-dashes (—) or en-dashes (–) in any output. Use a plain hyphen (-) instead.`,
         messages: [
           {
             role: "user",
@@ -378,7 +390,7 @@ REQUIREMENTS:
       const textBlock = (d.content as any[])?.filter((b: any) => b.type === "text").pop();
       if (!textBlock?.text) throw new Error("No text response from Claude");
 
-      const result = stripCites(safeParse(textBlock.text.replace(/—/g, "-")));
+      const result = stripDashes(stripCites(safeParse(textBlock.text)));
       if (!result.researched_at) result.researched_at = new Date().toISOString();
       return json(result);
 
@@ -387,7 +399,7 @@ REQUIREMENTS:
       if (!idea || !idea.trim()) return json({ error: "idea is required" }, 400);
 
       const raw = await callClaude(
-        `You are a viral social media content strategist and on-camera coach. You craft talking points that are compelling, memorable, and engineered for maximum engagement, shareability, and audience retention. Return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) in any output.`,
+        `You are a viral social media content strategist and on-camera coach. You craft talking points that are compelling, memorable, and engineered for maximum engagement, shareability, and audience retention. Return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) or en-dashes (–) in any output. Use a plain hyphen (-) instead.`,
         `Generate 5 viral talking points for this content idea:
 
 IDEA: ${idea.trim()}${niche ? `\nNICHE: ${niche}` : ""}${audience ? `\nTARGET AUDIENCE: ${audience}` : ""}
@@ -404,7 +416,7 @@ REQUIREMENTS:
 - NO generic filler — every word earns its place`,
         800
       );
-      const data = safeParse(raw);
+      const data = stripDashes(safeParse(raw));
       return json(data);
 
     } else {
