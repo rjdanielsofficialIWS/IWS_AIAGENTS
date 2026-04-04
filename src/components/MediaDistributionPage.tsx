@@ -4998,7 +4998,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
       <div>
         <div className="flex items-center gap-2 mb-1">
           <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" style={{ color: GOLD }}><rect x="1" y="4" width="22" height="16" rx="2"/><circle cx="12" cy="12" r="3"/><path d="M1 9h3M20 9h3M1 15h3M20 15h3"/></svg>
-          <h2 className="text-lg font-black text-white">Profit Sharing Program</h2>
+          <h2 className="text-lg font-black text-white">💸 2-for-20 Affiliate</h2>
         </div>
         <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', lineHeight: 1.6 }}>
           Share your unique link. Earn 20% of every payment your customers make, every month, for as long as they stay. They get 20% off their first month automatically.
@@ -7645,7 +7645,7 @@ export function MediaDistributionPage() {
 
               {/* Referral nudge */}
               <div style={{ padding: '12px 16px', borderRadius: 12, background: `${GOLD}07`, border: `1px solid ${GOLD}18`, maxWidth: 300, width: '100%' }}>
-                <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 Profit Sharing Program</div>
+                <div style={{ fontSize: 11, color: GOLD_L, fontWeight: 700, marginBottom: 4 }}>💸 2-for-20 Affiliate</div>
                 <p style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)', margin: 0, lineHeight: 1.6 }}>
                   Earn 20% profit share for every customer you bring in. They get 20% off their first month.
                 </p>
