@@ -3140,11 +3140,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   const [trendsResults, setTrendsResults] = useState<any | null>(() => {
     try { return JSON.parse(localStorage.getItem('mm_trends_results') || 'null'); } catch { return null; }
   });
-  const [trendsJobId, setTrendsJobId]     = useState<string | null>(null);
-  const [trendsElapsed, setTrendsElapsed] = useState(0);
-  const trendsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const trendsTimeoutRef  = useRef<ReturnType<typeof setTimeout>  | null>(null);
-  const trendsElapsedRef  = useRef<ReturnType<typeof setInterval> | null>(null);
 
   React.useEffect(() => {
     try {
@@ -3152,15 +3147,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       else localStorage.removeItem('mm_trends_results');
     } catch {}
   }, [trendsResults]);
-
-  // Cleanup polling on unmount
-  React.useEffect(() => {
-    return () => {
-      if (trendsIntervalRef.current) clearInterval(trendsIntervalRef.current);
-      if (trendsTimeoutRef.current)  clearTimeout(trendsTimeoutRef.current);
-      if (trendsElapsedRef.current)  clearInterval(trendsElapsedRef.current);
-    };
-  }, []);
 
   // Video repurpose state
   const [videoFile, setVideoFile]       = useState<File | null>(null);
@@ -3194,25 +3180,20 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   const handleFetchTrends = async (briefSnapshot: typeof brief) => {
     if (!briefSnapshot.niche.trim()) return;
     if (!userId) return;
-
-    // Clear any in-flight polling from a previous run
-    if (trendsIntervalRef.current) { clearInterval(trendsIntervalRef.current); trendsIntervalRef.current = null; }
-    if (trendsTimeoutRef.current)  { clearTimeout(trendsTimeoutRef.current);   trendsTimeoutRef.current  = null; }
-    if (trendsElapsedRef.current)  { clearInterval(trendsElapsedRef.current);  trendsElapsedRef.current  = null; }
-
     setTrendsLoading(true); setTrendsError(null); setTrendsResults(null);
-    setTrendsJobId(null); setTrendsElapsed(0);
-
     try {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       // Proactively refresh — Safari ITP causes stale sessions
       { const r = await supabase.auth.refreshSession(); if (r.data.session) session = r.data.session; }
-
+      // Plain fetch with no AbortController — lets the edge function run to completion (60-90 s)
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session!.access_token}`,
+        },
         body: JSON.stringify({
           mode: 'trends_research',
           niche: briefSnapshot.niche,
@@ -3222,76 +3203,18 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
           offer: briefSnapshot.offer,
         }),
       });
-
       const rawText = await res.text();
       let data: any;
       try { data = JSON.parse(rawText); } catch { throw new Error('Could not read server response. Please try again.'); }
-
-      if (data.error === 'upgrade_required') { onUpgrade?.(); setTrendsLoading(false); return; }
+      if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
       if (res.status === 429 || data.error === 'rate_limited') {
-        setTrendsError('The AI is busy right now. Please wait 30 seconds and try again.');
-        setTrendsLoading(false); return;
+        setTrendsError('The AI is busy right now. Please wait 30 seconds and try again.'); return;
       }
       if (!res.ok) throw new Error(data.error || data.message || 'Trends research failed');
-
-      // ── Async flow: backend returned { job_id, status: "pending" } ──────────
-      if (data.job_id && data.status === 'pending') {
-        const jobId: string = data.job_id;
-        setTrendsJobId(jobId);
-
-        // Tick elapsed seconds every second for the living loading state
-        const startedAt = Date.now();
-        trendsElapsedRef.current = setInterval(() => {
-          setTrendsElapsed(Math.floor((Date.now() - startedAt) / 1000));
-        }, 1000);
-
-        const stopPolling = () => {
-          if (trendsIntervalRef.current) { clearInterval(trendsIntervalRef.current); trendsIntervalRef.current = null; }
-          if (trendsTimeoutRef.current)  { clearTimeout(trendsTimeoutRef.current);   trendsTimeoutRef.current  = null; }
-          if (trendsElapsedRef.current)  { clearInterval(trendsElapsedRef.current);  trendsElapsedRef.current  = null; }
-        };
-
-        // 3-minute safety timeout
-        trendsTimeoutRef.current = setTimeout(() => {
-          stopPolling();
-          setTrendsLoading(false);
-          setTrendsJobId(null);
-          setTrendsError('Research timed out. Please try again.');
-        }, 180_000);
-
-        // Poll every 2.5 s
-        trendsIntervalRef.current = setInterval(async () => {
-          try {
-            const pollRes = await fetch(
-              `${SUPABASE_URL_LOCAL}/functions/v1/trends-result?job_id=${encodeURIComponent(jobId)}`,
-              { headers: { 'Authorization': `Bearer ${await getToken()}` } },
-            );
-            const pollData = await pollRes.json().catch(() => ({}));
-
-            if (pollData.status === 'done') {
-              stopPolling();
-              setTrendsResults(pollData.result);
-              setTrendsLoading(false);
-              setTrendsJobId(null);
-            } else if (pollData.status === 'error') {
-              stopPolling();
-              setTrendsError(pollData.error || 'Trend research failed. Please try again.');
-              setTrendsLoading(false);
-              setTrendsJobId(null);
-            }
-            // status === 'pending' → keep polling
-          } catch {
-            // Network blip — keep polling, don't abort
-          }
-        }, 2500);
-
-      } else {
-        // Legacy / sync response fallback — backend returned data directly
-        setTrendsResults(data);
-        setTrendsLoading(false);
-      }
+      setTrendsResults(data);
     } catch (e: any) {
       setTrendsError(e.message || 'Something went wrong');
+    } finally {
       setTrendsLoading(false);
     }
   };
@@ -3571,21 +3494,8 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 <div className="absolute inset-0 rounded-full border-2 border-sky-400 border-t-transparent animate-spin" />
                 <span className="absolute inset-0 flex items-center justify-center text-lg">📡</span>
               </div>
-              <div className="text-sm font-bold text-white/60">Researching trends… this takes about 60 seconds</div>
-              <div className="text-xs text-white/30 text-center max-w-xs">
-                {trendsElapsed < 10 && 'Scanning live search data and platform algorithms…'}
-                {trendsElapsed >= 10 && trendsElapsed < 25 && 'Analysing viral formats and rising keywords…'}
-                {trendsElapsed >= 25 && trendsElapsed < 45 && 'Identifying competitor gaps and content angles…'}
-                {trendsElapsed >= 45 && trendsElapsed < 75 && 'Cross-referencing platform trends and audience signals…'}
-                {trendsElapsed >= 75 && 'Compiling your full trend report…'}
-              </div>
-              {trendsJobId && (
-                <div className="flex items-center gap-2 text-xs text-white/20 font-mono">
-                  <span>{trendsElapsed}s</span>
-                  <span>·</span>
-                  <span>est. ~60s</span>
-                </div>
-              )}
+              <div className="text-sm font-bold text-white/60">Researching trends across the web…</div>
+              <div className="text-xs text-white/30 text-center max-w-xs">This usually takes 60–90 seconds. Scanning live search data, viral formats, and platform algorithms.</div>
             </div>
           )}
 
