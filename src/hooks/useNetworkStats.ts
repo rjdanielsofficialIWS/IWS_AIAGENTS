@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../services/vapiAI';
+import { useAuth } from '../contexts/AuthContext';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-
-async function getToken(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) return session.access_token;
-  const { data: refreshed } = await supabase.auth.refreshSession();
-  return refreshed.session?.access_token ?? '';
-}
 
 export interface RankDef {
   rank: string;
@@ -71,16 +65,28 @@ export function useNetworkStats(userId: string | null): UseNetworkStatsResult {
   const [referralCode, setReferralCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { session } = useAuth();
 
   const fetch_ = useCallback(async () => {
     if (!userId) {
       setLoading(false);
       return;
     }
+    // Use the session from AuthContext first; fall back to a live refresh if
+    // the access_token is missing (e.g. just after sign-in).
+    let token = session?.access_token ?? '';
+    if (!token) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      token = refreshed.session?.access_token ?? '';
+    }
+    if (!token) {
+      setError('Not authenticated');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const token = await getToken();
       const [statsRes, codeRes] = await Promise.all([
         fetch(`${SUPABASE_URL}/functions/v1/network-stats`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -103,7 +109,7 @@ export function useNetworkStats(userId: string | null): UseNetworkStatsResult {
     } finally {
       setLoading(false);
     }
-  }, [userId]);
+  }, [userId, session]);
 
   useEffect(() => { fetch_(); }, [fetch_]);
 
