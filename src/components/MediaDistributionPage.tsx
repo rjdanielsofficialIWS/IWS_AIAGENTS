@@ -12,6 +12,7 @@ import {
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
+import { EarnPage } from './earn/EarnPage';
 
 // Always fetches a fresh, auto-refreshed token — never expires mid-session
 async function getToken(): Promise<string> {
@@ -7792,7 +7793,7 @@ export function MediaDistributionPage() {
                   }
                   setView('composer');
                 }} />}
-                {view === 'partner'  && <AffiliateDashboard userId={currentUser?.id ?? null} userEmail={currentUser?.email ?? null} userName={authUser?.user_metadata?.full_name ?? authUser?.user_metadata?.name ?? null} />}
+                {view === 'partner'  && <EarnPage userId={currentUser?.id ?? null} />}
                 {/* J — WorkspacesPanel view */}
                 {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} wsChannelCounts={wsChannelCounts} />}
               </motion.div>
