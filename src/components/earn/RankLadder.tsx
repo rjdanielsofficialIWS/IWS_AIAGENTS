@@ -19,7 +19,7 @@ interface RankLadderProps {
 }
 
 export function RankLadder({ stats }: RankLadderProps) {
-  const sortedRanks = [...stats.ranks].sort((a, b) => a.rank_order - b.rank_order);
+  const sortedRanks = [...stats.ranks].filter(r => r.rank !== 'Builder').sort((a, b) => a.rank_order - b.rank_order);
   const currentRankOrder = sortedRanks.find(r => r.rank === stats.current_rank)?.rank_order ?? -1;
 
   const progressPct = stats.next_rank

@@ -130,9 +130,10 @@ Deno.serve(async (req) => {
   const personalRefs = userRank?.personal_ref_count  ?? 0;
   const belowThreshold = userRank?.below_threshold_since ?? null;
 
-  // Next rank = lowest rank whose mrr_min_cents > teamMrr, or first rank if unranked
-  const currentRankOrder = ranks.find(r => r.rank === currentRank)?.rank_order ?? -1;
-  const nextRank = ranks.find(r => r.rank_order > currentRankOrder) ?? null;
+  // Builder is excluded from the program display — skip it when computing next rank
+  const visibleRanks = ranks.filter((r: any) => r.rank !== 'Builder');
+  const currentRankOrder = visibleRanks.find((r: any) => r.rank === currentRank)?.rank_order ?? -1;
+  const nextRank = visibleRanks.find((r: any) => r.rank_order > currentRankOrder) ?? null;
   const nextRankMrrNeeded = nextRank ? Math.max(0, nextRank.mrr_min_cents - teamMrr) : 0;
 
   // This month earnings
@@ -164,6 +165,6 @@ Deno.serve(async (req) => {
     lifetime_earned_cents: stipendLifetime + commLifetime,
     direct_team: directTeamRes.data ?? [],
     rank_history: rankHistoryRes.data ?? [],
-    ranks,
+    ranks: visibleRanks,
   }, 200, corsHeaders);
 });

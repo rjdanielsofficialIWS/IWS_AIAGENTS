@@ -70,7 +70,7 @@ function SkeletonPage() {
 
 function RankTable({ stats }: { stats: ReturnType<typeof useNetworkStats>['stats'] }) {
   if (!stats) return null;
-  const sorted = [...stats.ranks].sort((a, b) => a.rank_order - b.rank_order);
+  const sorted = [...stats.ranks].filter(r => r.rank !== 'Builder').sort((a, b) => a.rank_order - b.rank_order);
   return (
     <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 16, overflow: 'hidden' }}>
       <div style={{ padding: '14px 18px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
@@ -112,8 +112,7 @@ function RankTable({ stats }: { stats: ReturnType<typeof useNetworkStats>['stats
                     </div>
                   </td>
                   <td style={{ padding: '12px 16px', fontSize: 13, color: isCurrent ? '#fff' : 'rgba(255,255,255,0.5)', fontWeight: isCurrent ? 700 : 400 }}>
-                    {fmtDollars(rank.mrr_min_cents)}
-                    {rank.mrr_max_cents ? ` – ${fmtDollars(rank.mrr_max_cents)}` : '+'}
+                    {fmtDollars(rank.mrr_min_cents)}+
                   </td>
                   <td style={{ padding: '12px 16px' }}>
                     <span style={{
