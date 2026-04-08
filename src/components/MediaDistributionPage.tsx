@@ -1901,20 +1901,16 @@ function InlinePostComposer({
   const [linkedinText, setLinkedinText] = useState('');
   const [showTextAi, setShowTextAi]     = useState(false);
   const [textAiMode, setTextAiMode]     = useState<'from_video' | 'from_description'>('from_description');
-  const [textAiDesc, setTextAiDesc]     = useState('');
+  const [textAiDescs, setTextAiDescs]   = useState<string[]>(['']);
   const [textAiTone, setTextAiTone]     = useState('');
   const [textAiVideo, setTextAiVideo]   = useState<File | null>(null);
   const [textAiVideoObjectUrl, setTextAiVideoObjectUrl] = useState<string | null>(null);
   const [textAiLoading, setTextAiLoading] = useState(false);
   const [textAiError, setTextAiError]   = useState<string | null>(null);
-  const [textAiPosts, setTextAiPosts]   = useState<Record<string, string[]> | null>(null);
+  // Array of results, one entry per topic/description
+  const [textAiPosts, setTextAiPosts]   = useState<Record<string, string[]>[] | null>(null);
+  const [textAiTopicIdx, setTextAiTopicIdx] = useState(0);
   const [textAiSelected, setTextAiSelected] = useState<Record<string, number | null>>({});
-  // Platform picker for from_description mode (X, LinkedIn, Threads — up to 3)
-  const [textAiPlatforms, setTextAiPlatforms] = useState<string[]>(['twitter']);
-  const toggleTextAiPlatform = (p: string) => setTextAiPlatforms(prev =>
-    prev.includes(p) ? (prev.length > 1 ? prev.filter(x => x !== p) : prev) : [...prev, p]
-  );
-  const textAiPostCount = textAiPlatforms.length === 1 ? 10 : textAiPlatforms.length === 2 ? 7 : 5;
 
   // Multi-select for text post accounts
   const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
@@ -1931,6 +1927,15 @@ function InlinePostComposer({
       const platform: PlatformId = prof.startsWith('linkedin') ? 'linkedin' : prof.startsWith('threads') ? 'threads' : 'x';
       return { integ: i, platform };
     });
+
+  // Platforms derived from the connected text accounts the user has selected
+  const textAiSelPlatformKeys = [...new Set(
+    selectedTextAccounts
+      .map(id => textPostAccounts.find(x => x.integ.id === id)?.platform || '')
+      .filter(Boolean)
+      .map(p => (p === 'x' || p === 'twitter') ? 'twitter' : p)
+  )];
+  const textAiPostCount = textAiSelPlatformKeys.length <= 1 ? 10 : textAiSelPlatformKeys.length === 2 ? 7 : 5;
 
   const getSelectedPlatforms = () =>
     selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean) as string[];
@@ -2029,63 +2034,63 @@ function InlinePostComposer({
   };
 
   const handleTextAiGenerate = async () => {
-    // from_description uses its own explicit platform picker; from_video derives from connected accounts
-    const selPlatformKeys = textAiMode === 'from_description'
-      ? textAiPlatforms
-      : [...new Set(
-          selectedTextAccounts
-            .map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return a?.platform || ''; })
-            .filter(Boolean)
-            .map(p => (p === 'x' || p === 'twitter') ? 'twitter' : p)
-        )];
-    if (selPlatformKeys.length === 0) { setTextAiError('Select at least one account above first.'); return; }
-    const postCount = textAiMode === 'from_description' ? textAiPostCount : 10;
-    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({});
+    // Both modes use selected connected accounts for platform derivation
+    if (textAiSelPlatformKeys.length === 0) { setTextAiError('Select at least one account above first.'); return; }
+    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({}); setTextAiTopicIdx(0);
     try {
-      // Build source text
-      let source = '';
-      if (textAiMode === 'from_video') {
-        if (!textAiVideo) throw new Error('Select a video first');
-        const { data: { session: vs } } = await supabase.auth.getSession();
-        const token = await getToken() || (await supabase.auth.refreshSession()).data.session?.access_token;
-        if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
-        source = await transcribeVideo(textAiVideo, token);
-      } else {
-        if (!textAiDesc.trim()) throw new Error('Enter a description');
-        source = textAiDesc;
-      }
-      // Always force-refresh session before AI call
+      // Always force-refresh session before AI calls
       const { data: { session: freshSession } } = await supabase.auth.refreshSession();
       const token = await getToken();
       if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
-      const fetchRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          mode: 'repurpose_posts',
-          transcript: textAiMode === 'from_video' ? source : undefined,
-          description: textAiMode !== 'from_video' ? source : undefined,
-          tone: textAiTone,
-          platforms: selPlatformKeys,
-          post_count: postCount,
-        }),
-      });
-      const rawText = await fetchRes.text();
-      let data: any;
-      try { data = JSON.parse(rawText); } catch { throw new Error('Server returned an unreadable response. Please try again.'); }
-      if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
-      if (!fetchRes.ok) throw new Error(data.message || data.error || `Generation failed (${fetchRes.status})`);
-      if (!data.posts || typeof data.posts !== 'object') throw new Error('No posts were generated. Please try again.');
-      const validPosts = Object.fromEntries(Object.entries(data.posts as Record<string, any[]>).filter(([, arr]) => Array.isArray(arr) && arr.length > 0));
-      if (Object.keys(validPosts).length === 0) throw new Error('No posts were generated. Please try again.');
-      setTextAiPosts(validPosts);
-      setTextTab(Object.keys(validPosts)[0] ?? 'twitter');
-    } catch (e: any) { setTextAiError(e.message || 'Something went wrong'); }
+
+      const callApi = async (source: string): Promise<Record<string, string[]>> => {
+        const fetchRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+          body: JSON.stringify({
+            mode: 'repurpose_posts',
+            description: source,
+            tone: textAiTone,
+            platforms: textAiSelPlatformKeys,
+            post_count: textAiPostCount,
+          }),
+        });
+        const rawText = await fetchRes.text();
+        let data: any;
+        try { data = JSON.parse(rawText); } catch { throw new Error('Server returned an unreadable response. Please try again.'); }
+        if (data.error === 'upgrade_required') throw Object.assign(new Error('upgrade_required'), { isUpgrade: true });
+        if (!fetchRes.ok) throw new Error(data.message || data.error || `Generation failed (${fetchRes.status})`);
+        if (!data.posts || typeof data.posts !== 'object') throw new Error('No posts were generated. Please try again.');
+        const valid = Object.fromEntries(Object.entries(data.posts as Record<string, any[]>).filter(([, arr]) => Array.isArray(arr) && arr.length > 0));
+        if (Object.keys(valid).length === 0) throw new Error('No posts were generated. Please try again.');
+        return valid;
+      };
+
+      let sources: string[] = [];
+      if (textAiMode === 'from_video') {
+        if (!textAiVideo) throw new Error('Select a video first');
+        const vToken = await getToken() || (await supabase.auth.refreshSession()).data.session?.access_token;
+        if (!vToken) throw new Error('Your session has expired. Please sign out and sign back in.');
+        const transcribed = await transcribeVideo(textAiVideo, vToken);
+        sources = [transcribed];
+      } else {
+        sources = textAiDescs.map(d => d.trim()).filter(Boolean);
+        if (sources.length === 0) throw new Error('Enter at least one description');
+      }
+
+      const results = await Promise.all(sources.map(s => callApi(s)));
+      setTextAiPosts(results);
+      setTextAiTopicIdx(0);
+      setTextTab(Object.keys(results[0])[0] ?? 'twitter');
+    } catch (e: any) {
+      if (e.isUpgrade) { setTextAiError('upgrade_required'); return; }
+      setTextAiError(e.message || 'Something went wrong');
+    }
     finally { setTextAiLoading(false); }
   };
 
   const useTextAiPost = (platform: string, idx: number) => {
-    const text = textAiPosts?.[platform]?.[idx] ?? '';
+    const text = textAiPosts?.[textAiTopicIdx]?.[platform]?.[idx] ?? '';
     if (platform === 'linkedin') setLinkedinText(text); else setXText(text);
     setTextAiSelected(prev => ({ ...prev, [platform]: idx }));
     setTextTab(platform);
@@ -2889,31 +2894,41 @@ function InlinePostComposer({
                   )
                 )}
                 {textAiMode === 'from_description' && (
-                  <>
-                    <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
-                      placeholder="Describe what you want to post about. Topic, key points, your offer…" rows={3}
-                      className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-                    {/* Platform picker */}
-                    <div className="space-y-1.5">
-                      <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
-                        Generate for — {textAiPostCount} posts per platform
-                      </div>
-                      <div className="flex gap-2">
-                        {([['twitter', 'X'], ['linkedin', 'LinkedIn'], ['threads', 'Threads']] as const).map(([key, label]) => {
-                          const sel = textAiPlatforms.includes(key);
-                          const iconId: PlatformId = key === 'twitter' ? 'x' : key;
-                          return (
-                            <button key={key} onClick={() => toggleTextAiPlatform(key)}
-                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border transition"
-                              style={{ borderColor: sel ? GOLD : BORDER, background: sel ? `${GOLD}15` : 'transparent', color: sel ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
-                              <PlatformIcon id={iconId} size="sm" />
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
+                  <div className="space-y-2">
+                    <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
+                      {textAiDescs.length === 1 ? 'Topic / Description' : `Topics (${textAiDescs.length}) — generates separate post batches`}
                     </div>
-                  </>
+                    {textAiDescs.map((desc, i) => (
+                      <div key={i} className="relative">
+                        {textAiDescs.length > 1 && (
+                          <div className="text-[10px] font-bold mb-1" style={{ color: GOLD_L }}>Topic {i + 1}</div>
+                        )}
+                        <textarea value={desc} onChange={e => setTextAiDescs(prev => prev.map((d, j) => j === i ? e.target.value : d))}
+                          placeholder={i === 0 ? 'Describe what you want to post about. Topic, key points, your offer…' : `Topic ${i + 1} — a different angle or subject…`}
+                          rows={3}
+                          className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+                        {i > 0 && (
+                          <button onClick={() => setTextAiDescs(prev => prev.filter((_, j) => j !== i))}
+                            className="absolute top-0 right-0 p-1 rounded text-white/25 hover:text-red-400 transition"
+                            title="Remove topic">
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                    {textAiDescs.length < 3 && (
+                      <button onClick={() => setTextAiDescs(prev => [...prev, ''])}
+                        className="flex items-center gap-1.5 text-xs font-semibold transition hover:brightness-125"
+                        style={{ color: GOLD }}>
+                        <Plus className="w-3 h-3" /> Add another topic
+                      </button>
+                    )}
+                    {textAiSelPlatformKeys.length > 0 && (
+                      <div className="text-[10px] text-white/25 pt-0.5">
+                        Generating <strong className="text-white/40">{textAiPostCount} posts</strong> per platform per topic
+                      </div>
+                    )}
+                  </div>
                 )}
                 <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
                   placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
@@ -2934,12 +2949,11 @@ function InlinePostComposer({
                     {textAiLoading
                       ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Analyzing…' : 'Generating…'}</>
                       : <><Sparkles className="w-3.5 h-3.5" /> {(() => {
-                          if (textAiMode === 'from_description') {
-                            const names = textAiPlatforms.map(p => p === 'twitter' ? 'X' : p === 'linkedin' ? 'LinkedIn' : 'Threads');
-                            return `Generate ${textAiPostCount} ${names.join(' & ')} Posts`;
-                          }
-                          const names = [...new Set(selectedTextAccounts.map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return a?.platform || ''; }).filter(Boolean).map(p => (p === 'x' || p === 'twitter') ? 'X' : p === 'linkedin' ? 'LinkedIn' : p === 'threads' ? 'Threads' : p.charAt(0).toUpperCase() + p.slice(1)))];
-                          return names.length > 0 ? `Generate 10 ${names.join(' & ')} Posts` : 'Select accounts above first';
+                          const names = textAiSelPlatformKeys.map(p => p === 'twitter' ? 'X' : p === 'linkedin' ? 'LinkedIn' : p === 'threads' ? 'Threads' : p.charAt(0).toUpperCase() + p.slice(1));
+                          if (names.length === 0) return 'Select accounts above first';
+                          const topicCount = textAiMode === 'from_description' ? textAiDescs.filter(d => d.trim()).length : 1;
+                          const topicLabel = topicCount > 1 ? ` × ${topicCount} topics` : '';
+                          return `Generate ${textAiPostCount} ${names.join(' & ')} Posts${topicLabel}`;
                         })()}</>}
                   </span>
                   {textAiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
@@ -2947,9 +2961,22 @@ function InlinePostComposer({
 
                 {textAiPosts && (
                   <div className="space-y-3 pt-1">
-                    {/* Tabs: one per generated platform */}
+                    {/* Topic tabs — only shown when multiple topics were generated */}
+                    {textAiPosts.length > 1 && (
+                      <div className="flex gap-2">
+                        {textAiPosts.map((_, ti) => (
+                          <button key={ti} onClick={() => { setTextAiTopicIdx(ti); setTextAiSelected({}); setEditingIdx(null); const firstPlatform = Object.keys(textAiPosts[ti])[0]; if (firstPlatform) setTextTab(firstPlatform); }}
+                            className="flex-1 py-1.5 rounded-lg text-xs font-bold border transition"
+                            style={{ borderColor: textAiTopicIdx === ti ? GOLD : BORDER, background: textAiTopicIdx === ti ? `${GOLD}18` : 'transparent', color: textAiTopicIdx === ti ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                            Topic {ti + 1}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Platform tabs */}
                     <div className="flex gap-2">
-                      {Object.entries(textAiPosts).map(([key, posts]) => {
+                      {Object.entries(textAiPosts[textAiTopicIdx] ?? {}).map(([key, posts]) => {
                         const iconId: PlatformId = key === 'twitter' ? 'x' : key as PlatformId;
                         const label = key === 'twitter' ? 'X' : key === 'linkedin' ? 'LinkedIn' : key === 'threads' ? 'Threads' : key.charAt(0).toUpperCase() + key.slice(1);
                         return (
@@ -2957,7 +2984,7 @@ function InlinePostComposer({
                             className="flex-1 py-2 rounded-lg text-xs font-bold border transition flex items-center justify-center gap-1.5"
                             style={{ borderColor: textTab === key ? GOLD : BORDER, background: textTab === key ? `${GOLD}15` : 'transparent', color: textTab === key ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
                             <PlatformIcon id={iconId} size="sm" />
-                            {label} ({posts.length})
+                            {label} ({(posts as string[]).length})
                           </button>
                         );
                       })}
@@ -2966,7 +2993,7 @@ function InlinePostComposer({
                     <div className="text-xs text-white/25">Click a post to select it · click ✏️ to edit inline</div>
 
                     <div className="space-y-1.5 max-h-[320px] md:max-h-[480px] overflow-y-auto pr-1">
-                      {(textAiPosts?.[textTab] ?? []).map((post, idx) => {
+                      {(textAiPosts[textAiTopicIdx]?.[textTab] ?? []).map((post, idx) => {
                         const platform = textTab;
                         const isSel     = textAiSelected[platform] === idx;
                         const isEditing = editingIdx?.tab === platform && editingIdx?.idx === idx;
@@ -2981,11 +3008,13 @@ function InlinePostComposer({
                               onClick={e => {
                                 e.stopPropagation();
                                 if (isEditing) {
-                                  // save edits back into the post list
+                                  // save edits back into the post list (multi-topic array)
                                   if (textAiPosts) {
-                                    const updated = { ...textAiPosts };
-                                    updated[platform] = [...updated[platform]];
-                                    updated[platform][idx] = aiEditText;
+                                    const updated = textAiPosts.map((topic, ti) =>
+                                      ti === textAiTopicIdx
+                                        ? { ...topic, [platform]: topic[platform].map((p: string, pi: number) => pi === idx ? aiEditText : p) }
+                                        : topic
+                                    );
                                     setTextAiPosts(updated);
                                   }
                                   setEditingIdx(null);
