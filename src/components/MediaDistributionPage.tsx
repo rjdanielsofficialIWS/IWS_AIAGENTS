@@ -1909,7 +1909,12 @@ function InlinePostComposer({
   const [textAiError, setTextAiError]   = useState<string | null>(null);
   const [textAiPosts, setTextAiPosts]   = useState<Record<string, string[]> | null>(null);
   const [textAiSelected, setTextAiSelected] = useState<Record<string, number | null>>({});
-
+  // Platform picker for from_description mode (X, LinkedIn, Threads — up to 3)
+  const [textAiPlatforms, setTextAiPlatforms] = useState<string[]>(['twitter']);
+  const toggleTextAiPlatform = (p: string) => setTextAiPlatforms(prev =>
+    prev.includes(p) ? (prev.length > 1 ? prev.filter(x => x !== p) : prev) : [...prev, p]
+  );
+  const textAiPostCount = textAiPlatforms.length === 1 ? 10 : textAiPlatforms.length === 2 ? 7 : 5;
 
   // Multi-select for text post accounts
   const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
@@ -2024,13 +2029,17 @@ function InlinePostComposer({
   };
 
   const handleTextAiGenerate = async () => {
-    const selPlatformKeys = [...new Set(
-      selectedTextAccounts
-        .map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return a?.platform || ''; })
-        .filter(Boolean)
-        .map(p => (p === 'x' || p === 'twitter') ? 'twitter' : p)
-    )];
+    // from_description uses its own explicit platform picker; from_video derives from connected accounts
+    const selPlatformKeys = textAiMode === 'from_description'
+      ? textAiPlatforms
+      : [...new Set(
+          selectedTextAccounts
+            .map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return a?.platform || ''; })
+            .filter(Boolean)
+            .map(p => (p === 'x' || p === 'twitter') ? 'twitter' : p)
+        )];
     if (selPlatformKeys.length === 0) { setTextAiError('Select at least one account above first.'); return; }
+    const postCount = textAiMode === 'from_description' ? textAiPostCount : 10;
     setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({});
     try {
       // Build source text
@@ -2058,6 +2067,7 @@ function InlinePostComposer({
           description: textAiMode !== 'from_video' ? source : undefined,
           tone: textAiTone,
           platforms: selPlatformKeys,
+          post_count: postCount,
         }),
       });
       const rawText = await fetchRes.text();
@@ -2879,9 +2889,31 @@ function InlinePostComposer({
                   )
                 )}
                 {textAiMode === 'from_description' && (
-                  <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
-                    placeholder="Describe what you want to post about. Topic, key points, your offer…" rows={3}
-                    className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+                  <>
+                    <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
+                      placeholder="Describe what you want to post about. Topic, key points, your offer…" rows={3}
+                      className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
+                    {/* Platform picker */}
+                    <div className="space-y-1.5">
+                      <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">
+                        Generate for — {textAiPostCount} posts per platform
+                      </div>
+                      <div className="flex gap-2">
+                        {([['twitter', 'X'], ['linkedin', 'LinkedIn'], ['threads', 'Threads']] as const).map(([key, label]) => {
+                          const sel = textAiPlatforms.includes(key);
+                          const iconId: PlatformId = key === 'twitter' ? 'x' : key;
+                          return (
+                            <button key={key} onClick={() => toggleTextAiPlatform(key)}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold border transition"
+                              style={{ borderColor: sel ? GOLD : BORDER, background: sel ? `${GOLD}15` : 'transparent', color: sel ? GOLD_L : 'rgba(255,255,255,0.3)' }}>
+                              <PlatformIcon id={iconId} size="sm" />
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
                 )}
                 <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
                   placeholder="Tone (optional): casual, alex hormozi, luxury, professional…"
@@ -2902,6 +2934,10 @@ function InlinePostComposer({
                     {textAiLoading
                       ? <><Loader className="w-3.5 h-3.5 animate-spin" />{textAiMode === 'from_video' ? 'Analyzing…' : 'Generating…'}</>
                       : <><Sparkles className="w-3.5 h-3.5" /> {(() => {
+                          if (textAiMode === 'from_description') {
+                            const names = textAiPlatforms.map(p => p === 'twitter' ? 'X' : p === 'linkedin' ? 'LinkedIn' : 'Threads');
+                            return `Generate ${textAiPostCount} ${names.join(' & ')} Posts`;
+                          }
                           const names = [...new Set(selectedTextAccounts.map(id => { const a = textPostAccounts.find(x => x.integ.id === id); return a?.platform || ''; }).filter(Boolean).map(p => (p === 'x' || p === 'twitter') ? 'X' : p === 'linkedin' ? 'LinkedIn' : p === 'threads' ? 'Threads' : p.charAt(0).toUpperCase() + p.slice(1)))];
                           return names.length > 0 ? `Generate 10 ${names.join(' & ')} Posts` : 'Select accounts above first';
                         })()}</>}
@@ -6861,16 +6897,17 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
 // ─── Credits Widget ───────────────────────────────────────────────────────────
 
 function CreditsWidget({
-  usage, subscription, open, onOpen, onClose, onUpgrade, onAddon, onManage,
+  usage, subscription, open, onOpen, onClose, onUpgrade, onAddon, onManage, onCancelSub,
 }: {
   usage: { plan: string; isActive: boolean; captions: { used: number; limit: number }; video: { used: number; limit: number }; strategies: { used: number; limit: number }; posts: { used: number; limit: number }; textPosts: { used: number; limit: number } } | null;
-  subscription: { plan: string; status: string; stripe_customer_id?: string; } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; current_period_end?: string; cancel_at_period_end?: boolean; } | null;
   open: boolean;
   onOpen: () => void;
   onClose: () => void;
   onUpgrade: () => void;
   onAddon: (key: string) => void;
   onManage: () => void;
+  onCancelSub?: () => void;
 }) {
   const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
   const isTrialing = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date();
@@ -6996,6 +7033,28 @@ function CreditsWidget({
                       Manage Billing
                     </button>
                   </div>
+                  {/* Cancel / pending-cancel state */}
+                  {subscription?.status === 'active' && subscription?.cancel_at_period_end && subscription?.current_period_end ? (
+                    <div className="flex items-center justify-between pt-1 gap-2">
+                      <span className="text-[11px] font-bold px-2.5 py-1 rounded-full"
+                        style={{ background: 'rgba(74,222,128,0.1)', color: '#4ade80', border: '1px solid rgba(74,222,128,0.25)', whiteSpace: 'nowrap' }}>
+                        Cancels {new Date(subscription.current_period_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </span>
+                      <button onClick={() => { onClose(); onManage(); }}
+                        className="text-[11px] font-bold px-2.5 py-1 rounded-full border transition hover:bg-white/5"
+                        style={{ borderColor: `${GOLD}50`, color: GOLD_L, whiteSpace: 'nowrap' }}>
+                        Reactivate
+                      </button>
+                    </div>
+                  ) : subscription?.status === 'active' && !subscription?.cancel_at_period_end && !subscription?.stripe_customer_id?.startsWith('promo_') ? (
+                    <div className="flex justify-center pt-1">
+                      <button onClick={() => { onClose(); onCancelSub?.(); }}
+                        className="text-[11px] transition hover:text-red-300"
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(255,255,255,0.2)', padding: '2px 0' }}>
+                        Cancel subscription
+                      </button>
+                    </div>
+                  ) : null}
                 </>
               )}
             </div>
@@ -7014,7 +7073,7 @@ export function MediaDistributionPage() {
   const [videoHandoff, setVideoHandoff]         = useState<{ url: string; mode: 'media' | 'text' | 'saved' } | null>(null);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
-  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; stripe_customer_id?: string; } | null>(null);
+  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; cancel_at_period_end?: boolean; stripe_customer_id?: string; } | null>(null);
   const [trialLoading, setTrialLoading]         = useState<string | null>(null);
   const [phoneVerifyOpen, setPhoneVerifyOpen]   = useState(false);
   const [phoneVerifyPlan, setPhoneVerifyPlan]   = useState<string | null>(null);
@@ -7028,6 +7087,9 @@ export function MediaDistributionPage() {
   const [checkoutLoading, setCheckoutLoading]   = useState<string | null>(null);
   const [portalLoading, setPortalLoading]       = useState(false);
   const [cancelModalOpen, setCancelModalOpen]   = useState(false);
+  const [cancelSubModalOpen, setCancelSubModalOpen] = useState(false);
+  const [cancelSubLoading, setCancelSubLoading]     = useState(false);
+  const [cancelSubError, setCancelSubError]         = useState<string | null>(null);
   const [retentionLoading, setRetentionLoading] = useState(false);
   const [retentionSuccess, setRetentionSuccess] = useState(false);
   const [retentionError, setRetentionError]     = useState<string | null>(null);
@@ -7079,7 +7141,7 @@ export function MediaDistributionPage() {
     // Load subscription + global usage
     (async () => {
       try {
-        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
       } catch (_) {}
       // Load workspaces
@@ -7132,7 +7194,7 @@ export function MediaDistributionPage() {
     // Handle ?checkout=success or ?addon_success= return — refresh subscription + usage
     const params = new URLSearchParams(window.location.search);
     const refreshAfterPurchase = async () => {
-      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
       if (data) setSubscription(data);
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -7351,7 +7413,7 @@ export function MediaDistributionPage() {
         else alert(d.message || 'Could not start trial. Please try again.');
         return;
       }
-      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,stripe_customer_id').eq('supabase_user_id', currentUser!.id).maybeSingle();
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id').eq('supabase_user_id', currentUser!.id).maybeSingle();
       if (data) setSubscription(data);
       try {
         const { data: { session: s2 } } = await supabase.auth.getSession();
@@ -7439,6 +7501,38 @@ export function MediaDistributionPage() {
   const handleProceedToCancel = () => {
     setCancelModalOpen(false);
     if (portalUrlRef.current) window.location.href = portalUrlRef.current;
+  };
+
+  const handleCancelSub = async () => {
+    setCancelSubLoading(true);
+    setCancelSubError(null);
+    try {
+      let token = await getToken() ?? '';
+      if (!token) {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        token = refreshed.session?.access_token ?? '';
+      }
+      if (!token) throw new Error('Not authenticated');
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/cancel-subscription`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (data.canceled || data.already_canceling) {
+        setCancelSubModalOpen(false);
+        setSubscription(prev => prev ? {
+          ...prev,
+          cancel_at_period_end: true,
+          current_period_end: data.current_period_end ?? prev.current_period_end,
+        } : prev);
+      } else {
+        throw new Error(data.error || 'Cancellation failed. Please try again.');
+      }
+    } catch (e: any) {
+      setCancelSubError(e.message);
+    } finally {
+      setCancelSubLoading(false);
+    }
   };
 
   const handleAddonCheckout = async (addonKey: string) => {
@@ -7811,6 +7905,7 @@ export function MediaDistributionPage() {
             onUpgrade={() => { setCreditsOpen(false); setPricingOpen(true); }}
             onAddon={handleAddonCheckout}
             onManage={handlePortal}
+            onCancelSub={() => { setCancelSubError(null); setCancelSubModalOpen(true); }}
           />
         </div>
       )}
@@ -8081,6 +8176,53 @@ export function MediaDistributionPage() {
               </div>
               <button onClick={()=>{setAddonModalOpen(false);setPricingOpen(true);}} className="w-full py-3 rounded-xl text-sm font-bold transition hover:brightness-110" style={{background:`linear-gradient(135deg,${GOLD_D},${GOLD},${GOLD_L})`,color:"#000"}}>↑ Upgrade Your Plan for More</button>
               <button onClick={()=>setAddonModalOpen(false)} className="w-full py-2 rounded-xl text-xs text-white/25 hover:text-white/50 transition">Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Direct Cancel Subscription Modal ── */}
+      {cancelSubModalOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(12px)', padding: 16 }}
+          onClick={e => { if (e.target === e.currentTarget && !cancelSubLoading) setCancelSubModalOpen(false); }}>
+          <div style={{ width: '100%', maxWidth: 420, background: 'linear-gradient(170deg,#1a1a1a,#141414)', border: '1px solid rgba(255,255,255,0.09)', borderRadius: 20, overflow: 'hidden', boxShadow: '0 32px 80px rgba(0,0,0,0.8)' }}>
+            <div style={{ height: 3, background: `linear-gradient(90deg, transparent, ${GOLD_D} 15%, ${GOLD} 40%, ${GOLD_L} 55%, ${GOLD} 75%, transparent)` }} />
+            <div style={{ padding: '28px 28px 32px' }}>
+              <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+                <h2 style={{ color: 'white', fontSize: 20, fontWeight: 800, marginBottom: 10, margin: '0 0 10px' }}>
+                  Cancel your subscription?
+                </h2>
+                <p style={{ color: 'rgba(255,255,255,0.42)', fontSize: 13, lineHeight: 1.65, margin: 0 }}>
+                  You'll keep full access until the end of your current billing period. After that, your account will downgrade to free.
+                </p>
+              </div>
+              {cancelSubError && (
+                <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+                  <p style={{ color: '#fca5a5', fontSize: 12, margin: 0, textAlign: 'center' }}>{cancelSubError}</p>
+                </div>
+              )}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <button
+                  onClick={() => { if (!cancelSubLoading) setCancelSubModalOpen(false); }}
+                  disabled={cancelSubLoading}
+                  style={{ width: '100%', padding: '13px 0', borderRadius: 12, border: `1px solid ${GOLD}40`, fontSize: 13, fontWeight: 800, cursor: cancelSubLoading ? 'not-allowed' : 'pointer', background: 'transparent', color: 'rgba(255,255,255,0.75)', opacity: cancelSubLoading ? 0.5 : 1 }}>
+                  Keep my subscription
+                </button>
+                <button
+                  onClick={handleCancelSub}
+                  disabled={cancelSubLoading}
+                  style={{ width: '100%', padding: '13px 0', borderRadius: 12, border: '1px solid rgba(239,68,68,0.3)', fontSize: 13, fontWeight: 700, cursor: cancelSubLoading ? 'not-allowed' : 'pointer', background: 'rgba(239,68,68,0.12)', color: cancelSubLoading ? 'rgba(239,68,68,0.5)' : '#f87171', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                  {cancelSubLoading ? (
+                    <>
+                      <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                      </svg>
+                      Canceling…
+                    </>
+                  ) : 'Yes, cancel'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
