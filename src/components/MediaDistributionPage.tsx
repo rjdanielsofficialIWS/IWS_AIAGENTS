@@ -361,7 +361,112 @@ async function postChunkToWhisper(blob: Blob, filename: string, authHeaders: Rec
   return transcript ?? '';
 }
 
-async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
+/**
+ * MediaRecorder fallback: plays the video through a hidden element and captures
+ * compressed Opus audio in real-time. Works for any video format/size the browser
+ * can play, and uses minimal memory. Tradeoff: takes real-time duration to capture.
+ * At 32 kbps Opus, even a 90-min video fits in one 22 MB chunk.
+ */
+async function transcribeViaMediaRecorder(
+  videoFile: File,
+  authHeaders: Record<string, string>,
+  onStep?: (msg: string) => void,
+): Promise<string> {
+  const objectUrl = URL.createObjectURL(videoFile);
+  return new Promise<string>((resolve, reject) => {
+    const video = document.createElement('video');
+    video.src = objectUrl;
+    video.preload = 'auto';
+    // Hidden but present in DOM — required for MediaElementSource in some browsers
+    video.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;opacity:0;pointer-events:none;';
+    document.body.appendChild(video);
+
+    const cleanup = () => {
+      try { video.pause(); } catch (_) {}
+      try { document.body.removeChild(video); } catch (_) {}
+      URL.revokeObjectURL(objectUrl);
+    };
+
+    video.onloadedmetadata = async () => {
+      try {
+        const dur = Math.round(video.duration / 60);
+        onStep?.(`Capturing audio… (~${dur} min)`);
+
+        const audioCtx = new AudioContext();
+        const source   = audioCtx.createMediaElementSource(video);
+        const dest     = audioCtx.createMediaStreamDestination();
+        source.connect(dest);
+        // Do NOT connect to audioCtx.destination — silent to the user
+
+        const mimeType =
+          MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' :
+          MediaRecorder.isTypeSupported('audio/webm')             ? 'audio/webm' :
+          'audio/ogg';
+        const ext = mimeType.includes('webm') ? 'webm' : 'ogg';
+
+        const recorder = new MediaRecorder(dest.stream, {
+          mimeType,
+          audioBitsPerSecond: 32_000, // 32 kbps is plenty for speech; 90 min ≈ 21.6 MB
+        });
+
+        const pendingTranscripts: Promise<string>[] = [];
+        let currentData: Blob[] = [];
+        let currentSize = 0;
+
+        const flushChunk = (data: Blob[]) => {
+          if (!data.length) return;
+          const idx = pendingTranscripts.length;
+          const blob = new Blob(data, { type: mimeType });
+          pendingTranscripts.push(postChunkToWhisper(blob, `chunk-${idx + 1}.${ext}`, authHeaders));
+        };
+
+        recorder.ondataavailable = (e) => {
+          if (!e.data.size) return;
+          currentData.push(e.data);
+          currentSize += e.data.size;
+          // Flush when we approach the 22 MB limit (with headroom)
+          if (currentSize >= WHISPER_CHUNK_BYTES * 0.88) {
+            const toFlush = currentData;
+            currentData = []; currentSize = 0;
+            flushChunk(toFlush);
+          }
+        };
+
+        recorder.onstop = async () => {
+          flushChunk(currentData);
+          cleanup();
+          try { await audioCtx.close(); } catch (_) {}
+          try {
+            const results = await Promise.all(pendingTranscripts);
+            resolve(results.join(' '));
+          } catch (e) { reject(e); }
+        };
+
+        recorder.onerror = () => { cleanup(); reject(new Error('Audio capture failed')); };
+        video.onended  = () => recorder.stop();
+        video.onerror  = () => { cleanup(); reject(new Error('Video playback failed during audio capture')); };
+
+        // Request data every 15 s so we can flush large files incrementally
+        recorder.start(15_000);
+        await video.play();
+      } catch (e) {
+        cleanup();
+        reject(e);
+      }
+    };
+
+    video.onerror = () => {
+      cleanup();
+      reject(new Error('Your browser cannot play this video format. Try converting to MP4.'));
+    };
+  });
+}
+
+async function transcribeVideo(
+  videoFile: File,
+  authToken = '',
+  onStep?: (msg: string) => void,
+): Promise<string> {
   const authHeaders: Record<string, string> = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
 
   // Small file: send raw — Whisper natively supports MP4/MOV/WebM up to 25 MB
@@ -370,9 +475,10 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
   }
 
   // Large file: decode and resample to 8 kHz mono WAV, then chunk if needed.
-  // 8 kHz uses half the memory of 16 kHz during decoding and produces smaller WAVs.
+  // 8 kHz halves memory vs 16 kHz. Falls back to MediaRecorder if decode fails (OOM/codec).
   let channelData: Float32Array;
   try {
+    onStep?.('Extracting audio…');
     const arrayBuffer = await videoFile.arrayBuffer();
     const tmpCtx = new AudioContext();
     let decoded: AudioBuffer;
@@ -395,16 +501,11 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
       for (let i = 0; i < data.length; i++) channelData[i] += data[i] / resampled.numberOfChannels;
     }
   } catch (decodeErr) {
-    // Fallback when Web Audio API can't decode the video (unsupported codec, OOM, etc.)
-    console.warn('[transcribeVideo] audio decode failed:', decodeErr);
-    // Only send raw file if it fits under the limit; otherwise give a clear error.
-    if (videoFile.size <= WHISPER_CHUNK_BYTES) {
-      return postChunkToWhisper(videoFile, videoFile.name, authHeaders);
-    }
-    throw new Error(
-      `This video could not be processed in your browser (${(videoFile.size / 1024 / 1024).toFixed(0)} MB). ` +
-      'Try converting it to MP4 with AAC audio, or use a shorter clip under 10 minutes.'
-    );
+    // Web Audio API failed (OOM for very large files, or unsupported codec).
+    // Fall back to MediaRecorder: plays the video in a hidden element and captures
+    // compressed Opus audio in real-time. Works for any format/size the browser supports.
+    console.warn('[transcribeVideo] Web Audio decode failed, falling back to MediaRecorder:', decodeErr);
+    return transcribeViaMediaRecorder(videoFile, authHeaders, onStep);
   }
 
   // Single chunk fits under limit — send directly
@@ -2004,7 +2105,7 @@ function InlinePostComposer({
         if (fileToUse) {
           // Client-side audio extraction → direct POST to Whisper (no CF polling)
           setAiStep('Extracting audio…');
-          sourceText = await transcribeVideo(fileToUse, await getToken());
+          sourceText = await transcribeVideo(fileToUse, await getToken(), (msg) => setAiStep(msg));
         } else {
           // URL-only path: AI-Studio video with no local file (CF Stream URL)
           setAiStep('Analyzing video…');
