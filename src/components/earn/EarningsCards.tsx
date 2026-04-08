@@ -16,7 +16,7 @@ interface EarningsCardsProps {
 export function EarningsCards({ stats }: EarningsCardsProps) {
   const cards = [
     {
-      label: "This Month's Stipend",
+      label: "This Month's Monthly Pay",
       value: fmt(stats.this_month.stipend_cents),
       icon: <Star className="w-4 h-4" />,
       accent: GOLD,

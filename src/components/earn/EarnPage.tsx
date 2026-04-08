@@ -82,7 +82,7 @@ function RankTable({ stats }: { stats: ReturnType<typeof useNetworkStats>['stats
         <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 500 }}>
           <thead>
             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-              {['Rank', 'Team MRR Required', 'Monthly Stipend', 'Referral Commission'].map(h => (
+              {['Rank', 'Team MRR Required', 'Monthly Pay', 'Referral Commission'].map(h => (
                 <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontSize: 10, fontWeight: 700, color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.07em' }}>
                   {h}
                 </th>
@@ -218,7 +218,7 @@ function FaqStrip() {
       body: 'The total monthly subscription value of every active member in your entire downline, however deep.',
     },
     {
-      title: 'Stipend',
+      title: 'Monthly Pay',
       body: 'A flat monthly payment from Infinite Media based on your rank. Paid on the 1st of each month.',
     },
     {
@@ -246,7 +246,7 @@ function FaqStrip() {
 function QualificationRules() {
   const rules = [
     'Must be an active paying subscriber yourself',
-    'Must have at least 3 active personal referrals to qualify for any stipend',
+    'Must have at least 3 active personal referrals to qualify for any monthly pay',
     'Max 20% of team MRR can come from personal enrollments (depth requirement)',
     'No single downline leg can exceed 50% of team MRR',
     'De-ranking has a 30-day grace period',
@@ -307,7 +307,7 @@ export function EarnPage({ userId }: EarnPageProps) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <RankBadge rank={stats?.current_rank ?? null} size="lg" />
             <p style={{ fontSize: 13, color: 'rgba(255,255,255,0.4)', margin: 0 }}>
-              Share your link. Earn 20% on every referral + a monthly stipend based on your team's MRR.
+              Share your link. Earn 20% on every referral + monthly pay based on your team's MRR.
             </p>
           </div>
 
