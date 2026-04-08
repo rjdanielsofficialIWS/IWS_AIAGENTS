@@ -394,18 +394,11 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
     transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', headers: authHeaders, body: form });
   } else {
     const audioBlob = await extractAudioFromVideo(videoFile);
-    if (audioBlob.size <= 5 * 1024 * 1024) {
-      const form = new FormData();
-      form.append('file', audioBlob, 'audio.wav');
-      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', headers: authHeaders, body: form });
-    } else {
-      const videoUrl = await uploadViaNativeXHR(audioBlob, 'video');
-      transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders },
-        body: JSON.stringify({ videoUrl }),
-      });
-    }
+    // Always POST audio blob directly to Whisper — Whisper accepts up to 25MB.
+    // Never send a CF Stream URL for extracted audio; that triggers CF polling (30-90s wait).
+    const form = new FormData();
+    form.append('file', audioBlob, 'audio.wav');
+    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', headers: authHeaders, body: form });
   }
 
   if (!transcribeRes.ok) {
@@ -1830,6 +1823,7 @@ function InlinePostComposer({
   const [content, setContent]           = useState('');
   const [manualCaptions, setManualCaptions] = useState({});
   const [videoFile, setVideoFile]       = useState<File | null>(null);
+  const videoFileRef                    = useRef<File | null>(null); // persists file across renders for transcription
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
   const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
 
@@ -1842,6 +1836,8 @@ function InlinePostComposer({
       setVideoUpload({ status: 'done', path: '', url: initialVideoUrl, fileName: 'ai-video.mp4', mime: 'video/mp4', size: 0 });
     }
   }, [initialVideoUrl]);
+  // Keep ref in sync so transcription always has access to the file even if state clears
+  useEffect(() => { if (videoFile) videoFileRef.current = videoFile; }, [videoFile]);
   const [imageFiles, setImageFiles]     = useState<File[]>([]);
   const [imageUploads, setImageUploads] = useState<UploadState[]>([]);
   const [carouselObjectUrls, setCarouselObjectUrls] = useState<string[]>([]);
@@ -1868,6 +1864,7 @@ function InlinePostComposer({
   const [aiTone, setAiTone]             = useState('');
   const [aiDescription, setAiDescription] = useState('');
   const [aiLoading, setAiLoading]       = useState(false);
+  const [aiStep, setAiStep]             = useState<string>('Analyzing & Writing…');
   const [aiError, setAiError]           = useState<string | null>(null);
   const [transcript, setTranscript]     = useState<string | null>(null);
   const [generatedCaptions, setGeneratedCaptions] = useState<Record<string, string> | null>(null);
@@ -1975,14 +1972,19 @@ function InlinePostComposer({
       let sourceText = '';
       if (captionMode === 'from_video') {
         const videoUrl = videoUpload.status === 'done' ? videoUpload.url : undefined;
-        if (!videoFile && !videoUrl) throw new Error('Add a video using the Video button above first');
+        // Prefer local file (or ref) — avoids CF Stream polling entirely
+        const fileToUse = videoFile ?? videoFileRef.current;
+        if (!fileToUse && !videoUrl) throw new Error('Add a video using the Video button above first');
         let { data: { session: txSession } } = await supabase.auth.getSession();
         if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
         if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-        if (videoFile) {
-          sourceText = await transcribeVideo(videoFile, await getToken());
+        if (fileToUse) {
+          // Client-side audio extraction → direct POST to Whisper (no CF polling)
+          setAiStep('Extracting audio…');
+          sourceText = await transcribeVideo(fileToUse, await getToken());
         } else {
-          // URL-only video (e.g. from AI Video Studio) — transcribe directly from URL
+          // URL-only path: AI-Studio video with no local file (CF Stream URL)
+          setAiStep('Analyzing video…');
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
@@ -2006,6 +2008,7 @@ function InlinePostComposer({
       if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
       // Proactively refresh token — Safari ITP causes stale sessions
       { const r = await supabase.auth.refreshSession(); if (r.data.session) capSession = r.data.session; }
+      setAiStep('Writing captions…');
       const captionBody = JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone });
       let res = await Promise.race<Response>([
         fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
@@ -2569,7 +2572,7 @@ function InlinePostComposer({
                   className="w-full flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
                   <span className="flex items-center gap-2">
-                    {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? 'Analyzing & Writing…' : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
+                    {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? aiStep : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
                   </span>
                   {captionMode === 'from_video' && videoUpload.status === 'uploading' && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Waiting for video to finish uploading…</span>}
                   {aiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
