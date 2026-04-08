@@ -341,73 +341,86 @@ function pcmToWav(samples: Float32Array, sampleRate = 16000): Blob {
   return new Blob([buf], { type: 'audio/wav' });
 }
 
-async function extractAudioFromVideo(videoFile: File): Promise<Blob> {
-  const SAMPLE_RATE = 16000;
+// Safe limit per chunk — 22 MB leaves headroom under Whisper's 25 MB cap
+const WHISPER_CHUNK_BYTES = 22 * 1024 * 1024;
+const TRANSCRIBE_SAMPLE_RATE = 16000;
 
+// POST a single audio blob to the edge function; returns the transcript string
+async function postChunkToWhisper(blob: Blob, filename: string, authHeaders: Record<string, string>): Promise<string> {
+  const form = new FormData();
+  form.append('file', blob, filename);
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', headers: authHeaders, body: form });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    if (err.error === 'limit_reached') throw new Error(err.message);
+    throw new Error(err.error || 'AI analysis failed');
+  }
+  const { transcript } = await res.json();
+  return transcript ?? '';
+}
+
+async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
+  const authHeaders: Record<string, string> = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+
+  // Small file: send raw — Whisper natively supports MP4/MOV/WebM up to 25 MB
+  if (videoFile.size <= WHISPER_CHUNK_BYTES) {
+    return postChunkToWhisper(videoFile, videoFile.name, authHeaders);
+  }
+
+  // Large file: decode and resample to 16 kHz mono WAV, then chunk if needed
+  let channelData: Float32Array;
   try {
     const arrayBuffer = await videoFile.arrayBuffer();
     const tmpCtx = new AudioContext();
     let decoded: AudioBuffer;
-    try {
-      decoded = await tmpCtx.decodeAudioData(arrayBuffer);
-    } finally {
-      await tmpCtx.close();
+    try { decoded = await tmpCtx.decodeAudioData(arrayBuffer); }
+    finally { await tmpCtx.close(); }
+
+    // Resample to 16 kHz mono via OfflineAudioContext
+    const frames   = Math.ceil(decoded.duration * TRANSCRIBE_SAMPLE_RATE);
+    const offline  = new OfflineAudioContext(1, frames, TRANSCRIBE_SAMPLE_RATE);
+    const src      = offline.createBufferSource();
+    src.buffer     = decoded;
+    src.connect(offline.destination);
+    src.start(0);
+    const resampled = await offline.startRendering();
+
+    // Mix down to mono
+    channelData = new Float32Array(resampled.length);
+    for (let ch = 0; ch < resampled.numberOfChannels; ch++) {
+      const data = resampled.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) channelData[i] += data[i] / resampled.numberOfChannels;
     }
-
-    let audioBuffer: AudioBuffer;
-    if (decoded.sampleRate === SAMPLE_RATE) {
-      audioBuffer = decoded;
-    } else {
-      const frames  = Math.ceil(decoded.duration * SAMPLE_RATE);
-      const offline = new OfflineAudioContext(1, frames, SAMPLE_RATE);
-      const src     = offline.createBufferSource();
-      src.buffer    = decoded;
-      src.connect(offline.destination);
-      src.start(0);
-      audioBuffer = await offline.startRendering();
-    }
-
-    const samples = new Float32Array(audioBuffer.length);
-    for (let ch = 0; ch < audioBuffer.numberOfChannels; ch++) {
-      const data = audioBuffer.getChannelData(ch);
-      for (let i = 0; i < data.length; i++) samples[i] += data[i] / audioBuffer.numberOfChannels;
-    }
-
-    return pcmToWav(samples, SAMPLE_RATE);
-
   } catch (decodeErr) {
-    // Safari cannot decode many video codecs via Web Audio API.
-    // Return the raw file — Whisper accepts MP4/MOV/WebM natively up to 25MB.
-    console.warn('decodeAudioData failed, sending raw video to Whisper:', decodeErr);
-    return videoFile;
-  }
-}
-
-
-async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
-  let transcribeRes: Response;
-  const authHeaders = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
-
-  if (videoFile.size <= 5 * 1024 * 1024) {
-    const form = new FormData();
-    form.append('file', videoFile, videoFile.name);
-    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', headers: authHeaders, body: form });
-  } else {
-    const audioBlob = await extractAudioFromVideo(videoFile);
-    // Always POST audio blob directly to Whisper — Whisper accepts up to 25MB.
-    // Never send a CF Stream URL for extracted audio; that triggers CF polling (30-90s wait).
-    const form = new FormData();
-    form.append('file', audioBlob, 'audio.wav');
-    transcribeRes = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, { method: 'POST', headers: authHeaders, body: form });
+    // Safari / unsupported codec fallback: send raw file directly
+    console.warn('[transcribeVideo] decodeAudioData failed, sending raw file:', decodeErr);
+    return postChunkToWhisper(videoFile, videoFile.name, authHeaders);
   }
 
-  if (!transcribeRes.ok) {
-    const err = await transcribeRes.json().catch(() => ({}));
-    if (err.error === 'limit_reached') throw new Error(err.message);
-    throw new Error(err.error || 'AI analysis failed');
+  // Single chunk fits under limit — send directly
+  const totalWavBytes = 44 + channelData.length * 2;
+  if (totalWavBytes <= WHISPER_CHUNK_BYTES) {
+    return postChunkToWhisper(pcmToWav(channelData, TRANSCRIBE_SAMPLE_RATE), 'audio.wav', authHeaders);
   }
-  const { transcript } = await transcribeRes.json();
-  return transcript;
+
+  // Audio exceeds 22 MB — split into parallel chunks and join transcripts
+  // Each chunk: floor((22 MB - 44-byte WAV header) / 2 bytes per sample) samples ≈ 11.5 min at 16 kHz
+  const samplesPerChunk = Math.floor((WHISPER_CHUNK_BYTES - 44) / 2);
+  const numChunks = Math.ceil(channelData.length / samplesPerChunk);
+  console.log(`[transcribeVideo] Splitting audio into ${numChunks} chunks (${(totalWavBytes / 1024 / 1024).toFixed(1)} MB total)`);
+
+  const transcripts = await Promise.all(
+    Array.from({ length: numChunks }, (_, i) => {
+      const start = i * samplesPerChunk;
+      const end   = Math.min(start + samplesPerChunk, channelData.length);
+      return postChunkToWhisper(
+        pcmToWav(channelData.slice(start, end), TRANSCRIBE_SAMPLE_RATE),
+        `chunk-${i + 1}.wav`,
+        authHeaders,
+      );
+    })
+  );
+  return transcripts.join(' ');
 }
 
 // ─── Small shared components ──────────────────────────────────────────────────
