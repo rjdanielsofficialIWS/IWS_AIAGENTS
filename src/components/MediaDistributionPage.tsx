@@ -343,7 +343,9 @@ function pcmToWav(samples: Float32Array, sampleRate = 16000): Blob {
 
 // Safe limit per chunk — 22 MB leaves headroom under Whisper's 25 MB cap
 const WHISPER_CHUNK_BYTES = 22 * 1024 * 1024;
-const TRANSCRIBE_SAMPLE_RATE = 16000;
+// 8 kHz mono: half the memory of 16 kHz; Whisper handles speech cleanly at this rate.
+// Chunk duration at 8 kHz: (22MB - 44) / 2 / 8000 ≈ 23 min per chunk.
+const TRANSCRIBE_SAMPLE_RATE = 8000;
 
 // POST a single audio blob to the edge function; returns the transcript string
 async function postChunkToWhisper(blob: Blob, filename: string, authHeaders: Record<string, string>): Promise<string> {
@@ -367,7 +369,8 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
     return postChunkToWhisper(videoFile, videoFile.name, authHeaders);
   }
 
-  // Large file: decode and resample to 16 kHz mono WAV, then chunk if needed
+  // Large file: decode and resample to 8 kHz mono WAV, then chunk if needed.
+  // 8 kHz uses half the memory of 16 kHz during decoding and produces smaller WAVs.
   let channelData: Float32Array;
   try {
     const arrayBuffer = await videoFile.arrayBuffer();
@@ -376,7 +379,7 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
     try { decoded = await tmpCtx.decodeAudioData(arrayBuffer); }
     finally { await tmpCtx.close(); }
 
-    // Resample to 16 kHz mono via OfflineAudioContext
+    // Resample to 8 kHz mono via OfflineAudioContext
     const frames   = Math.ceil(decoded.duration * TRANSCRIBE_SAMPLE_RATE);
     const offline  = new OfflineAudioContext(1, frames, TRANSCRIBE_SAMPLE_RATE);
     const src      = offline.createBufferSource();
@@ -392,9 +395,16 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
       for (let i = 0; i < data.length; i++) channelData[i] += data[i] / resampled.numberOfChannels;
     }
   } catch (decodeErr) {
-    // Safari / unsupported codec fallback: send raw file directly
-    console.warn('[transcribeVideo] decodeAudioData failed, sending raw file:', decodeErr);
-    return postChunkToWhisper(videoFile, videoFile.name, authHeaders);
+    // Fallback when Web Audio API can't decode the video (unsupported codec, OOM, etc.)
+    console.warn('[transcribeVideo] audio decode failed:', decodeErr);
+    // Only send raw file if it fits under the limit; otherwise give a clear error.
+    if (videoFile.size <= WHISPER_CHUNK_BYTES) {
+      return postChunkToWhisper(videoFile, videoFile.name, authHeaders);
+    }
+    throw new Error(
+      `This video could not be processed in your browser (${(videoFile.size / 1024 / 1024).toFixed(0)} MB). ` +
+      'Try converting it to MP4 with AAC audio, or use a shorter clip under 10 minutes.'
+    );
   }
 
   // Single chunk fits under limit — send directly
@@ -403,8 +413,8 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
     return postChunkToWhisper(pcmToWav(channelData, TRANSCRIBE_SAMPLE_RATE), 'audio.wav', authHeaders);
   }
 
-  // Audio exceeds 22 MB — split into parallel chunks and join transcripts
-  // Each chunk: floor((22 MB - 44-byte WAV header) / 2 bytes per sample) samples ≈ 11.5 min at 16 kHz
+  // Audio exceeds 22 MB — split into parallel chunks and join transcripts.
+  // At 8 kHz each chunk holds ~23 min of audio.
   const samplesPerChunk = Math.floor((WHISPER_CHUNK_BYTES - 44) / 2);
   const numChunks = Math.ceil(channelData.length / samplesPerChunk);
   console.log(`[transcribeVideo] Splitting audio into ${numChunks} chunks (${(totalWavBytes / 1024 / 1024).toFixed(1)} MB total)`);
