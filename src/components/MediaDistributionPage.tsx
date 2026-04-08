@@ -1758,6 +1758,10 @@ function InlinePostComposer({
   const videoFileRef                    = useRef<File | null>(null); // persists file across renders for transcription
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
   const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
+  const videoUploadRef                  = useRef<UploadState>({ status: 'idle' });
+
+  // Keep videoUploadRef in sync so async handlers can read current upload state
+  useEffect(() => { videoUploadRef.current = videoUpload; }, [videoUpload]);
 
   // Pre-populate with AI-generated video URL if provided
   React.useEffect(() => {
@@ -1910,13 +1914,41 @@ function InlinePostComposer({
         let { data: { session: txSession } } = await supabase.auth.getSession();
         if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
         if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-        if (fileToUse) {
-          // Client-side audio extraction → direct POST to Whisper (no CF polling)
-          setAiStep('Extracting audio…');
+        // For large files, wait for the Storage upload to finish then use the URL path.
+        // The edge function downloads from Storage server-side and extracts the audio track —
+        // this avoids uploading the raw file twice and handles any size.
+        const LARGE = 24 * 1024 * 1024;
+        if (fileToUse && fileToUse.size > LARGE) {
+          setAiStep('Waiting for upload to finish…');
+          const storageUrl = await new Promise<string>((resolve, reject) => {
+            // Check immediately in case upload already finished
+            const cur = videoUploadRef.current;
+            if (cur.status === 'done' && (cur as any).url) return resolve((cur as any).url);
+            if (cur.status === 'error') return reject(new Error((cur as any).message || 'Upload failed'));
+            const timeout = setTimeout(() => { clearInterval(iv); reject(new Error('Upload timed out. Please try again.')); }, 10 * 60 * 1000);
+            const iv = setInterval(() => {
+              const up = videoUploadRef.current;
+              if (up.status === 'done' && (up as any).url) { clearInterval(iv); clearTimeout(timeout); resolve((up as any).url); }
+              else if (up.status === 'error') { clearInterval(iv); clearTimeout(timeout); reject(new Error((up as any).message || 'Upload failed')); }
+            }, 500);
+          });
+          setAiStep('Transcribing video…');
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+            body: JSON.stringify({ videoUrl: storageUrl }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Transcription failed');
+          }
+          sourceText = (await res.json()).transcript ?? '';
+        } else if (fileToUse) {
+          setAiStep('Transcribing video…');
           sourceText = await transcribeVideo(fileToUse, await getToken());
         } else {
-          // URL-only path: AI-Studio video with no local file (CF Stream URL)
-          setAiStep('Analyzing video…');
+          // No local file — use the Storage/CF URL directly
+          setAiStep('Transcribing video…');
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
