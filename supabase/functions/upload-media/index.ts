@@ -293,7 +293,8 @@ Deno.serve(async (req) => {
       if (!hasCF) return err("CF Stream not configured", 500);
 
       try {
-        return ok({ url: await awaitCFStream(accountId, cfToken, uid) });
+        const streamUrl = await awaitCFStream(accountId, cfToken, uid);
+        return ok({ url: streamUrl, uid });
       } catch (e) {
         return err((e as Error).message);
       }

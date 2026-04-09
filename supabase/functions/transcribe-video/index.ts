@@ -205,20 +205,43 @@ Deno.serve(async (req: Request) => {
         filename = file.name || filename;
       }
     } else {
-      // JSON path: videoUrl from Supabase Storage or other HTTPS source
-      const body = await req.json().catch(() => ({})) as { videoUrl?: string };
-      if (!body.videoUrl) return json({ error: "Provide a file or videoUrl" }, 400);
+      // JSON path: cfUid from CF Stream, or videoUrl from Supabase Storage / HTTPS source
+      const body = await req.json().catch(() => ({})) as { videoUrl?: string; cfUid?: string };
 
-      let parsed: URL;
-      try { parsed = new URL(body.videoUrl); } catch { return json({ error: "Invalid videoUrl" }, 400); }
-      if (parsed.protocol !== "https:") return json({ error: "videoUrl must use HTTPS" }, 400);
+      let videoFetchUrl: string;
 
-      const resp = await fetch(body.videoUrl);
+      if (body.cfUid) {
+        // Large file uploaded via CF Stream TUS — fetch the MP4 download URL from CF API
+        const accountId = Deno.env.get("CF_ACCOUNT_ID") ?? "";
+        const cfToken   = Deno.env.get("CF_STREAM_TOKEN") ?? "";
+        if (!accountId || !cfToken) return json({ error: "CF Stream not configured on this server" }, 500);
+
+        const dlRes = await fetch(
+          `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${body.cfUid}/downloads`,
+          { headers: { Authorization: `Bearer ${cfToken}` } }
+        );
+        if (!dlRes.ok) return json({ error: "Could not retrieve video download URL from CF Stream" }, 400);
+        const dlData = await dlRes.json();
+        const dlUrl  = dlData.result?.default?.url as string | undefined;
+        if (!dlUrl || dlData.result?.default?.status !== "ready") {
+          return json({ error: "Video is still processing. Please wait a moment and try again." }, 400);
+        }
+        videoFetchUrl = dlUrl;
+      } else if (body.videoUrl) {
+        let parsed: URL;
+        try { parsed = new URL(body.videoUrl); } catch { return json({ error: "Invalid videoUrl" }, 400); }
+        if (parsed.protocol !== "https:") return json({ error: "videoUrl must use HTTPS" }, 400);
+        videoFetchUrl = body.videoUrl;
+      } else {
+        return json({ error: "Provide a file, videoUrl, or cfUid" }, 400);
+      }
+
+      const resp = await fetch(videoFetchUrl);
       if (!resp.ok) return json({ error: "Failed to fetch video" }, 400);
       const videoData = new Uint8Array(await resp.arrayBuffer());
 
       if (videoData.length > 25 * 1024 * 1024) {
-        // Large file from URL: extract audio track
+        // Large file: extract audio track from MP4/MOV container
         const adts = extractADTS(videoData);
         if (!adts) return json({ error: "Could not extract audio from this video. Please ensure it is a valid MP4 or MOV file." }, 400);
         audioBlob = new Blob([adts], { type: "audio/aac" });
