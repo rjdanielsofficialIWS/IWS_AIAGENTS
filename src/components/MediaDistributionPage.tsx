@@ -459,53 +459,13 @@ async function extractAudioForWhisper(videoFile: File): Promise<{ blob: Blob; fi
 }
 
 // Upload a video file to the transcribe-video edge function and return the transcript.
-// For files > 10 MB: upload to Supabase Storage and pass the public URL as JSON.
-//   Supabase edge functions 546 (OOM) when the FormData body exceeds ~50 MB — this
-//   avoids that entirely. The edge function fetches from the URL server-side.
-// For files ≤ 10 MB: send directly as FormData (fast, no Storage round-trip needed).
+// Only used for files ≤ 10 MB — sent directly as FormData.
+// Large files go via cfUid (CF Stream) in handleAiGenerate instead.
 async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
   const { data: refreshed } = await supabase.auth.refreshSession();
   const token = refreshed.session?.access_token || authToken;
   if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
 
-  const LARGE = 10 * 1024 * 1024;
-
-  if (videoFile.size > LARGE) {
-    // Upload raw video to Storage then pass the URL — avoids FormData body size 546
-    const { data: { user } } = await supabase.auth.getUser();
-    const uid = user?.id ?? 'anon';
-    const safeFilename = videoFile.name.replace(/[^a-zA-Z0-9._-]/g, '_') || 'video.mp4';
-    const storagePath = `transcription-temp/${uid}/${Date.now()}-${safeFilename}`;
-    const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/media/${storagePath}`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'apikey': SUPABASE_ANON_KEY,
-        'Content-Type': videoFile.type || 'video/mp4',
-        'x-upsert': 'true',
-      },
-      body: videoFile,
-    });
-    if (!uploadRes.ok) {
-      const e = await uploadRes.json().catch(() => ({}));
-      throw new Error(e.error || `Storage upload failed (${uploadRes.status})`);
-    }
-    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/media/${storagePath}`;
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-      body: JSON.stringify({ videoUrl: publicUrl }),
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      if (err.error === 'limit_reached') throw new Error(err.message);
-      throw new Error(err.error || 'Transcription failed');
-    }
-    const { transcript } = await res.json();
-    return transcript ?? '';
-  }
-
-  // Small file — send directly as FormData
   const form = new FormData();
   form.append('file', videoFile, videoFile.name || 'audio.mp4');
   const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
@@ -2095,11 +2055,27 @@ function InlinePostComposer({
         let { data: { session: txSession } } = await supabase.auth.getSession();
         if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
         if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-        if (fileToUse) {
-          setAiStep(fileToUse.size > 10 * 1024 * 1024 ? 'Uploading video…' : 'Transcribing video…');
+        const cfUid = videoUpload.status === 'done' ? (videoUpload as any).cfUid as string | undefined : undefined;
+        if (fileToUse && fileToUse.size > 10 * 1024 * 1024 && cfUid) {
+          // Large file — already uploaded to CF Stream; pass the UID so the edge function
+          // polls until the MP4 is ready then downloads and sends to Whisper directly.
+          setAiStep('Transcribing video…');
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+            body: JSON.stringify({ cfUid }),
+          });
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            if (err.error === 'limit_reached') throw new Error(err.message);
+            throw new Error(err.error || 'Transcription failed');
+          }
+          sourceText = (await res.json()).transcript ?? '';
+        } else if (fileToUse) {
+          setAiStep('Transcribing video…');
           sourceText = await transcribeVideo(fileToUse, await getToken());
         } else {
-          // No local file — use the Storage/CF URL directly
+          // No local file — use the stored CF/Storage URL directly
           setAiStep('Transcribing video…');
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
