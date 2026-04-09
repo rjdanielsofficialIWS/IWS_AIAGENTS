@@ -395,64 +395,63 @@ function extractADTSBlob(buf: Uint8Array): Blob | null {
   } catch { return null; }
 }
 
-// Extracts the audio track from a video file in the browser and returns a 16 kHz
-// mono 16-bit WAV blob.  Running this client-side keeps the edge function payload
-// small (≈ 2–6 MB for a 5-min video) and avoids the 2-second Supabase CPU limit
-// that fires when the edge function tries to process a large MP4 itself.
-async function extractAudioAsWav(videoFile: File): Promise<Blob> {
-  const arrayBuffer = await videoFile.arrayBuffer();
-  // iOS Safari uses webkitAudioContext; also some iOS versions can't decode video
-  // containers (MP4/MOV) via decodeAudioData — the promise rejects silently.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const AudioCtx: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-  if (!AudioCtx) throw new Error('AudioContext not supported on this browser');
-  const tempCtx = new AudioCtx();
-  let audioBuffer: AudioBuffer;
-  try {
-    audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
-  } finally {
-    await tempCtx.close();
-  }
-  // Resample to 16 kHz mono — Whisper's native rate; keeps WAV well under 25 MB
-  const SR = 16000;
-  const offCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * SR), SR);
-  const src = offCtx.createBufferSource();
-  src.buffer = audioBuffer;
-  src.connect(offCtx.destination);
-  src.start(0);
-  const resampled = await offCtx.startRendering();
-  const pcmF32 = resampled.getChannelData(0);
-  // Convert float32 → int16
-  const pcm16 = new Int16Array(pcmF32.length);
-  for (let i = 0; i < pcmF32.length; i++) {
-    const s = Math.max(-1, Math.min(1, pcmF32[i]));
-    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-  }
-  // Build WAV header
-  const hdr = new ArrayBuffer(44);
-  const dv = new DataView(hdr);
-  const ws = (o: number, s: string) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
-  const bl = pcm16.byteLength;
-  ws(0, 'RIFF'); dv.setUint32(4, 36 + bl, true); ws(8, 'WAVE');
-  ws(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
-  dv.setUint16(22, 1, true); dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
-  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
-  ws(36, 'data'); dv.setUint32(40, bl, true);
-  return new Blob([hdr, pcm16.buffer], { type: 'audio/wav' });
-}
-
 // Two-stage client-side audio extractor:
 //   Stage 1 — Web Audio API → 16 kHz WAV  (desktop / Android)
 //   Stage 2 — MP4 box parser → ADTS/AAC   (iOS Safari, which rejects decodeAudioData on MOV/MP4)
 // Returns the blob + a Whisper-safe filename.  Throws only if both stages fail.
+//
+// IMPORTANT: the file is read into memory exactly once. The previous design called
+// videoFile.arrayBuffer() in extractAudioAsWav AND again for the ADTS fallback —
+// on iOS with a 100–300 MB camera video that doubled peak memory usage, causing
+// the second read to fail under memory pressure and breaking transcription on mobile.
 async function extractAudioForWhisper(videoFile: File): Promise<{ blob: Blob; filename: string }> {
-  try {
-    const blob = await extractAudioAsWav(videoFile);
-    return { blob, filename: 'audio.wav' };
-  } catch { /* Web Audio failed (typical on iOS with MOV/MP4) — try raw box parsing */ }
+  // Read once and share between both extraction stages
+  const arrayBuffer = await videoFile.arrayBuffer();
 
-  const buf = new Uint8Array(await videoFile.arrayBuffer());
-  const aacBlob = extractADTSBlob(buf);
+  // Stage 1: Web Audio API → 16 kHz mono WAV
+  // .slice(0) passes a copy to decodeAudioData — required because decodeAudioData
+  // transfers (detaches) its argument, and we need the original for Stage 2.
+  // On iOS Safari, decodeAudioData rejects video containers — the catch handles it.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const AudioCtx: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+  if (AudioCtx) {
+    try {
+      const tempCtx = new AudioCtx();
+      let audioBuffer: AudioBuffer;
+      try {
+        audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
+      } finally {
+        await tempCtx.close();
+      }
+      const SR = 16000;
+      const offCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * SR), SR);
+      const src = offCtx.createBufferSource();
+      src.buffer = audioBuffer;
+      src.connect(offCtx.destination);
+      src.start(0);
+      const resampled = await offCtx.startRendering();
+      const pcmF32 = resampled.getChannelData(0);
+      const pcm16 = new Int16Array(pcmF32.length);
+      for (let i = 0; i < pcmF32.length; i++) {
+        const s = Math.max(-1, Math.min(1, pcmF32[i]));
+        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+      const hdr = new ArrayBuffer(44);
+      const dv = new DataView(hdr);
+      const ws = (o: number, s: string) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+      const bl = pcm16.byteLength;
+      ws(0, 'RIFF'); dv.setUint32(4, 36 + bl, true); ws(8, 'WAVE');
+      ws(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+      dv.setUint16(22, 1, true); dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
+      dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+      ws(36, 'data'); dv.setUint32(40, bl, true);
+      return { blob: new Blob([hdr, pcm16.buffer], { type: 'audio/wav' }), filename: 'audio.wav' };
+    } catch { /* Web Audio failed (typical on iOS with MOV/MP4) — fall through to Stage 2 */ }
+  }
+
+  // Stage 2: MP4 box parser → ADTS/AAC (iOS Safari primary path)
+  // Reuse the already-read arrayBuffer — no second File.arrayBuffer() call
+  const aacBlob = extractADTSBlob(new Uint8Array(arrayBuffer));
   if (aacBlob) return { blob: aacBlob, filename: 'audio.aac' };
 
   throw new Error('Could not extract audio from this video on this device');
