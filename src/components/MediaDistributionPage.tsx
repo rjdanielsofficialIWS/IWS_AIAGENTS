@@ -426,16 +426,17 @@ async function extractAudioFromVideo(file: File): Promise<Blob> {
 }
 
 // Transcription flow:
-//   ≤ 5 MB  → FormData directly
-//   > 5 MB  → try extractAudioFromVideo → if result ≤ 5 MB send as FormData
-//             otherwise (or if extraction fails) → upload via uploadViaNativeXHR
-//             and pass { videoUrl } as JSON so the edge function fetches it server-side
+//   ≤ 5 MB  → FormData directly (any format)
+//   > 5 MB  → try extractADTSBlob (MP4 box parser, works on iOS) → if ≤ 24 MB send as FormData
+//             → fallback: extractAudioFromVideo (Web Audio, desktop) → if ≤ 24 MB send as FormData
+//             → last resort: upload to Supabase storage (NOT CF Stream) and pass videoUrl
 async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
   const { data: refreshed } = await supabase.auth.refreshSession();
   const token = refreshed.session?.access_token || authToken;
   if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
 
   const SMALL = 5 * 1024 * 1024;
+  const WHISPER_MAX = 24 * 1024 * 1024; // safe under Whisper's 25 MB limit
 
   const callEdge = async (body: FormData | string, isJson: boolean): Promise<string> => {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
@@ -458,25 +459,36 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
     return callEdge(form, false);
   }
 
-  // Large file — try browser-side audio extraction first
+  // Large file — try MP4 box parser first (no Web Audio, works on iOS)
+  // For a 100 MB talking-head video the AAC track is typically 3–6 MB.
   let audioBlob: Blob | null = null;
   try {
-    const extracted = await extractAudioFromVideo(videoFile);
-    if (extracted.size <= SMALL) audioBlob = extracted;
-  } catch { /* extraction failed — fall through to upload */ }
+    const buf = new Uint8Array(await videoFile.arrayBuffer());
+    const adts = extractADTSBlob(buf);
+    if (adts && adts.size > 0 && adts.size <= WHISPER_MAX) audioBlob = adts;
+  } catch { }
+
+  // Fallback: Web Audio WAV extraction (may fail on iOS)
+  if (!audioBlob) {
+    try {
+      const extracted = await extractAudioFromVideo(videoFile);
+      if (extracted.size <= WHISPER_MAX) audioBlob = extracted;
+    } catch { }
+  }
 
   if (audioBlob) {
     const form = new FormData();
-    form.append('file', audioBlob, 'audio.wav');
+    const fname = audioBlob.type === 'audio/aac' ? 'audio.aac' : 'audio.wav';
+    form.append('file', audioBlob, fname);
     return callEdge(form, false);
   }
 
-  // Extraction failed or result still large — upload to storage and pass URL or cfUid
-  let cfUid: string | undefined;
-  const videoUrl = await uploadViaNativeXHR(videoFile, 'video', undefined, (uid) => { cfUid = uid; });
-  if (cfUid) return callEdge(JSON.stringify({ cfUid }), true);
-  if (videoUrl) return callEdge(JSON.stringify({ videoUrl }), true);
-  throw new Error('Upload failed: no URL returned. Please try again.');
+  // Last resort: upload raw video to Supabase storage (avoid CF Stream — it requires processing time).
+  // Pass the file as audio/mp4 so upload-media routes to Supabase storage, not CF Stream.
+  const audioMp4 = new Blob([await videoFile.arrayBuffer()], { type: 'audio/mp4' });
+  const videoUrl = await uploadViaNativeXHR(audioMp4, 'image');
+  if (!videoUrl) throw new Error('Upload failed. Please try again.');
+  return callEdge(JSON.stringify({ videoUrl }), true);
 }
 
 // ─── Small shared components ──────────────────────────────────────────────────
