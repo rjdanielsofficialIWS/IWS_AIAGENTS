@@ -395,91 +395,85 @@ function extractADTSBlob(buf: Uint8Array): Blob | null {
   } catch { return null; }
 }
 
-// Two-stage client-side audio extractor:
-//   Stage 1 — Web Audio API → 16 kHz WAV  (desktop / Android)
-//   Stage 2 — MP4 box parser → ADTS/AAC   (iOS Safari, which rejects decodeAudioData on MOV/MP4)
-// Returns the blob + a Whisper-safe filename.  Throws only if both stages fail.
-//
-// Memory strategy: read the file once. On iOS + video, skip Web Audio entirely —
-// decodeAudioData always fails there and the .slice(0) copy it requires doubles peak
-// memory (200 MB file → 400 MB), which iOS kills before ADTS ever gets a chance to run.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const _isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
-async function extractAudioForWhisper(videoFile: File): Promise<{ blob: Blob; filename: string }> {
-  const arrayBuffer = await videoFile.arrayBuffer();
-
-  // Stage 1: Web Audio API → 16 kHz mono WAV (desktop / Android only)
-  // Skipped on iOS because decodeAudioData always rejects video containers there,
-  // and the .slice(0) copy needed to preserve arrayBuffer for Stage 2 would double
-  // peak memory and get the Safari tab killed before ADTS extraction runs.
+async function extractAudioFromVideo(file: File): Promise<Blob> {
+  const arrayBuffer = await file.arrayBuffer();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const AudioCtx: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-  if (AudioCtx && !(_isIOS && videoFile.type.startsWith('video/'))) {
-    try {
-      const tempCtx = new AudioCtx();
-      let audioBuffer: AudioBuffer;
-      try {
-        // .slice(0) required: decodeAudioData transfers (detaches) its argument
-        audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
-      } finally {
-        await tempCtx.close();
-      }
-      const SR = 16000;
-      const offCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * SR), SR);
-      const src = offCtx.createBufferSource();
-      src.buffer = audioBuffer;
-      src.connect(offCtx.destination);
-      src.start(0);
-      const resampled = await offCtx.startRendering();
-      const pcmF32 = resampled.getChannelData(0);
-      const pcm16 = new Int16Array(pcmF32.length);
-      for (let i = 0; i < pcmF32.length; i++) {
-        const s = Math.max(-1, Math.min(1, pcmF32[i]));
-        pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      }
-      const hdr = new ArrayBuffer(44);
-      const dv = new DataView(hdr);
-      const ws = (o: number, s: string) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
-      const bl = pcm16.byteLength;
-      ws(0, 'RIFF'); dv.setUint32(4, 36 + bl, true); ws(8, 'WAVE');
-      ws(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
-      dv.setUint16(22, 1, true); dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
-      dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
-      ws(36, 'data'); dv.setUint32(40, bl, true);
-      return { blob: new Blob([hdr, pcm16.buffer], { type: 'audio/wav' }), filename: 'audio.wav' };
-    } catch { /* Web Audio failed — fall through to Stage 2 */ }
+  const audioCtx = new ((window as any).AudioContext || (window as any).webkitAudioContext)();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  await audioCtx.close();
+  const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * 16000, 16000);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineCtx.destination);
+  source.start(0);
+  const rendered = await offlineCtx.startRendering();
+  const samples = rendered.getChannelData(0);
+  const wav = new ArrayBuffer(44 + samples.length * 2);
+  const view = new DataView(wav);
+  const write = (o: number, s: string) => [...s].forEach((c, i) => view.setUint8(o + i, c.charCodeAt(0)));
+  write(0, 'RIFF'); view.setUint32(4, 36 + samples.length * 2, true);
+  write(8, 'WAVE'); write(12, 'fmt '); view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, 16000, true); view.setUint32(28, 32000, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  write(36, 'data'); view.setUint32(40, samples.length * 2, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) {
+    view.setInt16(off, Math.max(-32768, Math.min(32767, samples[i] * 32768)), true);
+    off += 2;
   }
-
-  // Stage 2: MP4 box parser → ADTS/AAC
-  // iOS primary path — peak memory = one file read only (no .slice copy)
-  const aacBlob = extractADTSBlob(new Uint8Array(arrayBuffer));
-  if (aacBlob) return { blob: aacBlob, filename: 'audio.aac' };
-
-  throw new Error('Could not extract audio from this video on this device');
+  return new Blob([wav], { type: 'audio/wav' });
 }
 
-// Upload a video file to the transcribe-video edge function and return the transcript.
-// Only used for files ≤ 10 MB — sent directly as FormData.
-// Large files go via cfUid (CF Stream) in handleAiGenerate instead.
+// Transcription flow:
+//   ≤ 5 MB  → FormData directly
+//   > 5 MB  → try extractAudioFromVideo → if result ≤ 5 MB send as FormData
+//             otherwise (or if extraction fails) → upload via uploadViaNativeXHR
+//             and pass { videoUrl } as JSON so the edge function fetches it server-side
 async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
   const { data: refreshed } = await supabase.auth.refreshSession();
   const token = refreshed.session?.access_token || authToken;
   if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
 
-  const form = new FormData();
-  form.append('file', videoFile, videoFile.name || 'audio.mp4');
-  const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-    method: 'POST',
-    headers: { 'Authorization': `Bearer ${token}` },
-    body: form,
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    if (err.error === 'limit_reached') throw new Error(err.message);
-    throw new Error(err.error || 'Transcription failed');
+  const SMALL = 5 * 1024 * 1024;
+
+  const callEdge = async (body: FormData | string, isJson: boolean): Promise<string> => {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
+      method: 'POST',
+      headers: { ...(isJson ? { 'Content-Type': 'application/json' } : {}), 'Authorization': `Bearer ${token}` },
+      body,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      if (err.error === 'limit_reached') throw new Error(err.message);
+      throw new Error(err.error || 'Transcription failed');
+    }
+    const { transcript } = await res.json();
+    return transcript ?? '';
+  };
+
+  if (videoFile.size <= SMALL) {
+    const form = new FormData();
+    form.append('file', videoFile, videoFile.name || 'audio.mp4');
+    return callEdge(form, false);
   }
-  const { transcript } = await res.json();
-  return transcript ?? '';
+
+  // Large file — try browser-side audio extraction first
+  let audioBlob: Blob | null = null;
+  try {
+    const extracted = await extractAudioFromVideo(videoFile);
+    if (extracted.size <= SMALL) audioBlob = extracted;
+  } catch { /* extraction failed — fall through to upload */ }
+
+  if (audioBlob) {
+    const form = new FormData();
+    form.append('file', audioBlob, 'audio.wav');
+    return callEdge(form, false);
+  }
+
+  // Extraction failed or result still large — upload to storage and pass URL
+  const videoUrl = await uploadViaNativeXHR(videoFile, 'video');
+  return callEdge(JSON.stringify({ videoUrl }), true);
 }
 
 // ─── Small shared components ──────────────────────────────────────────────────
@@ -2055,27 +2049,11 @@ function InlinePostComposer({
         let { data: { session: txSession } } = await supabase.auth.getSession();
         if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
         if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-        const cfUid = videoUpload.status === 'done' ? (videoUpload as any).cfUid as string | undefined : undefined;
-        if (fileToUse && fileToUse.size > 10 * 1024 * 1024 && cfUid) {
-          // Large file — already uploaded to CF Stream; pass the UID so the edge function
-          // polls until the MP4 is ready then downloads and sends to Whisper directly.
-          setAiStep('Transcribing video…');
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-            body: JSON.stringify({ cfUid }),
-          });
-          if (!res.ok) {
-            const err = await res.json().catch(() => ({}));
-            if (err.error === 'limit_reached') throw new Error(err.message);
-            throw new Error(err.error || 'Transcription failed');
-          }
-          sourceText = (await res.json()).transcript ?? '';
-        } else if (fileToUse) {
+        if (fileToUse) {
           setAiStep('Transcribing video…');
           sourceText = await transcribeVideo(fileToUse, await getToken());
         } else {
-          // No local file — use the stored CF/Storage URL directly
+          // No local file — pass the stored URL directly
           setAiStep('Transcribing video…');
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
