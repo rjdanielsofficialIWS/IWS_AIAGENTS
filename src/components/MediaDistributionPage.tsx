@@ -330,10 +330,15 @@ async function uploadViaNativeXHR(
 // that fires when the edge function tries to process a large MP4 itself.
 async function extractAudioAsWav(videoFile: File): Promise<Blob> {
   const arrayBuffer = await videoFile.arrayBuffer();
-  const tempCtx = new AudioContext();
+  // iOS Safari uses webkitAudioContext; also some iOS versions can't decode video
+  // containers (MP4/MOV) via decodeAudioData — the promise rejects silently.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const AudioCtx: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+  if (!AudioCtx) throw new Error('AudioContext not supported on this browser');
+  const tempCtx = new AudioCtx();
   let audioBuffer: AudioBuffer;
   try {
-    audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+    audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
   } finally {
     await tempCtx.close();
   }
@@ -375,12 +380,14 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
   if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
 
   let fileToSend: Blob = videoFile;
-  let filename = videoFile.name;
+  // Use a Whisper-safe filename regardless — iOS often gives files like IMG_1234.MOV
+  // which Whisper rejects.  audio.mp4 is accepted for any raw video fallback.
+  let filename = 'audio.mp4';
   if (videoFile.size > 4 * 1024 * 1024) {
     try {
       fileToSend = await extractAudioAsWav(videoFile);
       filename = 'audio.wav';
-    } catch { /* fall back to raw file if browser audio decode fails */ }
+    } catch { /* fall back to raw file if browser audio decode fails (e.g. iOS + MOV) */ }
   }
 
   const form = new FormData();
@@ -1980,11 +1987,20 @@ function InlinePostComposer({
         if (fileToUse && fileToUse.size > LARGE) {
           // Extract audio in the browser — avoids sending a large MP4 to the edge
           // function which would exceed its 2-second CPU time limit (HTTP 546).
-          setAiStep('Extracting audio…');
-          const audioBlob = await extractAudioAsWav(fileToUse);
+          // On iOS Safari, decodeAudioData can fail on MOV/MP4 containers — fall back
+          // to sending the raw file with a Whisper-safe filename if extraction fails.
+          let audioBlob: Blob = fileToUse;
+          let txFilename = 'audio.mp4';
+          try {
+            setAiStep('Extracting audio…');
+            audioBlob = await extractAudioAsWav(fileToUse);
+            txFilename = 'audio.wav';
+          } catch {
+            /* iOS couldn't decode — send raw video, Whisper accepts mp4 */
+          }
           setAiStep('Transcribing video…');
           const txForm = new FormData();
-          txForm.append('file', audioBlob, 'audio.wav');
+          txForm.append('file', audioBlob, txFilename);
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${await getToken()}` },
