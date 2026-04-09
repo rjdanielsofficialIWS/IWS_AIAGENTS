@@ -324,6 +324,77 @@ async function uploadViaNativeXHR(
   return streamUrl;
 }
 
+// ─── Client-side MP4/MOV → ADTS/AAC extractor ────────────────────────────────
+// iOS Safari's Web Audio API cannot decode video containers via decodeAudioData.
+// This pure-JS MP4 box parser runs entirely in the browser — no CPU limit issues.
+// Identical logic to the server-side extractADTS in transcribe-video/index.ts.
+function _mp4u32(b: Uint8Array, o: number) { return ((b[o]<<24)|(b[o+1]<<16)|(b[o+2]<<8)|b[o+3])>>>0; }
+function _mp4u16(b: Uint8Array, o: number) { return (b[o]<<8|b[o+1])>>>0; }
+function _mp4tag(b: Uint8Array, o: number) { return String.fromCharCode(b[o],b[o+1],b[o+2],b[o+3]); }
+function* _mp4walk(b: Uint8Array, from: number, to: number) {
+  let p = from;
+  while (p + 8 <= to) {
+    let sz = _mp4u32(b, p), hs = 8;
+    if (sz === 1) { if (p+16>to) break; sz = _mp4u32(b,p+8)*0x100000000+_mp4u32(b,p+12); hs=16; }
+    else if (sz === 0) { sz = to - p; }
+    if (sz < hs || p+sz > to) break;
+    yield { type: _mp4tag(b,p+4), s:p, e:p+sz, d:p+hs };
+    p += sz;
+  }
+}
+function _mp4find(b: Uint8Array, from: number, to: number, t: string) {
+  for (const bx of _mp4walk(b, from, to)) if (bx.type === t) return bx;
+  return null;
+}
+const _MP4_SR: Record<number,number> = {96000:0,88200:1,64000:2,48000:3,44100:4,32000:5,24000:6,22050:7,16000:8,12000:9,11025:10,8000:11,7350:12};
+function extractADTSBlob(buf: Uint8Array): Blob | null {
+  try {
+    const moov = _mp4find(buf, 0, buf.length, 'moov');
+    if (!moov) return null;
+    for (const trak of _mp4walk(buf, moov.d, moov.e)) {
+      if (trak.type !== 'trak') continue;
+      const mdia = _mp4find(buf,trak.d,trak.e,'mdia'); if (!mdia) continue;
+      const hdlr = _mp4find(buf,mdia.d,mdia.e,'hdlr'); if (!hdlr) continue;
+      if (hdlr.d+12>buf.length) continue;
+      if (_mp4tag(buf, hdlr.d+4) !== 'soun') continue;
+      const minf = _mp4find(buf,mdia.d,mdia.e,'minf'); if (!minf) continue;
+      const stbl = _mp4find(buf,minf.d,minf.e,'stbl'); if (!stbl) continue;
+      let ch=2, sr=44100;
+      const stsd = _mp4find(buf,stbl.d,stbl.e,'stsd');
+      if (stsd && stsd.d+8+16+14<=buf.length) {
+        const ae = stsd.d+8+16;
+        if (ae+14<=buf.length) { ch=_mp4u16(buf,ae+8); sr=_mp4u32(buf,ae+12)>>16; if(!ch||ch>8)ch=2; if(!sr)sr=44100; }
+      }
+      const offs: number[] = [];
+      const stco = _mp4find(buf,stbl.d,stbl.e,'stco');
+      const co64 = _mp4find(buf,stbl.d,stbl.e,'co64');
+      if (stco && stco.d+8<=buf.length) { const n=_mp4u32(buf,stco.d+4); for(let i=0;i<n&&stco.d+8+i*4+4<=buf.length;i++) offs.push(_mp4u32(buf,stco.d+8+i*4)); }
+      else if (co64 && co64.d+8<=buf.length) { const n=_mp4u32(buf,co64.d+4); for(let i=0;i<n&&co64.d+8+i*8+8<=buf.length;i++) offs.push(_mp4u32(buf,co64.d+8+i*8)*0x100000000+_mp4u32(buf,co64.d+8+i*8+4)); }
+      if (!offs.length) continue;
+      let defSz=0, smpCount=0; const smSizes: number[]=[];
+      const stsz = _mp4find(buf,stbl.d,stbl.e,'stsz');
+      if (stsz && stsz.d+12<=buf.length) { defSz=_mp4u32(buf,stsz.d+4); smpCount=_mp4u32(buf,stsz.d+8); if(!defSz){for(let i=0;i<smpCount&&stsz.d+12+i*4+4<=buf.length;i++) smSizes.push(_mp4u32(buf,stsz.d+12+i*4));} }
+      if (!smpCount) continue;
+      const stscR: Array<{fc:number;spc:number}>=[];
+      const stsc = _mp4find(buf,stbl.d,stbl.e,'stsc');
+      if (stsc && stsc.d+8<=buf.length) { const n=_mp4u32(buf,stsc.d+4); for(let i=0;i<n&&stsc.d+8+i*12+12<=buf.length;i++) stscR.push({fc:_mp4u32(buf,stsc.d+8+i*12),spc:_mp4u32(buf,stsc.d+8+i*12+4)}); }
+      if (!stscR.length) continue;
+      const samples: Uint8Array[]=[];
+      let si=0;
+      for (let ci=0;ci<offs.length&&si<smpCount;ci++) {
+        let spc=stscR[0].spc; for(const r of stscR){if(ci+1>=r.fc)spc=r.spc;} let bo=offs[ci];
+        for(let s=0;s<spc&&si<smpCount;s++,si++){const sz=defSz||smSizes[si];if(sz&&bo+sz<=buf.length)samples.push(buf.slice(bo,bo+sz));bo+=sz;}
+      }
+      if (!samples.length) continue;
+      const srIdx=_MP4_SR[sr]??4, H=7; let total=0; for(const s of samples)total+=s.length+H;
+      const out=new Uint8Array(total); let off=0;
+      for(const s of samples){const fl=s.length+H;out[off]=0xFF;out[off+1]=0xF1;out[off+2]=((2-1)<<6)|(srIdx<<2)|(ch>>2);out[off+3]=((ch&3)<<6)|((fl>>11)&3);out[off+4]=(fl>>3)&0xFF;out[off+5]=((fl&7)<<5)|0x1F;out[off+6]=0xFC;out.set(s,off+H);off+=fl;}
+      return new Blob([out], { type: 'audio/aac' });
+    }
+    return null;
+  } catch { return null; }
+}
+
 // Extracts the audio track from a video file in the browser and returns a 16 kHz
 // mono 16-bit WAV blob.  Running this client-side keeps the edge function payload
 // small (≈ 2–6 MB for a 5-min video) and avoids the 2-second Supabase CPU limit
@@ -370,6 +441,23 @@ async function extractAudioAsWav(videoFile: File): Promise<Blob> {
   return new Blob([hdr, pcm16.buffer], { type: 'audio/wav' });
 }
 
+// Two-stage client-side audio extractor:
+//   Stage 1 — Web Audio API → 16 kHz WAV  (desktop / Android)
+//   Stage 2 — MP4 box parser → ADTS/AAC   (iOS Safari, which rejects decodeAudioData on MOV/MP4)
+// Returns the blob + a Whisper-safe filename.  Throws only if both stages fail.
+async function extractAudioForWhisper(videoFile: File): Promise<{ blob: Blob; filename: string }> {
+  try {
+    const blob = await extractAudioAsWav(videoFile);
+    return { blob, filename: 'audio.wav' };
+  } catch { /* Web Audio failed (typical on iOS with MOV/MP4) — try raw box parsing */ }
+
+  const buf = new Uint8Array(await videoFile.arrayBuffer());
+  const aacBlob = extractADTSBlob(buf);
+  if (aacBlob) return { blob: aacBlob, filename: 'audio.aac' };
+
+  throw new Error('Could not extract audio from this video on this device');
+}
+
 // Upload a video file to the transcribe-video edge function and return the transcript.
 // For files > 4 MB the audio is extracted in the browser first so the edge function
 // only receives a small WAV — avoids the 546 CPU-limit error on large videos.
@@ -380,14 +468,14 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
   if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
 
   let fileToSend: Blob = videoFile;
-  // Use a Whisper-safe filename regardless — iOS often gives files like IMG_1234.MOV
-  // which Whisper rejects.  audio.mp4 is accepted for any raw video fallback.
+  // Use a Whisper-safe filename — iOS often gives files like IMG_1234.MOV which Whisper rejects.
   let filename = 'audio.mp4';
   if (videoFile.size > 4 * 1024 * 1024) {
     try {
-      fileToSend = await extractAudioAsWav(videoFile);
-      filename = 'audio.wav';
-    } catch { /* fall back to raw file if browser audio decode fails (e.g. iOS + MOV) */ }
+      const extracted = await extractAudioForWhisper(videoFile);
+      fileToSend = extracted.blob;
+      filename = extracted.filename;
+    } catch { /* all extraction failed — send raw file with safe name as last resort */ }
   }
 
   const form = new FormData();
@@ -1993,10 +2081,11 @@ function InlinePostComposer({
           let txFilename = 'audio.mp4';
           try {
             setAiStep('Extracting audio…');
-            audioBlob = await extractAudioAsWav(fileToUse);
-            txFilename = 'audio.wav';
+            const extracted = await extractAudioForWhisper(fileToUse);
+            audioBlob = extracted.blob;
+            txFilename = extracted.filename;
           } catch {
-            /* iOS couldn't decode — send raw video, Whisper accepts mp4 */
+            /* all client-side extraction failed — send raw file as last resort */
           }
           setAiStep('Transcribing video…');
           const txForm = new FormData();
