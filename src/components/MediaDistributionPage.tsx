@@ -2266,7 +2266,32 @@ function InlinePostComposer({
     try {
       const mediaUrls: string[] = [];
       imageUploads.forEach(u => { if (u.status === 'done' && (u as any).url) mediaUrls.push((u as any).url); });
-      if (videoUpload.status === 'done' && (videoUpload as any).url) mediaUrls.push((videoUpload as any).url);
+
+      // If the video was uploaded via CF Stream, the stored URL is an HLS streaming URL
+      // (videodelivery.net/…/manifest/video.m3u8). Ayrshare needs a direct MP4 download URL,
+      // so we call get-mp4-url now — the MP4 download was started at upload time and should
+      // be ready within 60-90s of the upload completing.
+      if (videoUpload.status === 'done') {
+        const cfUid = (videoUpload as any).cfUid as string | undefined;
+        let videoUrl = (videoUpload as any).url as string;
+        if (cfUid && videoUrl.includes('manifest/video.m3u8')) {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const token = session?.access_token ?? '';
+            const mp4Res = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+              body: JSON.stringify({ action: 'get-mp4-url', cfUid }),
+            });
+            if (mp4Res.ok) {
+              const { url } = await mp4Res.json();
+              if (url) videoUrl = url;
+            }
+          } catch { /* use streaming URL as fallback — some platforms may accept it */ }
+        }
+        mediaUrls.push(videoUrl);
+      }
+
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
 
       // Handle thread format — post as thread to all selected platforms

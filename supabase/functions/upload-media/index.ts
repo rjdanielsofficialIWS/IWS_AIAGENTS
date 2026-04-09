@@ -6,12 +6,18 @@
 //   3. Chunk                  : POST binary, headers: x-action:chunk, x-file-path,
 //                               x-provider, x-upload-id, x-part-number, content-type
 //   4. Complete               : POST JSON { action:'complete', uploadId }
+//      → waits for readyToStream only (~30-90s), fires MP4 download generation in background,
+//        returns { uid, url: CF streaming manifest URL } immediately.
 //   5. Abort                  : POST JSON { action:'abort', uploadId }
+//   6. Get MP4 URL            : POST JSON { action:'get-mp4-url', cfUid }
+//      → polls until MP4 download is ready (call just before posting to social media)
 //
 // Upload paths:
-//   Video (≥4 MB):  CF Stream TUS → all chunks PATCHed → complete → awaitCFStream → CF Stream URL
-//   Video (<4 MB):  Supabase storage → CF Stream copy-from-URL → awaitCFStream → CF Stream URL
+//   Video (≥4 MB):  CF Stream TUS → chunks PATCHed → complete (readyToStream) → streaming URL
+//   Video (<4 MB):  Supabase storage → CF Stream copy-from-URL → readyToStream → streaming URL
 //   Image (any):    Supabase TUS → return Supabase public URL after last chunk
+//
+// The MP4 download URL (needed by Ayrshare) is fetched via get-mp4-url when posting.
 
 const CORS_ORIGINS = [
   "https://infinitewealthsolutionsai.com",
@@ -19,15 +25,19 @@ const CORS_ORIGINS = [
 ];
 const BUCKET     = "media";
 const CHUNK_SIZE = 5 * 1024 * 1024; // must match frontend CHUNK_SIZE
-const POLL_MS    = 5_000;
-const POLL_MAX_MS = 240_000; // 4-minute transcoding timeout
+const POLL_MS    = 4_000;
+// Supabase edge function wall-clock limit is ~150s. Keep polling well under that.
+const READY_POLL_MAX_MS = 100_000; // 100s: wait for readyToStream in complete action
+const MP4_POLL_MAX_MS   =  80_000; // 80s: wait for MP4 download in get-mp4-url action
 
 // ---------------------------------------------------------------------------
-// Poll CF Stream until readyToStream, enable MP4 download, return the URL.
+// Poll CF Stream until readyToStream. Fires MP4 download generation as a
+// background side-effect (no wait). Returns the CF Stream streaming URL.
+// Stays well within Supabase's 150s wall-clock edge function limit.
 // ---------------------------------------------------------------------------
-async function awaitCFStream(accountId: string, token: string, uid: string): Promise<string> {
+async function awaitReadyToStream(accountId: string, token: string, uid: string): Promise<string> {
   const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${uid}`;
-  const deadline = Date.now() + POLL_MAX_MS;
+  const deadline = Date.now() + READY_POLL_MAX_MS;
 
   while (Date.now() < deadline) {
     const r = await fetch(apiBase, { headers: { Authorization: `Bearer ${token}` } });
@@ -36,32 +46,48 @@ async function awaitCFStream(accountId: string, token: string, uid: string): Pro
     if (result?.state === "error") throw new Error("CF Stream transcoding failed");
 
     if (result?.readyToStream) {
-      // Enable MP4 download (idempotent — safe to call even if already enabled).
-      await fetch(`${apiBase}/downloads`, {
+      // Kick off MP4 download generation — fire and forget, don't wait.
+      fetch(`${apiBase}/downloads`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: "{}",
       }).catch(() => {});
 
-      // Poll until the MP4 download is fully generated and the URL is live.
-      while (Date.now() < deadline) {
-        const dr = await fetch(`${apiBase}/downloads`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (dr.ok) {
-          const { result: dl } = await dr.json();
-          if (dl?.default?.status === "ready" && dl?.default?.url) {
-            return dl.default.url as string;
-          }
-        }
-        await new Promise<void>((res) => setTimeout(res, POLL_MS));
-      }
-      throw new Error("CF Stream MP4 download generation timed out");
+      // Return the HLS streaming URL immediately.
+      return `https://videodelivery.net/${uid}/manifest/video.m3u8`;
     }
 
     await new Promise<void>((res) => setTimeout(res, POLL_MS));
   }
-  throw new Error("CF Stream transcoding timed out (>4 min)");
+  throw new Error("CF Stream transcoding timed out (>100s). The video may still be processing — try again in a moment.");
+}
+
+// ---------------------------------------------------------------------------
+// Poll CF Stream downloads endpoint until the MP4 download is ready.
+// Called separately (via get-mp4-url action) just before posting to Ayrshare.
+// ---------------------------------------------------------------------------
+async function awaitMp4Download(accountId: string, token: string, uid: string): Promise<string> {
+  const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${uid}`;
+  const deadline = Date.now() + MP4_POLL_MAX_MS;
+
+  // Ensure download generation has been enabled.
+  await fetch(`${apiBase}/downloads`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: "{}",
+  }).catch(() => {});
+
+  while (Date.now() < deadline) {
+    const dr = await fetch(`${apiBase}/downloads`, { headers: { Authorization: `Bearer ${token}` } });
+    if (dr.ok) {
+      const { result: dl } = await dr.json();
+      if (dl?.default?.status === "ready" && dl?.default?.url) {
+        return dl.default.url as string;
+      }
+    }
+    await new Promise<void>((res) => setTimeout(res, POLL_MS));
+  }
+  throw new Error("MP4 download not ready yet. Please wait a moment and try posting again.");
 }
 
 // ---------------------------------------------------------------------------
@@ -145,9 +171,9 @@ async function uploadThenStream(
   const uid = (await cr.json()).result?.uid as string | undefined;
   if (!uid) return supabasePublicUrl;
 
-  // 3. Await transcoding.
+  // 3. Await readyToStream only (fast path — MP4 download happens in background).
   try {
-    return await awaitCFStream(accountId, token, uid);
+    return await awaitReadyToStream(accountId, token, uid);
   } catch (e) {
     console.error("CF Stream await failed:", (e as Error).message);
     return supabasePublicUrl;
@@ -282,19 +308,39 @@ Deno.serve(async (req) => {
     }
 
     // ---- COMPLETE ---------------------------------------------------
+    // Waits for readyToStream only (~30-90s). MP4 download generation is
+    // kicked off as a background side-effect inside awaitReadyToStream.
+    // Call get-mp4-url separately (just before posting) to get the final
+    // downloadable URL for Ayrshare.
     if (action === "complete") {
       const uploadId = body.uploadId as string;
       if (!uploadId) return err("uploadId required", 400);
 
-      // CF Stream TUS URL — extract the video UID and await transcoding.
       // CF Stream TUS URLs: https://upload.videodelivery.net/tus/{uid}
       const uid = uploadId.split("/").pop();
       if (!uid) return err("Cannot extract video UID from uploadId", 400);
       if (!hasCF) return err("CF Stream not configured", 500);
 
       try {
-        const streamUrl = await awaitCFStream(accountId, cfToken, uid);
+        const streamUrl = await awaitReadyToStream(accountId, cfToken, uid);
         return ok({ url: streamUrl, uid });
+      } catch (e) {
+        return err((e as Error).message);
+      }
+    }
+
+    // ---- GET-MP4-URL ------------------------------------------------
+    // Resolves the downloadable MP4 URL for a CF Stream video.
+    // Call this just before posting to Ayrshare (after upload is complete).
+    // Polls up to 80s — by then the MP4 download is almost always ready.
+    if (action === "get-mp4-url") {
+      const cfUid = body.cfUid as string;
+      if (!cfUid) return err("cfUid required", 400);
+      if (!hasCF) return err("CF Stream not configured", 500);
+
+      try {
+        const mp4Url = await awaitMp4Download(accountId, cfToken, cfUid);
+        return ok({ url: mp4Url });
       } catch (e) {
         return err((e as Error).message);
       }
