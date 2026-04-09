@@ -400,25 +400,26 @@ function extractADTSBlob(buf: Uint8Array): Blob | null {
 //   Stage 2 — MP4 box parser → ADTS/AAC   (iOS Safari, which rejects decodeAudioData on MOV/MP4)
 // Returns the blob + a Whisper-safe filename.  Throws only if both stages fail.
 //
-// IMPORTANT: the file is read into memory exactly once. The previous design called
-// videoFile.arrayBuffer() in extractAudioAsWav AND again for the ADTS fallback —
-// on iOS with a 100–300 MB camera video that doubled peak memory usage, causing
-// the second read to fail under memory pressure and breaking transcription on mobile.
+// Memory strategy: read the file once. On iOS + video, skip Web Audio entirely —
+// decodeAudioData always fails there and the .slice(0) copy it requires doubles peak
+// memory (200 MB file → 400 MB), which iOS kills before ADTS ever gets a chance to run.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
 async function extractAudioForWhisper(videoFile: File): Promise<{ blob: Blob; filename: string }> {
-  // Read once and share between both extraction stages
   const arrayBuffer = await videoFile.arrayBuffer();
 
-  // Stage 1: Web Audio API → 16 kHz mono WAV
-  // .slice(0) passes a copy to decodeAudioData — required because decodeAudioData
-  // transfers (detaches) its argument, and we need the original for Stage 2.
-  // On iOS Safari, decodeAudioData rejects video containers — the catch handles it.
+  // Stage 1: Web Audio API → 16 kHz mono WAV (desktop / Android only)
+  // Skipped on iOS because decodeAudioData always rejects video containers there,
+  // and the .slice(0) copy needed to preserve arrayBuffer for Stage 2 would double
+  // peak memory and get the Safari tab killed before ADTS extraction runs.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const AudioCtx: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
-  if (AudioCtx) {
+  if (AudioCtx && !(_isIOS && videoFile.type.startsWith('video/'))) {
     try {
       const tempCtx = new AudioCtx();
       let audioBuffer: AudioBuffer;
       try {
+        // .slice(0) required: decodeAudioData transfers (detaches) its argument
         audioBuffer = await tempCtx.decodeAudioData(arrayBuffer.slice(0));
       } finally {
         await tempCtx.close();
@@ -446,11 +447,11 @@ async function extractAudioForWhisper(videoFile: File): Promise<{ blob: Blob; fi
       dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
       ws(36, 'data'); dv.setUint32(40, bl, true);
       return { blob: new Blob([hdr, pcm16.buffer], { type: 'audio/wav' }), filename: 'audio.wav' };
-    } catch { /* Web Audio failed (typical on iOS with MOV/MP4) — fall through to Stage 2 */ }
+    } catch { /* Web Audio failed — fall through to Stage 2 */ }
   }
 
-  // Stage 2: MP4 box parser → ADTS/AAC (iOS Safari primary path)
-  // Reuse the already-read arrayBuffer — no second File.arrayBuffer() call
+  // Stage 2: MP4 box parser → ADTS/AAC
+  // iOS primary path — peak memory = one file read only (no .slice copy)
   const aacBlob = extractADTSBlob(new Uint8Array(arrayBuffer));
   if (aacBlob) return { blob: aacBlob, filename: 'audio.aac' };
 
@@ -470,11 +471,9 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
   // Use a Whisper-safe filename — iOS often gives files like IMG_1234.MOV which Whisper rejects.
   let filename = 'audio.mp4';
   if (videoFile.size > 4 * 1024 * 1024) {
-    try {
-      const extracted = await extractAudioForWhisper(videoFile);
-      fileToSend = extracted.blob;
-      filename = extracted.filename;
-    } catch { /* all extraction failed — send raw file with safe name as last resort */ }
+    const extracted = await extractAudioForWhisper(videoFile);
+    fileToSend = extracted.blob;
+    filename = extracted.filename;
   }
 
   const form = new FormData();
@@ -2074,19 +2073,11 @@ function InlinePostComposer({
         if (fileToUse && fileToUse.size > LARGE) {
           // Extract audio in the browser — avoids sending a large MP4 to the edge
           // function which would exceed its 2-second CPU time limit (HTTP 546).
-          // On iOS Safari, decodeAudioData can fail on MOV/MP4 containers — fall back
-          // to sending the raw file with a Whisper-safe filename if extraction fails.
-          let audioBlob: Blob = fileToUse;
-          let txFilename = 'audio.mp4';
-          try {
-            setAiStep('Extracting audio…');
-            const extracted = await extractAudioForWhisper(fileToUse);
-            audioBlob = extracted.blob;
-            txFilename = extracted.filename;
-          } catch {
-            /* all client-side extraction failed — send raw file as last resort */
-          }
+          setAiStep('Extracting audio…');
+          const extracted = await extractAudioForWhisper(fileToUse);
           setAiStep('Transcribing video…');
+          const audioBlob = extracted.blob;
+          const txFilename = extracted.filename;
           const txForm = new FormData();
           txForm.append('file', audioBlob, txFilename);
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
