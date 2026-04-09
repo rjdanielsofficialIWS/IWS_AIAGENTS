@@ -120,7 +120,7 @@ type UploadState =
   | { status: 'idle' }
   | { status: 'preparing' }
   | { status: 'uploading'; progress?: number; startedAt?: number }
-  | { status: 'done'; path: string; url: string; fileName: string; mime: string; size: number }
+  | { status: 'done'; path: string; url: string; fileName: string; mime: string; size: number; cfUid?: string }
   | { status: 'error'; message: string };
 
 type PostizIntegration = {
@@ -211,7 +211,8 @@ async function fetchChannels(userId: string, force = false, workspaceId?: string
 async function uploadViaNativeXHR(
   file: File | Blob,
   kind: 'video' | 'image',
-  onProgress?: (pct: number) => void
+  onProgress?: (pct: number) => void,
+  onCfUid?: (uid: string) => void
 ): Promise<string> {
   const EDGE = `${SUPABASE_URL}/functions/v1/upload-media`;
   const ext = file instanceof File
@@ -318,19 +319,25 @@ async function uploadViaNativeXHR(
     const e = await completeRes.json().catch(() => ({}));
     throw new Error(e.error || `Upload complete failed (${completeRes.status})`);
   }
-  const { url } = await completeRes.json();
-  return url;
+  const { uid, streamUrl } = await completeRes.json();
+  if (uid && onCfUid) onCfUid(uid);
+  return streamUrl;
 }
 
 // Upload a video file to the transcribe-video edge function and return the transcript.
 // Mirrors the approach used by the AI Content Strategist video repurpose flow.
 async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
+  // Always force-refresh the session before transcription — long uploads can stale the token
+  const { data: refreshed } = await supabase.auth.refreshSession();
+  const token = refreshed.session?.access_token || authToken;
+  if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
+
   const form = new FormData();
   form.append('file', videoFile, videoFile.name);
-  const headers: Record<string, string> = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+  // Do NOT set Content-Type — the browser must set it with the multipart boundary
   const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
     method: 'POST',
-    headers,
+    headers: { 'Authorization': `Bearer ${token}` },
     body: form,
   });
   if (!res.ok) {
@@ -1881,8 +1888,9 @@ function InlinePostComposer({
     let attempt = 0;
     while (attempt <= MAX_RETRIES) {
       try {
-        const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct, startedAt } as any));
-        setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size });
+        let cfUid: string | undefined;
+        const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct, startedAt } as any), (uid) => { cfUid = uid; });
+        setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size, ...(cfUid ? { cfUid } : {}) });
         return;
       } catch (e: any) {
         attempt++;
@@ -1914,21 +1922,21 @@ function InlinePostComposer({
         let { data: { session: txSession } } = await supabase.auth.getSession();
         if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
         if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-        // For large files, wait for the Storage upload to finish then use the URL path.
-        // The edge function downloads from Storage server-side and extracts the audio track —
-        // this avoids uploading the raw file twice and handles any size.
-        const LARGE = 24 * 1024 * 1024;
+        // For large files (> 4 MB) that went through CF Stream TUS upload, wait for the
+        // upload to finish then pass the CF uid to transcribe-video. The edge function
+        // fetches the raw file directly from CF's API — no transcoding wait, no 404 issues.
+        const LARGE = 4 * 1024 * 1024;
         if (fileToUse && fileToUse.size > LARGE) {
           setAiStep('Waiting for upload to finish…');
-          const storageUrl = await new Promise<string>((resolve, reject) => {
+          const cfUid = await new Promise<string>((resolve, reject) => {
             // Check immediately in case upload already finished
             const cur = videoUploadRef.current;
-            if (cur.status === 'done' && (cur as any).url) return resolve((cur as any).url);
+            if (cur.status === 'done' && cur.cfUid) return resolve(cur.cfUid);
             if (cur.status === 'error') return reject(new Error((cur as any).message || 'Upload failed'));
             const timeout = setTimeout(() => { clearInterval(iv); reject(new Error('Upload timed out. Please try again.')); }, 10 * 60 * 1000);
             const iv = setInterval(() => {
               const up = videoUploadRef.current;
-              if (up.status === 'done' && (up as any).url) { clearInterval(iv); clearTimeout(timeout); resolve((up as any).url); }
+              if (up.status === 'done' && up.cfUid) { clearInterval(iv); clearTimeout(timeout); resolve(up.cfUid); }
               else if (up.status === 'error') { clearInterval(iv); clearTimeout(timeout); reject(new Error((up as any).message || 'Upload failed')); }
             }, 500);
           });
@@ -1936,7 +1944,7 @@ function InlinePostComposer({
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-            body: JSON.stringify({ videoUrl: storageUrl }),
+            body: JSON.stringify({ cfUid }),
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
@@ -2665,7 +2673,7 @@ function InlinePostComposer({
                       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
                       let source = desc;
                       if (threadVideoMode && threadVideoFile) {
-                        source = await transcribeVideo(threadVideoFile, await getToken() ?? '');
+                        source = await transcribeVideo(threadVideoFile, (await getToken()) || '');
                       }
                       const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
                         method: 'POST',
