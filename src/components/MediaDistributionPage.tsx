@@ -324,16 +324,67 @@ async function uploadViaNativeXHR(
   return streamUrl;
 }
 
+// Extracts the audio track from a video file in the browser and returns a 16 kHz
+// mono 16-bit WAV blob.  Running this client-side keeps the edge function payload
+// small (≈ 2–6 MB for a 5-min video) and avoids the 2-second Supabase CPU limit
+// that fires when the edge function tries to process a large MP4 itself.
+async function extractAudioAsWav(videoFile: File): Promise<Blob> {
+  const arrayBuffer = await videoFile.arrayBuffer();
+  const tempCtx = new AudioContext();
+  let audioBuffer: AudioBuffer;
+  try {
+    audioBuffer = await tempCtx.decodeAudioData(arrayBuffer);
+  } finally {
+    await tempCtx.close();
+  }
+  // Resample to 16 kHz mono — Whisper's native rate; keeps WAV well under 25 MB
+  const SR = 16000;
+  const offCtx = new OfflineAudioContext(1, Math.ceil(audioBuffer.duration * SR), SR);
+  const src = offCtx.createBufferSource();
+  src.buffer = audioBuffer;
+  src.connect(offCtx.destination);
+  src.start(0);
+  const resampled = await offCtx.startRendering();
+  const pcmF32 = resampled.getChannelData(0);
+  // Convert float32 → int16
+  const pcm16 = new Int16Array(pcmF32.length);
+  for (let i = 0; i < pcmF32.length; i++) {
+    const s = Math.max(-1, Math.min(1, pcmF32[i]));
+    pcm16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+  }
+  // Build WAV header
+  const hdr = new ArrayBuffer(44);
+  const dv = new DataView(hdr);
+  const ws = (o: number, s: string) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  const bl = pcm16.byteLength;
+  ws(0, 'RIFF'); dv.setUint32(4, 36 + bl, true); ws(8, 'WAVE');
+  ws(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true);
+  dv.setUint16(22, 1, true); dv.setUint32(24, SR, true); dv.setUint32(28, SR * 2, true);
+  dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  ws(36, 'data'); dv.setUint32(40, bl, true);
+  return new Blob([hdr, pcm16.buffer], { type: 'audio/wav' });
+}
+
 // Upload a video file to the transcribe-video edge function and return the transcript.
-// Mirrors the approach used by the AI Content Strategist video repurpose flow.
+// For files > 4 MB the audio is extracted in the browser first so the edge function
+// only receives a small WAV — avoids the 546 CPU-limit error on large videos.
 async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
   // Always force-refresh the session before transcription — long uploads can stale the token
   const { data: refreshed } = await supabase.auth.refreshSession();
   const token = refreshed.session?.access_token || authToken;
   if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
 
+  let fileToSend: Blob = videoFile;
+  let filename = videoFile.name;
+  if (videoFile.size > 4 * 1024 * 1024) {
+    try {
+      fileToSend = await extractAudioAsWav(videoFile);
+      filename = 'audio.wav';
+    } catch { /* fall back to raw file if browser audio decode fails */ }
+  }
+
   const form = new FormData();
-  form.append('file', videoFile, videoFile.name);
+  form.append('file', fileToSend, filename);
   // Do NOT set Content-Type — the browser must set it with the multipart boundary
   const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
     method: 'POST',
@@ -1927,27 +1978,21 @@ function InlinePostComposer({
         // fetches the raw file directly from CF's API — no transcoding wait, no 404 issues.
         const LARGE = 4 * 1024 * 1024;
         if (fileToUse && fileToUse.size > LARGE) {
-          setAiStep('Waiting for upload to finish…');
-          const cfUid = await new Promise<string>((resolve, reject) => {
-            // Check immediately in case upload already finished
-            const cur = videoUploadRef.current;
-            if (cur.status === 'done' && cur.cfUid) return resolve(cur.cfUid);
-            if (cur.status === 'error') return reject(new Error((cur as any).message || 'Upload failed'));
-            const timeout = setTimeout(() => { clearInterval(iv); reject(new Error('Upload timed out. Please try again.')); }, 10 * 60 * 1000);
-            const iv = setInterval(() => {
-              const up = videoUploadRef.current;
-              if (up.status === 'done' && up.cfUid) { clearInterval(iv); clearTimeout(timeout); resolve(up.cfUid); }
-              else if (up.status === 'error') { clearInterval(iv); clearTimeout(timeout); reject(new Error((up as any).message || 'Upload failed')); }
-            }, 500);
-          });
+          // Extract audio in the browser — avoids sending a large MP4 to the edge
+          // function which would exceed its 2-second CPU time limit (HTTP 546).
+          setAiStep('Extracting audio…');
+          const audioBlob = await extractAudioAsWav(fileToUse);
           setAiStep('Transcribing video…');
+          const txForm = new FormData();
+          txForm.append('file', audioBlob, 'audio.wav');
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
-            body: JSON.stringify({ cfUid }),
+            headers: { 'Authorization': `Bearer ${await getToken()}` },
+            body: txForm,
           });
           if (!res.ok) {
             const err = await res.json().catch(() => ({}));
+            if (err.error === 'limit_reached') throw new Error(err.message);
             throw new Error(err.error || 'Transcription failed');
           }
           sourceText = (await res.json()).transcript ?? '';
