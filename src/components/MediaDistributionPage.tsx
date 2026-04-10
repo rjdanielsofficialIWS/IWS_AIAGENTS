@@ -327,6 +327,24 @@ async function queueMediaPublish(payload: {
   return data;
 }
 
+async function pollCheckReady(cfUid: string, timeoutMs = 180_000): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const token = await getToken();
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+      body: JSON.stringify({ action: 'check-ready', uid: cfUid }),
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (data.ready && data.url) return data.url as string;
+    }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  throw new Error('Video is still processing after 3 minutes. Please try again in a moment.');
+}
+
 const MEDIA_REQUIRED_PLATFORMS = new Set(['youtube', 'tiktok', 'instagram']);
 
 async function fetchChannels(userId: string, force = false, workspaceId?: string | null): Promise<PostizIntegration[]> {
@@ -2450,27 +2468,27 @@ function InlinePostComposer({
         throw new Error((resolvedVideoUpload as any).message || 'Video upload failed. Please try again.');
       }
 
-      // For Cloudflare-backed videos, we queue the publish job and let the backend
-      // dispatch it after the Cloudflare "ready" webhook arrives.
+      // For CF-backed videos, poll until the MP4 is ready, then post directly to Zernio.
+      // "Posted!" only appears after Zernio confirms success — not just after enqueueing.
       if (resolvedVideoUpload.status === 'done') {
-        const videoUrl = (resolvedVideoUpload as any).url as string | undefined;
-        if (!videoUrl) throw new Error('Video URL is missing after upload. Please try again.');
-        mediaUrls.push(videoUrl);
+        if (resolvedVideoUpload.cfUid) {
+          setSubmitStatus('Processing video…');
+          const mp4Url = await pollCheckReady(resolvedVideoUpload.cfUid);
+          mediaUrls.push(mp4Url);
+        } else {
+          const videoUrl = (resolvedVideoUpload as any).url as string | undefined;
+          if (!videoUrl) throw new Error('Video URL is missing after upload. Please try again.');
+          mediaUrls.push(videoUrl);
+        }
       }
-      const queuedViaCloudflare = resolvedVideoUpload.status === 'done' && !!resolvedVideoUpload.cfUid;
-      setSubmitStatus(queuedViaCloudflare ? 'Queueing publish job…' : 'Sending to platforms…');
+      setSubmitStatus('Sending to platforms…');
 
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
       const enqueueOrPost = async (payload: {
         platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
         youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
         workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
-      }) => {
-        if (queuedViaCloudflare && resolvedVideoUpload.status === 'done' && resolvedVideoUpload.cfUid) {
-          return queueMediaPublish(payload, resolvedVideoUpload.cfUid, resolvedVideoUpload.url, userId);
-        }
-        return ayrsharePost(payload);
-      };
+      }) => ayrsharePost(payload);
 
       // Handle thread format — post as thread to all selected platforms
       const postGroupId = generateUUID();
@@ -2516,6 +2534,7 @@ function InlinePostComposer({
         await Promise.all(postPromises);
       }
 
+      setSubmitStatus('');
       setSubmitOk(true);
       setTimeout(() => {
         setSubmitOk(false);
