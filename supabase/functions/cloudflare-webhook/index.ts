@@ -42,7 +42,13 @@ async function verifyWebhookSignature(rawBody: string, header: string | null, se
   const expectedBytes = new Uint8Array(signature);
   const receivedBytes = hexToBytes(parsed.sig1);
   if (expectedBytes.byteLength !== receivedBytes.byteLength) return false;
-  return crypto.subtle.timingSafeEqual(expectedBytes, receivedBytes);
+  // crypto.subtle.timingSafeEqual is not part of WebCrypto and does not exist in Deno.
+  // Use a manual constant-time comparison to avoid timing attacks.
+  let diff = 0;
+  for (let i = 0; i < expectedBytes.byteLength; i++) {
+    diff |= expectedBytes[i] ^ receivedBytes[i];
+  }
+  return diff === 0;
 }
 
 function extractUid(body: Record<string, unknown>): string {

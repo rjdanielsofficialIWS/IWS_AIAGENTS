@@ -305,8 +305,10 @@ Deno.serve(async (req) => {
       const uploadId = body.uploadId as string;
       if (!uploadId) return err("uploadId required", 400);
 
-      // CF Stream TUS URLs: https://upload.videodelivery.net/tus/{uid}
-      const uid = uploadId.split("/").pop();
+      // CF Stream TUS URLs: https://upload.videodelivery.net/tus/{uid}?tusv2=true
+      // Strip query string so the uid is clean (e.g. no "?tusv2=true" suffix).
+      const rawUid = uploadId.split("/").pop() ?? "";
+      const uid = rawUid.split("?")[0];
       if (!uid) return err("Cannot extract video UID from uploadId", 400);
       if (!hasCF) return err("CF Stream not configured", 500);
 
