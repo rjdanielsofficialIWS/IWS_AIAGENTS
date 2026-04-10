@@ -330,10 +330,9 @@ async function queueMediaPublish(payload: {
 async function pollCheckReady(cfUid: string, timeoutMs = 180_000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const token = await getToken();
     const res = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(token ? { 'Authorization': `Bearer ${token}` } : {}) },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
       body: JSON.stringify({ action: 'check-ready', uid: cfUid }),
     });
     if (res.ok) {
@@ -3433,8 +3432,8 @@ function InlinePostComposer({
         disabled={submitting || (postType === 'media' && submitOk)}
         className="w-full flex flex-col items-center justify-center gap-0.5 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-        <span className="flex items-center gap-2">
-          {submitting ? <><Loader className="w-4 h-4 animate-spin" /> {submitStatus || 'Posting…'}</>
+        <span className="flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
+          {submitting ? <><Loader className="w-4 h-4 animate-spin" style={{ flexShrink: 0 }} /> {submitStatus || 'Posting…'}</>
             : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
             : postType === 'media'
               ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
