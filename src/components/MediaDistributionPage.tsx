@@ -327,21 +327,20 @@ async function queueMediaPublish(payload: {
   return data;
 }
 
-async function pollCheckReady(cfUid: string, timeoutMs = 180_000): Promise<string> {
+async function pollJobStatus(jobId: string, timeoutMs = 300_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
-      body: JSON.stringify({ action: 'check-ready', uid: cfUid }),
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/media-publish-intent?jobId=${encodeURIComponent(jobId)}`, {
+      headers: { 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
     });
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
-      if (data.ready && data.url) return data.url as string;
+      if (data.status === 'dispatched') return;
+      if (data.status === 'error') throw new Error(data.error || 'Publishing failed. Please try again.');
     }
-    await new Promise(r => setTimeout(r, 5000));
+    await new Promise(r => setTimeout(r, 8000));
   }
-  throw new Error('Video is still processing after 3 minutes. Please try again in a moment.');
+  throw new Error('Publishing is taking longer than expected. Please check your social media accounts.');
 }
 
 const MEDIA_REQUIRED_PLATFORMS = new Set(['youtube', 'tiktok', 'instagram']);
@@ -2467,27 +2466,27 @@ function InlinePostComposer({
         throw new Error((resolvedVideoUpload as any).message || 'Video upload failed. Please try again.');
       }
 
-      // For CF-backed videos, poll until the MP4 is ready, then post directly to Zernio.
-      // "Posted!" only appears after Zernio confirms success — not just after enqueueing.
       if (resolvedVideoUpload.status === 'done') {
-        if (resolvedVideoUpload.cfUid) {
-          setSubmitStatus('Processing video…');
-          const mp4Url = await pollCheckReady(resolvedVideoUpload.cfUid);
-          mediaUrls.push(mp4Url);
-        } else {
-          const videoUrl = (resolvedVideoUpload as any).url as string | undefined;
-          if (!videoUrl) throw new Error('Video URL is missing after upload. Please try again.');
-          mediaUrls.push(videoUrl);
-        }
+        const videoUrl = (resolvedVideoUpload as any).url as string | undefined;
+        if (!videoUrl) throw new Error('Video URL is missing after upload. Please try again.');
+        mediaUrls.push(videoUrl);
       }
-      setSubmitStatus('Sending to platforms…');
+      const queuedViaCloudflare = resolvedVideoUpload.status === 'done' && !!resolvedVideoUpload.cfUid;
 
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
+      const jobIds: string[] = [];
       const enqueueOrPost = async (payload: {
         platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
         youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
         workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
-      }) => ayrsharePost(payload);
+      }) => {
+        if (queuedViaCloudflare && resolvedVideoUpload.cfUid) {
+          const result = await queueMediaPublish(payload, resolvedVideoUpload.cfUid, resolvedVideoUpload.url, userId);
+          if (result?.jobId) jobIds.push(result.jobId);
+          return result;
+        }
+        return ayrsharePost(payload);
+      };
 
       // Handle thread format — post as thread to all selected platforms
       const postGroupId = generateUUID();
@@ -2533,7 +2532,9 @@ function InlinePostComposer({
         await Promise.all(postPromises);
       }
 
-      setSubmitStatus('');
+      if (queuedViaCloudflare && jobIds.length > 0) {
+        await pollJobStatus(jobIds[0]);
+      }
       setSubmitOk(true);
       setTimeout(() => {
         setSubmitOk(false);
@@ -3432,13 +3433,23 @@ function InlinePostComposer({
         disabled={submitting || (postType === 'media' && submitOk)}
         className="w-full flex flex-col items-center justify-center gap-0.5 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-        <span className="flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
-          {submitting ? <><Loader className="w-4 h-4 animate-spin" style={{ flexShrink: 0 }} /> {submitStatus || 'Posting…'}</>
-            : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
-            : postType === 'media'
-              ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
-              : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
-        </span>
+        {submitting ? (
+          <>
+            <span className="flex items-center gap-2">
+              <Loader className="w-4 h-4 animate-spin" style={{ flexShrink: 0 }} /> Posting
+            </span>
+            <span style={{ fontSize: '11px', fontWeight: 'normal', opacity: 0.7 }}>May take up to 5 minutes…</span>
+          </>
+        ) : null}
+        {!submitting && (
+          <span className="flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
+            {submitOk
+              ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
+              : postType === 'media'
+                ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
+                : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
+          </span>
+        )}
       </button>
     </div>
   );

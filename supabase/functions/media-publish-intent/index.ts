@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
   const cors = {
     "Access-Control-Allow-Origin": CORS_ORIGINS.includes(origin) ? origin : CORS_ORIGINS[0],
     "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Content-Type": "application/json",
   };
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -73,6 +73,19 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { auth: { persistSession: false } },
   );
+
+  // GET ?jobId=xxx — poll publish job status
+  if (req.method === "GET") {
+    const jobId = new URL(req.url).searchParams.get("jobId");
+    if (!jobId) return respond(400, { error: "jobId required" });
+    const { data: job, error: jobErr } = await supabase
+      .from("media_publish_jobs")
+      .select("status, error")
+      .eq("id", jobId)
+      .maybeSingle();
+    if (jobErr || !job) return respond(404, { error: "Job not found" });
+    return respond(200, { status: job.status, error: job.error ?? null });
+  }
 
   let body: Record<string, unknown>;
   try {
