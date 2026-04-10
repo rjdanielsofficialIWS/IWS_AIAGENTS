@@ -8,17 +8,51 @@ let cors:Record<string,string>={};// defined per-request inside handler
 const REPURPOSE_PLANS=new Set(["viral","agency"]);
 const CAPTION_LIMITS={starter:15,viral:100,agency:-1,free:0};
 function getPeriod(){const d=new Date();return d.getUTCFullYear()+"-"+String(d.getUTCMonth()+1).padStart(2,"0");}
-function buildTone(tone){const t=(tone||"").toLowerCase();if(t.includes("alex hormozi"))return"Short punchy sentences. No fluff. ROI-focused.";if(t.includes("gary vee"))return"High energy. Conversational. Light emojis ok.";if(t.includes("luxury"))return"Calm confidence. Premium. No hype.";if(t.includes("casual"))return"Normal person talking. Warm and conversational.";if(t.includes("professional"))return"Clear, credible, polished.";if(t.includes("funny"))return"Genuinely funny. Dry wit.";return tone||"Natural and genuine. Not an AI.";}
-const SYS=`You are an elite social media ghostwriter with a proven track record of writing viral content for 7-figure creators and brands. Your captions convert scrollers into followers and followers into buyers.
+function getCurrentDate(){return new Date().toISOString().slice(0,10);}
+function buildTone(tone){const raw=(tone||"").trim();const t=raw.toLowerCase();if(t.includes("alex hormozi"))return`Primary voice profile: Alex Hormozi-inspired.\n- Short punchy sentences\n- High conviction\n- ROI-focused\n- Concrete and blunt\n- Zero fluff\n- Make every line feel useful\nUser-specified tone to honor heavily: ${raw}`;if(t.includes("gary vee"))return`Primary voice profile: Gary Vee-inspired.\n- Fast, energetic, direct\n- Conversational and raw\n- Motivational without sounding scripted\n- Punchy rhythm\n- No emojis\nUser-specified tone to honor heavily: ${raw}`;if(t.includes("luxury"))return`Primary voice profile: luxury.\n- Calm confidence\n- Premium restraint\n- Elegant simplicity\n- No hype, no cheap hooks\n- Precise wording\nUser-specified tone to honor heavily: ${raw}`;if(t.includes("casual"))return`Primary voice profile: casual.\n- Normal person talking\n- Warm and conversational\n- Easy to read out loud\n- Relaxed but still sharp\nUser-specified tone to honor heavily: ${raw}`;if(t.includes("professional"))return`Primary voice profile: professional.\n- Clear, credible, polished\n- Authoritative without sounding corporate\n- Smart and concise\nUser-specified tone to honor heavily: ${raw}`;if(t.includes("funny"))return`Primary voice profile: funny.\n- Dry wit\n- Human timing\n- Clever, not cheesy\n- No forced jokes\nUser-specified tone to honor heavily: ${raw}`;return raw?`Treat this tone instruction as a top-priority constraint and let it heavily shape vocabulary, rhythm, sentence length, confidence level, and emotional temperature:\n${raw}`:`Natural, high-conviction, highly human, contemporary, and non-robotic.`;}
+const SYS=`You are a high-level content strategist and elite direct-response social copywriter. You understand viral mechanics, attention economics, audience psychology, and platform-native writing. You write copy that feels unmistakably human, current, and specific.
 
-Core rules (non-negotiable):
-- Sound like a real human being talking — never like a marketing bot or AI
+Current date context:
+- Today is ${getCurrentDate()}
+- Write like someone publishing right now, not a generic timeless AI
+- Use present-day phrasing and current cultural instincts without sounding try-hard
+
+Primary objective:
+- Turn source material into copy that earns attention, holds attention, and creates response
+- Maximize curiosity, specificity, clarity, emotional charge, and native platform fit
+- Make each variation feel like it came from a sharp human strategist, not a template engine
+
+Human writing rules:
+- Sound like a real person with taste, instincts, and a point of view
+- Use natural contractions and sentence rhythm
+- Vary sentence length to create momentum
+- Prefer concrete details over generic claims
+- Prefer sharp language over padded language
+- Every line should feel intentional
+- Avoid robotic transitions and obvious AI phrasing
+
+Viral copy rules:
+- Lead with a hook that creates tension, curiosity, surprise, relevance, status, or emotional recognition
+- Build around one clear angle per output
+- Make the payoff feel worth the read
+- Use specificity, contrast, stakes, and pattern interruption
+- Create forward momentum from line to line
+- End with a response-driving CTA only when it feels native to the platform
+
+Non-negotiable bans:
+- No em-dashes
+- No emojis
+- No markdown fences
+- No generic marketing filler
 - Never use: game-changer, leverage, synergy, unlock, empower, transformative, elevate, cutting-edge, dive deep, journey, landscape, streamline, it's important to note, in today's fast-paced world
-- Never use em-dashes (—) in any output. Use a comma, period, or rewrite the sentence instead
-- No fake urgency or hype. No emojis unless the platform expects them
-- Use contractions (I'm, we'll, that's, you're). Short punchy sentences
-- Every first line must make the reader physically unable to scroll past
-- Return ONLY valid JSON, no markdown, no code fences
+
+Tone handling:
+- The user's tone instruction is a top-priority creative constraint
+- Let the requested tone heavily influence diction, pacing, intensity, sentence length, worldview, and attitude
+- If the user asks for a very specific voice or vibe, honor it strongly while keeping the output human and platform-native
+
+Output rules:
+- Return ONLY valid JSON
 - For YouTube: keys youtube_title (max 100 chars) and youtube (description, 2-3 sentences)`;
 const PR={
   tiktok:"TikTok caption: 1-2 lines max. Spoken casual tone. Strong hook in first 5 words. 3-5 relevant hashtags. End with 'follow for part 2' or 'watch till the end' style CTA.",
@@ -30,9 +64,11 @@ const PR={
   threads:"Threads: Casual, conversational. 1-3 sentences. Feels like a text to a friend. No hashtags needed.",
   bluesky:"Bluesky: Thoughtful and direct. Under 200 chars. Intellectual but approachable tone."
 };
-async function callClaude(sys,usr,max=3000){const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),55000);let r:Response;try{r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:max,system:sys,messages:[{role:"user",content:usr}]}),signal:ctrl.signal});}catch(e:any){clearTimeout(t);if(e?.name==="AbortError")throw new Error("AI generation timed out. Please try again.");throw e;}finally{clearTimeout(t);}if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();const raw0=(d.content?.[0]?.text||"{}").replace(/```json|```/g,"").replace(/—/g,"-").trim();const s=raw0.indexOf("{");if(s===-1)return"{}";let depth=0,inStr=false,esc=false,end=-1;for(let i=s;i<raw0.length;i++){const c=raw0[i];if(esc){esc=false;continue;}if(c==="\\"&&inStr){esc=true;continue;}if(c==='"'){inStr=!inStr;continue;}if(inStr)continue;if(c==="{")depth++;else if(c==="}"){depth--;if(depth===0){end=i;break;}}}const extracted=end>=0?raw0.slice(s,end+1):raw0.slice(s);// Sanitize literal control chars inside JSON string values before parsing
+async function callClaude(sys,usr,max=3000){const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),55000);let r:Response;try{r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:max,system:sys,messages:[{role:"user",content:usr}]}),signal:ctrl.signal});}catch(e:any){clearTimeout(t);if(e?.name==="AbortError")throw new Error("AI generation timed out. Please try again.");throw e;}finally{clearTimeout(t);}if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();const raw0=(d.content?.[0]?.text||"{}").replace(/```json|```/g,"").replace(/—/g,"-").trim();const s=raw0.indexOf("{");if(s===-1)return"{}";let depth=0,inStr=false,esc=false,end=-1;for(let i=s;i<raw0.length;i++){const c=raw0[i];if(esc){esc=false;continue;}if(c==="\\"&&inStr){esc=true;continue;}if(c==='"'){inStr=!inStr;continue;}if(inStr)continue;if(c==="{")depth++;else if(c==="}"){depth--;if(depth===0){end=i;break;}}}const extracted=end>=0?raw0.slice(s,end+1):raw0.slice(s);// Sanitize literal control chars inside JSON string values before parsing
 const sanitized=extracted.replace(/"(?:[^"\\]|\\.)*"/g,(m)=>m.replace(/\n/g,"\\n").replace(/\r/g,"\\r").replace(/\t/g,"\\t"));// Verify it parses; if not, attempt to close open structures
 try{JSON.parse(sanitized);return sanitized;}catch{let fix=sanitized.replace(/,\s*$/,"").replace(/:\s*"[^"]*$/,': ""');const closers:string[]=[];let d2=0;for(const ch of fix){if(ch==="{"){d2++;closers.push("}");}else if(ch==="["){d2++;closers.push("]");}else if(ch==="}"||ch==="]"){d2--;closers.pop();}}fix+=closers.reverse().join("");try{JSON.parse(fix);return fix;}catch{return "{}";}}}
+function extractJsonArray(raw:string){const cleaned=(raw||"").replace(/```json|```/g,"").replace(/—/g,"-").trim();const s=cleaned.indexOf("[");if(s===-1)return[];let depth=0,inStr=false,esc=false,end=-1;for(let i=s;i<cleaned.length;i++){const c=cleaned[i];if(esc){esc=false;continue;}if(c==="\\"&&inStr){esc=true;continue;}if(c==='"'){inStr=!inStr;continue;}if(inStr)continue;if(c==="[")depth++;else if(c==="]"){depth--;if(depth===0){end=i;break;}}}const extracted=end>=0?cleaned.slice(s,end+1):cleaned.slice(s);const sanitized=extracted.replace(/"(?:[^"\\]|\\.)*"/g,(m)=>m.replace(/\n/g,"\\n").replace(/\r/g,"\\r").replace(/\t/g,"\\t"));try{const parsed=JSON.parse(sanitized);return Array.isArray(parsed)?parsed:[];}catch{return[];}}
+async function callClaudeJson(sys:string,usr:string,inputSchema:any,max=3000){const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),55000);let r:Response;try{r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:max,system:sys,messages:[{role:"user",content:usr}],tools:[{name:"output",description:"Output the result",input_schema:inputSchema}],tool_choice:{type:"tool",name:"output"}}),signal:ctrl.signal});}catch(e:any){clearTimeout(t);if(e?.name==="AbortError")throw new Error("AI generation timed out. Please try again.");throw e;}finally{clearTimeout(t);}if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();const block=d.content?.find((c:any)=>c.type==="tool_use");if(!block?.input)throw new Error("Generation failed. Please try again.");return block.input;}
 Deno.serve(async(req)=>{
   cors=corsFor(req);
   if(req.method==="OPTIONS")return new Response("ok",{headers:cors});
@@ -62,8 +98,9 @@ Deno.serve(async(req)=>{
       const hasYT=selP.includes("youtube");
       const pInstr=selP.map(p=>PR[p]||p+": Write an engaging caption.").join("\n");
       const raw=await callClaude(SYS,"Tone:\n"+toneG+"\n\nContent:\n\""+source+"\"\n\nPlatforms: "+selP.join(", ")+"\n\n"+pInstr+"\n\nRespond ONLY with JSON.");
-      const parsed=JSON.parse(raw);let captions={...parsed},youTubeTitle;
-      if(hasYT&&parsed.youtube_title){youTubeTitle=parsed.youtube_title;delete captions.youtube_title;}
+      const parsed=JSON.parse(raw);let youTubeTitle:string|undefined;
+      if(hasYT&&parsed.youtube_title){youTubeTitle=parsed.youtube_title;}
+      const captions=Object.fromEntries(selP.map(p=>[p,parsed[p]]).filter(([,v])=>typeof v==="string"&&(v as string).trim().length>0));
       result={captions,...(youTubeTitle?{youTubeTitle}:{})};
       try{await supabase.rpc("increment_usage",{p_user_id:user.id,p_period:getPeriod(),p_field:"ai_analyses_used"});}catch(e){console.error("Usage increment failed:",e);}
     }else if(mode==="repurpose_ideas"){
@@ -71,18 +108,12 @@ Deno.serve(async(req)=>{
       result={ideas:JSON.parse(raw)};
     }else if(mode==="repurpose_posts"){
       const n=Math.max(1,Math.min(10,Number(post_count)||10));
-      const POSTS_STYLE:Record<string,string>={
-        twitter:`${n} X/Twitter posts. Each strictly under 280 characters — hard limit, never exceed. Sharp hook, punchy, one strong insight per post. Different angle on every post. No thread format.`,
-        linkedin:`${n} LinkedIn posts. Each 100-300 words. Professional but human tone. Strong first line that makes people click 'see more'. Line breaks between short paragraphs. End with a CTA or question. Different angle on every post.`,
-        threads:`${n} Threads posts. Each under 500 characters. Casual and conversational, like a text to a friend. Different angle on every post.`
-      };
       const postPlatforms=[...new Set((selP.length>0?selP:["twitter","linkedin"]).map(p=>{const lp=p.toLowerCase();if(lp==="x"||lp==="twitter")return"twitter";if(lp==="linkedin")return"linkedin";if(lp==="threads")return"threads";return"twitter";}))];
-      const placeholders=Array.from({length:n},(_,i)=>`"post${i+1}"`).join(",");
-      const schema="{"+postPlatforms.map(p=>`"${p}":[${placeholders}]`).join(",")+"}" ;
-      const instructions=postPlatforms.map(p=>POSTS_STYLE[p]||`${p}: Write ${n} engaging posts.`).join("\n\n");
-      const maxTokens=Math.max(4000,n*postPlatforms.length*400);
-      const raw=await callClaude("You are a ghostwriter. Sound like real people. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\n"+instructions+"\n\nReturn JSON: "+schema,maxTokens);
-      result={posts:JSON.parse(raw)};
+      const inputSchema={type:"object",additionalProperties:false,properties:Object.fromEntries(postPlatforms.map((platform)=>[platform,{type:"array",items:{type:"string"},minItems:1,maxItems:n}])),required:postPlatforms};
+      const data=await callClaudeJson(`You are a high-level content strategist and elite direct-response social copywriter.\nToday is ${getCurrentDate()}.\nWrite like a real human with sharp taste and strong platform instincts.\nThe user's tone instruction must heavily shape the writing.\nNo em-dashes. No emojis. No markdown fences.\nSound current and human — not like an AI.`,`Create social posts from the content below.\n\nTone directive:\n${toneG}\n\nContent:\n"${source}"\n\nPlatforms: ${postPlatforms.join(", ")}\n\nUniversal rules:\n- each post should use a different angle\n- each post should feel natively written for its platform\n- hooks should create curiosity, tension, surprise, status, stakes, or recognition\n- avoid generic filler and AI phrasing\n- sound current and human\n\nPlatform rules:\n- twitter posts: under 280 characters\n- linkedin posts: 100-300 words\n- threads posts: under 500 characters`,inputSchema,Math.max(2000,n*postPlatforms.length*220));
+      const validPosts=Object.fromEntries(Object.entries(data as Record<string,unknown>).map(([k,v])=>[k,Array.isArray(v)?v.map((x:any)=>String(x).trim()).filter(Boolean).slice(0,n):[]]).filter(([,arr])=>(arr as string[]).length>0));
+      if(Object.keys(validPosts).length===0)throw new Error("Generation failed. Please try again.");
+      result={posts:validPosts};
     }else if(mode==="thread_posts"){
       const tweetCount=Math.max(3,Math.min(10,Number(thread_count)||5));
       const raw=await callClaude("You are a ghostwriter. Sound like a real human. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nTopic/content:\n\""+source+"\"\n\nWrite a Twitter/X thread of "+tweetCount+" tweets. Rules:\n- Each tweet MUST be strictly under 280 characters — hard limit, never exceed\n- First tweet is the hook — make it impossible to scroll past\n- Each tweet stands alone but flows into the next\n- No tweet numbering (no '1/' or '1.')\n- 0-1 hashtags per tweet max\n- Sound like a real person, not an AI\n- Last tweet must be a CTA (ask to share, follow, reply, save, tag someone, DM for more — feel human, never salesy)\n\nReturn JSON: {\"thread\":[\"tweet1\",\"tweet2\",\"tweet3\"]}",2000);

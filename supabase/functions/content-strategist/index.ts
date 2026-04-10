@@ -21,6 +21,53 @@ const corsFor = (req: Request) => {
 };
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const CURRENT_DATE = new Date().toISOString().slice(0, 10);
+
+function buildToneDirective(tone: string): string {
+  const raw = (tone || "").trim();
+  const t = raw.toLowerCase();
+  if (t.includes("alex hormozi")) return `Primary tone profile: Alex Hormozi-inspired. High conviction. Short punchy sentences. Specific. ROI-focused. No fluff. User tone instruction to honor strongly: ${raw}`;
+  if (t.includes("gary vee")) return `Primary tone profile: Gary Vee-inspired. Fast, energetic, conversational, raw, direct. No emojis. User tone instruction to honor strongly: ${raw}`;
+  if (t.includes("luxury")) return `Primary tone profile: luxury. Calm confidence. Premium restraint. Elegant language. No hype. User tone instruction to honor strongly: ${raw}`;
+  if (t.includes("casual")) return `Primary tone profile: casual. Warm, natural, conversational, easy to say out loud. User tone instruction to honor strongly: ${raw}`;
+  if (t.includes("professional")) return `Primary tone profile: professional. Clear, credible, polished, intelligent, concise. User tone instruction to honor strongly: ${raw}`;
+  if (t.includes("funny")) return `Primary tone profile: funny. Dry wit. Human timing. Clever, not cheesy. User tone instruction to honor strongly: ${raw}`;
+  return raw
+    ? `Treat this tone instruction as a top-priority creative constraint. Let it strongly shape vocabulary, rhythm, confidence level, pacing, and attitude: ${raw}`
+    : `Natural, sharp, contemporary, highly human, and non-robotic.`;
+}
+
+function strategistSystem(role: string): string {
+  return `You are a high-level ${role}. You think like a senior strategist with elite taste, sharp audience instincts, and strong editorial judgment.
+
+Current date context:
+- Today is ${CURRENT_DATE}
+- Your outputs should feel current, relevant, and aligned with how people think and publish right now
+
+Universal writing rules:
+- Sound human, specific, current, and strategically sharp
+- No em-dashes
+- No emojis
+- No markdown fences
+- No generic filler
+- No robotic or AI-sounding phrasing
+- Prefer concrete observations over vague abstractions
+- Make every line earn its place
+
+Tone handling:
+- The user's tone instruction is a top-priority creative constraint
+- Let the requested tone strongly shape diction, pacing, emotional temperature, and point of view
+
+Role guardrails:
+- Stay inside the requested role
+- If the task is strategy, return strategy, not captions or tweets
+- If the task is ideation, return ideas and angles, not finished platform copy unless explicitly requested
+- Keep outputs tailored to the requested artifact
+
+Output rules:
+- Return ONLY valid JSON
+- Never include commentary outside the JSON`;
+}
 
 async function callClaude(system: string, user: string, maxTokens = 4000): Promise<string> {
   const r = await fetch("https://api.anthropic.com/v1/messages", {
@@ -31,7 +78,7 @@ async function callClaude(system: string, user: string, maxTokens = 4000): Promi
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-4-20250514",
       max_tokens: maxTokens,
       system,
       messages: [{ role: "user", content: user }],
@@ -164,10 +211,10 @@ Deno.serve(async (req: Request) => {
 
       const platformList = (platforms as string[]).join(", ") || "Instagram, LinkedIn";
       const goalList = (goals as string[]).join(", ") || "grow audience, generate leads";
-      const toneDesc = tone || "confident and authentic";
+      const toneDesc = buildToneDirective(tone || "");
       const offerDesc = offer || "their core offer";
 
-      const SYS = `You are an elite social media strategist with 15+ years building 7-figure personal brands. You convert followers into paying clients through strategic content systems. Return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) or en-dashes (–) in any output. Use a plain hyphen (-) instead.`;
+      const SYS = strategistSystem("social media strategist and content systems architect");
 
       const BRIEF = `BUSINESS BRIEF:
 - Niche: ${niche}
@@ -175,7 +222,7 @@ Deno.serve(async (req: Request) => {
 - Target Audience: ${audience}
 - Active Platforms: ${platformList}
 - Posting Frequency: ${frequency}
-- Brand Tone: ${toneDesc}
+- Brand Tone Directive: ${toneDesc}
 - Goals: ${goalList}
 - Current Stage: ${currentStage}`;
 
@@ -227,9 +274,9 @@ REQUIREMENTS: exactly 5 quick_wins, each under 20 words, specific and actionable
       const { tone = "" } = body;
       if (!source.trim()) return json({ error: mode === "repurpose_from_video" ? "transcript is required" : "description is required" }, 400);
 
-      const toneDesc = tone || "authentic and engaging";
+      const toneDesc = buildToneDirective(tone || "");
 
-      const systemPrompt = `You are an expert content repurposing strategist. You extract maximum value from content by identifying every possible content angle, format, and platform opportunity. You always return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) or en-dashes (–) in any output. Use a plain hyphen (-) instead.`;
+      const systemPrompt = strategistSystem("content repurposing strategist");
 
       const sourceLabel = mode === "repurpose_from_video" ? "video transcript" : "content description";
       const userPrompt = `Analyze this ${sourceLabel} and extract a complete content repurposing strategy:
@@ -239,7 +286,7 @@ CONTENT:
 ${source.trim().slice(0, 8000)}
 """
 
-TONE: ${toneDesc}
+TONE DIRECTIVE: ${toneDesc}
 
 Return a single JSON object with exactly this structure:
 
@@ -288,11 +335,12 @@ REQUIREMENTS:
 - Generate 4 blog_angles with strong SEO potential
 - Generate 8 social_hooks — each a standalone viral hook
 - Generate 3 series_ideas that could become a recurring content series
-- Generate 8 tweets (twitter) and 4 linkedin posts — all ready to post, not templates
+- Generate 8 tweets (twitter) and 4 linkedin posts - all ready to post, not templates
 - Generate 5 other_formats
 - Make everything specific to THIS transcript's content — no generic filler
 - Twitter posts under 270 characters
-- LinkedIn posts 150-300 words with clear hook, value, and CTA`;
+- LinkedIn posts 150-300 words with clear hook, value, and CTA
+- Make the strategic angles and hooks feel current to ${CURRENT_DATE}, not stale or generic`;
 
       const raw = await callClaude(systemPrompt, userPrompt, 8192);
       const ideas = stripDashes(safeParse(raw));
@@ -310,7 +358,7 @@ REQUIREMENTS:
         model: "claude-sonnet-4-6",
         max_tokens: 8192,
         tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
-        system: `You are an elite social media trend researcher and content strategist. Your job is to deeply research what is trending RIGHT NOW in a given niche across social media platforms and search engines. You use web search to find real, current data. After research, you return ONLY a single valid JSON object — no markdown, no commentary, no explanation outside the JSON. Never use em-dashes (—) or en-dashes (–) in any output. Use a plain hyphen (-) instead.`,
+        system: strategistSystem("trend researcher and content strategist") + `\nYou use web search to find real, current signals and convert them into strategic intelligence.`,
         messages: [
           {
             role: "user",
@@ -399,7 +447,7 @@ REQUIREMENTS:
       if (!idea || !idea.trim()) return json({ error: "idea is required" }, 400);
 
       const raw = await callClaude(
-        `You are a viral social media content strategist and on-camera coach. You craft talking points that are compelling, memorable, and engineered for maximum engagement, shareability, and audience retention. Return ONLY valid JSON — no markdown, no commentary. Never use em-dashes (—) or en-dashes (–) in any output. Use a plain hyphen (-) instead.`,
+        strategistSystem("viral social media strategist and on-camera coach"),
         `Generate 5 viral talking points for this content idea:
 
 IDEA: ${idea.trim()}${niche ? `\nNICHE: ${niche}` : ""}${audience ? `\nTARGET AUDIENCE: ${audience}` : ""}
@@ -413,7 +461,9 @@ REQUIREMENTS:
 - Written as actual on-camera spoken lines — not notes or bullet fragments
 - Vary structure: open with a hook, build tension, include a contrarian take, use social proof or stats if relevant, close with a strong CTA or call to reflection
 - Every point must feel urgent, authentic, and impossible to scroll past
-- NO generic filler — every word earns its place`,
+- NO generic filler — every word earns its place
+- No emojis
+- No em-dashes`,
         800
       );
       const data = stripDashes(safeParse(raw));

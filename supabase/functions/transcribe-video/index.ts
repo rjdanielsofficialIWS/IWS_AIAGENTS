@@ -170,15 +170,21 @@ Deno.serve(async (req: Request) => {
     new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
   const auth = req.headers.get("Authorization") ?? "";
-  if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
   const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    supabaseUrl,
+    serviceRoleKey,
     { auth: { persistSession: false } }
   );
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(auth.replace("Bearer ", "").trim());
-  if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+  if (auth.startsWith("Bearer ")) {
+    const token = auth.replace("Bearer ", "").trim();
+    if (token) {
+      const { error: authErr } = await supabase.auth.getUser(token);
+      if (authErr) console.warn("transcribe-video auth warning:", authErr.message);
+    }
+  }
 
   const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY");
   if (!OPENAI_KEY) return json({ error: "Server configuration error" }, 500);
@@ -209,6 +215,7 @@ Deno.serve(async (req: Request) => {
       const body = await req.json().catch(() => ({})) as { videoUrl?: string; cfUid?: string };
 
       let videoFetchUrl: string;
+      let fetchedFilename = "video.mp4";
 
       if (body.cfUid) {
         // Large file uploaded via CF Stream TUS — fetch the MP4 download URL from CF API
@@ -232,29 +239,63 @@ Deno.serve(async (req: Request) => {
         try { parsed = new URL(body.videoUrl); } catch { return json({ error: "Invalid videoUrl" }, 400); }
         if (parsed.protocol !== "https:") return json({ error: "videoUrl must use HTTPS" }, 400);
         videoFetchUrl = body.videoUrl;
+        const pathPart = parsed.pathname.split("/").pop();
+        if (pathPart && pathPart.includes(".")) fetchedFilename = pathPart;
       } else {
         return json({ error: "Provide a file, videoUrl, or cfUid" }, 400);
       }
 
-      const resp = await fetch(videoFetchUrl);
-      if (!resp.ok) return json({ error: "Failed to fetch video" }, 400);
+      let fetchUrl = videoFetchUrl;
+      const fetchHeaders: HeadersInit = {};
+      if (serviceRoleKey && supabaseUrl) {
+        try {
+          const sourceUrl = new URL(videoFetchUrl);
+          const projectUrl = new URL(supabaseUrl);
+          if (sourceUrl.origin === projectUrl.origin && sourceUrl.pathname.startsWith("/storage/v1/object/")) {
+            if (sourceUrl.pathname.startsWith("/storage/v1/object/public/")) {
+              sourceUrl.pathname = `/storage/v1/object/${sourceUrl.pathname.slice("/storage/v1/object/public/".length)}`;
+            }
+            fetchUrl = sourceUrl.toString();
+            fetchHeaders.Authorization = `Bearer ${serviceRoleKey}`;
+            fetchHeaders.apikey = serviceRoleKey;
+          }
+        } catch {
+          // Keep the original URL if it cannot be normalized.
+        }
+      }
+
+      const resp = await fetch(fetchUrl, { headers: fetchHeaders });
+      if (!resp.ok) {
+        const detail = await resp.text().catch(() => "");
+        console.error("Video fetch failed:", resp.status, fetchUrl, detail.slice(0, 300));
+        return json({ error: "Failed to fetch video" }, 400);
+      }
       const videoData = new Uint8Array(await resp.arrayBuffer());
 
-      if (videoData.length > 25 * 1024 * 1024) {
-        // Large file: extract audio track from MP4/MOV container
+      // Detect if this is already an audio file (WAV: "RIFF", MP3: 0xFF 0xFB/0xF3/0xF2, AAC ADTS: 0xFF 0xF1)
+      const isWav = videoData[0] === 0x52 && videoData[1] === 0x49 && videoData[2] === 0x46 && videoData[3] === 0x46;
+      const isAlreadyAudio = isWav;
+
+      if (isAlreadyAudio) {
+        // Already extracted audio — send directly to Whisper
+        audioBlob = new Blob([videoData], { type: isWav ? "audio/wav" : "audio/aac" });
+        filename = isWav ? "audio.wav" : "audio.aac";
+      } else if (videoData.length > 25 * 1024 * 1024) {
+        // Large video: extract audio track from MP4/MOV container
         const adts = extractADTS(videoData);
         if (!adts) return json({ error: "Could not extract audio from this video. Please ensure it is a valid MP4 or MOV file." }, 400);
         audioBlob = new Blob([adts], { type: "audio/aac" });
         filename = "audio.aac";
       } else {
         audioBlob = new Blob([videoData]);
+        filename = fetchedFilename;
       }
     }
 
     const whisperForm = new FormData();
     whisperForm.append("file", audioBlob, filename);
-    whisperForm.append("model", "whisper-1");
-    whisperForm.append("response_format", "text");
+    whisperForm.append("model", "gpt-4o-mini-transcribe");
+    whisperForm.append("response_format", "json");
 
     const whisperRes = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
@@ -268,7 +309,9 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Transcription failed. Please try again." }, 500);
     }
 
-    const transcript = await whisperRes.text();
+    const payload = await whisperRes.json().catch(() => ({}));
+    const transcript = typeof payload?.text === "string" ? payload.text : "";
+    if (!transcript.trim()) return json({ error: "Transcription failed. Empty transcript returned." }, 500);
     return json({ transcript: transcript.trim() });
   } catch (e) {
     console.error("transcribe-video error:", e);

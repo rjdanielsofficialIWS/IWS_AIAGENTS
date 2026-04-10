@@ -6,18 +6,21 @@
 //   3. Chunk                  : POST binary, headers: x-action:chunk, x-file-path,
 //                               x-provider, x-upload-id, x-part-number, content-type
 //   4. Complete               : POST JSON { action:'complete', uploadId }
-//      → waits for readyToStream only (~30-90s), fires MP4 download generation in background,
-//        returns { uid, url: CF streaming manifest URL } immediately.
-//   5. Abort                  : POST JSON { action:'abort', uploadId }
-//   6. Get MP4 URL            : POST JSON { action:'get-mp4-url', cfUid }
-//      → polls until MP4 download is ready (call just before posting to social media)
+//      → returns { uid, polling:true, mp4Ready:false } immediately; kicks off /downloads.
+//   5. Check-ready            : POST JSON { action:'check-ready', uid }
+//      → returns { ready, url?, state }. Checks readyToStream + downloads ready + HEAD.
+//   6. Abort                  : POST JSON { action:'abort', uploadId }
+//   7. Get MP4 URL (legacy)   : POST JSON { action:'get-mp4-url', cfUid }
+//      → single poll of downloads endpoint; kept for backwards compatibility.
 //
 // Upload paths:
-//   Video (≥4 MB):  CF Stream TUS → chunks PATCHed → complete (readyToStream) → streaming URL
-//   Video (<4 MB):  Supabase storage → CF Stream copy-from-URL → readyToStream → streaming URL
+//   Video (≥4 MB):  CF Stream TUS → chunks PATCHed → complete → streaming URL
+//   Video (<4 MB):  Supabase storage → CF Stream copy-from-URL → streaming URL
 //   Image (any):    Supabase TUS → return Supabase public URL after last chunk
-//
-// The MP4 download URL (needed by Ayrshare) is fetched via get-mp4-url when posting.
+
+function buildStreamUrl(uid: string): string {
+  return `https://videodelivery.net/${uid}/manifest/video.m3u8`;
+}
 
 const CORS_ORIGINS = [
   "https://infinitewealthsolutionsai.com",
@@ -31,9 +34,7 @@ const READY_POLL_MAX_MS = 100_000; // 100s: wait for readyToStream in complete a
 const MP4_POLL_MAX_MS   =  80_000; // 80s: wait for MP4 download in get-mp4-url action
 
 // ---------------------------------------------------------------------------
-// Poll CF Stream until readyToStream. Fires MP4 download generation as a
-// background side-effect (no wait). Returns the CF Stream streaming URL.
-// Stays well within Supabase's 150s wall-clock edge function limit.
+// Poll CF Stream until readyToStream. Kept for internal readiness checks.
 // ---------------------------------------------------------------------------
 async function awaitReadyToStream(accountId: string, token: string, uid: string): Promise<string> {
   const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${uid}`;
@@ -53,8 +54,7 @@ async function awaitReadyToStream(accountId: string, token: string, uid: string)
         body: "{}",
       }).catch(() => {});
 
-      // Return the HLS streaming URL immediately.
-      return `https://videodelivery.net/${uid}/manifest/video.m3u8`;
+      return buildStreamUrl(uid);
     }
 
     await new Promise<void>((res) => setTimeout(res, POLL_MS));
@@ -126,7 +126,7 @@ async function createSupabaseTUS(
 }
 
 // ---------------------------------------------------------------------------
-// Upload to Supabase, copy to CF Stream, await transcoding, return CF URL.
+// Upload to Supabase, copy to CF Stream, return CF URL immediately.
 // Falls back to Supabase URL on any CF error so the upload never hard-fails.
 // ---------------------------------------------------------------------------
 async function uploadThenStream(
@@ -137,7 +137,7 @@ async function uploadThenStream(
   filePath: string,
   contentType: string,
   bytes: ArrayBuffer,
-): Promise<string> {
+): Promise<{ url: string; uid?: string }> {
   // 1. Store in Supabase (source for CF Stream copy-from-URL).
   const ur = await fetch(`${supabaseUrl}/storage/v1/object/${BUCKET}/${filePath}`, {
     method: "POST",
@@ -166,18 +166,11 @@ async function uploadThenStream(
   );
   if (!cr.ok) {
     console.error("CF Stream copy failed:", cr.status, await cr.text().catch(() => ""));
-    return supabasePublicUrl;
+    return { url: supabasePublicUrl };
   }
   const uid = (await cr.json()).result?.uid as string | undefined;
-  if (!uid) return supabasePublicUrl;
-
-  // 3. Await readyToStream only (fast path — MP4 download happens in background).
-  try {
-    return await awaitReadyToStream(accountId, token, uid);
-  } catch (e) {
-    console.error("CF Stream await failed:", (e as Error).message);
-    return supabasePublicUrl;
-  }
+  if (!uid) return { url: supabasePublicUrl };
+  return { url: buildStreamUrl(uid), uid };
 }
 
 // ---------------------------------------------------------------------------
@@ -308,10 +301,6 @@ Deno.serve(async (req) => {
     }
 
     // ---- COMPLETE ---------------------------------------------------
-    // Waits for readyToStream only (~30-90s). MP4 download generation is
-    // kicked off as a background side-effect inside awaitReadyToStream.
-    // Call get-mp4-url separately (just before posting) to get the final
-    // downloadable URL for Ayrshare.
     if (action === "complete") {
       const uploadId = body.uploadId as string;
       if (!uploadId) return err("uploadId required", 400);
@@ -321,29 +310,89 @@ Deno.serve(async (req) => {
       if (!uid) return err("Cannot extract video UID from uploadId", 400);
       if (!hasCF) return err("CF Stream not configured", 500);
 
+      // Kick off MP4 download generation immediately so it starts in parallel
+      // with transcoding. Fire and forget — check-ready will verify it's done.
+      fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${uid}/downloads`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfToken}`, "Content-Type": "application/json" },
+        body: "{}",
+      }).catch(() => {});
+
+      // Return uid only — frontend must poll check-ready until MP4 is confirmed ready.
+      return ok({ uid, polling: true, mp4Ready: false });
+    }
+
+    if (action === "check-ready") {
+      const uid = body.uid as string;
+      if (!uid) return err("uid required", 400);
+      if (!hasCF) return err("CF Stream not configured", 500);
       try {
-        const streamUrl = await awaitReadyToStream(accountId, cfToken, uid);
-        return ok({ url: streamUrl, uid });
+        const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${uid}`;
+
+        // Check 1: Has CF Stream finished transcoding?
+        const r = await fetch(apiBase, { headers: { Authorization: `Bearer ${cfToken}` } });
+        if (!r.ok) return err(`CF Stream status check failed (${r.status})`, 500);
+        const { result } = await r.json();
+        const state = result?.status?.state || result?.state || "processing";
+        if (!result?.readyToStream) return ok({ ready: false, state });
+
+        // Ensure downloads job is running (idempotent POST is safe to repeat).
+        await fetch(`${apiBase}/downloads`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${cfToken}`, "Content-Type": "application/json" },
+          body: "{}",
+        }).catch(() => {});
+
+        // Check 2: Is the MP4 download ready?
+        const dr = await fetch(`${apiBase}/downloads`, { headers: { Authorization: `Bearer ${cfToken}` } });
+        if (!dr.ok) return ok({ ready: false, state: "preparing_download" });
+        const { result: dl } = await dr.json();
+        const dlStatus = dl?.default?.status;
+        const dlUrl = typeof dl?.default?.url === "string" ? dl.default.url : "";
+        if (dlStatus !== "ready" || !dlUrl) {
+          return ok({ ready: false, state: dlStatus ?? "downloading" });
+        }
+
+        // Check 3: HEAD the MP4 URL to confirm it's actually accessible.
+        const head = await fetch(dlUrl, { method: "HEAD" }).catch(() => null);
+        if (!head?.ok) return ok({ ready: false, state: "verifying" });
+
+        return ok({ ready: true, url: dlUrl, state: "ready" });
       } catch (e) {
         return err((e as Error).message);
       }
     }
 
     // ---- GET-MP4-URL ------------------------------------------------
-    // Resolves the downloadable MP4 URL for a CF Stream video.
-    // Call this just before posting to Ayrshare (after upload is complete).
-    // Polls up to 80s — by then the MP4 download is almost always ready.
+    // Checks once whether the CF Stream MP4 download is ready and returns
+    // immediately. The frontend polls this endpoint every ~15s until ready.
+    // This avoids blocking the edge function for 80s+ which caused timeouts.
     if (action === "get-mp4-url") {
       const cfUid = body.cfUid as string;
       if (!cfUid) return err("cfUid required", 400);
       if (!hasCF) return err("CF Stream not configured", 500);
 
-      try {
-        const mp4Url = await awaitMp4Download(accountId, cfToken, cfUid);
-        return ok({ url: mp4Url });
-      } catch (e) {
-        return err((e as Error).message);
+      const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${cfUid}`;
+
+      // Ensure download generation has been triggered (idempotent).
+      await fetch(`${apiBase}/downloads`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${cfToken}`, "Content-Type": "application/json" },
+        body: "{}",
+      }).catch(() => {});
+
+      // Check current status — return immediately.
+      const dr = await fetch(`${apiBase}/downloads`, { headers: { Authorization: `Bearer ${cfToken}` } });
+      if (!dr.ok) return err("Failed to check download status", 500);
+      const { result: dl } = await dr.json();
+      if (dl?.default?.status === "ready" && dl?.default?.url) {
+        return ok({ url: dl.default.url as string, ready: true });
       }
+      if (dl?.default?.status === "error") {
+        return err("CF Stream download generation failed. Please re-upload the video.", 500);
+      }
+      // Still generating — return not-ready so frontend can retry.
+      return ok({ ready: false, status: dl?.default?.status ?? "inprogress" });
     }
 
     // ---- ABORT ------------------------------------------------------
@@ -374,10 +423,10 @@ Deno.serve(async (req) => {
   const bytes       = await req.arrayBuffer();
 
   if (isVideo && hasCF) {
-    // Upload to Supabase, copy to CF Stream, await transcoding.
+    // Upload to Supabase, copy to CF Stream, return the CF URL immediately.
     try {
-      const url = await uploadThenStream(supabaseUrl, svcKey, accountId, cfToken, filePath, contentType, bytes);
-      return ok({ url });
+      const { url, uid } = await uploadThenStream(supabaseUrl, svcKey, accountId, cfToken, filePath, contentType, bytes);
+      return ok({ url, uid });
     } catch (e) {
       return err((e as Error).message);
     }

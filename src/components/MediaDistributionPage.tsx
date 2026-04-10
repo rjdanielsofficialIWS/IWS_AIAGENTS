@@ -9,6 +9,10 @@ import {
   ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
   Film, Upload, Download, RefreshCcw, Wand2,
 } from 'lucide-react';
+import { FFmpeg } from '@ffmpeg/ffmpeg';
+import { fetchFile } from '@ffmpeg/util';
+import ffmpegCoreUrl from '@ffmpeg/core?url';
+import ffmpegWasmUrl from '@ffmpeg/core/wasm?url';
 import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
@@ -17,9 +21,37 @@ import { EarnPage } from './earn/EarnPage';
 // Always fetches a fresh, auto-refreshed token — never expires mid-session
 async function getToken(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
-  if (session?.access_token) return session.access_token;
+  const expiresAt = session?.expires_at ? session.expires_at * 1000 : 0;
+  const isFreshEnough = !!session?.access_token && expiresAt - Date.now() > 60_000;
+  if (isFreshEnough) return session!.access_token;
   const { data: refreshed } = await supabase.auth.refreshSession();
   return refreshed.session?.access_token ?? '';
+}
+
+async function getAuthenticatedUserId(): Promise<string> {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.user?.id) return session.user.id;
+  const { data: refreshed } = await supabase.auth.refreshSession();
+  return refreshed.session?.user?.id ?? '';
+}
+
+async function callGenerateCaptions(body: unknown, token?: string): Promise<Response> {
+  let bearer = token || await getToken();
+  let res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(bearer ? { 'Authorization': `Bearer ${bearer}` } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401) {
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    bearer = refreshed.session?.access_token || await getToken();
+    res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(bearer ? { 'Authorization': `Bearer ${bearer}` } : {}) },
+      body: JSON.stringify(body),
+    });
+  }
+  return res;
 }
 
 const GOLD    = '#D6B25E';
@@ -28,6 +60,10 @@ const GOLD_D  = '#8F6B1E';
 const BG      = 'linear-gradient(135deg, #141414 0%, #2a2a2a 50%, #1a1a1a 100%)';
 const SURFACE = 'rgba(255,255,255,0.055)';
 const BORDER  = 'rgba(255,255,255,0.10)';
+const BROWSER_TRANSCODE_LIMIT = 500 * 1024 * 1024;
+
+let ffmpegSingleton: FFmpeg | null = null;
+let ffmpegLoadPromise: Promise<void> | null = null;
 
 function generateUUID(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -119,7 +155,7 @@ const PLATFORMS: Record<PlatformId, {
 type UploadState =
   | { status: 'idle' }
   | { status: 'preparing' }
-  | { status: 'uploading'; progress?: number; startedAt?: number }
+  | { status: 'uploading'; progress?: number; startedAt?: number; processing?: boolean; processingState?: string }
   | { status: 'done'; path: string; url: string; fileName: string; mime: string; size: number; cfUid?: string }
   | { status: 'error'; message: string };
 
@@ -151,6 +187,55 @@ type PlannerItem = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+function normalizePlatformId(value?: string | null): string {
+  const normalized = (value || '').trim().toLowerCase();
+  if (!normalized) return '';
+  return normalized === 'twitter' ? 'x' : normalized;
+}
+
+function getIntegrationPlatformId(integration?: Partial<PostizIntegration> | null): string {
+  return normalizePlatformId(integration?.profile || integration?.identifier || integration?.id || '');
+}
+
+function getCloudflareUidFromUrl(url?: string | null): string {
+  const match = (url || '').match(/videodelivery\.net\/([^/]+)/i);
+  return match?.[1] || '';
+}
+
+async function resolveCloudflareMp4Url(url: string, cfUid?: string): Promise<string> {
+  const uid = (cfUid || getCloudflareUidFromUrl(url)).trim();
+  const isCloudflareStreamUrl = url.includes('videodelivery.net');
+  const isManifestUrl = url.includes('.m3u8');
+  if (!uid || !isCloudflareStreamUrl || !isManifestUrl) return url;
+
+  const EDGE = `${SUPABASE_URL}/functions/v1/upload-media`;
+  const maxAttempts = 18;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const res = await fetch(EDGE, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` },
+      body: JSON.stringify({ action: 'get-mp4-url', cfUid: uid }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Failed to prepare the uploaded video for publishing.');
+    }
+    if (data.ready && typeof data.url === 'string' && data.url.length > 0) {
+      return data.url;
+    }
+    await new Promise(r => setTimeout(r, 5000));
+  }
+
+  throw new Error('Video processing is still finishing. Please wait a moment and try posting again.');
+}
+
+async function resolvePublishMediaUrls(mediaUrls: string[], videoUpload?: UploadState): Promise<string[]> {
+  return Promise.all(mediaUrls.map((url) => {
+    const cfUid = videoUpload?.status === 'done' && videoUpload.url === url ? videoUpload.cfUid : undefined;
+    return resolveCloudflareMp4Url(url, cfUid);
+  }));
+}
+
 function generateState() {
   const a = new Uint8Array(16);
   window.crypto.getRandomValues(a);
@@ -172,7 +257,11 @@ async function ayrsharePost(payload: {
   const doPost = async (token: string) => fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      platforms: (payload.platforms || []).map(normalizePlatformId).filter(Boolean),
+      mediaUrls: await resolvePublishMediaUrls(payload.mediaUrls || []),
+    }),
   });
   let res = await doPost(await getToken());
   // On 401, try one refresh+retry before giving up
@@ -192,6 +281,52 @@ async function ayrsharePost(payload: {
   return data;
 }
 
+async function queueMediaPublish(payload: {
+  platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
+  youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
+  workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
+}, cfUid: string, streamUrl: string, userId?: string | null) {
+  let { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    const refreshed = await supabase.auth.refreshSession();
+    session = refreshed.data.session;
+  }
+  const token = await getToken();
+  const resolvedUserId = (userId || await getAuthenticatedUserId()).trim();
+  if (!resolvedUserId) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+
+  const requestBody = JSON.stringify({
+    cfUid,
+    streamUrl,
+    streamReady: false,
+    payload: {
+      ...payload,
+      platforms: (payload.platforms || []).map(normalizePlatformId).filter(Boolean),
+      mediaUrls: payload.mediaUrls || [],
+    },
+    userId: resolvedUserId,
+  });
+  const doQueue = async (bearer: string) => fetch(`${SUPABASE_URL}/functions/v1/media-publish-intent`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(bearer ? { 'Authorization': `Bearer ${bearer}` } : {}) },
+    body: requestBody,
+  });
+
+  let res = await doQueue(token);
+  if (res.status === 401) {
+    const refreshed = await supabase.auth.refreshSession();
+    const newToken = refreshed.data.session?.access_token;
+    if (!newToken) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+    res = await doQueue(newToken);
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    if (res.status === 401) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+    throw new Error(data.error || data.message || `Failed to queue media publish (${res.status})`);
+  }
+  return data;
+}
+
 const MEDIA_REQUIRED_PLATFORMS = new Set(['youtube', 'tiktok', 'instagram']);
 
 async function fetchChannels(userId: string, force = false, workspaceId?: string | null): Promise<PostizIntegration[]> {
@@ -205,21 +340,26 @@ async function fetchChannels(userId: string, force = false, workspaceId?: string
   if (!res.ok) return [];
   const data = await res.json();
   const channels: PostizIntegration[] = Array.isArray(data?.channels) ? data.channels : [];
-  return channels.map(ch => ({ ...ch, identifier: ch.identifier || ch.id || '' }));
+  return channels.map(ch => {
+    const identifier = getIntegrationPlatformId(ch);
+    const profile = normalizePlatformId(ch.profile || ch.identifier || '');
+    return { ...ch, identifier, profile: profile || undefined };
+  });
 }
 
 async function uploadViaNativeXHR(
   file: File | Blob,
   kind: 'video' | 'image',
   onProgress?: (pct: number) => void,
-  onCfUid?: (uid: string) => void
+  onCfUid?: (uid: string) => void,
+  onProcessing?: (state?: string) => void
 ): Promise<string> {
   const EDGE = `${SUPABASE_URL}/functions/v1/upload-media`;
   const ext = file instanceof File
     ? (file.name.split('.').pop() || (kind === 'video' ? 'mp4' : 'jpg'))
-    : (kind === 'video' ? 'mp4' : 'wav');
+    : ((file.type.split('/')[1] || '').split(';')[0] || (kind === 'video' ? 'mp4' : 'wav'));
   const filePath    = `uploads/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const contentType = file instanceof File ? file.type : (kind === 'video' ? 'video/mp4' : 'audio/wav');
+  const contentType = file.type || (kind === 'video' ? 'video/mp4' : 'audio/wav');
   const fileSize    = file instanceof File ? file.size : (file as Blob).size;
   const DIRECT_MAX  = 4  * 1024 * 1024;
   const SUPABASE_MAX = 50 * 1024 * 1024;
@@ -238,6 +378,7 @@ async function uploadViaNativeXHR(
           try {
             const data = JSON.parse(xhr.responseText);
             if (!data.url) throw new Error('No URL in response: ' + xhr.responseText.slice(0, 200));
+            if (data.uid && onCfUid) onCfUid(data.uid);
             resolve(data.url);
           } catch (e: any) { reject(new Error('Invalid upload response: ' + e.message)); }
         } else {
@@ -258,7 +399,7 @@ async function uploadViaNativeXHR(
     const e = await initRes.json().catch(() => ({}));
     throw new Error(e.error || `Upload init failed (${initRes.status})`);
   }
-  const { uploadId, provider } = await initRes.json();
+  const { uploadId, provider, uid: initUid } = await initRes.json();
 
   const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
   const parts: { partNumber: number; etag: string }[] = [];
@@ -319,9 +460,16 @@ async function uploadViaNativeXHR(
     const e = await completeRes.json().catch(() => ({}));
     throw new Error(e.error || `Upload complete failed (${completeRes.status})`);
   }
-  const { uid, streamUrl } = await completeRes.json();
-  if (uid && onCfUid) onCfUid(uid);
-  return streamUrl;
+  const completeData = await completeRes.json();
+  const cfUid = completeData.uid ?? initUid;
+  if (cfUid && onCfUid) onCfUid(cfUid);
+
+  // Non-CF path: complete returns a URL immediately.
+  if (completeData.url) return completeData.url;
+
+  if (!cfUid) throw new Error('Upload complete: no uid or url returned');
+  if (onProcessing) onProcessing('queued');
+  return completeData.url || `https://videodelivery.net/${cfUid}/manifest/video.m3u8`;
 }
 
 // ─── Client-side MP4/MOV → ADTS/AAC extractor ────────────────────────────────
@@ -425,23 +573,72 @@ async function extractAudioFromVideo(file: File): Promise<Blob> {
   return new Blob([wav], { type: 'audio/wav' });
 }
 
-// Transcription flow:
-//   ≤ 5 MB  → FormData directly (any format)
-//   > 5 MB  → try extractADTSBlob (MP4 box parser, works on iOS) → if ≤ 24 MB send as FormData
-//             → fallback: extractAudioFromVideo (Web Audio, desktop) → if ≤ 24 MB send as FormData
-//             → last resort: upload to Supabase storage (NOT CF Stream) and pass videoUrl
-async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
-  const { data: refreshed } = await supabase.auth.refreshSession();
-  const token = refreshed.session?.access_token || authToken;
-  if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
+async function getBrowserFfmpeg(): Promise<FFmpeg> {
+  if (ffmpegSingleton?.loaded) return ffmpegSingleton;
+  if (!ffmpegSingleton) ffmpegSingleton = new FFmpeg();
+  if (!ffmpegLoadPromise) {
+    ffmpegLoadPromise = ffmpegSingleton.load({
+      coreURL: ffmpegCoreUrl,
+      wasmURL: ffmpegWasmUrl,
+    }).then(() => undefined).finally(() => { ffmpegLoadPromise = null; });
+  }
+  await ffmpegLoadPromise;
+  return ffmpegSingleton;
+}
 
-  const SMALL = 5 * 1024 * 1024;
+function toUint8(data: Uint8Array | string): Uint8Array {
+  return typeof data === 'string' ? new TextEncoder().encode(data) : data;
+}
+
+async function transcodeAudioChunksInBrowser(file: File): Promise<Blob[]> {
+  const ffmpeg = await getBrowserFfmpeg();
+  const inputName = `input-${Date.now()}.${(file.name.split('.').pop() || 'mp4').toLowerCase()}`;
+  const outputPattern = 'chunk-%03d.mp3';
+  await ffmpeg.writeFile(inputName, await fetchFile(file));
+  const code = await ffmpeg.exec([
+    '-i', inputName,
+    '-vn',
+    '-map', '0:a:0',
+    '-ac', '1',
+    '-ar', '16000',
+    '-b:a', '64k',
+    '-f', 'segment',
+    '-segment_time', '1200',
+    '-reset_timestamps', '1',
+    outputPattern,
+  ]);
+  if (code !== 0) {
+    await ffmpeg.deleteFile(inputName).catch(() => {});
+    throw new Error('Browser audio extraction failed');
+  }
+
+  const files = await ffmpeg.listDir('/');
+  const chunkNames = files
+    .map((entry) => entry.name)
+    .filter((name) => /^chunk-\d{3}\.mp3$/.test(name))
+    .sort();
+  const chunks: Blob[] = [];
+  for (const name of chunkNames) {
+    const data = await ffmpeg.readFile(name);
+    chunks.push(new Blob([toUint8(data)], { type: 'audio/mpeg' }));
+    await ffmpeg.deleteFile(name).catch(() => {});
+  }
+  await ffmpeg.deleteFile(inputName).catch(() => {});
+  if (!chunks.length) throw new Error('No audio chunks were generated');
+  return chunks;
+}
+
+// Transcription flow:
+//   Preferred: browser extracts/compresses/splits audio, then sends audio chunks directly
+//   Fallback: send original video directly to the edge function for server-side extraction
+async function transcribeVideo(videoFile: File, authToken = ''): Promise<string> {
   const WHISPER_MAX = 24 * 1024 * 1024; // safe under Whisper's 25 MB limit
 
   const callEdge = async (body: FormData | string, isJson: boolean): Promise<string> => {
+    const authHeader = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
     const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
       method: 'POST',
-      headers: { ...(isJson ? { 'Content-Type': 'application/json' } : {}), 'Authorization': `Bearer ${token}` },
+      headers: isJson ? { 'Content-Type': 'application/json', ...authHeader } : { ...authHeader },
       body,
     });
     if (!res.ok) {
@@ -453,10 +650,30 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
     return transcript ?? '';
   };
 
-  if (videoFile.size <= SMALL) {
-    const form = new FormData();
-    form.append('file', videoFile, videoFile.name || 'audio.mp4');
-    return callEdge(form, false);
+  try {
+    if (videoFile.size > BROWSER_TRANSCODE_LIMIT) {
+      throw new Error('Video too large for browser-side transcription');
+    }
+
+    const chunks = await transcodeAudioChunksInBrowser(videoFile);
+    const oversized = chunks.find((chunk) => chunk.size > WHISPER_MAX);
+    if (oversized) throw new Error('Compressed audio chunk exceeds transcription limit');
+
+    const transcripts = await Promise.all(chunks.map(async (chunk, index) => {
+      const form = new FormData();
+      form.append('file', chunk, `chunk-${String(index + 1).padStart(3, '0')}.mp3`);
+      const transcript = await callEdge(form, false);
+      return { index, transcript: transcript.trim() };
+    }));
+    const merged = transcripts
+      .sort((a, b) => a.index - b.index)
+      .map((part) => part.transcript)
+      .filter(Boolean)
+      .join('\n\n')
+      .trim();
+    if (merged) return merged;
+  } catch {
+    // Fall through to alternate paths.
   }
 
   // Large file — try MP4 box parser first (no Web Audio, works on iOS)
@@ -483,12 +700,9 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
     return callEdge(form, false);
   }
 
-  // Last resort: upload raw video to Supabase storage (avoid CF Stream — it requires processing time).
-  // Pass the file as audio/mp4 so upload-media routes to Supabase storage, not CF Stream.
-  const audioMp4 = new Blob([await videoFile.arrayBuffer()], { type: 'audio/mp4' });
-  const videoUrl = await uploadViaNativeXHR(audioMp4, 'image');
-  if (!videoUrl) throw new Error('Upload failed. Please try again.');
-  return callEdge(JSON.stringify({ videoUrl }), true);
+  const directForm = new FormData();
+  directForm.append('file', videoFile, videoFile.name || 'video.mp4');
+  return callEdge(directForm, false);
 }
 
 // ─── Small shared components ──────────────────────────────────────────────────
@@ -785,10 +999,9 @@ function ConnectAccountsModal({
             <div className="grid grid-cols-3 gap-2">
               {CONNECTABLE_PLATFORMS.filter(p => {
                 // Hide platforms already connected — treat 'twitter' and 'x' as equivalent
-                const normPid = p.id === 'twitter' ? 'x' : p.id;
+                const normPid = normalizePlatformId(p.id);
                 return !integrations.some(i => {
-                  const prof = (i.profile || i.identifier || '').toLowerCase();
-                  const normProf = prof === 'twitter' ? 'x' : prof;
+                  const normProf = getIntegrationPlatformId(i);
                   return normProf === normPid || normProf.includes(normPid);
                 });
               }).map(p => {
@@ -970,12 +1183,12 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
                 <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
                 <div className="flex flex-wrap gap-2">
                   {integrations.map(integ => {
-                    const isSelected = selectedPlatforms.includes(integ.profile || integ.id || '');
+                    const pid = getIntegrationPlatformId(integ);
+                    const isSelected = selectedPlatforms.includes(pid);
                     const p = PLATFORMS[integ.identifier as PlatformId];
                     return (
                       <button key={integ.id}
                         onClick={() => {
-                          const pid = integ.profile || integ.id || '';
                           setSelectedPlatforms(prev =>
                             prev.includes(pid) ? prev.filter(x => x !== pid) : [...prev, pid]
                           );
@@ -989,7 +1202,7 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
                         }}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition"
                         style={{ borderColor: isSelected ? (p?.color || GOLD) : BORDER, background: isSelected ? (p?.bg || `${GOLD}15`) : 'transparent', color: isSelected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                        <PlatformIcon id={integ.profile || integ.identifier} size="sm" picture={integ.picture} />
+                        <PlatformIcon id={pid || integ.identifier} size="sm" picture={integ.picture} />
                         <span className="max-w-[80px] truncate">{integ.name}</span>
                         {isSelected && <CheckCircle2 className="w-3 h-3 shrink-0" />}
                       </button>
@@ -1470,12 +1683,17 @@ function VideoPreviewCard({
               <Loader className="w-3 h-3 animate-spin shrink-0" /> Preparing upload…
             </div>
           )}
-          {uploadState.status === 'uploading' && (
+          {uploadState.status === 'uploading' && !(uploadState as any).processing && (
             <div className="space-y-1">
               <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
                 <div className="h-full rounded-full transition-all" style={{ background: GOLD, width: `${(uploadState as any).progress ?? 0}%` }} />
               </div>
               <UploadETA uploadState={uploadState} />
+            </div>
+          )}
+          {uploadState.status === 'uploading' && (uploadState as any).processing && (
+            <div className="flex items-center gap-2 text-xs text-white/40">
+              <Loader className="w-3 h-3 animate-spin shrink-0" /> {`Processing video… (${(uploadState as any).processingState ?? 'transcoding'})`}
             </div>
           )}
         </div>
@@ -1899,6 +2117,7 @@ function InlinePostComposer({
   const [submitOk, setSubmitOk]         = useState(false);
   const [submitError, setSubmitError]   = useState<string | null>(null);
   const [submitting, setSubmitting]     = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<string>('');
 
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
   const [content, setContent]           = useState('');
@@ -1908,7 +2127,6 @@ function InlinePostComposer({
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
   const [videoUpload, setVideoUpload]   = useState<UploadState>({ status: 'idle' });
   const videoUploadRef                  = useRef<UploadState>({ status: 'idle' });
-
   // Keep videoUploadRef in sync so async handlers can read current upload state
   useEffect(() => { videoUploadRef.current = videoUpload; }, [videoUpload]);
 
@@ -2018,10 +2236,10 @@ function InlinePostComposer({
   const textAiPostCount = textAiSelPlatformKeys.length <= 1 ? 10 : textAiSelPlatformKeys.length === 2 ? 7 : 5;
 
   const getSelectedPlatforms = () =>
-    selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean) as string[];
+    selectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean) as string[];
   const isYouTubeSelected = getSelectedPlatforms().includes('youtube');
 
-  const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void) => {
+  const uploadFileForPost = async (file: File, kind: 'video' | 'image', setU: (s: UploadState) => void): Promise<UploadState> => {
     const startedAt = Date.now();
     setU({ status: 'uploading', progress: 0, startedAt } as any);
     const MAX_RETRIES = 3;
@@ -2029,9 +2247,15 @@ function InlinePostComposer({
     while (attempt <= MAX_RETRIES) {
       try {
         let cfUid: string | undefined;
-        const url = await uploadViaNativeXHR(file, kind, pct => setU({ status: 'uploading', progress: pct, startedAt } as any), (uid) => { cfUid = uid; });
-        setU({ status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size, ...(cfUid ? { cfUid } : {}) });
-        return;
+        const url = await uploadViaNativeXHR(
+          file, kind,
+          pct => setU({ status: 'uploading', progress: pct, startedAt } as any),
+          (uid) => { cfUid = uid; },
+          (state?: string) => setU({ status: 'uploading', progress: 100, startedAt, processing: true, processingState: state } as any),
+        );
+        const done: UploadState = { status: 'done', path: '', url, fileName: file.name, mime: file.type, size: file.size, ...(cfUid ? { cfUid } : {}) };
+        setU(done);
+        return done;
       } catch (e: any) {
         attempt++;
         const isNetworkError = !e.message?.includes('Upload failed:'); // XHR HTTP errors vs network drop
@@ -2042,12 +2266,16 @@ function InlinePostComposer({
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
-        setU({ status: 'error', message: attempt > MAX_RETRIES
+        const err: UploadState = { status: 'error', message: attempt > MAX_RETRIES
           ? `Upload failed after ${MAX_RETRIES} retries. Check your connection and try again.`
-          : (e.message || 'Upload failed') });
-        return;
+          : (e.message || 'Upload failed') };
+        setU(err);
+        return err;
       }
     }
+    const err: UploadState = { status: 'error', message: 'Upload failed' };
+    setU(err);
+    return err;
   };
 
   const handleAiGenerate = async () => {
@@ -2095,7 +2323,7 @@ function InlinePostComposer({
       const captionBody = JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone });
       let res = await Promise.race<Response>([
         fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` }, body: captionBody,
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` }, body: captionBody,
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
       ]);
@@ -2105,7 +2333,7 @@ function InlinePostComposer({
         if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
         res = await Promise.race<Response>([
           fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` }, body: captionBody,
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` }, body: captionBody,
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
         ]);
@@ -2136,17 +2364,13 @@ function InlinePostComposer({
         if (!source) throw new Error('Enter a description');
       }
 
-      const fetchRes = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({
-          mode: 'repurpose_posts',
-          description: source,
-          tone: textAiTone,
-          platforms: textAiSelPlatformKeys,
-          post_count: textAiPostCount,
-        }),
-      });
+      const fetchRes = await callGenerateCaptions({
+        mode: 'repurpose_posts',
+        description: source,
+        tone: textAiTone,
+        platforms: textAiSelPlatformKeys,
+        post_count: textAiPostCount,
+      }, token);
       const rawText = await fetchRes.text();
       let data: any;
       try { data = JSON.parse(rawText); } catch { throw new Error('Server returned an unreadable response. Please try again.'); }
@@ -2186,10 +2410,10 @@ function InlinePostComposer({
       setSubmitError('Wait for media to finish uploading.'); return;
     }
     const selectedPlatformIds = selectedIntegrations
-      .map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; })
+      .map(id => getIntegrationPlatformId(integrations.find(x => x.id === id)))
       .filter(Boolean);
     const platformsNeedingMedia = selectedPlatformIds.filter(p => MEDIA_REQUIRED_PLATFORMS.has(p));
-    const hasMedia = videoUpload.status === 'done' || imageUploads.some(u => u.status === 'done');
+    const hasMedia = !!videoFile || videoUpload.status === 'done' || imageUploads.some(u => u.status === 'done');
     if (platformsNeedingMedia.length > 0 && !hasMedia) {
       const names = platformsNeedingMedia.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
       setSubmitError(`${names} require${platformsNeedingMedia.length === 1 ? 's' : ''} a video or image. Add media using the buttons above.`);
@@ -2197,7 +2421,7 @@ function InlinePostComposer({
     }
     const VIDEO_ONLY_PLATFORMS = new Set(['youtube', 'tiktok']);
     const videoOnlySelected = selectedPlatformIds.filter(p => VIDEO_ONLY_PLATFORMS.has(p));
-    const hasVideo = videoUpload.status === 'done';
+    const hasVideo = !!videoFile || videoUpload.status === 'done';
     const hasImagesOnly = !hasVideo && imageUploads.some(u => u.status === 'done');
     if (videoOnlySelected.length > 0 && hasImagesOnly) {
       const names = videoOnlySelected.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
@@ -2212,60 +2436,64 @@ function InlinePostComposer({
       if (validTweets.some(t => t.length > 280)) { setSubmitError('One or more tweets exceed 280 characters.'); return; }
     }
 
-    setSubmitting(true); setSubmitError(null);
+    setSubmitting(true); setSubmitError(null); setSubmitStatus('');
     try {
       const mediaUrls: string[] = [];
       imageUploads.forEach(u => { if (u.status === 'done' && (u as any).url) mediaUrls.push((u as any).url); });
 
-      // If the video was uploaded via CF Stream, the stored URL is an HLS streaming URL
-      // (videodelivery.net/…/manifest/video.m3u8). Ayrshare needs a direct MP4 download URL,
-      // so we call get-mp4-url now — the MP4 download was started at upload time and should
-      // be ready within 60-90s of the upload completing.
-      if (videoUpload.status === 'done') {
-        const cfUid = (videoUpload as any).cfUid as string | undefined;
-        let videoUrl = (videoUpload as any).url as string;
-        if (cfUid && videoUrl.includes('manifest/video.m3u8')) {
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-            const token = session?.access_token ?? '';
-            const mp4Res = await fetch(`${SUPABASE_URL}/functions/v1/upload-media`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-              body: JSON.stringify({ action: 'get-mp4-url', cfUid }),
-            });
-            if (mp4Res.ok) {
-              const { url } = await mp4Res.json();
-              if (url) videoUrl = url;
-            }
-          } catch { /* use streaming URL as fallback — some platforms may accept it */ }
-        }
-        mediaUrls.push(videoUrl);
+      let resolvedVideoUpload = videoUpload;
+      if (videoFile && videoUpload.status !== 'done') {
+        setSubmitStatus('Uploading video…');
+        resolvedVideoUpload = await uploadFileForPost(videoFile, 'video', setVideoUpload);
+      }
+      if (videoFile && resolvedVideoUpload.status !== 'done') {
+        throw new Error((resolvedVideoUpload as any).message || 'Video upload failed. Please try again.');
       }
 
+      // For Cloudflare-backed videos, we queue the publish job and let the backend
+      // dispatch it after the Cloudflare "ready" webhook arrives.
+      if (resolvedVideoUpload.status === 'done') {
+        const videoUrl = (resolvedVideoUpload as any).url as string | undefined;
+        if (!videoUrl) throw new Error('Video URL is missing after upload. Please try again.');
+        mediaUrls.push(videoUrl);
+      }
+      const queuedViaCloudflare = resolvedVideoUpload.status === 'done' && !!resolvedVideoUpload.cfUid;
+      setSubmitStatus(queuedViaCloudflare ? 'Queueing publish job…' : 'Sending to platforms…');
+
       const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
+      const enqueueOrPost = async (payload: {
+        platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
+        youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
+        workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
+      }) => {
+        if (queuedViaCloudflare && resolvedVideoUpload.status === 'done' && resolvedVideoUpload.cfUid) {
+          return queueMediaPublish(payload, resolvedVideoUpload.cfUid, resolvedVideoUpload.url, userId);
+        }
+        return ayrsharePost(payload);
+      };
 
       // Handle thread format — post as thread to all selected platforms
       const postGroupId = generateUUID();
       if (postFormat === 'thread') {
         const validTweets = threadTweets.filter(t => t.trim());
-        const platformIds = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean);
-        await ayrsharePost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId });
+        const platformIds = selectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
+        await enqueueOrPost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId });
       } else if (captionType === 'manual') {
         if (selectedIntegrations.length === 1) {
-          const platforms = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return i?.profile || i?.id || ''; }).filter(Boolean);
+          const platforms = selectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
           const isYT = platforms.includes('youtube');
           const cap = manualCaptions[platforms[0]] || content;
           const isCarousel = postFormat === 'carousel' && mediaUrls.length > 1;
-          await ayrsharePost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), ...(isCarousel ? { carousel: true } : {}), postGroupId });
+          await enqueueOrPost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), ...(isCarousel ? { carousel: true } : {}), postGroupId });
         } else {
           const postPromises = selectedIntegrations.map(async (integId) => {
             const integ = integrations.find(i => i.id === integId);
             if (!integ) return;
-            const platformId = integ.profile || integ.id || '';
+            const platformId = getIntegrationPlatformId(integ);
             const cap = manualCaptions[platformId] || content || '';
             if (!cap) return;
             const isYT = platformId === 'youtube';
-            await ayrsharePost({ platforms: [platformId], post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), postGroupId });
+            await enqueueOrPost({ platforms: [platformId], post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), postGroupId });
           });
           await Promise.all(postPromises);
         }
@@ -2273,14 +2501,14 @@ function InlinePostComposer({
         const postPromises = selectedIntegrations.map(async (integId) => {
           const integ = integrations.find(i => i.id === integId);
           if (!integ) return;
-          const platformId = integ.profile || integ.id || '';
+          const platformId = getIntegrationPlatformId(integ);
           const caption = generatedCaptions![platformId]
             ?? generatedCaptions![platformId.toLowerCase()]
             ?? Object.values(generatedCaptions!)[0]
             ?? '';
           if (!caption) return;
           const isYT = platformId === 'youtube';
-          await ayrsharePost({
+          await enqueueOrPost({
             platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null,
             ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}), postGroupId,
           });
@@ -2298,7 +2526,7 @@ function InlinePostComposer({
         onSuccess?.();
       }, 1600);
     } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
-    finally { setSubmitting(false); }
+    finally { setSubmitting(false); setSubmitStatus(''); }
   };
 
   const handleTextSubmit = async () => {
@@ -2407,7 +2635,7 @@ function InlinePostComposer({
                       }}
                       className="flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-semibold transition"
                       style={{ borderColor: selected ? (p?.color || GOLD) : BORDER, background: selected ? (p?.bg || `${GOLD}15`) : 'transparent', color: selected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
-                      <PlatformIcon id={int.profile || int.identifier} size="sm" picture={int.picture} />
+                      <PlatformIcon id={getIntegrationPlatformId(int) || int.identifier} size="sm" picture={int.picture} />
                       <span className="max-w-[90px] truncate text-xs">{int.name}</span>
                       {selected && <CheckCircle2 className="w-3.5 h-3.5" />}
                     </button>
@@ -2426,7 +2654,7 @@ function InlinePostComposer({
               Standard
             </button>
             {(() => {
-              const selP = selectedIntegrations.map(id => { const i = integrations.find(x => x.id === id); return (i?.profile || i?.id || '').toLowerCase(); });
+              const selP = selectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id)));
               const allSupportCarousel = selP.length > 0 && selP.every(p => ['instagram','facebook','linkedin','threads'].includes(p));
               // Auto-revert to standard if non-carousel platform selected
               if (postFormat === 'carousel' && !allSupportCarousel && selP.length > 0) {
@@ -2525,8 +2753,7 @@ function InlinePostComposer({
                     if (videoObjectUrl) URL.revokeObjectURL(videoObjectUrl);
                     const url = URL.createObjectURL(f);
                     setVideoFile(f); setVideoObjectUrl(url);
-                    setVideoUpload({ status: 'preparing' });
-                    setTimeout(() => uploadFileForPost(f, 'video', setVideoUpload), 0);
+                    setVideoUpload({ status: 'idle' });
                   }
                 }} />
             </label>
@@ -2575,7 +2802,7 @@ function InlinePostComposer({
                 <div className="rounded-xl border px-4 py-6 text-center text-sm text-white/30" style={{ borderColor: BORDER }}>Select channels above to write captions</div>
               ) : selectedIntegrations.length === 1 ? (() => {
                 const _mi = integrations.find(x => x.id === selectedIntegrations[0]);
-                const _mpid = _mi?.profile || _mi?.id || selectedIntegrations[0];
+                const _mpid = getIntegrationPlatformId(_mi) || selectedIntegrations[0];
                 const _mval = manualCaptions[_mpid] || content;
                 return (
                   <div className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
@@ -2592,7 +2819,7 @@ function InlinePostComposer({
                   {selectedIntegrations.map(integId => {
                     const _mi = integrations.find(x => x.id === integId);
                     if (!_mi) return null;
-                    const _mpid = _mi.profile || _mi.id || '';
+                    const _mpid = getIntegrationPlatformId(_mi);
                     const _mlogos = { instagram: '📷', facebook: '👥', x: 'X', twitter: 'X', tiktok: '🎵', youtube: '▶️', linkedin: '💼', pinterest: '📌', threads: '🧵', snapchat: '👻' };
                     const _mlimits = { twitter: 280, x: 280, instagram: 2200, facebook: 63206, tiktok: 2200, linkedin: 3000, youtube: 5000, threads: 500 };
                     const _mlimit = _mlimits[_mpid] || 2200;
@@ -2643,9 +2870,8 @@ function InlinePostComposer({
                     </button>
                   ))}
                 </div>
-                {captionMode === 'from_video' && !videoFile && videoUpload.status !== 'done' && <div className="text-xs text-amber-400/70 px-1">⚠️ Upload a talking video above. AI will analyze the spoken content to write captions.</div>}
-                {captionMode === 'from_video' && videoFile && videoUpload.status === 'uploading' && <div className="text-xs px-1" style={{ color: GOLD }}>⏳ Uploading ({(videoUpload as any).progress ?? 0}%)…</div>}
-                {captionMode === 'from_video' && (videoFile || videoUpload.status === 'done') && videoUpload.status !== 'uploading' && <div className="text-xs text-green-400/80 px-1">✓ Video ready. Click Generate below</div>}
+                {captionMode === 'from_video' && !videoFile && videoUpload.status !== 'done' && <div className="text-xs text-amber-400/70 px-1">⚠️ Add a talking video above. AI will analyze the spoken content to write captions.</div>}
+                {captionMode === 'from_video' && (videoFile || videoUpload.status === 'done') && videoUpload.status !== 'uploading' && <div className="text-xs text-green-400/80 px-1">✓ Video ready instantly. Click Generate below.</div>}
                 {captionMode === 'from_description' && (
                   <textarea value={aiDescription} onChange={e => setAiDescription(e.target.value)}
                     placeholder="Describe your video or content. Topic, key points, your offer…" rows={3}
@@ -2665,13 +2891,12 @@ function InlinePostComposer({
                     </span>
                   </div>
                 )}
-                <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0 || (captionMode === 'from_video' && videoUpload.status === 'uploading')}
+                <button onClick={handleAiGenerate} disabled={aiLoading || selectedIntegrations.length === 0}
                   className="w-full flex flex-col items-center justify-center gap-0.5 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
                   style={{ background: GOLD, color: '#000' }}>
                   <span className="flex items-center gap-2">
                     {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? aiStep : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
                   </span>
-                  {captionMode === 'from_video' && videoUpload.status === 'uploading' && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Waiting for video to finish uploading…</span>}
                   {aiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
@@ -2800,11 +3025,7 @@ function InlinePostComposer({
                       if (threadVideoMode && threadVideoFile) {
                         source = await transcribeVideo(threadVideoFile, (await getToken()) || '');
                       }
-                      const res = await fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken() ?? ''}` },
-                        body: JSON.stringify({ mode: 'thread_posts', description: source, tone: textAiTone, video_repurpose: threadVideoMode, thread_count: threadTweetCount }),
-                      });
+                      const res = await callGenerateCaptions({ mode: 'thread_posts', description: source, tone: textAiTone, video_repurpose: threadVideoMode, thread_count: threadTweetCount });
                       let data: any;
                       try { data = await res.json(); } catch { throw new Error('Could not read server response. Please try again.'); }
                       if (data.error === 'upgrade_required') { setTextAiError('upgrade_required'); return; }
@@ -3194,13 +3415,12 @@ function InlinePostComposer({
         className="w-full flex flex-col items-center justify-center gap-0.5 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
         <span className="flex items-center gap-2">
-          {submitting ? <><Loader className="w-4 h-4 animate-spin" /> Posting…</>
+          {submitting ? <><Loader className="w-4 h-4 animate-spin" /> {submitStatus || 'Posting…'}</>
             : submitOk ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
             : postType === 'media'
               ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
               : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
         </span>
-        {submitting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
       </button>
     </div>
   );
@@ -7432,7 +7652,7 @@ export function MediaDistributionPage() {
 
   const handleDisconnectPlatform = async (platformId: string) => {
     // Optimistic: remove from UI immediately
-    setIntegrations(prev => prev.filter(i => (i.profile || i.id) !== platformId));
+    setIntegrations(prev => prev.filter(i => getIntegrationPlatformId(i) !== normalizePlatformId(platformId)));
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-disconnect`, {
