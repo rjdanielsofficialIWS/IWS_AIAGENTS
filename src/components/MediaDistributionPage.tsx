@@ -5183,7 +5183,9 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
             color: composerPanelTab === 'strategist' ? '#7dd3fc' : 'rgba(255,255,255,0.35)',
             background: composerPanelTab === 'strategist' ? 'rgba(56,189,248,0.06)' : 'transparent',
           }}>
-          <span className="flex items-center gap-1.5"><Bot className="w-4 h-4 shrink-0" style={{ color: composerPanelTab === 'strategist' ? '#38bdf8' : 'inherit' }} />AI Content Strategist</span>
+          <Bot className="w-4 h-4 shrink-0" style={{ color: composerPanelTab === 'strategist' ? '#38bdf8' : 'inherit' }} />
+          <span className="md:hidden">AI Strategist</span>
+          <span className="hidden md:inline">AI Content Strategist</span>
         </button>
         <button
           onClick={() => setComposerPanelTab('queue')}
