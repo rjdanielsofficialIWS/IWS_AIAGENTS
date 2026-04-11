@@ -4825,7 +4825,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
       </div>
 
       {/* Content: only days with items, or empty state */}
-      <div className="mm-scroll flex-1 overflow-y-auto px-4 md:px-6 py-4 space-y-2" style={{ paddingBottom: 'max(5rem, calc(3.5rem + env(safe-area-inset-bottom)))' }}>
+      <div className="mm-scroll flex-1 overflow-y-auto pb-32 md:pb-4 px-4 md:px-6 py-4 space-y-2">
         {loading && items.length === 0 ? (
           <div className="flex items-center justify-center h-40 gap-2 text-white/25 text-sm">
             <Loader className="w-4 h-4 animate-spin" /> Loading…
@@ -5206,7 +5206,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       </div>
 
       {/* ── Tab content ── */}
-      <div className="mm-scroll flex-1 overflow-y-auto md:pb-0" style={{ paddingBottom: 'max(5rem, calc(3.5rem + env(safe-area-inset-bottom)))' }}>
+      <div className="mm-scroll flex-1 overflow-y-auto pb-32 md:pb-0">
 
         {/* Referral Banner — always visible regardless of tab */}
         <div className="px-4 md:px-8 pt-4">
@@ -5397,7 +5397,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
         ))}
       </div>
 
-      <div className="mm-scroll flex-1 overflow-y-auto md:pb-0 grid grid-cols-7" style={{ paddingBottom: 'max(5rem, calc(3.5rem + env(safe-area-inset-bottom)))' }} style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
+      <div className="mm-scroll flex-1 overflow-y-auto pb-32 md:pb-0 grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
         ))}
@@ -5658,7 +5658,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
     s === 'paid' ? 'rgba(74,222,128,0.25)' : s === 'processing' ? `${GOLD}40` : s === 'rejected' ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.1)';
 
   return (
-    <div className="mm-scroll flex-1 overflow-y-auto p-4 sm:p-6 md:pb-8 space-y-5" style={{ background: BG, paddingBottom: 'max(6rem, calc(3.5rem + env(safe-area-inset-bottom)))' }}>
+    <div className="mm-scroll flex-1 overflow-y-auto p-4 sm:p-6 pb-32 md:pb-8 space-y-5" style={{ background: BG }}>
 
       {/* Header */}
       <div>
@@ -6519,7 +6519,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
-      <div className="mm-scroll flex-1 overflow-y-auto p-4 md:p-6 md:pb-8" style={{ paddingBottom: 'max(6rem, calc(3.5rem + env(safe-area-inset-bottom)))' }}>
+      <div className="mm-scroll flex-1 overflow-y-auto p-4 md:p-6 pb-32 md:pb-8">
         <div className="max-w-2xl mx-auto space-y-6">
 
           <div className="flex items-center justify-between">
