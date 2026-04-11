@@ -2211,6 +2211,7 @@ function InlinePostComposer({
     return d.toISOString().slice(0, 16);
   });
   const [submitOk, setSubmitOk]         = useState(false);
+  const [submitting, setSubmitting]     = useState(false);
   const [submitError, setSubmitError]   = useState<string | null>(null);
 
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
