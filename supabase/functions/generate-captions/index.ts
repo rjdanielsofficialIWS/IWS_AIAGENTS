@@ -59,7 +59,7 @@ const PR={
   instagram:"Instagram caption: FIRST LINE must be a scroll-stopping hook (no more than 10 words, leaves a curiosity gap). Then line break. Then 3-6 short punchy paragraphs or bullet points. Relatable and specific. 3-6 strategic hashtags at end. End with an engagement CTA (comment, save, or share).",
   facebook:"Facebook caption: Open with a relatable scenario or bold statement. 2-4 conversational sentences. Tell a micro-story or share a specific insight. End with a question that sparks comments. 0-2 hashtags max.",
   linkedin:"LinkedIn post: Professional but human — not corporate. Hook in first line (must make people click 'see more'). Then line breaks between short paragraphs. Share a specific insight, lesson, or story. 3-4 paragraphs. End with a clear CTA or thought-provoking question. 2-3 relevant hashtags.",
-  x:"X/Twitter: Strictly under 280 characters — this is a hard limit. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
+  x:"X/Twitter: Must be between 200 and 280 characters — both are hard limits. Never under 200, never over 280. Count every character before responding. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
   youtube:"YouTube: youtube_title under 100 chars (curiosity-driven, specific, no clickbait) and youtube description (2-3 sentences, what the video covers, natural keyword inclusion).",
   threads:"Threads: Casual, conversational. 1-3 sentences. Feels like a text to a friend. No hashtags needed.",
   bluesky:"Bluesky: Thoughtful and direct. Under 200 chars. Intellectual but approachable tone."
@@ -81,9 +81,10 @@ Deno.serve(async(req)=>{
     const isPromo=sub?.stripe_customer_id?.startsWith("promo_");
     const isTrialing=sub?.status==="trialing"&&!!sub?.current_period_end&&new Date(sub.current_period_end)>new Date();
     const plan=((sub?.status==="active"||isPromo||isTrialing)&&sub?.plan)?sub.plan.toLowerCase():"free";
-    const{mode,transcript,description,platforms,tone,thread_count,post_count}=await req.json();
+    const{mode,transcript,description,platforms,tone,thread_count,post_count,topics:topicsBody}=await req.json();
     const source=transcript||description||"";
-    if(!source)return new Response(JSON.stringify({error:"Content required"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
+    const hasTopics=Array.isArray(topicsBody)&&topicsBody.some((t:any)=>String(t).trim().length>0);
+    if(!source&&!hasTopics)return new Response(JSON.stringify({error:"Content required"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     if((mode==="repurpose_ideas"||mode==="repurpose_posts")&&!REPURPOSE_PLANS.has(plan))return new Response(JSON.stringify({error:"upgrade_required",message:"Content Repurposing is available on Viral and Agency plans.",plan}),{status:403,headers:{...cors,"Content-Type":"application/json"}});
     if(mode==="captions_from_video"||mode==="captions_from_description"){
       const cl=CAPTION_LIMITS[plan]??0;
@@ -101,17 +102,34 @@ Deno.serve(async(req)=>{
       const parsed=JSON.parse(raw);let youTubeTitle:string|undefined;
       if(hasYT&&parsed.youtube_title){youTubeTitle=parsed.youtube_title;}
       const captions=Object.fromEntries(selP.map(p=>[p,parsed[p]]).filter(([,v])=>typeof v==="string"&&(v as string).trim().length>0));
+      // Hard enforce 280-char max on X/Twitter captions (server-side safety net)
+      for(const k of["x","twitter"]){if(typeof captions[k]==="string"&&captions[k].length>280)captions[k]=captions[k].slice(0,280);}
       result={captions,...(youTubeTitle?{youTubeTitle}:{})};
       try{await supabase.rpc("increment_usage",{p_user_id:user.id,p_period:getPeriod(),p_field:"ai_analyses_used"});}catch(e){console.error("Usage increment failed:",e);}
     }else if(mode==="repurpose_ideas"){
       const raw=await callClaude("You are a content strategist. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nContent:\n\""+source+"\"\n\nReturn JSON: {\"short_clips\":[{\"title\":\"string\",\"angle\":\"string\",\"platform\":\"string\"}],\"blog_angles\":[{\"headline\":\"string\",\"angle\":\"string\"}],\"social_hooks\":[\"string\"],\"series_ideas\":[{\"series_name\":\"string\",\"concept\":\"string\"}],\"other_formats\":[{\"format\":\"string\",\"concept\":\"string\"}]}\n3-4 items per section.");
       result={ideas:JSON.parse(raw)};
     }else if(mode==="repurpose_posts"){
-      const n=Math.max(1,Math.min(10,Number(post_count)||10));
-      const postPlatforms=[...new Set((selP.length>0?selP:["twitter","linkedin"]).map(p=>{const lp=p.toLowerCase();if(lp==="x"||lp==="twitter")return"twitter";if(lp==="linkedin")return"linkedin";if(lp==="threads")return"threads";return"twitter";}))];
-      const inputSchema={type:"object",additionalProperties:false,properties:Object.fromEntries(postPlatforms.map((platform)=>[platform,{type:"array",items:{type:"string"},minItems:1,maxItems:n}])),required:postPlatforms};
-      const data=await callClaudeJson(`You are a high-level content strategist and elite direct-response social copywriter.\nToday is ${getCurrentDate()}.\nWrite like a real human with sharp taste and strong platform instincts.\nThe user's tone instruction must heavily shape the writing.\nNo em-dashes. No emojis. No markdown fences.\nSound current and human — not like an AI.`,`Create social posts from the content below.\n\nTone directive:\n${toneG}\n\nContent:\n"${source}"\n\nPlatforms: ${postPlatforms.join(", ")}\n\nUniversal rules:\n- each post should use a different angle\n- each post should feel natively written for its platform\n- hooks should create curiosity, tension, surprise, status, stakes, or recognition\n- avoid generic filler and AI phrasing\n- sound current and human\n\nPlatform rules:\n- twitter posts: under 280 characters\n- linkedin posts: 100-300 words\n- threads posts: under 500 characters`,inputSchema,Math.max(2000,n*postPlatforms.length*220));
-      const validPosts=Object.fromEntries(Object.entries(data as Record<string,unknown>).map(([k,v])=>[k,Array.isArray(v)?v.map((x:any)=>String(x).trim()).filter(Boolean).slice(0,n):[]]).filter(([,arr])=>(arr as string[]).length>0));
+      const hasThreads=selP.some(p=>p.toLowerCase()==="threads");
+      const hasTwitter=selP.some(p=>{const lp=p.toLowerCase();return lp==="x"||lp==="twitter";});
+      // Threads mirrors twitter — don't generate separately
+      const postPlatforms=[...new Set((selP.length>0?selP:["twitter","linkedin"]).map(p=>{const lp=p.toLowerCase();if(lp==="x"||lp==="twitter")return"twitter";if(lp==="linkedin")return"linkedin";if(lp==="threads")return"twitter";return"twitter";}))];
+      // Multi-topic support: 1→10, 2→5, 3→4 posts per topic
+      const topicsRaw:string[]=Array.isArray(topicsBody)?topicsBody.map((t:any)=>String(t).trim()).filter(Boolean):[];
+      const topicList=topicsRaw.length>0?topicsRaw.slice(0,3):[source];
+      const postsPerTopic=topicList.length===1?10:topicList.length===2?5:4;
+      const buildPrompt=(topic:string)=>`Create exactly ${postsPerTopic} posts per platform from the content below. You MUST return exactly ${postsPerTopic} items in each platform array — no fewer.\n\nTone directive:\n${toneG}\n\nContent:\n"${topic}"\n\nPlatforms: ${postPlatforms.join(", ")}\n\nUniversal rules:\n- every single post MUST use a completely different viral angle — no two posts can share the same angle, hook type, or framing device\n- rotate through angles like: contrarian take, surprising stat, personal confession, hard truth, hot take, pattern interrupt, fear/risk, aspirational outcome, social proof, myth bust, behind-the-scenes, common mistake, bold prediction, micro-story, curiosity gap\n- never write the words "hot take" anywhere in the output — embody the angle, don't label it\n- each post should feel natively written for its platform\n- hooks should create curiosity, tension, surprise, status, stakes, or recognition\n- avoid generic filler and AI phrasing\n- sound current and human\n\nPlatform rules:\n- twitter posts: between 200-280 characters (hard minimum 200, hard maximum 280 — count every character)\n- linkedin posts: 100-300 words, same viral angle diversity — different hook type and framing per post`;
+      const inputSchema={type:"object",additionalProperties:false,properties:Object.fromEntries(postPlatforms.map((platform)=>[platform,{type:"array",items:{type:"string"},minItems:postsPerTopic,maxItems:postsPerTopic}])),required:postPlatforms};
+      const SYS_RP=`You are a high-level content strategist and elite direct-response social copywriter.\nToday is ${getCurrentDate()}.\nWrite like a real human with sharp taste and strong platform instincts.\nThe user's tone instruction must heavily shape the writing.\nNo em-dashes. No emojis. No markdown fences.\nSound current and human — not like an AI.`;
+      const allResults=await Promise.all(topicList.map(topic=>callClaudeJson(SYS_RP,buildPrompt(topic),inputSchema,Math.max(3000,postsPerTopic*postPlatforms.length*400))));
+      // Merge results across topics per platform
+      const merged:Record<string,string[]>={};
+      for(const res of allResults){for(const[k,v]of Object.entries(res as Record<string,unknown>)){const isTwitter=k==="twitter"||k==="x";const arr=Array.isArray(v)?v.map((x:any)=>{const s=String(x).trim();return isTwitter&&s.length>280?s.slice(0,280):s;}).filter(Boolean):[];if(arr.length){if(!merged[k])merged[k]=[];merged[k].push(...arr);}}}
+      const validPosts:Record<string,string[]>=Object.fromEntries(Object.entries(merged).filter(([,arr])=>arr.length>0));
+      // Copy twitter posts to threads key if threads was selected
+      if(hasThreads&&validPosts["twitter"]){validPosts["threads"]=validPosts["twitter"];}
+      // If only threads was selected (no twitter), expose posts under threads key only
+      if(hasThreads&&!hasTwitter){delete validPosts["twitter"];}
       if(Object.keys(validPosts).length===0)throw new Error("Generation failed. Please try again.");
       result={posts:validPosts};
     }else if(mode==="thread_posts"){

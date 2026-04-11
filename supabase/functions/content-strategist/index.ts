@@ -142,6 +142,11 @@ function safeParse(raw: string): any {
   }
 }
 
+function getPeriod(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 Deno.serve(async (req: Request) => {
   const cors = corsFor(req);
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
@@ -151,14 +156,19 @@ Deno.serve(async (req: Request) => {
 
   // Auth
   const auth = req.headers.get("Authorization") ?? "";
+  console.log("[auth] header present:", !!auth, "| starts with Bearer:", auth.startsWith("Bearer "), "| length:", auth.length);
   if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+
+  const token = auth.replace("Bearer ", "").trim();
+  console.log("[auth] token length:", token.length, "| token prefix:", token.slice(0, 20));
 
   const supabase = createClient(
     Deno.env.get("SUPABASE_URL") ?? "",
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
     { auth: { persistSession: false } }
   );
-  const { data: { user }, error: authErr } = await supabase.auth.getUser(auth.replace("Bearer ", "").trim());
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  console.log("[auth] getUser result - user:", user?.id ?? "null", "| error:", authErr?.message ?? "none");
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
 
   // Plan check
@@ -410,12 +420,14 @@ After your research, return ONLY this JSON structure:
 }
 
 REQUIREMENTS:
-- trending_topics: exactly 6 entries, all based on real current trends you found
-- viral_formats: exactly 5 entries specific to this niche
-- rising_keywords: exactly 10 keywords/phrases
-- platform_trends: one entry per platform in [${platformList}]
-- competitor_gaps: exactly 5 specific gaps
+- trending_topics: exactly 4 entries, all based on real current trends you found
+- viral_formats: exactly 3 entries specific to this niche
+- rising_keywords: exactly 8 keywords/phrases (keep each under 5 words)
+- platform_trends: one entry per platform in [${platformList}] (tip under 20 words each)
+- competitor_gaps: exactly 3 specific gaps (each under 20 words)
+- niche_overview: 2 sentences max
 - All content must be specific to "${niche}" — no generic advice
+- Keep ALL string values concise — under 25 words each
 - Return ONLY the JSON object, nothing else`,
           },
         ],

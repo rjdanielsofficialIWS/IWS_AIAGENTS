@@ -175,6 +175,17 @@ type ScheduledPost = {
   postGroupId?: string | null;
 };
 
+type QueueItem = {
+  id: string;
+  content: string;
+  platforms: string[];
+  scheduleDate?: string;
+  status: 'queuing' | 'processing' | 'done' | 'error';
+  resolvedStatus?: 'scheduled' | 'published' | 'failed';
+  error?: string;
+  addedAt: Date;
+};
+
 type PlannerItem = {
   id: string;
   title: string;
@@ -247,30 +258,21 @@ async function ayrsharePost(payload: {
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
   workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
 }) {
-  // Always attempt a session refresh to ensure we have a fresh token
-  let { data: { session } } = await supabase.auth.getSession();
-  if (!session) {
-    const refreshed = await supabase.auth.refreshSession();
-    session = refreshed.data.session;
-  }
-  if (!await getToken()) throw new Error('Your session has expired. Please log out and log back in, then try again.');
-  const doPost = async (token: string) => fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+  // Always call refreshSession once to get a guaranteed-fresh token.
+  // This avoids stale-token issues and refresh-token rotation races from getToken() being called multiple times.
+  const { data: { session: freshSession } } = await supabase.auth.refreshSession();
+  const token = freshSession?.access_token;
+  if (!token) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+  const body = JSON.stringify({
+    ...payload,
+    platforms: (payload.platforms || []).map(normalizePlatformId).filter(Boolean),
+    mediaUrls: await resolvePublishMediaUrls(payload.mediaUrls || []),
+  });
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-    body: JSON.stringify({
-      ...payload,
-      platforms: (payload.platforms || []).map(normalizePlatformId).filter(Boolean),
-      mediaUrls: await resolvePublishMediaUrls(payload.mediaUrls || []),
-    }),
+    body,
   });
-  let res = await doPost(await getToken());
-  // On 401, try one refresh+retry before giving up
-  if (res.status === 401) {
-    const refreshed = await supabase.auth.refreshSession();
-    const newToken = refreshed.data.session?.access_token;
-    if (!newToken) throw new Error('Your session has expired. Please log out and log back in, then try again.');
-    res = await doPost(newToken);
-  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     if (res.status === 401) throw new Error('Your session has expired. Please log out and log back in, then try again.');
@@ -1287,18 +1289,27 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
 }
 
 // ─── PostLogModal ─────────────────────────────────────────────────────────────
-function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId, integrations = [] }: {
+function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId, integrations = [], queueItems = [], unseenCounts, onTabSeen }: {
   open: boolean; onClose: () => void; userId: string | null; initialFilter?: string; workspaceId?: string | null; integrations?: PostizIntegration[];
+  queueItems?: QueueItem[];
+  unseenCounts?: { queue: number; scheduled: number; published: number; failed: number };
+  onTabSeen?: (tab: string) => void;
 }) {
   const [posts, setPosts]           = useState<ScheduledPost[]>([]);
   const [loading, setLoading]       = useState(false);
-  const [filter, setFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
+  const [filter, setFilter]         = useState<'queue' | 'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
   const [retrying, setRetrying]     = useState<Record<string, boolean>>({});
   const [retried, setRetried]       = useState<Record<string, 'ok' | 'err'>>({});
   const [deleting, setDeleting]     = useState<Record<string, boolean>>({});
   const [editingPost, setEditingPost] = useState<(ScheduledPost & { postGroupId?: string | null }) | null>(null);
 
   useEffect(() => { if (open) setFilter(initialFilter as any); }, [open, initialFilter]);
+
+  // Notify parent when a tab is viewed so it can clear the badge
+  const handleTabClick = (tab: typeof filter) => {
+    setFilter(tab);
+    onTabSeen?.(tab);
+  };
 
   const loadPosts = useCallback(async () => {
     if (!userId || !open) return;
@@ -1379,18 +1390,79 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
         <div className="flex items-center gap-1 px-5 py-2.5 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
-          {(['all', 'scheduled', 'published', 'error', 'failed'] as const).map(f => (
-            (counts[f as keyof typeof counts] > 0 || f === 'all' || f === 'scheduled' || f === 'published') ? (
-              <button key={f} onClick={() => setFilter(f)} className="px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
+          {/* Queue tab */}
+          <button onClick={() => handleTabClick('queue')} className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0"
+            style={{ background: filter === 'queue' ? 'rgba(56,189,248,0.12)' : 'transparent', color: filter === 'queue' ? '#7dd3fc' : 'rgba(255,255,255,0.35)' }}>
+            Queue
+            {queueItems.filter(q => q.status === 'queuing' || q.status === 'processing').length > 0 && (
+              <span className="flex items-center gap-0.5"><Loader className="w-3 h-3 animate-spin opacity-70" />{queueItems.filter(q => q.status === 'queuing' || q.status === 'processing').length}</span>
+            )}
+            {(unseenCounts?.queue ?? 0) > 0 && filter !== 'queue' && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-black flex items-center justify-center" style={{ background: '#38bdf8', color: '#000' }}>{unseenCounts!.queue}</span>
+            )}
+          </button>
+          {/* Existing status tabs */}
+          {(['all', 'scheduled', 'published', 'error', 'failed'] as const).map(f => {
+            const unseen = f === 'scheduled' ? (unseenCounts?.scheduled ?? 0) : f === 'published' ? (unseenCounts?.published ?? 0) : (f === 'failed' || f === 'error') ? (unseenCounts?.failed ?? 0) : 0;
+            return (counts[f as keyof typeof counts] > 0 || f === 'all' || f === 'scheduled' || f === 'published') ? (
+              <button key={f} onClick={() => handleTabClick(f)} className="relative px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
                 style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
                 {f === 'error' ? 'Failed' : f} {f !== 'all' && <span className="opacity-60">({counts[f as keyof typeof counts]})</span>}
+                {unseen > 0 && filter !== f && (
+                  <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-black flex items-center justify-center" style={{ background: GOLD, color: '#000' }}>{unseen}</span>
+                )}
               </button>
-            ) : null
-          ))}
+            ) : null;
+          })}
           {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
         </div>
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-          {loading && posts.length === 0 ? (
+          {filter === 'queue' ? (
+            queueItems.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 text-center gap-2">
+                <div className="text-2xl opacity-30">↑</div>
+                <div className="text-sm font-bold text-white/25">No posts in queue</div>
+                <div className="text-xs text-white/20">Posts appear here while being processed</div>
+              </div>
+            ) : (
+              [...queueItems].reverse().map(item => {
+                const isActive = item.status === 'queuing' || item.status === 'processing';
+                const isDone = item.status === 'done';
+                const isError = item.status === 'error';
+                return (
+                  <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl border"
+                    style={{ borderColor: isError ? 'rgba(239,68,68,0.25)' : isDone ? 'rgba(34,197,94,0.2)' : 'rgba(56,189,248,0.2)', background: isError ? 'rgba(239,68,68,0.04)' : isDone ? 'rgba(34,197,94,0.04)' : 'rgba(56,189,248,0.04)' }}>
+                    <div className="flex -space-x-1.5 shrink-0 pt-0.5">
+                      {item.platforms.slice(0, 3).map((pid, i) => (
+                        <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
+                      ))}
+                      {item.platforms.length > 3 && <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>+{item.platforms.length - 3}</div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white/70 line-clamp-2">{item.content || '(No caption)'}</p>
+                      {isError && item.error && <p className="text-xs mt-1" style={{ color: '#fca5a5' }}>{item.error}</p>}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className="text-xs text-white/25 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {item.addedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                        {item.scheduleDate && (
+                          <span className="text-xs text-white/25 flex items-center gap-1">
+                            Scheduled for {new Date(item.scheduleDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1.5"
+                      style={{ background: isDone ? 'rgba(34,197,94,0.12)' : isError ? 'rgba(239,68,68,0.12)' : 'rgba(56,189,248,0.12)', color: isDone ? '#86efac' : isError ? '#fca5a5' : '#7dd3fc' }}>
+                      {isActive && <Loader className="w-3 h-3 animate-spin" />}
+                      {item.status === 'queuing' ? 'Queued' : item.status === 'processing' ? 'Posting…' : isDone ? (item.resolvedStatus === 'scheduled' ? 'Scheduled ✓' : 'Published ✓') : 'Failed'}
+                    </span>
+                  </div>
+                );
+              })
+            )
+          ) : loading && posts.length === 0 ? (
             <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading…</div>
           ) : dedupedFiltered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-center">
@@ -1783,6 +1855,7 @@ function ImagePreviewCard({
 function SavedPostCard({
   post, textPostAccounts, isEditing, editText,
   onEditStart, onEditChange, onEditSave, onEditCancel, onDelete, workspaceId,
+  onQueueAdd, onQueueUpdate,
 }: {
   post: { id: string; text: string; label: string; savedAt: Date };
   textPostAccounts: { integ: PostizIntegration; platform: PlatformId }[];
@@ -1794,6 +1867,8 @@ function SavedPostCard({
   onEditSave: () => void;
   onEditCancel: () => void;
   onDelete: () => void;
+  onQueueAdd?: (item: QueueItem) => void;
+  onQueueUpdate?: (id: string, update: Partial<QueueItem>) => void;
 }) {
   const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
   const [scheduleType, setScheduleType]         = useState<'now' | 'schedule'>('now');
@@ -1801,7 +1876,6 @@ function SavedPostCard({
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
     return d.toISOString().slice(0, 16);
   });
-  const [posting, setPosting]   = useState(false);
   const [postOk, setPostOk]     = useState(false);
   const [postErr, setPostErr]   = useState<string | null>(null);
 
@@ -1810,22 +1884,32 @@ function SavedPostCard({
 
   const activeText = isEditing ? editText : post.text;
 
-  const handlePost = async () => {
+  const handlePost = () => {
     if (!activeText.trim())          { setPostErr('Post is empty.'); return; }
     if (selectedAccounts.length === 0) { setPostErr('Select at least one account.'); return; }
-    setPosting(true); setPostErr(null);
-    try {
-      const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      const platformIds = selectedAccounts.map(id => {
-        const a = textPostAccounts.find(a => a.integ.id === id);
-        return a?.integ.profile || a?.integ.id || a?.platform || '';
-      }).filter(Boolean);
-      await ayrsharePost({ platforms: platformIds, post: activeText, scheduleDate: sd, workspaceId: workspaceId ?? null });
-      setPostOk(true);
-      setSelectedAccounts([]);
-      setTimeout(() => setPostOk(false), 3000);
-    } catch (e: any) { setPostErr(e.message === 'SESSION_EXPIRED' ? 'Your session has expired. Please log out and log back in, then try again.' : (e.message || 'Post failed')); }
-    finally { setPosting(false); }
+    setPostErr(null);
+    const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
+    const platformIds = selectedAccounts.map(id => {
+      const a = textPostAccounts.find(a => a.integ.id === id);
+      return a?.integ.profile || a?.integ.id || a?.platform || '';
+    }).filter(Boolean);
+
+    const queueId = generateUUID();
+    onQueueAdd?.({ id: queueId, content: activeText, platforms: platformIds, scheduleDate: sd, status: 'queuing', addedAt: new Date() });
+
+    setPostOk(true);
+    setSelectedAccounts([]);
+    setTimeout(() => setPostOk(false), 2000);
+
+    (async () => {
+      try {
+        onQueueUpdate?.(queueId, { status: 'processing' });
+        await ayrsharePost({ platforms: platformIds, post: activeText, scheduleDate: sd, workspaceId: workspaceId ?? null });
+        onQueueUpdate?.(queueId, { status: 'done', resolvedStatus: sd ? 'scheduled' : 'published' });
+      } catch (e: any) {
+        onQueueUpdate?.(queueId, { status: 'error', error: e.message === 'SESSION_EXPIRED' ? 'Session expired — please sign out and back in.' : (e.message || 'Post failed'), resolvedStatus: 'failed' });
+      }
+    })();
   };
 
   return (
@@ -1927,19 +2011,17 @@ function SavedPostCard({
       <div className="px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex-1">
           {postErr && <p className="text-xs text-red-400">{postErr}</p>}
-          {postOk  && <p className="text-xs text-green-400 font-bold">✓ {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</p>}
+          {postOk  && <p className="text-xs font-bold" style={{ color: GOLD_L }}>↑ Added to queue</p>}
           <span className="text-[10px] text-white/20">{activeText.length} chars</span>
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
-          <button onClick={handlePost} disabled={posting || selectedAccounts.length === 0}
+          <button onClick={handlePost} disabled={selectedAccounts.length === 0}
             className="flex flex-col items-center gap-0.5 px-4 py-2 rounded-xl text-sm font-bold transition disabled:opacity-40 hover:brightness-110"
             style={{ background: postOk ? '#22c55e' : GOLD, color: '#000' }}>
             <span className="flex items-center gap-2">
-              {posting ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Posting…</>
-                : postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Done!</>
+              {postOk ? <><CheckCircle2 className="w-3.5 h-3.5" /> Queued!</>
                 : <><Send className="w-3.5 h-3.5" /> {scheduleType === 'schedule' ? 'Schedule' : 'Post Now'}</>}
             </span>
-            {posting && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
           </button>
         </div>
       </div>
@@ -2097,6 +2179,7 @@ function ThreadVideoPlayer({ src, fileName, onRemove }: { src: string; fileName:
 
 function InlinePostComposer({
   integrations, userId, onSuccess, initialVideoUrl, initialMode, workspaceId, onUpgrade,
+  onQueueAdd, onQueueUpdate,
 }: {
   integrations: PostizIntegration[];
   userId: string | null;
@@ -2105,6 +2188,8 @@ function InlinePostComposer({
   initialMode?: 'media' | 'text' | 'saved';
   workspaceId?: string | null;
   onUpgrade?: () => void;
+  onQueueAdd?: (item: QueueItem) => void;
+  onQueueUpdate?: (id: string, update: Partial<QueueItem>) => void;
 }) {
   type PostType = 'media' | 'text' | 'saved';
   type SavedPost = { id: string; text: string; label: string; savedAt: Date };
@@ -2119,10 +2204,12 @@ function InlinePostComposer({
     setSavedPosts(posts);
     try { localStorage.setItem('mm_saved_posts', JSON.stringify(posts)); } catch {}
   };
-  const savePost = (text: string, label: string) => {
+  const [savedFlash, setSavedFlash] = useState<string | null>(null);
+  const savePost = (text: string, label: string, flashKey?: string) => {
     if (!text.trim()) return;
     const next = [{ id: Date.now().toString(), text: text.trim(), label, savedAt: new Date() }, ...savedPosts];
     persistSaved(next);
+    if (flashKey) { setSavedFlash(flashKey); setTimeout(() => setSavedFlash(null), 1500); }
   };
   const deleteSavedPost = (id: string) => persistSaved(savedPosts.filter(p => p.id !== id));
   const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now');
@@ -2132,8 +2219,6 @@ function InlinePostComposer({
   });
   const [submitOk, setSubmitOk]         = useState(false);
   const [submitError, setSubmitError]   = useState<string | null>(null);
-  const [submitting, setSubmitting]     = useState(false);
-  const [submitStatus, setSubmitStatus] = useState<string>('');
 
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
   const [content, setContent]           = useState('');
@@ -2217,7 +2302,7 @@ function InlinePostComposer({
   const [linkedinText, setLinkedinText] = useState('');
   const [showTextAi, setShowTextAi]     = useState(false);
   const [textAiMode, setTextAiMode]     = useState<'from_video' | 'from_description'>('from_description');
-  const [textAiDesc, setTextAiDesc]     = useState('');
+  const [textAiTopics, setTextAiTopics] = useState<string[]>(['']);
   const [textAiTone, setTextAiTone]     = useState('');
   const [textAiVideo, setTextAiVideo]   = useState<File | null>(null);
   const [textAiVideoObjectUrl, setTextAiVideoObjectUrl] = useState<string | null>(null);
@@ -2225,6 +2310,7 @@ function InlinePostComposer({
   const [textAiError, setTextAiError]   = useState<string | null>(null);
   const [textAiPosts, setTextAiPosts]   = useState<Record<string, string[]> | null>(null);
   const [textAiSelected, setTextAiSelected] = useState<Record<string, number | null>>({});
+  const [textAiPostStatus, setTextAiPostStatus] = useState<Record<string, Record<number, 'posted' | 'scheduled'>>>({});
 
   // Multi-select for text post accounts
   const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
@@ -2249,7 +2335,7 @@ function InlinePostComposer({
       .filter(Boolean)
       .map(p => (p === 'x' || p === 'twitter') ? 'twitter' : p)
   )];
-  const textAiPostCount = textAiSelPlatformKeys.length <= 1 ? 10 : textAiSelPlatformKeys.length === 2 ? 7 : 5;
+  const textAiPostCount = 10;
 
   const getSelectedPlatforms = () =>
     selectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean) as string[];
@@ -2307,11 +2393,11 @@ function InlinePostComposer({
         if (!txSession) { const r = await supabase.auth.refreshSession(); txSession = r.data.session; }
         if (!txSession) throw new Error('Your session has expired. Please sign out and sign back in.');
         if (fileToUse) {
-          setAiStep('Transcribing video…');
+          setAiStep('Analyzing video…');
           sourceText = await transcribeVideo(fileToUse, await getToken());
         } else {
           // No local file — pass the stored URL directly
-          setAiStep('Transcribing video…');
+          setAiStep('Analyzing video…');
           const res = await fetch(`${SUPABASE_URL}/functions/v1/transcribe-video`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
@@ -2365,7 +2451,7 @@ function InlinePostComposer({
 
   const handleTextAiGenerate = async () => {
     if (textAiSelPlatformKeys.length === 0) { setTextAiError('Select at least one account above first.'); return; }
-    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({});
+    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({}); setTextAiPostStatus({});
     try {
       const { data: { session: freshSession } } = await supabase.auth.refreshSession();
       const token = freshSession?.access_token || await getToken();
@@ -2376,16 +2462,16 @@ function InlinePostComposer({
         if (!textAiVideo) throw new Error('Select a video first');
         source = await transcribeVideo(textAiVideo, token);
       } else {
-        source = textAiDesc.trim();
-        if (!source) throw new Error('Enter a description');
+        const topics = textAiTopics.map(t => t.trim()).filter(Boolean);
+        if (!topics.length) throw new Error('Enter at least one topic');
+        source = topics[0];
       }
 
       const fetchRes = await callGenerateCaptions({
         mode: 'repurpose_posts',
-        description: source,
+        topics: textAiTopics.map(t => t.trim()).filter(Boolean),
         tone: textAiTone,
         platforms: textAiSelPlatformKeys,
-        post_count: textAiPostCount,
       }, token);
       const rawText = await fetchRes.text();
       let data: any;
@@ -2413,7 +2499,7 @@ function InlinePostComposer({
     setEditingIdx(null);
   };
 
-  const handleMediaSubmit = async () => {
+  const handleMediaSubmit = () => {
     if (!userId)                      { setSubmitError('Sign in to post.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
     if (captionType === 'manual' && !content.trim() && Object.values(manualCaptions).every(v => !v.trim())) { setSubmitError('Write a caption first.'); return; }
@@ -2444,113 +2530,130 @@ function InlinePostComposer({
       setSubmitError(`${names} only accept video files, not images. Please upload a video instead.`);
       return;
     }
-    // Thread format validation
-    const postGroupId = generateUUID();
-      if (postFormat === 'thread') {
+    if (postFormat === 'thread') {
       const validTweets = threadTweets.filter(t => t.trim());
       if (validTweets.length < 2) { setSubmitError('Add at least 2 tweets to create a thread.'); return; }
       if (validTweets.some(t => t.length > 280)) { setSubmitError('One or more tweets exceed 280 characters.'); return; }
     }
 
-    setSubmitting(true); setSubmitError(null); setSubmitStatus('');
-    try {
-      const mediaUrls: string[] = [];
-      imageUploads.forEach(u => { if (u.status === 'done' && (u as any).url) mediaUrls.push((u as any).url); });
+    // Snapshot all state needed for background processing
+    const snapVideoFile = videoFile;
+    const snapVideoUpload = videoUpload;
+    const snapImageUploads = [...imageUploads];
+    const snapContent = content;
+    const snapManualCaptions = { ...manualCaptions };
+    const snapGeneratedCaptions = generatedCaptions ? { ...generatedCaptions } : null;
+    const snapSelectedIntegrations = [...selectedIntegrations];
+    const snapScheduleType = scheduleType;
+    const snapScheduleDateStr = scheduleDateStr;
+    const snapPostFormat = postFormat;
+    const snapThreadTweets = [...threadTweets];
+    const snapYouTubeTitle = youTubeTitle;
+    const isScheduled = scheduleType === 'schedule';
+    const previewContent = content || Object.values(manualCaptions)[0] || (generatedCaptions ? Object.values(generatedCaptions)[0] : '') || '';
 
-      let resolvedVideoUpload = videoUpload;
-      if (videoFile && videoUpload.status !== 'done') {
-        setSubmitStatus('Uploading video…');
-        resolvedVideoUpload = await uploadFileForPost(videoFile, 'video', setVideoUpload);
-      }
-      if (videoFile && resolvedVideoUpload.status !== 'done') {
-        throw new Error((resolvedVideoUpload as any).message || 'Video upload failed. Please try again.');
-      }
+    // Add to queue immediately
+    const queueId = generateUUID();
+    onQueueAdd?.({ id: queueId, content: previewContent, platforms: selectedPlatformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date() });
 
-      if (resolvedVideoUpload.status === 'done') {
-        const videoUrl = (resolvedVideoUpload as any).url as string | undefined;
-        if (!videoUrl) throw new Error('Video URL is missing after upload. Please try again.');
-        mediaUrls.push(videoUrl);
-      }
-      const queuedViaCloudflare = resolvedVideoUpload.status === 'done' && !!resolvedVideoUpload.cfUid;
+    // Reset form right away
+    setSubmitOk(true);
+    setSubmitError(null);
+    setTimeout(() => {
+      setSubmitOk(false);
+      setContent(''); setVideoFile(null); setVideoObjectUrl(null);
+      setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]);
+      setGeneratedCaptions(null); setManualCaptions({}); setSelectedIntegrations([]);
+      setPostFormat('standard'); setThreadTweets(['', '']); setCarouselCount(3); setThreadTopic('');
+      onSuccess?.();
+    }, 800);
 
-      const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      const jobIds: string[] = [];
-      const enqueueOrPost = async (payload: {
-        platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
-        youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
-        workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
-      }) => {
-        if (queuedViaCloudflare && resolvedVideoUpload.cfUid) {
-          const result = await queueMediaPublish(payload, resolvedVideoUpload.cfUid, resolvedVideoUpload.url, userId);
-          if (result?.jobId) jobIds.push(result.jobId);
-          return result;
+    // Background processing
+    (async () => {
+      try {
+        onQueueUpdate?.(queueId, { status: 'processing' });
+        const mediaUrls: string[] = [];
+        snapImageUploads.forEach(u => { if (u.status === 'done' && (u as any).url) mediaUrls.push((u as any).url); });
+
+        let resolvedVideoUpload = snapVideoUpload;
+        if (snapVideoFile && snapVideoUpload.status !== 'done') {
+          resolvedVideoUpload = await uploadFileForPost(snapVideoFile, 'video', setVideoUpload);
         }
-        return ayrsharePost(payload);
-      };
+        if (snapVideoFile && resolvedVideoUpload.status !== 'done') {
+          throw new Error((resolvedVideoUpload as any).message || 'Video upload failed. Please try again.');
+        }
+        if (resolvedVideoUpload.status === 'done') {
+          const videoUrl = (resolvedVideoUpload as any).url as string | undefined;
+          if (!videoUrl) throw new Error('Video URL is missing after upload. Please try again.');
+          mediaUrls.push(videoUrl);
+        }
+        const queuedViaCloudflare = resolvedVideoUpload.status === 'done' && !!resolvedVideoUpload.cfUid;
 
-      // Handle thread format — post as thread to all selected platforms
-      const postGroupId = generateUUID();
-      if (postFormat === 'thread') {
-        const validTweets = threadTweets.filter(t => t.trim());
-        const platformIds = selectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
-        await enqueueOrPost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId });
-      } else if (captionType === 'manual') {
-        if (selectedIntegrations.length === 1) {
-          const platforms = selectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
-          const isYT = platforms.includes('youtube');
-          const cap = manualCaptions[platforms[0]] || content;
-          const isCarousel = postFormat === 'carousel' && mediaUrls.length > 1;
-          await enqueueOrPost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), ...(isCarousel ? { carousel: true } : {}), postGroupId });
+        const sd = isScheduled ? new Date(snapScheduleDateStr).toISOString() : undefined;
+        const jobIds: string[] = [];
+        const enqueueOrPost = async (payload: {
+          platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
+          youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
+          workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
+        }) => {
+          if (queuedViaCloudflare && resolvedVideoUpload.cfUid) {
+            const result = await queueMediaPublish(payload, resolvedVideoUpload.cfUid, resolvedVideoUpload.url, userId);
+            if (result?.jobId) jobIds.push(result.jobId);
+            return result;
+          }
+          return ayrsharePost(payload);
+        };
+
+        const postGroupId = generateUUID();
+        if (snapPostFormat === 'thread') {
+          const validTweets = snapThreadTweets.filter(t => t.trim());
+          const platformIds = snapSelectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
+          await enqueueOrPost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId });
+        } else if (captionType === 'manual') {
+          if (snapSelectedIntegrations.length === 1) {
+            const platforms = snapSelectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
+            const isYT = platforms.includes('youtube');
+            const cap = snapManualCaptions[platforms[0]] || snapContent;
+            const isCarousel = snapPostFormat === 'carousel' && mediaUrls.length > 1;
+            await enqueueOrPost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: snapYouTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), ...(isCarousel ? { carousel: true } : {}), postGroupId });
+          } else {
+            await Promise.all(snapSelectedIntegrations.map(async (integId) => {
+              const integ = integrations.find(i => i.id === integId);
+              if (!integ) return;
+              const platformId = getIntegrationPlatformId(integ);
+              const cap = snapManualCaptions[platformId] || snapContent || '';
+              if (!cap) return;
+              const isYT = platformId === 'youtube';
+              await enqueueOrPost({ platforms: [platformId], post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: snapYouTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), postGroupId });
+            }));
+          }
         } else {
-          const postPromises = selectedIntegrations.map(async (integId) => {
+          await Promise.all(snapSelectedIntegrations.map(async (integId) => {
             const integ = integrations.find(i => i.id === integId);
             if (!integ) return;
             const platformId = getIntegrationPlatformId(integ);
-            const cap = manualCaptions[platformId] || content || '';
-            if (!cap) return;
+            const caption = snapGeneratedCaptions![platformId]
+              ?? snapGeneratedCaptions![platformId.toLowerCase()]
+              ?? Object.values(snapGeneratedCaptions!)[0]
+              ?? '';
+            if (!caption) return;
             const isYT = platformId === 'youtube';
-            await enqueueOrPost({ platforms: [platformId], post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: youTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), postGroupId });
-          });
-          await Promise.all(postPromises);
+            await enqueueOrPost({ platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: snapYouTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}), postGroupId });
+          }));
         }
-      } else {
-        const postPromises = selectedIntegrations.map(async (integId) => {
-          const integ = integrations.find(i => i.id === integId);
-          if (!integ) return;
-          const platformId = getIntegrationPlatformId(integ);
-          const caption = generatedCaptions![platformId]
-            ?? generatedCaptions![platformId.toLowerCase()]
-            ?? Object.values(generatedCaptions!)[0]
-            ?? '';
-          if (!caption) return;
-          const isYT = platformId === 'youtube';
-          await enqueueOrPost({
-            platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null,
-            ...(isYT ? { youTubeTitle: youTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}), postGroupId,
-          });
-        });
-        await Promise.all(postPromises);
-      }
 
-      if (queuedViaCloudflare && jobIds.length > 0) {
-        await pollJobStatus(jobIds[0]);
+        if (queuedViaCloudflare && jobIds.length > 0) {
+          await pollJobStatus(jobIds[0]);
+        }
+        onQueueUpdate?.(queueId, { status: 'done', resolvedStatus: isScheduled ? 'scheduled' : 'published' });
+      } catch (e: any) {
+        onQueueUpdate?.(queueId, { status: 'error', error: e.message || 'Failed to post', resolvedStatus: 'failed' });
       }
-      setSubmitOk(true);
-      setTimeout(() => {
-        setSubmitOk(false);
-        setContent(''); setVideoFile(null); setVideoObjectUrl(null);
-        setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]);
-        setGeneratedCaptions(null); setManualCaptions({}); setSelectedIntegrations([]);
-        setPostFormat('standard'); setThreadTweets(['', '']); setCarouselCount(3); setThreadTopic('');
-        onSuccess?.();
-      }, 1600);
-    } catch (e: any) { setSubmitError(e.message || 'Failed to post'); }
-    finally { setSubmitting(false); setSubmitStatus(''); }
+    })();
   };
 
-  const handleTextSubmit = async () => {
-    const postGroupId = generateUUID();
-      if (postFormat === 'thread') {
+  const handleTextSubmit = () => {
+    if (postFormat === 'thread') {
       const validTweets = threadTweets.filter(t => t.trim());
       if (validTweets.length < 2) { setSubmitError('Add at least 2 posts to create a thread.'); return; }
       if (validTweets.some(t => t.length > 280)) { setSubmitError('One or more posts exceed 280 characters.'); return; }
@@ -2563,36 +2666,76 @@ function InlinePostComposer({
       if (!hasContent) { setSubmitError('Write something first.'); return; }
     }
     if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account to post to.'); return; }
-    setSubmitting(true); setSubmitError(null);
-    try {
-      const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
-      const allAccounts = selectedTextAccounts.map(id => {
-        const acct = textPostAccounts.find(a => a.integ.id === id);
-        return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
-      }).filter(a => a.platformId);
-      const postGroupId = generateUUID();
-      if (postFormat === 'thread') {
-        const validTweets = threadTweets.filter(t => t.trim());
-        const platformIds = allAccounts.map(a => a.platformId);
-        await ayrsharePost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), scheduleDate: sd, workspaceId: workspaceId ?? null });
-      } else {
-        const liIds = allAccounts.filter(a => a.isLinkedIn).map(a => a.platformId);
-        const otIds = allAccounts.filter(a => !a.isLinkedIn).map(a => a.platformId);
-        const liText = editingIdx ? aiEditText : linkedinText;
-        const otText = editingIdx ? aiEditText : xText;
-        const posts: Promise<unknown>[] = [];
-        const textPostGroupId = generateUUID();
-        if (otIds.length > 0 && otText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: otText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
-        if (liIds.length > 0 && liText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: liText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
-        await Promise.all(posts);
+    setSubmitError(null);
+
+    // Snapshot state for background processing
+    const snapScheduleType = scheduleType;
+    const snapScheduleDateStr = scheduleDateStr;
+    const snapPostFormat = postFormat;
+    const snapThreadTweets = [...threadTweets];
+    const snapXText = editingIdx ? aiEditText : xText;
+    const snapLinkedinText = editingIdx ? aiEditText : linkedinText;
+    const snapSelectedTextAccounts = [...selectedTextAccounts];
+    const isScheduled = scheduleType === 'schedule';
+    const allAccounts = selectedTextAccounts.map(id => {
+      const acct = textPostAccounts.find(a => a.integ.id === id);
+      return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
+    }).filter(a => a.platformId);
+    const previewContent = postFormat === 'thread' ? threadTweets.filter(t => t.trim())[0] : (xText || linkedinText || '');
+    const platformIds = allAccounts.map(a => a.platformId);
+
+    // Add to queue immediately
+    const queueId = generateUUID();
+    onQueueAdd?.({ id: queueId, content: previewContent, platforms: platformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date() });
+
+    // Reset form right away
+    setSubmitOk(true);
+    setXText(''); setLinkedinText('');
+    setAiEditText(''); setEditingIdx(null);
+    setPostFormat('standard'); setThreadTweets(['', '']);
+    setTimeout(() => setSubmitOk(false), 2000);
+
+    // Background processing
+    (async () => {
+      try {
+        onQueueUpdate?.(queueId, { status: 'processing' });
+        const sd = isScheduled ? new Date(snapScheduleDateStr).toISOString() : undefined;
+        const postGroupId = generateUUID();
+        if (snapPostFormat === 'thread') {
+          const validTweets = snapThreadTweets.filter(t => t.trim());
+          const pids = allAccounts.map(a => a.platformId);
+          await ayrsharePost({ platforms: pids, post: validTweets[0], thread: validTweets.slice(1), scheduleDate: sd, workspaceId: workspaceId ?? null });
+        } else {
+          const liIds = allAccounts.filter(a => a.isLinkedIn).map(a => a.platformId);
+          const otIds = allAccounts.filter(a => !a.isLinkedIn).map(a => a.platformId);
+          const posts: Promise<unknown>[] = [];
+          const textPostGroupId = generateUUID();
+          if (otIds.length > 0 && snapXText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: snapXText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
+          if (liIds.length > 0 && snapLinkedinText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: snapLinkedinText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
+          await Promise.all(posts);
+          // Label the used AI post as posted/scheduled
+          const statusLabel: 'posted' | 'scheduled' = sd ? 'scheduled' : 'posted';
+          const otPosted = otIds.length > 0 && !!snapXText.trim();
+          const liPosted = liIds.length > 0 && !!snapLinkedinText.trim();
+          setTextAiPostStatus(prev => {
+            const next = { ...prev };
+            for (const platform of Object.keys(textAiPosts ?? {})) {
+              const isNonLi = platform === 'twitter' || platform === 'x' || platform === 'threads';
+              const selIdx = textAiSelected[platform];
+              if (isNonLi && otPosted && typeof selIdx === 'number') {
+                next[platform] = { ...(next[platform] ?? {}), [selIdx]: statusLabel };
+              } else if (platform === 'linkedin' && liPosted && typeof selIdx === 'number') {
+                next[platform] = { ...(next[platform] ?? {}), [selIdx]: statusLabel };
+              }
+            }
+            return next;
+          });
+        }
+        onQueueUpdate?.(queueId, { status: 'done', resolvedStatus: isScheduled ? 'scheduled' : 'published' });
+      } catch (e: any) {
+        onQueueUpdate?.(queueId, { status: 'error', error: e.message === 'SESSION_EXPIRED' ? 'Session expired — please sign out and back in.' : (e.message || 'Post failed'), resolvedStatus: 'failed' });
       }
-      setSubmitOk(true);
-      setXText(''); setLinkedinText('');
-      setAiEditText(''); setEditingIdx(null); setSelectedTextAccounts([]);
-      setPostFormat('standard'); setThreadTweets(['', '']);
-      setTimeout(() => setSubmitOk(false), 3000);
-    } catch (e: any) { setSubmitError(e.message === 'SESSION_EXPIRED' ? 'Your session has expired. Please log out and log back in, then try again.' : (e.message || 'Post failed')); }
-    finally { setSubmitting(false); }
+    })();
   };
 
   const scheduleSectionJsx = (
@@ -2916,7 +3059,7 @@ function InlinePostComposer({
                   <span className="flex items-center gap-2">
                     {aiLoading ? <><Loader className="w-3.5 h-3.5 animate-spin" /> {captionMode === 'from_video' ? aiStep : 'Writing…'}</> : <><Sparkles className="w-3.5 h-3.5" /> Generate Captions for {selectedIntegrations.length || 'Selected'} Platform{selectedIntegrations.length !== 1 ? 's' : ''}</>}
                   </span>
-                  {aiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
+                  {aiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Give me 23 seconds..</span>}
                 </button>
                 {aiError && <div className="text-xs text-red-300 px-1">{aiError}</div>}
               </div>
@@ -2953,7 +3096,7 @@ function InlinePostComposer({
                         <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: p?.color ? `${p.color}20` : BORDER, background: p?.bg || 'rgba(0,0,0,0.2)' }}>
                           <PlatformIcon id={platform} size="sm" />
                           <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
-                          <span className="ml-auto text-[10px] text-white/25">{(caption as string).length} chars</span>
+                          {(() => { const isX = platform === 'x' || platform === 'twitter'; const len = (caption as string).length; const over = isX && len > 280; return <span className="ml-auto text-[10px]" style={{ color: over ? '#f87171' : 'rgba(255,255,255,0.25)' }}>{len}{isX ? '/280' : ' chars'}</span>; })()}
                         </div>
                         <textarea
                           value={caption as string}
@@ -3167,11 +3310,11 @@ function InlinePostComposer({
               <div className="flex items-center justify-between px-4 py-2 border-t" style={{ borderColor: BORDER }}>
                 <span className="text-xs" style={{ color: xText.length >= 270 ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{xText.length}/280</span>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => { savePost(xText, 'Manual'); setXText(''); }}
+                  <button onClick={() => { savePost(xText, 'Manual', 'manual-x'); setXText(''); }}
                     disabled={!xText.trim()}
                     className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition disabled:opacity-30 hover:bg-white/8"
-                    style={{ color: GOLD_L, border: `1px solid ${GOLD}30` }}>
-                    🔖 Save
+                    style={{ color: savedFlash === 'manual-x' ? '#4ade80' : GOLD_L, border: `1px solid ${savedFlash === 'manual-x' ? '#4ade8040' : GOLD + '30'}`, transition: 'color 0.2s, border-color 0.2s' }}>
+                    {savedFlash === 'manual-x' ? <><CheckCircle2 className="w-3 h-3" /> Saved!</> : '🔖 Save'}
                   </button>
                 </div>
               </div>
@@ -3235,16 +3378,46 @@ function InlinePostComposer({
                 )}
                 {textAiMode === 'from_description' && (
                   <div className="space-y-2">
-                    <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">Topic / Description</div>
-                    <textarea value={textAiDesc} onChange={e => setTextAiDesc(e.target.value)}
-                      placeholder="Describe what you want to post about. Topic, key points, your offer…"
-                      rows={3}
-                      className="w-full rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none" style={{ borderColor: BORDER }} />
-                    {textAiSelPlatformKeys.length > 0 && (
-                      <div className="text-[10px] text-white/25 pt-0.5">
-                        Generating <strong className="text-white/40">{textAiPostCount} posts</strong> per platform
+                    <div className="flex items-center justify-between">
+                      <div className="text-[10px] font-bold text-white/30 uppercase tracking-wider">Topics</div>
+                      {textAiTopics.length < 3 && (
+                        <button
+                          onClick={() => setTextAiTopics(prev => [...prev, ''])}
+                          className="text-[10px] font-bold transition hover:opacity-80"
+                          style={{ color: GOLD }}>
+                          + Add Topic
+                        </button>
+                      )}
+                    </div>
+                    {textAiTopics.map((topic, i) => (
+                      <div key={i} className="flex gap-2 items-start">
+                        <textarea
+                          value={topic}
+                          onChange={e => setTextAiTopics(prev => prev.map((t, j) => j === i ? e.target.value : t))}
+                          placeholder={i === 0 ? 'Topic, key points, your offer…' : `Topic ${i + 1}…`}
+                          rows={2}
+                          className="flex-1 rounded-lg border bg-black/30 px-3 py-2.5 text-xs text-white placeholder-white/25 outline-none resize-none"
+                          style={{ borderColor: BORDER }} />
+                        {textAiTopics.length > 1 && (
+                          <button
+                            onClick={() => setTextAiTopics(prev => prev.filter((_, j) => j !== i))}
+                            className="mt-1 text-white/20 hover:text-white/50 transition text-sm leading-none">
+                            ×
+                          </button>
+                        )}
                       </div>
-                    )}
+                    ))}
+                    {textAiSelPlatformKeys.length > 0 && (() => {
+                      const tc = textAiTopics.filter(t => t.trim()).length || 1;
+                      const ppt = tc === 1 ? 10 : tc === 2 ? 5 : 4;
+                      return (
+                        <div className="text-[10px] text-white/25 pt-0.5">
+                          {tc > 1
+                            ? <>{tc} topics &times; <strong className="text-white/40">{ppt} posts</strong> = <strong className="text-white/40">{tc * ppt} total</strong> per platform</>
+                            : <>Generating <strong className="text-white/40">10 posts</strong> per platform</>}
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
                 <input value={textAiTone} onChange={e => setTextAiTone(e.target.value)}
@@ -3268,10 +3441,12 @@ function InlinePostComposer({
                       : <><Sparkles className="w-3.5 h-3.5" /> {(() => {
                           const names = textAiSelPlatformKeys.map(p => p === 'twitter' ? 'X' : p === 'linkedin' ? 'LinkedIn' : p === 'threads' ? 'Threads' : p.charAt(0).toUpperCase() + p.slice(1));
                           if (names.length === 0) return 'Select accounts above first';
-                          return `Generate ${textAiPostCount} ${names.join(' & ')} Posts`;
+                          const tc = textAiTopics.filter(t => t.trim()).length || 1;
+                          const total = tc === 1 ? 10 : tc === 2 ? 10 : 12;
+                          return `Generate ${total} ${names.join(' & ')} Posts`;
                         })()}</>}
                   </span>
-                  {textAiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>May take up to 5 minutes</span>}
+                  {textAiLoading && <span style={{ fontSize: 9, opacity: 0.6, fontWeight: 500 }}>Give me 23 seconds..</span>}
                 </button>
 
                 {textAiPosts && (
@@ -3357,18 +3532,24 @@ function InlinePostComposer({
                             <div className="flex items-center gap-2 px-3 py-1.5 border-t" style={{ borderColor: BORDER }}>
                               <span className="text-[10px] text-white/20 font-bold">#{idx + 1}</span>
                               <span className="text-[10px] text-white/15">{liveText.length}c</span>
-                              {isSel && !isEditing && (
+                              {textAiPostStatus[platform]?.[idx] === 'posted' && (
+                                <span className="text-[10px] font-bold" style={{ color: '#4ade80' }}>✓ Posted</span>
+                              )}
+                              {textAiPostStatus[platform]?.[idx] === 'scheduled' && (
+                                <span className="text-[10px] font-bold text-sky-400">🗓 Scheduled</span>
+                              )}
+                              {!textAiPostStatus[platform]?.[idx] && isSel && !isEditing && (
                                 <span className="text-[10px] font-bold" style={{ color: GOLD }}>✓ Selected</span>
                               )}
                               {isEditing && (
                                 <span className="text-[10px] font-bold text-amber-400/70">editing…</span>
                               )}
                               <button
-                                onClick={e => { e.stopPropagation(); savePost(liveText, textTab === 'linkedin' ? 'LinkedIn Post' : textTab === 'threads' ? 'Threads Post' : 'X Post'); }}
+                                onClick={e => { e.stopPropagation(); const fk = `${textTab}-${idx}`; savePost(liveText, textTab === 'linkedin' ? 'LinkedIn Post' : textTab === 'threads' ? 'Threads Post' : 'X Post', fk); }}
                                 className="ml-auto flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold transition hover:bg-white/8"
-                                style={{ color: GOLD_L, border: `1px solid ${GOLD}25` }}
+                                style={{ color: savedFlash === `${textTab}-${idx}` ? '#4ade80' : GOLD_L, border: `1px solid ${savedFlash === `${textTab}-${idx}` ? '#4ade8040' : GOLD + '25'}`, transition: 'color 0.2s, border-color 0.2s' }}
                                 title="Save for later">
-                                🔖 Save
+                                {savedFlash === `${textTab}-${idx}` ? <><CheckCircle2 className="w-3 h-3" /> Saved!</> : '🔖 Save'}
                               </button>
                             </div>
                           </div>
@@ -3415,6 +3596,8 @@ function InlinePostComposer({
                   }}
                   onEditCancel={() => setSavedEditId(null)}
                   onDelete={() => deleteSavedPost(p.id)}
+                  onQueueAdd={onQueueAdd}
+                  onQueueUpdate={onQueueUpdate}
                 />
               ))}
             </div>
@@ -3430,26 +3613,16 @@ function InlinePostComposer({
       {/* Submit button */}
       <button
         onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
-        disabled={submitting || (postType === 'media' && submitOk)}
+        disabled={submitOk}
         className="w-full flex flex-col items-center justify-center gap-0.5 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-        {submitting ? (
-          <>
-            <span className="flex items-center gap-2">
-              <Loader className="w-4 h-4 animate-spin" style={{ flexShrink: 0 }} /> Posting
-            </span>
-            <span style={{ fontSize: '11px', fontWeight: 'normal', opacity: 0.7 }}>May take up to 5 minutes…</span>
-          </>
-        ) : null}
-        {!submitting && (
-          <span className="flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
-            {submitOk
-              ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
-              : postType === 'media'
-                ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
-                : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
-          </span>
-        )}
+        <span className="flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
+          {submitOk
+            ? <><CheckCircle2 className="w-4 h-4" /> Added to Queue!</>
+            : postType === 'media'
+              ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
+              : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
+        </span>
       </button>
     </div>
   );
@@ -3606,7 +3779,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
         body: JSON.stringify({ mode: 'full_strategy', ...brief }),
       });
       const data = await res.json();
@@ -3629,10 +3802,10 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-      const transcript = await transcribeVideo(videoFile, await getToken());
+      const transcript = await transcribeVideo(videoFile, session!.access_token);
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
         body: JSON.stringify({ mode: 'repurpose_from_video', transcript, tone: videoTone }),
       });
       const data = await res.json();
@@ -3653,7 +3826,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
       if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
       const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken()}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
         body: JSON.stringify({ mode: 'repurpose_from_description', description: repurposeDescription.trim(), tone: videoTone }),
       });
       const data = await res.json();
@@ -4227,9 +4400,9 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
                 className="w-full flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
                 style={{ background: GOLD, color: '#000' }}>
                 <span className="flex items-center gap-2">
-                  {videoLoading ? <><Loader className="w-4 h-4 animate-spin" /> Analyzing…</> : <><Sparkles className="w-4 h-4" /> Extract All AI Strategist</>}
+                  {videoLoading ? <><Loader className="w-4 h-4 animate-spin" /> Generating…</> : <><Sparkles className="w-4 h-4" /> Generate Ideas</>}
                 </span>
-                {videoLoading && repurposeInputMode === 'video' && <span style={{ fontSize: 9, opacity: 0.6 }}>Transcribing + analyzing. Up to 5 minutes.</span>}
+                {videoLoading && <span style={{ fontSize: 9, opacity: 0.6 }}>Give me 23 seconds..</span>}
               </button>
             </div>
           ) : (
@@ -4887,8 +5060,10 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   onUpgrade?: () => void;
 }) {
   const [logOpen, setLogOpen]             = useState(false);
-  const [logFilter, setLogFilter]         = useState<'all' | 'scheduled' | 'published' | 'failed' | 'error'>('all');
+  const [logFilter, setLogFilter]         = useState<'queue' | 'all' | 'scheduled' | 'published' | 'failed' | 'error'>('all');
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
+  const [queueItems, setQueueItems]       = useState<QueueItem[]>([]);
+  const [unseenCounts, setUnseenCounts]   = useState({ queue: 0, scheduled: 0, published: 0, failed: 0 });
   const [loading, setLoading]             = useState(false);
   const [addModalOpen, setAddModalOpen]   = useState(false);
   const [addDate]                         = useState(() => new Date().toISOString().split('T')[0]);
@@ -4923,6 +5098,29 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     error:     posts.filter(p => p.status === 'failed' || p.status === 'error').length,
   };
 
+  const handleQueueAdd = React.useCallback((item: QueueItem) => {
+    setQueueItems(prev => [...prev, item]);
+    setUnseenCounts(prev => ({ ...prev, queue: prev.queue + 1 }));
+    if (!logOpen) { setLogFilter('queue'); setLogOpen(true); }
+  }, [logOpen]);
+
+  const handleQueueUpdate = React.useCallback((id: string, update: Partial<QueueItem>) => {
+    setQueueItems(prev => prev.map(q => q.id === id ? { ...q, ...update } : q));
+    if (update.status === 'done' && update.resolvedStatus) {
+      if (update.resolvedStatus === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: prev.scheduled + 1 }));
+      else if (update.resolvedStatus === 'published') setUnseenCounts(prev => ({ ...prev, published: prev.published + 1 }));
+    } else if (update.status === 'error') {
+      setUnseenCounts(prev => ({ ...prev, failed: prev.failed + 1 }));
+    }
+  }, []);
+
+  const handleTabSeen = React.useCallback((tab: string) => {
+    if (tab === 'queue') setUnseenCounts(prev => ({ ...prev, queue: 0 }));
+    else if (tab === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: 0 }));
+    else if (tab === 'published') setUnseenCounts(prev => ({ ...prev, published: 0 }));
+    else if (tab === 'failed' || tab === 'error') setUnseenCounts(prev => ({ ...prev, failed: 0 }));
+  }, []);
+
   const pendingAddCallback = React.useRef<(() => void) | undefined>(undefined);
   const handleAddToPlanner = (item: { title: string; notes?: string; category: string; sourceLabel: string }, onSaved?: () => void) => {
     pendingAddCallback.current = onSaved;
@@ -4945,14 +5143,17 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       {/* ── Stat counters ── */}
       <div className="grid grid-cols-3 border-b shrink-0" style={{ borderColor: BORDER }}>
         {([
-          { key: 'scheduled' as const, label: 'Scheduled', color: GOLD },
-          { key: 'published' as const, label: 'Published',  color: '#22c55e' },
-          { key: 'error'     as const, label: 'Failed',     color: '#ef4444' },
+          { key: 'scheduled' as const, label: 'Scheduled', color: GOLD,      unseen: unseenCounts.scheduled },
+          { key: 'published' as const, label: 'Published',  color: '#22c55e', unseen: unseenCounts.published },
+          { key: 'error'     as const, label: 'Failed',     color: '#ef4444', unseen: unseenCounts.failed },
         ]).map((s, i) => (
           <button key={s.key}
-            onClick={() => { setLogFilter(s.key); setLogOpen(true); }}
-            className={`flex flex-col items-center justify-center py-3 md:py-4 transition hover:bg-white/4 ${i < 2 ? 'border-r' : ''}`}
+            onClick={() => { setLogFilter(s.key); setLogOpen(true); handleTabSeen(s.key); }}
+            className={`relative flex flex-col items-center justify-center py-3 md:py-4 transition hover:bg-white/4 ${i < 2 ? 'border-r' : ''}`}
             style={{ borderColor: BORDER }}>
+            {s.unseen > 0 && (
+              <span className="absolute top-1.5 right-2 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center" style={{ background: s.color, color: '#000' }}>+{s.unseen}</span>
+            )}
             <div className="text-xl md:text-2xl font-black" style={{ color: s.color }}>
               {loading ? <Loader className="w-4 h-4 animate-spin opacity-30" /> : counts[s.key]}
             </div>
@@ -4996,7 +5197,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 
         {composerPanelTab === 'post' && (
           <div className="px-4 md:px-8 py-6 w-full">
-            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} workspaceId={workspaceId} onUpgrade={onUpgrade} />
+            <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); onVideoConsumed?.(); }} initialVideoUrl={initialVideoUrl} initialMode={initialComposerMode} workspaceId={workspaceId} onUpgrade={onUpgrade} onQueueAdd={handleQueueAdd} onQueueUpdate={handleQueueUpdate} />
           </div>
         )}
 
@@ -5008,7 +5209,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       </div>
 
       {/* Modals */}
-      <PostLogModal key={workspaceId ?? 'personal'} open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} workspaceId={workspaceId} integrations={integrations} />
+      <PostLogModal key={workspaceId ?? 'personal'} open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} workspaceId={workspaceId} integrations={integrations} queueItems={queueItems} unseenCounts={unseenCounts} onTabSeen={handleTabSeen} />
 
       {addModalOpen && (
         <AddPlannerItemModal
