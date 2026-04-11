@@ -1186,7 +1186,7 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
           </button>
         </div>
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
+        <div className="mm-scroll flex-1 overflow-y-auto px-5 py-5 space-y-5">
           {loading && (
             <div className="flex items-center justify-center h-32 gap-2 text-white/30">
               <Loader className="w-4 h-4 animate-spin" style={{ color: GOLD }} /> Loading…
@@ -1417,7 +1417,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           })}
           {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+        <div className="mm-scroll flex-1 overflow-y-auto px-5 py-4 space-y-2">
           {filter === 'queue' ? (
             queueItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center gap-2">
@@ -4825,7 +4825,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
       </div>
 
       {/* Content: only days with items, or empty state */}
-      <div className="flex-1 overflow-y-auto pb-20 md:pb-4 px-4 md:px-6 py-4 space-y-2">
+      <div className="mm-scroll flex-1 overflow-y-auto pb-20 md:pb-4 px-4 md:px-6 py-4 space-y-2">
         {loading && items.length === 0 ? (
           <div className="flex items-center justify-center h-40 gap-2 text-white/25 text-sm">
             <Loader className="w-4 h-4 animate-spin" /> Loading…
@@ -4979,7 +4979,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
               </div>
               <button onClick={() => setRepurposeOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto px-6 py-5">
+            <div className="mm-scroll flex-1 overflow-y-auto px-6 py-5">
               <InlineContentStrategist userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={onUpgrade} />
             </div>
           </div>
@@ -5206,7 +5206,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       </div>
 
       {/* ── Tab content ── */}
-      <div className="flex-1 overflow-y-auto pb-20 md:pb-0">
+      <div className="mm-scroll flex-1 overflow-y-auto pb-20 md:pb-0">
 
         {/* Referral Banner — always visible regardless of tab */}
         <div className="px-4 md:px-8 pt-4">
@@ -5397,7 +5397,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto pb-20 md:pb-0 grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
+      <div className="mm-scroll flex-1 overflow-y-auto pb-20 md:pb-0 grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
         {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
         ))}
@@ -5476,7 +5476,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
+              <div className="mm-scroll flex-1 overflow-y-auto px-5 py-4 space-y-2">
                 {dayPosts.map(post => (
                   <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
                     <div className="flex -space-x-1 shrink-0 pt-0.5">
@@ -5515,7 +5515,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
               <h2 className="text-base font-bold text-white">Create Post</h2>
               <button onClick={() => setComposerOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/30 hover:text-white transition"><X className="w-4 h-4" /></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            <div className="mm-scroll flex-1 overflow-y-auto p-4 md:p-6">
               <InlinePostComposer integrations={integrations} userId={userId} onSuccess={() => { loadPosts(); setComposerOpen(false); }} workspaceId={workspaceId} onUpgrade={onUpgrade} />
             </div>
           </div>
@@ -5658,7 +5658,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
     s === 'paid' ? 'rgba(74,222,128,0.25)' : s === 'processing' ? `${GOLD}40` : s === 'rejected' ? 'rgba(239,68,68,0.25)' : 'rgba(255,255,255,0.1)';
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-8 space-y-5" style={{ background: BG }}>
+    <div className="mm-scroll flex-1 overflow-y-auto p-4 sm:p-6 pb-24 md:pb-8 space-y-5" style={{ background: BG }}>
 
       {/* Header */}
       <div>
@@ -6519,7 +6519,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
 
   return (
     <div className="flex flex-1 min-h-0 overflow-hidden">
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-8">
+      <div className="mm-scroll flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-8">
         <div className="max-w-2xl mx-auto space-y-6">
 
           <div className="flex items-center justify-between">
@@ -7096,7 +7096,7 @@ function WorkspacesPanel({
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-6" style={{ color: 'white' }}>
+    <div className="mm-scroll flex-1 overflow-y-auto p-6" style={{ color: 'white' }}>
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -8251,6 +8251,18 @@ export function MediaDistributionPage() {
           .mm-icons-mobile  { display: none;  }
           .mm-icons-desktop { display: block; }
         }
+        /* ── Mobile scroll smoothness ───────────────────────────────────────
+           - momentum scrolling on iOS (Safari respects this on overflow:auto/scroll)
+           - overscroll-behavior:contain stops the scroll from leaking to parent
+             overflow:hidden containers (the main cause of the "stuck" feeling)
+           - touch-action:pan-y lets the browser handle vertical gestures natively
+           ─────────────────────────────────────────────────────────────────── */
+        .mm-scroll {
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
+          touch-action: pan-y;
+          will-change: scroll-position;
+        }
 
       `}</style>
 
@@ -8492,7 +8504,7 @@ export function MediaDistributionPage() {
             activeWorkspaceId={activeWorkspaceId}
             onSwitchWorkspace={(id) => setActiveWorkspaceId(id)}
             onManageWorkspaces={() => setView('workspaces')} />
-          <main className="flex-1 flex flex-col min-h-0 overflow-x-hidden" style={{ position: 'relative' }}>
+          <main className="flex-1 flex flex-col min-h-0 overflow-x-clip" style={{ position: 'relative' }}>
             <AnimatePresence mode="wait">
               <motion.div
                 key={view}
