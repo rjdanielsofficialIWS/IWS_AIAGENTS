@@ -2213,6 +2213,7 @@ function InlinePostComposer({
   const [submitOk, setSubmitOk]         = useState(false);
   const [submitting, setSubmitting]     = useState(false);
   const [submitError, setSubmitError]   = useState<string | null>(null);
+  const submitBtnRef                    = useRef<HTMLButtonElement>(null);
 
   const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
   const [content, setContent]           = useState('');
@@ -2550,9 +2551,12 @@ function InlinePostComposer({
     const queueId = generateUUID();
     onQueueAdd?.({ id: queueId, content: previewContent, platforms: selectedPlatformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date(), isVideoUpload: hasVideo });
 
-    // Reset form right away
+    // Show success state and scroll button into view before form collapses
     setSubmitOk(true);
     setSubmitError(null);
+    requestAnimationFrame(() => {
+      submitBtnRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
     setTimeout(() => {
       setSubmitOk(false);
       setContent(''); setVideoFile(null); setVideoObjectUrl(null);
@@ -2560,7 +2564,7 @@ function InlinePostComposer({
       setGeneratedCaptions(null); setManualCaptions({}); setSelectedIntegrations([]);
       setPostFormat('standard'); setThreadTweets(['', '']); setCarouselCount(3); setThreadTopic('');
       onSuccess?.();
-    }, 800);
+    }, 2000);
 
     // Background processing
     (async () => {
@@ -3584,21 +3588,20 @@ function InlinePostComposer({
 
       {/* Submit button */}
       <button
+        ref={submitBtnRef}
         onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
         disabled={submitOk || (postType === 'text' && submitting)}
-        className="w-full flex flex-col items-center justify-center gap-0.5 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
-        style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
-        <span className="flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
-          {postType === 'media' && submitOk
-            ? <><CheckCircle2 className="w-4 h-4" /> Added to Queue!</>
-            : postType === 'text' && submitting
-              ? <><Loader className="w-4 h-4 animate-spin" /> {scheduleType === 'schedule' ? 'Scheduling…' : 'Posting…'}</>
-            : postType === 'text' && submitOk
-              ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
-            : postType === 'media'
-              ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
-              : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
-        </span>
+        className="w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
+        style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000', minHeight: 48 }}>
+        {postType === 'media' && submitOk
+          ? <><CheckCircle2 className="w-4 h-4 shrink-0" /> Added to Queue!</>
+          : postType === 'text' && submitting
+            ? <><Loader className="w-4 h-4 animate-spin shrink-0" /> {scheduleType === 'schedule' ? 'Scheduling…' : 'Posting…'}</>
+          : postType === 'text' && submitOk
+            ? <><CheckCircle2 className="w-4 h-4 shrink-0" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
+          : postType === 'media'
+            ? <><Send className="w-4 h-4 shrink-0" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
+            : <><Send className="w-4 h-4 shrink-0" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
       </button>
     </div>
   );
