@@ -7,7 +7,7 @@ import {
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
   ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
-  Film, Upload, Download, RefreshCcw, Wand2,
+  Film, Upload, Download, RefreshCcw, Wand2, Bot,
 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
@@ -5165,9 +5165,10 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       <div className="flex shrink-0 border-b" style={{ borderColor: BORDER }}>
         <button
           onClick={() => setComposerPanelTab('post')}
-          className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition border-b-2"
+          className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition border-b-2 border-r"
           style={{
             borderBottomColor: composerPanelTab === 'post' ? GOLD : 'transparent',
+            borderRightColor: BORDER,
             color: composerPanelTab === 'post' ? GOLD_L : 'rgba(255,255,255,0.35)',
             background: composerPanelTab === 'post' ? `${GOLD}08` : 'transparent',
           }}>
@@ -5175,13 +5176,14 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
         </button>
         <button
           onClick={() => setComposerPanelTab('strategist')}
-          className="flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition border-b-2"
+          className="flex-1 flex items-center justify-center gap-1.5 py-3 text-sm font-bold transition border-b-2 border-r"
           style={{
             borderBottomColor: composerPanelTab === 'strategist' ? '#38bdf8' : 'transparent',
+            borderRightColor: BORDER,
             color: composerPanelTab === 'strategist' ? '#7dd3fc' : 'rgba(255,255,255,0.35)',
             background: composerPanelTab === 'strategist' ? 'rgba(56,189,248,0.06)' : 'transparent',
           }}>
-          <Sparkles className="w-4 h-4" style={{ color: composerPanelTab === 'strategist' ? '#38bdf8' : 'inherit' }} /> AI Content Strategist
+          <Bot className="w-4 h-4 shrink-0" style={{ color: composerPanelTab === 'strategist' ? '#38bdf8' : 'inherit' }} />AI Content Strategist
         </button>
         <button
           onClick={() => setComposerPanelTab('queue')}
@@ -5214,7 +5216,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
           <div className="mx-4 md:mx-8 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
             style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: '#fde68a' }}>
             <Loader className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: '#fbbf24' }} />
-            Video uploading in the background — don't refresh until it completes.
+            Video uploading in the background, don't refresh until it completes (approximately 3 minutes).
           </div>
         )}
 
