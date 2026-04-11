@@ -5100,9 +5100,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 
   const handleQueueAdd = React.useCallback((item: QueueItem) => {
     setQueueItems(prev => [...prev, item]);
-    setUnseenCounts(prev => ({ ...prev, queue: prev.queue + 1 }));
-    if (!logOpen) { setLogFilter('queue'); setLogOpen(true); }
-  }, [logOpen]);
+  }, []);
 
   const handleQueueUpdate = React.useCallback((id: string, update: Partial<QueueItem>) => {
     setQueueItems(prev => prev.map(q => q.id === id ? { ...q, ...update } : q));
@@ -5115,8 +5113,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   }, []);
 
   const handleTabSeen = React.useCallback((tab: string) => {
-    if (tab === 'queue') setUnseenCounts(prev => ({ ...prev, queue: 0 }));
-    else if (tab === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: 0 }));
+    if (tab === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: 0 }));
     else if (tab === 'published') setUnseenCounts(prev => ({ ...prev, published: 0 }));
     else if (tab === 'failed' || tab === 'error') setUnseenCounts(prev => ({ ...prev, failed: 0 }));
   }, []);
@@ -5128,7 +5125,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     setAddModalOpen(true);
   };
 
-  const [composerPanelTab, setComposerPanelTab] = React.useState<'post' | 'strategist'>(
+  const [composerPanelTab, setComposerPanelTab] = React.useState<'post' | 'strategist' | 'queue'>(
     initialComposerMode === 'text' || initialComposerMode === 'saved' || initialVideoUrl ? 'post' : 'post'
   );
 
@@ -5185,6 +5182,22 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
           }}>
           <Sparkles className="w-4 h-4" style={{ color: composerPanelTab === 'strategist' ? '#38bdf8' : 'inherit' }} /> AI Content Strategist
         </button>
+        <button
+          onClick={() => setComposerPanelTab('queue')}
+          className="relative flex-1 flex items-center justify-center gap-2 py-3 text-sm font-bold transition border-b-2"
+          style={{
+            borderBottomColor: composerPanelTab === 'queue' ? '#a78bfa' : 'transparent',
+            color: composerPanelTab === 'queue' ? '#c4b5fd' : 'rgba(255,255,255,0.35)',
+            background: composerPanelTab === 'queue' ? 'rgba(167,139,250,0.06)' : 'transparent',
+          }}>
+          <Loader className={`w-4 h-4 ${queueItems.some(q => q.status === 'queuing' || q.status === 'processing') ? 'animate-spin' : ''}`} style={{ color: composerPanelTab === 'queue' ? '#a78bfa' : 'inherit' }} />
+          Queue
+          {queueItems.filter(q => q.status === 'queuing' || q.status === 'processing').length > 0 && (
+            <span className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-black flex items-center justify-center" style={{ background: '#7c3aed', color: '#fff' }}>
+              {queueItems.filter(q => q.status === 'queuing' || q.status === 'processing').length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* ── Tab content ── */}
@@ -5204,6 +5217,69 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
         {composerPanelTab === 'strategist' && (
           <div className="px-4 md:px-8 py-6 w-full">
             <InlineContentStrategist userId={userId} onAddToPlanner={handleAddToPlanner} onUpgrade={() => onUpgrade?.()} />
+          </div>
+        )}
+
+        {composerPanelTab === 'queue' && (
+          <div className="px-4 md:px-8 py-6 w-full space-y-3">
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-sm font-black text-white/70">Upload Queue</h3>
+              <span className="text-xs text-white/30">— posts process in the background while you keep working</span>
+            </div>
+            {queueItems.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
+                <div className="text-4xl opacity-20">↑</div>
+                <div className="text-sm font-bold text-white/25">No posts queued yet</div>
+                <div className="text-xs text-white/20">Create a post and it will appear here while uploading</div>
+              </div>
+            ) : (
+              [...queueItems].reverse().map(item => {
+                const isActive = item.status === 'queuing' || item.status === 'processing';
+                const isDone = item.status === 'done';
+                const isError = item.status === 'error';
+                return (
+                  <div key={item.id} className="flex items-start gap-3 p-4 rounded-xl border"
+                    style={{
+                      borderColor: isError ? 'rgba(239,68,68,0.25)' : isDone ? 'rgba(34,197,94,0.2)' : 'rgba(167,139,250,0.25)',
+                      background: isError ? 'rgba(239,68,68,0.04)' : isDone ? 'rgba(34,197,94,0.04)' : 'rgba(167,139,250,0.05)',
+                    }}>
+                    <div className="flex -space-x-1.5 shrink-0 pt-0.5">
+                      {item.platforms.slice(0, 3).map((pid, i) => (
+                        <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
+                      ))}
+                      {item.platforms.length > 3 && (
+                        <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>
+                          +{item.platforms.length - 3}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white/70 line-clamp-2">{item.content || '(No caption)'}</p>
+                      {isError && item.error && <p className="text-xs mt-1" style={{ color: '#fca5a5' }}>{item.error}</p>}
+                      <div className="flex items-center gap-3 mt-1.5 flex-wrap">
+                        <span className="text-xs text-white/25 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {item.addedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                        {item.scheduleDate && (
+                          <span className="text-xs text-white/25">
+                            Scheduled for {new Date(item.scheduleDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1.5 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1.5"
+                      style={{
+                        background: isDone ? 'rgba(34,197,94,0.12)' : isError ? 'rgba(239,68,68,0.12)' : 'rgba(167,139,250,0.12)',
+                        color: isDone ? '#86efac' : isError ? '#fca5a5' : '#c4b5fd',
+                      }}>
+                      {isActive && <Loader className="w-3 h-3 animate-spin" />}
+                      {item.status === 'queuing' ? 'Queued' : item.status === 'processing' ? 'Uploading…' : isDone ? (item.resolvedStatus === 'scheduled' ? 'Scheduled ✓' : 'Published ✓') : 'Failed'}
+                    </span>
+                  </div>
+                );
+              })
+            )}
           </div>
         )}
       </div>
