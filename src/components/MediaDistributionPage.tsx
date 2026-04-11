@@ -1885,32 +1885,24 @@ function SavedPostCard({
 
   const activeText = isEditing ? editText : post.text;
 
-  const handlePost = () => {
-    if (!activeText.trim())          { setPostErr('Post is empty.'); return; }
+  const handlePost = async () => {
+    if (!activeText.trim())            { setPostErr('Post is empty.'); return; }
     if (selectedAccounts.length === 0) { setPostErr('Select at least one account.'); return; }
     setPostErr(null);
+    setPostOk(false);
     const sd = scheduleType === 'schedule' ? new Date(scheduleDateStr).toISOString() : undefined;
     const platformIds = selectedAccounts.map(id => {
       const a = textPostAccounts.find(a => a.integ.id === id);
       return a?.integ.profile || a?.integ.id || a?.platform || '';
     }).filter(Boolean);
-
-    const queueId = generateUUID();
-    onQueueAdd?.({ id: queueId, content: activeText, platforms: platformIds, scheduleDate: sd, status: 'queuing', addedAt: new Date() });
-
-    setPostOk(true);
-    setSelectedAccounts([]);
-    setTimeout(() => setPostOk(false), 2000);
-
-    (async () => {
-      try {
-        onQueueUpdate?.(queueId, { status: 'processing' });
-        await ayrsharePost({ platforms: platformIds, post: activeText, scheduleDate: sd, workspaceId: workspaceId ?? null });
-        onQueueUpdate?.(queueId, { status: 'done', resolvedStatus: sd ? 'scheduled' : 'published' });
-      } catch (e: any) {
-        onQueueUpdate?.(queueId, { status: 'error', error: e.message === 'SESSION_EXPIRED' ? 'Session expired — please sign out and back in.' : (e.message || 'Post failed'), resolvedStatus: 'failed' });
-      }
-    })();
+    try {
+      await ayrsharePost({ platforms: platformIds, post: activeText, scheduleDate: sd, workspaceId: workspaceId ?? null });
+      setPostOk(true);
+      setSelectedAccounts([]);
+      setTimeout(() => setPostOk(false), 3000);
+    } catch (e: any) {
+      setPostErr(e.message === 'SESSION_EXPIRED' ? 'Session expired — please sign out and back in.' : (e.message || 'Post failed'));
+    }
   };
 
   return (
@@ -2653,7 +2645,7 @@ function InlinePostComposer({
     })();
   };
 
-  const handleTextSubmit = () => {
+  const handleTextSubmit = async () => {
     if (postFormat === 'thread') {
       const validTweets = threadTweets.filter(t => t.trim());
       if (validTweets.length < 2) { setSubmitError('Add at least 2 posts to create a thread.'); return; }
@@ -2668,75 +2660,53 @@ function InlinePostComposer({
     }
     if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account to post to.'); return; }
     setSubmitError(null);
+    setSubmitting(true);
 
-    // Snapshot state for background processing
-    const snapScheduleType = scheduleType;
-    const snapScheduleDateStr = scheduleDateStr;
-    const snapPostFormat = postFormat;
-    const snapThreadTweets = [...threadTweets];
-    const snapXText = editingIdx ? aiEditText : xText;
-    const snapLinkedinText = editingIdx ? aiEditText : linkedinText;
-    const snapSelectedTextAccounts = [...selectedTextAccounts];
     const isScheduled = scheduleType === 'schedule';
+    const sd = isScheduled ? new Date(scheduleDateStr).toISOString() : undefined;
     const allAccounts = selectedTextAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
       return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
     }).filter(a => a.platformId);
-    const previewContent = postFormat === 'thread' ? threadTweets.filter(t => t.trim())[0] : (xText || linkedinText || '');
-    const platformIds = allAccounts.map(a => a.platformId);
+    const snapXText = editingIdx ? aiEditText : xText;
+    const snapLinkedinText = editingIdx ? aiEditText : linkedinText;
 
-    // Add to queue immediately
-    const queueId = generateUUID();
-    onQueueAdd?.({ id: queueId, content: previewContent, platforms: platformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date() });
-
-    // Reset form right away
-    setSubmitOk(true);
-    setXText(''); setLinkedinText('');
-    setAiEditText(''); setEditingIdx(null);
-    setPostFormat('standard'); setThreadTweets(['', '']);
-    setTimeout(() => setSubmitOk(false), 2000);
-
-    // Background processing
-    (async () => {
-      try {
-        onQueueUpdate?.(queueId, { status: 'processing' });
-        const sd = isScheduled ? new Date(snapScheduleDateStr).toISOString() : undefined;
-        const postGroupId = generateUUID();
-        if (snapPostFormat === 'thread') {
-          const validTweets = snapThreadTweets.filter(t => t.trim());
-          const pids = allAccounts.map(a => a.platformId);
-          await ayrsharePost({ platforms: pids, post: validTweets[0], thread: validTweets.slice(1), scheduleDate: sd, workspaceId: workspaceId ?? null });
-        } else {
-          const liIds = allAccounts.filter(a => a.isLinkedIn).map(a => a.platformId);
-          const otIds = allAccounts.filter(a => !a.isLinkedIn).map(a => a.platformId);
-          const posts: Promise<unknown>[] = [];
-          const textPostGroupId = generateUUID();
-          if (otIds.length > 0 && snapXText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: snapXText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
-          if (liIds.length > 0 && snapLinkedinText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: snapLinkedinText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId }));
-          await Promise.all(posts);
-          // Label the used AI post as posted/scheduled
-          const statusLabel: 'posted' | 'scheduled' = sd ? 'scheduled' : 'posted';
-          const otPosted = otIds.length > 0 && !!snapXText.trim();
-          const liPosted = liIds.length > 0 && !!snapLinkedinText.trim();
-          setTextAiPostStatus(prev => {
-            const next = { ...prev };
-            for (const platform of Object.keys(textAiPosts ?? {})) {
-              const isNonLi = platform === 'twitter' || platform === 'x' || platform === 'threads';
-              const selIdx = textAiSelected[platform];
-              if (isNonLi && otPosted && typeof selIdx === 'number') {
-                next[platform] = { ...(next[platform] ?? {}), [selIdx]: statusLabel };
-              } else if (platform === 'linkedin' && liPosted && typeof selIdx === 'number') {
-                next[platform] = { ...(next[platform] ?? {}), [selIdx]: statusLabel };
-              }
-            }
-            return next;
-          });
-        }
-        onQueueUpdate?.(queueId, { status: 'done', resolvedStatus: isScheduled ? 'scheduled' : 'published' });
-      } catch (e: any) {
-        onQueueUpdate?.(queueId, { status: 'error', error: e.message === 'SESSION_EXPIRED' ? 'Session expired — please sign out and back in.' : (e.message || 'Post failed'), resolvedStatus: 'failed' });
+    try {
+      const postGroupId = generateUUID();
+      if (postFormat === 'thread') {
+        const validTweets = threadTweets.filter(t => t.trim());
+        await ayrsharePost({ platforms: allAccounts.map(a => a.platformId), post: validTweets[0], thread: validTweets.slice(1), scheduleDate: sd, workspaceId: workspaceId ?? null });
+      } else {
+        const liIds = allAccounts.filter(a => a.isLinkedIn).map(a => a.platformId);
+        const otIds = allAccounts.filter(a => !a.isLinkedIn).map(a => a.platformId);
+        const posts: Promise<unknown>[] = [];
+        if (otIds.length > 0 && snapXText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: snapXText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId }));
+        if (liIds.length > 0 && snapLinkedinText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: snapLinkedinText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId }));
+        await Promise.all(posts);
+        const statusLabel: 'posted' | 'scheduled' = sd ? 'scheduled' : 'posted';
+        const otPosted = otIds.length > 0 && !!snapXText.trim();
+        const liPosted = liIds.length > 0 && !!snapLinkedinText.trim();
+        setTextAiPostStatus(prev => {
+          const next = { ...prev };
+          for (const platform of Object.keys(textAiPosts ?? {})) {
+            const isNonLi = platform === 'twitter' || platform === 'x' || platform === 'threads';
+            const selIdx = textAiSelected[platform];
+            if (isNonLi && otPosted && typeof selIdx === 'number') next[platform] = { ...(next[platform] ?? {}), [selIdx]: statusLabel };
+            else if (platform === 'linkedin' && liPosted && typeof selIdx === 'number') next[platform] = { ...(next[platform] ?? {}), [selIdx]: statusLabel };
+          }
+          return next;
+        });
       }
-    })();
+      setSubmitOk(true);
+      setXText(''); setLinkedinText('');
+      setAiEditText(''); setEditingIdx(null);
+      setPostFormat('standard'); setThreadTweets(['', '']);
+      setTimeout(() => setSubmitOk(false), 3000);
+    } catch (e: any) {
+      setSubmitError(e.message === 'SESSION_EXPIRED' ? 'Your session has expired. Please log out and log back in.' : (e.message || 'Post failed'));
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const scheduleSectionJsx = (
@@ -3614,12 +3584,16 @@ function InlinePostComposer({
       {/* Submit button */}
       <button
         onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
-        disabled={submitOk}
+        disabled={submitOk || (postType === 'text' && submitting)}
         className="w-full flex flex-col items-center justify-center gap-0.5 px-5 py-3 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000' }}>
         <span className="flex items-center gap-2" style={{ whiteSpace: 'nowrap' }}>
-          {submitOk
+          {postType === 'media' && submitOk
             ? <><CheckCircle2 className="w-4 h-4" /> Added to Queue!</>
+            : postType === 'text' && submitting
+              ? <><Loader className="w-4 h-4 animate-spin" /> {scheduleType === 'schedule' ? 'Scheduling…' : 'Posting…'}</>
+            : postType === 'text' && submitOk
+              ? <><CheckCircle2 className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Scheduled!' : 'Posted!'}</>
             : postType === 'media'
               ? <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? 'Schedule Post' : 'Post Now'}</>
               : <><Send className="w-4 h-4" /> {scheduleType === 'schedule' ? `Schedule to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}` : `Post to ${selectedTextAccounts.length || 0} Account${selectedTextAccounts.length !== 1 ? 's' : ''}`}</>}
