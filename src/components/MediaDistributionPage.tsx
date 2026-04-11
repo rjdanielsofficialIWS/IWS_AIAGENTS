@@ -184,6 +184,7 @@ type QueueItem = {
   resolvedStatus?: 'scheduled' | 'published' | 'failed';
   error?: string;
   addedAt: Date;
+  isVideoUpload?: boolean;
 };
 
 type PlannerItem = {
@@ -2554,7 +2555,7 @@ function InlinePostComposer({
 
     // Add to queue immediately
     const queueId = generateUUID();
-    onQueueAdd?.({ id: queueId, content: previewContent, platforms: selectedPlatformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date() });
+    onQueueAdd?.({ id: queueId, content: previewContent, platforms: selectedPlatformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date(), isVideoUpload: hasVideo });
 
     // Reset form right away
     setSubmitOk(true);
@@ -5207,6 +5208,15 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
         <div className="px-4 md:px-8 pt-4">
           <ReferralBanner userId={userId} />
         </div>
+
+        {/* Don't-refresh warning — only while a media post is actively uploading */}
+        {queueItems.some(q => (q.status === 'queuing' || q.status === 'processing') && q.isVideoUpload) && (
+          <div className="mx-4 md:mx-8 mt-3 flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold"
+            style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: '#fde68a' }}>
+            <Loader className="w-3.5 h-3.5 animate-spin shrink-0" style={{ color: '#fbbf24' }} />
+            Video uploading in the background — don't refresh until it completes.
+          </div>
+        )}
 
         {composerPanelTab === 'post' && (
           <div className="px-4 md:px-8 py-6 w-full">
