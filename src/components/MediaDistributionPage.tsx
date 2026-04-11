@@ -175,49 +175,16 @@ type ScheduledPost = {
   postGroupId?: string | null;
 };
 
-type AyrsharePayload = {
-  platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
-  youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
-  workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
-};
-
 type QueueItem = {
   id: string;
   content: string;
   platforms: string[];
   scheduleDate?: string;
-  status: 'queuing' | 'processing' | 'done' | 'error' | 'interrupted';
+  status: 'queuing' | 'processing' | 'done' | 'error';
   resolvedStatus?: 'scheduled' | 'published' | 'failed';
   error?: string;
   addedAt: Date;
-  retryPayloads?: AyrsharePayload[]; // stored so we can replay after a page refresh
-  isVideoUpload?: boolean;           // TUS video uploads can't be resumed after refresh
 };
-
-const QUEUE_STORAGE_KEY = 'mm_post_queue_v1';
-const QUEUE_MAX_AGE_MS  = 7 * 24 * 60 * 60 * 1000; // 7 days
-
-function persistQueue(items: QueueItem[]) {
-  try {
-    localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(
-      items.map(q => ({
-        ...q,
-        addedAt: q.addedAt.toISOString(),
-        // Don't keep retryPayloads once resolved — free space
-        retryPayloads: (q.status === 'done' || q.status === 'error' || q.status === 'interrupted') ? undefined : q.retryPayloads,
-      }))
-    ));
-  } catch {}
-}
-
-function restoreQueue(): QueueItem[] {
-  try {
-    const raw: any[] = JSON.parse(localStorage.getItem(QUEUE_STORAGE_KEY) || '[]');
-    return raw
-      .map(q => ({ ...q, addedAt: new Date(q.addedAt) }))
-      .filter(q => Date.now() - q.addedAt.getTime() < QUEUE_MAX_AGE_MS);
-  } catch { return []; }
-}
 
 type PlannerItem = {
   id: string;
@@ -2585,46 +2552,9 @@ function InlinePostComposer({
     const isScheduled = scheduleType === 'schedule';
     const previewContent = content || Object.values(manualCaptions)[0] || (generatedCaptions ? Object.values(generatedCaptions)[0] : '') || '';
 
-    // Build retry payloads from already-uploaded image URLs (so they survive a page refresh).
-    // Video posts where TUS is still in progress can't be resumed — flagged separately.
-    const hasInProgressVideo = !!snapVideoFile && snapVideoUpload.status !== 'done';
-    const resolvedImageUrls = snapImageUploads.filter(u => u.status === 'done' && (u as any).url).map(u => (u as any).url as string);
-    const resolvedVideoUrl = snapVideoUpload.status === 'done' ? ((snapVideoUpload as any).url as string | undefined) : undefined;
-    const preResolvedMediaUrls = [...resolvedImageUrls, ...(resolvedVideoUrl ? [resolvedVideoUrl] : [])];
-    const sd0 = isScheduled ? new Date(scheduleDateStr).toISOString() : undefined;
-    const postGroupId0 = generateUUID();
-    let retryPayloads: AyrsharePayload[] | undefined;
-    if (!hasInProgressVideo) {
-      if (snapPostFormat === 'thread') {
-        const validTweets = snapThreadTweets.filter(t => t.trim());
-        const pids = snapSelectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
-        retryPayloads = [{ platforms: pids, post: validTweets[0], thread: validTweets.slice(1), mediaUrls: preResolvedMediaUrls, scheduleDate: sd0, workspaceId: workspaceId ?? null, postGroupId: postGroupId0 }];
-      } else if (captionType === 'manual') {
-        retryPayloads = snapSelectedIntegrations.flatMap(integId => {
-          const integ = integrations.find(i => i.id === integId);
-          if (!integ) return [];
-          const platformId = getIntegrationPlatformId(integ);
-          const cap = snapManualCaptions[platformId] || snapContent;
-          if (!cap) return [];
-          const isYT = platformId === 'youtube';
-          return [{ platforms: [platformId], post: cap, mediaUrls: preResolvedMediaUrls, scheduleDate: sd0, workspaceId: workspaceId ?? null, postGroupId: postGroupId0, ...(isYT ? { youTubeTitle: snapYouTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}) }];
-        });
-      } else if (snapGeneratedCaptions) {
-        retryPayloads = snapSelectedIntegrations.flatMap(integId => {
-          const integ = integrations.find(i => i.id === integId);
-          if (!integ) return [];
-          const platformId = getIntegrationPlatformId(integ);
-          const caption = snapGeneratedCaptions![platformId] ?? snapGeneratedCaptions![platformId.toLowerCase()] ?? Object.values(snapGeneratedCaptions!)[0] ?? '';
-          if (!caption) return [];
-          const isYT = platformId === 'youtube';
-          return [{ platforms: [platformId], post: caption, mediaUrls: preResolvedMediaUrls, scheduleDate: sd0, workspaceId: workspaceId ?? null, postGroupId: postGroupId0, ...(isYT ? { youTubeTitle: snapYouTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}) }];
-        });
-      }
-    }
-
     // Add to queue immediately
     const queueId = generateUUID();
-    onQueueAdd?.({ id: queueId, content: previewContent, platforms: selectedPlatformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date(), retryPayloads, isVideoUpload: hasInProgressVideo });
+    onQueueAdd?.({ id: queueId, content: previewContent, platforms: selectedPlatformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date() });
 
     // Reset form right away
     setSubmitOk(true);
@@ -2754,25 +2684,9 @@ function InlinePostComposer({
     const previewContent = postFormat === 'thread' ? threadTweets.filter(t => t.trim())[0] : (xText || linkedinText || '');
     const platformIds = allAccounts.map(a => a.platformId);
 
-    // Build retry payloads (text posts have no media to re-upload — fully safe to replay)
-    const sd0 = isScheduled ? new Date(snapScheduleDateStr).toISOString() : undefined;
-    const textPostGroupId0 = generateUUID();
-    const liIds0 = allAccounts.filter(a => a.isLinkedIn).map(a => a.platformId);
-    const otIds0 = allAccounts.filter(a => !a.isLinkedIn).map(a => a.platformId);
-    let textRetryPayloads: AyrsharePayload[];
-    if (snapPostFormat === 'thread') {
-      const validTweets = snapThreadTweets.filter(t => t.trim());
-      textRetryPayloads = [{ platforms: allAccounts.map(a => a.platformId), post: validTweets[0], thread: validTweets.slice(1), scheduleDate: sd0, workspaceId: workspaceId ?? null }];
-    } else {
-      textRetryPayloads = [
-        ...(otIds0.length > 0 && snapXText.trim() ? [{ platforms: otIds0, post: snapXText, scheduleDate: sd0, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId0 }] : []),
-        ...(liIds0.length > 0 && snapLinkedinText.trim() ? [{ platforms: liIds0, post: snapLinkedinText, scheduleDate: sd0, workspaceId: workspaceId ?? null, postGroupId: textPostGroupId0 }] : []),
-      ];
-    }
-
     // Add to queue immediately
     const queueId = generateUUID();
-    onQueueAdd?.({ id: queueId, content: previewContent, platforms: platformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date(), retryPayloads: textRetryPayloads });
+    onQueueAdd?.({ id: queueId, content: previewContent, platforms: platformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date() });
 
     // Reset form right away
     setSubmitOk(true);
@@ -5148,7 +5062,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   const [logOpen, setLogOpen]             = useState(false);
   const [logFilter, setLogFilter]         = useState<'queue' | 'all' | 'scheduled' | 'published' | 'failed' | 'error'>('all');
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
-  const [queueItems, setQueueItems]       = useState<QueueItem[]>(() => restoreQueue());
+  const [queueItems, setQueueItems]       = useState<QueueItem[]>([]);
   const [unseenCounts, setUnseenCounts]   = useState({ queue: 0, scheduled: 0, published: 0, failed: 0 });
   const [loading, setLoading]             = useState(false);
   const [addModalOpen, setAddModalOpen]   = useState(false);
@@ -5184,62 +5098,24 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     error:     posts.filter(p => p.status === 'failed' || p.status === 'error').length,
   };
 
-  // Persist-aware setters
-  const updateQueueItems = React.useCallback((updater: (prev: QueueItem[]) => QueueItem[]) => {
-    setQueueItems(prev => {
-      const next = updater(prev);
-      persistQueue(next);
-      return next;
-    });
+  const handleQueueAdd = React.useCallback((item: QueueItem) => {
+    setQueueItems(prev => [...prev, item]);
   }, []);
 
-  const handleQueueAdd = React.useCallback((item: QueueItem) => {
-    updateQueueItems(prev => [...prev, item]);
-  }, [updateQueueItems]);
-
   const handleQueueUpdate = React.useCallback((id: string, update: Partial<QueueItem>) => {
-    updateQueueItems(prev => prev.map(q => q.id === id ? { ...q, ...update } : q));
+    setQueueItems(prev => prev.map(q => q.id === id ? { ...q, ...update } : q));
     if (update.status === 'done' && update.resolvedStatus) {
       if (update.resolvedStatus === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: prev.scheduled + 1 }));
       else if (update.resolvedStatus === 'published') setUnseenCounts(prev => ({ ...prev, published: prev.published + 1 }));
-    } else if (update.status === 'error' || update.status === 'interrupted') {
+    } else if (update.status === 'error') {
       setUnseenCounts(prev => ({ ...prev, failed: prev.failed + 1 }));
     }
-  }, [updateQueueItems]);
+  }, []);
 
   const handleTabSeen = React.useCallback((tab: string) => {
     if (tab === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: 0 }));
     else if (tab === 'published') setUnseenCounts(prev => ({ ...prev, published: 0 }));
     else if (tab === 'failed' || tab === 'error') setUnseenCounts(prev => ({ ...prev, failed: 0 }));
-  }, []);
-
-  // On mount: auto-retry any items that were in-flight when the page was closed
-  const retryRanRef = React.useRef(false);
-  React.useEffect(() => {
-    if (retryRanRef.current) return;
-    retryRanRef.current = true;
-    const pending = restoreQueue().filter(q => q.status === 'queuing' || q.status === 'processing');
-    if (!pending.length) return;
-    pending.forEach(item => {
-      if (item.isVideoUpload) {
-        // TUS upload was in progress — can't resume, must re-upload
-        handleQueueUpdate(item.id, { status: 'interrupted', error: 'Video upload was interrupted by a page refresh. Please re-post.' });
-      } else if (item.retryPayloads?.length) {
-        // Safe to replay — media was already uploaded, just need the API call
-        (async () => {
-          handleQueueUpdate(item.id, { status: 'processing' });
-          try {
-            await Promise.all(item.retryPayloads!.map(p => ayrsharePost(p)));
-            handleQueueUpdate(item.id, { status: 'done', resolvedStatus: item.scheduleDate ? 'scheduled' : 'published' });
-          } catch (e: any) {
-            handleQueueUpdate(item.id, { status: 'error', error: e.message || 'Retry failed after page refresh', resolvedStatus: 'failed' });
-          }
-        })();
-      } else {
-        handleQueueUpdate(item.id, { status: 'interrupted', error: 'Post was interrupted by a page refresh. Please re-post.' });
-      }
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const pendingAddCallback = React.useRef<(() => void) | undefined>(undefined);
@@ -5361,12 +5237,11 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
                 const isActive = item.status === 'queuing' || item.status === 'processing';
                 const isDone = item.status === 'done';
                 const isError = item.status === 'error';
-                const isInterrupted = item.status === 'interrupted';
                 return (
                   <div key={item.id} className="flex items-start gap-3 p-4 rounded-xl border"
                     style={{
-                      borderColor: isInterrupted ? 'rgba(251,191,36,0.25)' : isError ? 'rgba(239,68,68,0.25)' : isDone ? 'rgba(34,197,94,0.2)' : 'rgba(167,139,250,0.25)',
-                      background: isInterrupted ? 'rgba(251,191,36,0.04)' : isError ? 'rgba(239,68,68,0.04)' : isDone ? 'rgba(34,197,94,0.04)' : 'rgba(167,139,250,0.05)',
+                      borderColor: isError ? 'rgba(239,68,68,0.25)' : isDone ? 'rgba(34,197,94,0.2)' : 'rgba(167,139,250,0.25)',
+                      background: isError ? 'rgba(239,68,68,0.04)' : isDone ? 'rgba(34,197,94,0.04)' : 'rgba(167,139,250,0.05)',
                     }}>
                     <div className="flex -space-x-1.5 shrink-0 pt-0.5">
                       {item.platforms.slice(0, 3).map((pid, i) => (
@@ -5395,11 +5270,11 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
                     </div>
                     <span className="px-2.5 py-1.5 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1.5"
                       style={{
-                        background: isDone ? 'rgba(34,197,94,0.12)' : isError ? 'rgba(239,68,68,0.12)' : isInterrupted ? 'rgba(251,191,36,0.12)' : 'rgba(167,139,250,0.12)',
-                        color: isDone ? '#86efac' : isError ? '#fca5a5' : isInterrupted ? '#fde68a' : '#c4b5fd',
+                        background: isDone ? 'rgba(34,197,94,0.12)' : isError ? 'rgba(239,68,68,0.12)' : 'rgba(167,139,250,0.12)',
+                        color: isDone ? '#86efac' : isError ? '#fca5a5' : '#c4b5fd',
                       }}>
                       {isActive && <Loader className="w-3 h-3 animate-spin" />}
-                      {item.status === 'queuing' ? 'Queued' : item.status === 'processing' ? 'Uploading…' : isDone ? (item.resolvedStatus === 'scheduled' ? 'Scheduled ✓' : 'Published ✓') : isInterrupted ? 'Interrupted' : 'Failed'}
+                      {item.status === 'queuing' ? 'Queued' : item.status === 'processing' ? 'Uploading…' : isDone ? (item.resolvedStatus === 'scheduled' ? 'Scheduled ✓' : 'Published ✓') : 'Failed'}
                     </span>
                   </div>
                 );
