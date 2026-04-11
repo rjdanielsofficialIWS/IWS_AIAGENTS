@@ -5108,6 +5108,8 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     if (update.status === 'done' && update.resolvedStatus) {
       if (update.resolvedStatus === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: prev.scheduled + 1 }));
       else if (update.resolvedStatus === 'published') setUnseenCounts(prev => ({ ...prev, published: prev.published + 1 }));
+      // Remove from queue after a short delay so user sees the success state
+      setTimeout(() => setQueueItems(prev => prev.filter(q => q.id !== id)), 2500);
     } else if (update.status === 'error') {
       setUnseenCounts(prev => ({ ...prev, failed: prev.failed + 1 }));
     }
