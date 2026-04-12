@@ -9,7 +9,7 @@ const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const STYLE_DESCRIPTORS: Record<string, string> = {
   cinematic:    'cinematic film look, anamorphic lens flare, shallow depth of field, dramatic chiaroscuro lighting, muted desaturated color grade, ARRI camera aesthetic, widescreen letterbox composition',
   commercial:   'premium commercial advertisement style, clean bright studio lighting, polished product-hero framing, crisp whites and deep blacks, high-end brand aesthetic, Apple or Nike ad quality',
-  documentary:  'cinematic documentary style, handheld vérité feel, natural available light, authentic candid framing, National Geographic quality, journalistic composition',
+  documentary:  'cinematic documentary style, handheld verité feel, natural available light, authentic candid framing, National Geographic quality, journalistic composition',
   anime:        'high-quality anime style, Studio Ghibli aesthetic, lush vibrant colors, expressive character design, detailed background art, Makoto Shinkai atmospheric quality',
   realistic:    'hyperrealistic photographic quality, 8K resolution, perfect natural lighting, true-to-life color accuracy, Sony A7R detail, photojournalism sharpness',
   voiceover:    'clean well-lit talking-head or presenter framing, professional broadcast lighting, subtle depth of field, crisp and readable composition, social media creator quality, steady confident camera',
@@ -33,25 +33,39 @@ async function enhanceBrief(
 
   // ── Speaking Video: specialized prompt for natural human dialogue ──────────
   if (videoType === 'speaking') {
-    const systemPrompt = `You are an expert AI video director specializing in realistic speaking-head and presenter videos. Your job is to transform a user's talking points or short description into a precise, highly-detailed AI video prompt that produces natural, confident, human-like on-camera dialogue.
+    const systemPrompt = `You are an expert AI video director for realistic speaking-head videos. Your task is to convert user input into a precise Kling AI video prompt.
 
-CRITICAL RULES for speaking video prompts:
-1. ANCHOR THE CHARACTER first — describe their appearance in consistent, specific terms (age, gender, skin tone, hair color and style, eye color, clothing). Use the exact same anchor phrase across any multi-clip set so the character stays identical frame-to-frame.
-2. LOCK THE BACKGROUND — describe one fixed, static background with extreme specificity (e.g. "a plain matte charcoal grey studio backdrop, soft even studio lighting, no background movement, no parallax shift"). Never let the background be ambiguous or it will morph between frames.
-3. CAMERA: always "medium close-up, stable tripod shot, slight shallow depth of field, face centered, direct eye contact with camera".
-4. DIALOGUE/ACTION: the character speaks naturally and confidently to camera, mouth moving realistically, subtle natural head micro-movements, blink rate natural — avoid robotic stillness.
-5. LIGHTING: "professional softbox portrait lighting, clean bright even exposure, no harsh shadows on face".
-6. DO NOT include any scene changes, background transitions, camera cuts, or movement of the background.
-7. Keep the result as a single dense paragraph (3-5 sentences). No bullet points, no headers.
-8. Return ONLY the enhanced prompt — nothing else.`;
+STEP 1 — EXTRACT THE CHARACTER FROM THE USER'S INPUT (most critical step):
+- Carefully read the user's input and pull out every physical detail they mentioned: age, gender, ethnicity, skin tone, hair color and style, clothing, accessories, facial expression.
+- Use EXACTLY those details verbatim in your prompt. Do not replace, generalize, or swap them for a different character.
+- Example: if the user says "Black woman, early 40s, wearing a white blazer, loc'd hair" — you must describe exactly that person. Do not produce a different race, age, or outfit.
+- If the user provided zero appearance details, invent a professional presenter that fits the topic, described with the same level of granularity.
+- Be ultra-specific about appearance: e.g. "a 38-year-old Black woman with medium-length loc'd hair pulled back loosely, warm deep-brown skin, wearing a crisp white blazer over a black top, small gold stud earrings, composed and authoritative expression."
 
-    const userMsg = `Transform these talking points or description into a speaking video prompt:
+STEP 2 — LOCK THE BACKGROUND:
+- Choose exactly ONE static environment: a seamless studio backdrop, a minimal branded wall, or a softly blurred professional interior.
+- Describe it with zero ambiguity so it never morphs: e.g. "a plain matte warm-charcoal grey seamless studio backdrop, no props, no movement, no parallax shift, soft wrap lighting from camera left."
 
-INPUT: ${brief.trim()}
+STEP 3 — WRITE THE FINAL PROMPT as a single dense paragraph (3-5 sentences):
+- Open with the full character anchor: their precise appearance, posture, and expression.
+- Follow with the locked static background.
+- Then action: the character speaks directly and confidently into the camera lens, mouth forming words with clear natural enunciation, genuine blink rate, subtle engaged head micro-movements — no frozen or robotic quality.
+- Then camera: medium close-up framing, face centered, stable tripod, direct eye contact with the lens, slight shallow depth of field.
+- Then lighting: professional softbox portrait lighting, bright even clean exposure, no harsh shadows on the face.
+
+ABSOLUTE RULES:
+- The character you describe MUST match what the user wrote. Age, gender, race, clothing — all of it. This is non-negotiable.
+- No background changes, scene transitions, cuts, or camera movement.
+- Return ONLY the final prompt text. No preamble, no explanation, no labels.`;
+
+    const userMsg = `USER INPUT (extract the character from this exactly as described, then build the speaking video prompt):
+
+${brief.trim()}
+
 ASPECT RATIO: ${aspectRatio}
 DURATION: ${duration} seconds${textNote}
 
-Return only the enhanced speaking video prompt.`;
+Return only the final speaking video prompt.`;
 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -62,7 +76,7 @@ Return only the enhanced speaking video prompt.`;
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-6',
-        max_tokens: 600,
+        max_tokens: 700,
         system: systemPrompt,
         messages: [{ role: 'user', content: userMsg }],
       }),
@@ -168,7 +182,6 @@ Deno.serve(async (req: Request) => {
   }
 
   // Require active subscription for video prompt generation
-  const { data: planSub } = await supabase.auth.getUser(); // user already verified above
   const { data: subRow } = await supabase.from('subscriptions').select('plan,status,stripe_customer_id,current_period_end').eq('supabase_user_id', user.id).maybeSingle();
   const isPromo = subRow?.stripe_customer_id?.startsWith('promo_');
   const isTrialing = subRow?.status === 'trialing' && !!subRow?.current_period_end && new Date(subRow.current_period_end as string) > new Date();
