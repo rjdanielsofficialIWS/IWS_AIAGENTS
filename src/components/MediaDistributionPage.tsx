@@ -5979,6 +5979,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   const [editablePrompt, setEditablePrompt]     = React.useState('');
   const [editableTranscript, setEditableTranscript] = React.useState('');
   const [brief, setBrief]             = React.useState('');
+  const [videoType, setVideoType]     = React.useState<'cinematic' | 'speaking'>('cinematic');
   const [style, setStyle]             = React.useState('cinematic');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
   const [duration, setDuration]       = React.useState('5');
@@ -6093,7 +6094,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       // 1. Always enhance the brief into a high-quality cinematic video prompt via Claude
       const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined }),
+        body: JSON.stringify({ brief, style, aspectRatio, duration, videoType, textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined }),
       });
       const promptData = await promptRes.json();
       if (!promptRes.ok) throw new Error(promptData.error || 'Failed to enhance brief');
@@ -6545,25 +6546,54 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
 
           {step === 'brief' && (
             <div className="space-y-4">
+              {/* Video Type selector */}
               <div>
-                <label className="text-xs font-bold text-white/30 uppercase tracking-wider">Video Brief</label>
-                <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={4}
-                  placeholder="Describe the video you want. E.g. 'A cinematic shot of a lone wolf running through a misty forest at dawn…'"
-                  className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
-                  style={{ borderColor: BORDER }} />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Style</label>
-                <div className="flex flex-wrap gap-2">
-                  {STYLES.map(s => (
-                    <button key={s} onClick={() => setStyle(s)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
-                      style={{ borderColor: style === s ? GOLD : BORDER, background: style === s ? `${GOLD}18` : 'transparent', color: style === s ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
-                      {s}
-                    </button>
-                  ))}
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Video Type</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button onClick={() => setVideoType('cinematic')}
+                    className="flex flex-col items-start gap-1 p-3 rounded-xl border transition text-left"
+                    style={{ borderColor: videoType === 'cinematic' ? GOLD : BORDER, background: videoType === 'cinematic' ? `${GOLD}14` : 'rgba(0,0,0,0.2)' }}>
+                    <span className="text-sm font-black" style={{ color: videoType === 'cinematic' ? GOLD_L : 'rgba(255,255,255,0.7)' }}>Scene / Cinematic</span>
+                    <span className="text-[11px] leading-snug" style={{ color: videoType === 'cinematic' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)' }}>Landscapes, products, storytelling, B-roll</span>
+                  </button>
+                  <button onClick={() => setVideoType('speaking')}
+                    className="flex flex-col items-start gap-1 p-3 rounded-xl border transition text-left"
+                    style={{ borderColor: videoType === 'speaking' ? GOLD : BORDER, background: videoType === 'speaking' ? `${GOLD}14` : 'rgba(0,0,0,0.2)' }}>
+                    <span className="text-sm font-black" style={{ color: videoType === 'speaking' ? GOLD_L : 'rgba(255,255,255,0.7)' }}>Speaking / Presenter</span>
+                    <span className="text-[11px] leading-snug" style={{ color: videoType === 'speaking' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)' }}>Character speaks naturally from talking points</span>
+                  </button>
                 </div>
               </div>
+              <div>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider">
+                  {videoType === 'speaking' ? 'Talking Points / Description' : 'Video Brief'}
+                </label>
+                <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={4}
+                  placeholder={videoType === 'speaking'
+                    ? 'Describe your character and what they should say. E.g. "Professional Black woman in her 30s, navy blazer, short natural hair. She\'s talking about why consistency beats motivation for building wealth."'
+                    : 'Describe the video you want. E.g. \'A cinematic shot of a lone wolf running through a misty forest at dawn…\''}
+                  className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                  style={{ borderColor: BORDER }} />
+                {videoType === 'speaking' && (
+                  <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    Claude will engineer a detailed prompt with a locked character appearance, stable background, and natural dialogue delivery — no shifting backgrounds or robotic movement.
+                  </p>
+                )}
+              </div>
+              {videoType === 'cinematic' && (
+                <div>
+                  <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Style</label>
+                  <div className="flex flex-wrap gap-2">
+                    {STYLES.map(s => (
+                      <button key={s} onClick={() => setStyle(s)}
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
+                        style={{ borderColor: style === s ? GOLD : BORDER, background: style === s ? `${GOLD}18` : 'transparent', color: style === s ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Aspect Ratio</label>
