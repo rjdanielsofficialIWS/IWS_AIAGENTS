@@ -7,7 +7,7 @@ import {
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
   ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
-  Film, Upload, Download, RefreshCcw, Wand2, Bot,
+  Film, Upload, Download, RefreshCcw, Wand2, Bot, Zap, CheckCircle,
 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
@@ -164,7 +164,7 @@ type PostizIntegration = {
   picture?: string; profile?: string; disabled?: boolean;
 };
 
-type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner' | 'video' | 'workspaces';
+type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner' | 'video' | 'workspaces' | 'autopilot';
 
 type Workspace = { id: string; name: string; color: string; assignedChannelIds: string[]; createdAt: string };
 
@@ -1510,16 +1510,18 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
                   <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0" style={{ background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : isFailed ? 'rgba(239,68,68,0.12)' : `${GOLD}12`, color: post.status === 'published' ? '#86efac' : isFailed ? '#fca5a5' : GOLD_L }}>
                     {isFailed ? 'Failed' : post.status.charAt(0).toUpperCase() + post.status.slice(1)}
                   </span>
-                  {isScheduled && (
-                    <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition">
+                  <div className="flex items-center gap-1 shrink-0">
+                    {isScheduled && (
                       <button onClick={() => setEditingPost(post as any)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition" style={{ color: GOLD }} title="Edit post">
                         <Edit3 className="w-3.5 h-3.5" />
                       </button>
-                      <button onClick={() => handleDelete(post as any)} disabled={isDeleting} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/60 hover:text-red-400 disabled:opacity-40" title="Delete post">
+                    )}
+                    {(isScheduled || isFailed) && (
+                      <button onClick={() => handleDelete(post as any)} disabled={isDeleting} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/50 hover:text-red-400 disabled:opacity-40" title="Delete post">
                         {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
                       </button>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               );
             })
@@ -7275,6 +7277,370 @@ function WorkspacesPanel({
   );
 }
 
+// ─── AutoPilotPanel ───────────────────────────────────────────────────────────
+
+const HOURS = Array.from({ length: 24 }, (_, i) => {
+  const h = i % 12 || 12;
+  const ampm = i < 12 ? 'AM' : 'PM';
+  return { value: i, label: `${h}:00 ${ampm}` };
+});
+
+function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
+  userId: string | null;
+  integrations: PostizIntegration[];
+  subscription: { plan: string; status: string; stripe_customer_id?: string; current_period_end?: string } | null;
+  onUpgrade: () => void;
+}) {
+  const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
+  const isTrialing = subscription?.status === 'trialing' && !!(subscription as any)?.current_period_end && new Date((subscription as any).current_period_end) > new Date();
+  const isActive = (subscription?.status === 'active' || isPromo || isTrialing) && !!subscription?.plan;
+  const plan = isActive ? (subscription?.plan?.toLowerCase() ?? 'free') : 'free';
+
+  // Only show integrations for supported platforms
+  const SUPPORTED = ['x', 'twitter', 'linkedin', 'threads'];
+  const supportedIntegrations = integrations.filter(int => {
+    const pid = (int.profile || int.identifier || '').toLowerCase().replace('twitter', 'x');
+    return SUPPORTED.includes(pid);
+  });
+
+  const [niche, setNiche] = useState('');
+  const [productService, setProductService] = useState('');
+  const [twitterAccounts, setTwitterAccounts] = useState(['', '', '']);
+  const [tone, setTone] = useState('');
+  const [startHour, setStartHour] = useState(8);
+  const [endHour, setEndHour] = useState(20);
+  const [platforms, setPlatforms] = useState<string[]>([]);
+  const [isActiveToggle, setIsActiveToggle] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [running, setRunning] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [runResult, setRunResult] = useState<{ total: number; byPlatform: Record<string, number>; errors: string[] } | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  // Default: all supported connected platforms selected
+  useEffect(() => {
+    if (loaded) return;
+    const defaultPlatforms = [...new Set(supportedIntegrations.map(int =>
+      (int.profile || int.identifier || '').toLowerCase().replace('twitter', 'x')
+    ))];
+    if (defaultPlatforms.length > 0 && platforms.length === 0) {
+      setPlatforms(defaultPlatforms);
+    }
+  }, [supportedIntegrations, loaded]);
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) return;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/autopilot-config`, {
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+      });
+      if (res.ok) {
+        const { config } = await res.json();
+        if (config) {
+          setNiche(config.niche ?? '');
+          setProductService(config.product_service ?? '');
+          const accts = config.twitter_accounts ?? [];
+          setTwitterAccounts([accts[0] ?? '', accts[1] ?? '', accts[2] ?? '']);
+          setTone(config.tone ?? '');
+          setStartHour(config.start_hour ?? 8);
+          setEndHour(config.end_hour ?? 20);
+          setPlatforms(config.platforms ?? []);
+          setIsActiveToggle(config.is_active !== false);
+        }
+      }
+      setLoaded(true);
+    })();
+  }, [userId]);
+
+  function togglePlatform(pid: string) {
+    setPlatforms(prev => prev.includes(pid) ? prev.filter(x => x !== pid) : [...prev, pid]);
+  }
+
+  async function handleSave() {
+    if (!userId) return;
+    if (!isActive || plan === 'free') { onUpgrade(); return; }
+    setSaving(true); setSaveMsg(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/autopilot-config`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          niche, product_service: productService,
+          twitter_accounts: twitterAccounts.filter(a => a.trim()),
+          tone, start_hour: startHour, end_hour: endHour,
+          platforms, is_active: isActiveToggle,
+        }),
+      });
+      const json = await res.json();
+      if (res.ok) setSaveMsg({ ok: true, text: 'Settings saved.' });
+      else setSaveMsg({ ok: false, text: json.error ?? 'Save failed.' });
+    } catch (e: any) {
+      setSaveMsg({ ok: false, text: e.message ?? 'Save failed.' });
+    }
+    setSaving(false);
+  }
+
+  async function handleRunNow() {
+    if (!userId) return;
+    if (!isActive || plan === 'free') { onUpgrade(); return; }
+    setRunning(true); setRunResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/autopilot-run`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+      });
+      const json = await res.json();
+      if (res.ok && json.results?.[0]) {
+        const r = json.results[0];
+        setRunResult({ total: r.scheduled?.total ?? 0, byPlatform: r.scheduled?.byPlatform ?? {}, errors: r.errors ?? [] });
+      } else {
+        setRunResult({ total: 0, byPlatform: {}, errors: [json.error ?? 'Run failed.'] });
+      }
+    } catch (e: any) {
+      setRunResult({ total: 0, byPlatform: {}, errors: [e.message ?? 'Run failed.'] });
+    }
+    setRunning(false);
+  }
+
+  const GOLD = '#D6B25E';
+  const inputStyle: React.CSSProperties = {
+    width: '100%', background: '#1a1a1a', border: '1px solid #333', borderRadius: 8,
+    color: '#fff', padding: '10px 12px', fontSize: 14, outline: 'none',
+    boxSizing: 'border-box',
+  };
+  const labelStyle: React.CSSProperties = { fontSize: 13, color: '#aaa', marginBottom: 6, display: 'block', fontWeight: 600 };
+  const sectionStyle: React.CSSProperties = { marginBottom: 20 };
+
+  if (!loaded && userId) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 300 }}>
+        <Loader className="w-6 h-6 animate-spin" style={{ color: GOLD }} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mm-scroll flex-1 overflow-y-auto pb-32 md:pb-8">
+      <div style={{ maxWidth: 640, margin: '0 auto', padding: '24px 16px' }}>
+        {/* Header */}
+        <div style={{ marginBottom: 28 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <Zap className="w-6 h-6" style={{ color: GOLD }} />
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Auto-Pilot</h2>
+            {/* Active toggle */}
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 13, color: isActiveToggle ? GOLD : '#666' }}>{isActiveToggle ? 'Active' : 'Paused'}</span>
+              <button
+                onClick={() => setIsActiveToggle(v => !v)}
+                style={{
+                  width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer', position: 'relative',
+                  background: isActiveToggle ? GOLD : '#333', transition: 'background 0.2s',
+                }}
+              >
+                <span style={{
+                  position: 'absolute', top: 3, left: isActiveToggle ? 23 : 3,
+                  width: 18, height: 18, borderRadius: '50%', background: '#111', transition: 'left 0.2s',
+                }} />
+              </button>
+            </div>
+          </div>
+          <p style={{ fontSize: 14, color: '#777', margin: 0 }}>
+            Every day at your start time, AI generates 10 posts per account (9 value + 1 sell) and schedules them automatically throughout your time window.
+          </p>
+        </div>
+
+        {/* Niche */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Your Niche *</label>
+          <input style={inputStyle} placeholder="e.g. Personal finance for millennials" value={niche} onChange={e => setNiche(e.target.value)} />
+        </div>
+
+        {/* Product/Service */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Your Product / Service / Offer <span style={{ color: '#666', fontWeight: 400 }}>(Recommended)</span></label>
+          <textarea
+            style={{ ...inputStyle, minHeight: 80, resize: 'vertical' }}
+            placeholder="Describe what you sell and your core offer..."
+            value={productService}
+            onChange={e => setProductService(e.target.value)}
+          />
+        </div>
+
+        {/* Twitter inspiration accounts */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Twitter Inspiration Accounts <span style={{ color: '#666', fontWeight: 400 }}>(Optional)</span></label>
+          <p style={{ fontSize: 12, color: '#666', marginBottom: 10 }}>AI will draw style inspiration from these accounts' content.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {twitterAccounts.map((acct, i) => (
+              <input
+                key={i}
+                style={inputStyle}
+                placeholder={`@account${i + 1}`}
+                value={acct}
+                onChange={e => setTwitterAccounts(prev => { const next = [...prev]; next[i] = e.target.value; return next; })}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Tone */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Tone <span style={{ color: '#666', fontWeight: 400 }}>(Optional)</span></label>
+          <input style={inputStyle} placeholder="e.g. Motivational, educational, bold, conversational..." value={tone} onChange={e => setTone(e.target.value)} />
+        </div>
+
+        {/* Connected accounts / platform selector */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Post To</label>
+          {supportedIntegrations.length === 0 ? (
+            <p style={{ fontSize: 13, color: '#555', background: '#111', borderRadius: 8, padding: '12px 14px', border: '1px solid #2a2a2a' }}>
+              No compatible accounts connected. Connect X, LinkedIn, or Threads from the sidebar to get started.
+            </p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {supportedIntegrations.map(int => {
+                const pid = (int.profile || int.identifier || '').toLowerCase().replace('twitter', 'x');
+                const selected = platforms.includes(pid);
+                return (
+                  <button
+                    key={int.id}
+                    onClick={() => togglePlatform(pid)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                      borderRadius: 10, border: `1px solid ${selected ? GOLD + '60' : '#2a2a2a'}`,
+                      background: selected ? GOLD + '12' : '#111', cursor: 'pointer', textAlign: 'left',
+                      transition: 'all 0.15s',
+                    }}
+                  >
+                    <PlatformIcon id={int.profile || int.identifier} size="sm" picture={int.picture} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: selected ? '#fff' : '#aaa' }}>{int.name}</div>
+                      <div style={{ fontSize: 11, color: '#555', textTransform: 'capitalize' }}>{pid === 'x' ? 'X (Twitter)' : pid[0].toUpperCase() + pid.slice(1)}</div>
+                    </div>
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%', border: `2px solid ${selected ? GOLD : '#333'}`,
+                      background: selected ? GOLD : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    }}>
+                      {selected && <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#111' }} />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Time window */}
+        <div style={sectionStyle}>
+          <label style={labelStyle}>Daily Posting Window (EST)</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <select
+              style={{ ...inputStyle, width: 'auto', flex: 1 }}
+              value={startHour}
+              onChange={e => setStartHour(Number(e.target.value))}
+            >
+              {HOURS.map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
+            </select>
+            <span style={{ color: '#666', whiteSpace: 'nowrap' }}>to</span>
+            <select
+              style={{ ...inputStyle, width: 'auto', flex: 1 }}
+              value={endHour}
+              onChange={e => setEndHour(Number(e.target.value))}
+            >
+              {HOURS.filter(h => h.value > startHour).map(h => <option key={h.value} value={h.value}>{h.label}</option>)}
+            </select>
+          </div>
+          <p style={{ fontSize: 12, color: '#555', marginTop: 6 }}>
+            10 posts per account will be spread evenly across this window each day.
+          </p>
+        </div>
+
+        {/* Save button */}
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 24 }}>
+          <button
+            onClick={handleSave}
+            disabled={saving || !niche.trim()}
+            style={{
+              padding: '11px 28px', borderRadius: 10, border: 'none', cursor: (saving || !niche.trim()) ? 'not-allowed' : 'pointer',
+              background: GOLD, color: '#111', fontWeight: 700, fontSize: 14, opacity: (saving || !niche.trim()) ? 0.5 : 1,
+            }}
+          >
+            {saving ? 'Saving…' : 'Save Settings'}
+          </button>
+          {saveMsg && (
+            <span style={{ fontSize: 13, color: saveMsg.ok ? '#4ade80' : '#f87171', display: 'flex', alignItems: 'center', gap: 4 }}>
+              {saveMsg.ok ? <CheckCircle className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+              {saveMsg.text}
+            </span>
+          )}
+        </div>
+
+        {/* Divider */}
+        <div style={{ borderTop: '1px solid #222', marginBottom: 24 }} />
+
+        {/* Run Now */}
+        <div>
+          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#fff', marginBottom: 6 }}>Run Now</h3>
+          <p style={{ fontSize: 13, color: '#666', marginBottom: 14 }}>
+            Generate and schedule today's posts immediately, regardless of time window.
+          </p>
+          <button
+            onClick={handleRunNow}
+            disabled={running}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '11px 24px', borderRadius: 10, border: `1px solid ${GOLD}`,
+              background: 'transparent', color: GOLD, fontWeight: 700, fontSize: 14,
+              cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.6 : 1,
+            }}
+          >
+            {running ? <Loader className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            {running ? 'Generating & Scheduling…' : 'Run Now'}
+          </button>
+
+          {runResult && (
+            <div style={{ marginTop: 16, padding: 16, background: '#111', borderRadius: 10, border: '1px solid #222' }}>
+              {runResult.total > 0 ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4ade80', fontWeight: 700, marginBottom: 10 }}>
+                    <CheckCircle className="w-5 h-5" />
+                    {runResult.total} posts scheduled successfully
+                  </div>
+                  <div style={{ display: 'flex', gap: 12 }}>
+                    {Object.entries(runResult.byPlatform).map(([p, count]) => (
+                      <div key={p} style={{ fontSize: 13, color: '#aaa' }}>
+                        <span style={{ color: '#fff', fontWeight: 600 }}>{count}</span> {p === 'x' ? 'X' : p[0].toUpperCase() + p.slice(1)}
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div style={{ color: '#f87171', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <AlertCircle className="w-4 h-4" /> No posts scheduled
+                </div>
+              )}
+              {runResult.errors.length > 0 && (
+                <div style={{ marginTop: 10 }}>
+                  {runResult.errors.slice(0, 5).map((e, i) => (
+                    <div key={i} style={{ fontSize: 12, color: '#f87171', marginBottom: 2 }}>{e}</div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Sidebar ──────────────────────────────────────────────────────────────────
 
 function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activeWorkspaceId, onSwitchWorkspace, onManageWorkspaces }: {
@@ -7284,6 +7650,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
   onSwitchWorkspace: (id: string | null) => void; onManageWorkspaces: () => void;
 }) {
   const [wsSwitcherOpen, setWsSwitcherOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const navItems = [
     { id: 'composer' as ViewMode, label: 'Posts',      icon: <Edit3 className="w-5 h-5" /> },
     { id: 'calendar' as ViewMode, label: 'Calendar',   icon: <Calendar className="w-5 h-5" /> },
@@ -7291,6 +7658,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
     { id: 'video'    as ViewMode, label: 'AI Video',   icon: <Film className="w-5 h-5" /> },
     { id: 'partner'  as ViewMode, label: 'Earn',       icon: <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
     { id: 'workspaces' as ViewMode, label: 'Workspaces', icon: <Users className="w-5 h-5" /> },
+    { id: 'autopilot'  as ViewMode, label: 'Auto-Pilot', icon: <Zap className="w-5 h-5" /> },
   ];
 
   const activeWs = workspaces.find(w => w.id === activeWorkspaceId) ?? null;
@@ -7350,7 +7718,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
             )}
           </div>
         )}
-        <nav className="px-3 py-4 space-y-0.5">
+        <nav className="px-3 py-4 space-y-0.5 flex-1 overflow-y-auto">
           {navItems.map(item => (
             <motion.button key={item.id} onClick={() => setView(item.id)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-semibold transition"
@@ -7393,29 +7761,70 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
         </div>
       </aside>
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t"
-        style={{ background: '#111111', borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)', backdropFilter: 'blur(12px)' }}>
-        {navItems.map(item => (
-          <button key={item.id} onClick={() => setView(item.id)}
-            className="relative flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
-            style={{ color: view === item.id ? GOLD : 'rgba(255,255,255,0.35)' }}>
-            {view === item.id && (
-              <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full" style={{ background: GOLD }} />
+      {/* Mobile bottom nav */}
+      {(() => {
+        const MAIN_IDS = ['composer', 'planner', 'partner'] as ViewMode[];
+        const MORE_IDS = ['calendar', 'video', 'autopilot', 'workspaces'] as ViewMode[];
+        const mainItems = navItems.filter(i => MAIN_IDS.includes(i.id));
+        const moreItems = navItems.filter(i => MORE_IDS.includes(i.id));
+        const moreActive = MORE_IDS.includes(view);
+        return (
+          <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 border-t"
+            style={{ background: '#111111', borderColor: BORDER, paddingBottom: 'env(safe-area-inset-bottom)', backdropFilter: 'blur(12px)' }}>
+            {/* More dropdown — renders above nav when open */}
+            {moreMenuOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setMoreMenuOpen(false)} />
+                <div className="absolute bottom-full left-0 right-0 z-50 border-t rounded-t-2xl overflow-hidden"
+                  style={{ background: '#181818', borderColor: BORDER }}>
+                  {moreItems.map(item => (
+                    <button key={item.id} onClick={() => { setView(item.id); setMoreMenuOpen(false); }}
+                      className="w-full flex items-center gap-3 px-5 py-4 transition"
+                      style={{ color: view === item.id ? GOLD : 'rgba(255,255,255,0.6)', borderBottom: `1px solid ${BORDER}`, background: view === item.id ? `${GOLD}10` : 'transparent' }}>
+                      {item.icon}
+                      <span style={{ fontSize: 15, fontWeight: 600 }}>{item.label}</span>
+                      {view === item.id && <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: GOLD }} />}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
-            {item.icon}
-            <span className="text-[10px] font-bold tracking-wide">{item.label}</span>
-          </button>
-        ))}
+            <div className="flex items-stretch">
+              {mainItems.map(item => (
+                <button key={item.id} onClick={() => { setView(item.id); setMoreMenuOpen(false); }}
+                  className="relative flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
+                  style={{ color: view === item.id ? GOLD : 'rgba(255,255,255,0.35)' }}>
+                  {view === item.id && (
+                    <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full" style={{ background: GOLD }} />
+                  )}
+                  {item.icon}
+                  <span className="text-[10px] font-bold tracking-wide">{item.label}</span>
+                </button>
+              ))}
+              {/* More button */}
+              <button onClick={() => setMoreMenuOpen(v => !v)}
+                className="relative flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
+                style={{ color: (moreActive || moreMenuOpen) ? GOLD : 'rgba(255,255,255,0.35)' }}>
+                {(moreActive || moreMenuOpen) && (
+                  <span className="absolute top-0 left-1/2 -translate-x-1/2 h-0.5 w-8 rounded-full" style={{ background: GOLD }} />
+                )}
+                <ChevronUp className="w-5 h-5" style={{ transform: moreMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                <span className="text-[10px] font-bold tracking-wide">More</span>
+              </button>
+              {/* Connect */}
+              <button onClick={() => { onOpenConnect(); setMoreMenuOpen(false); }}
+                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
+                style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
+                <Link2 className="w-5 h-5" />
+                <span className="text-[10px] font-bold tracking-wide">
+                  {integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}
+                </span>
+              </button>
+            </div>
+          </nav>
+        );
+      })()}
 
-        <button onClick={onOpenConnect}
-          className="flex-1 flex flex-col items-center justify-center gap-1 py-3 transition"
-          style={{ color: integrations.length > 0 ? 'rgba(255,255,255,0.35)' : GOLD }}>
-          <Link2 className="w-5 h-5" />
-          <span className="text-[10px] font-bold tracking-wide">
-            {integrations.length > 0 ? `${integrations.length} Ch.` : 'Connect'}
-          </span>
-        </button>
-      </nav>
     </>
   );
 }
@@ -8547,6 +8956,7 @@ export function MediaDistributionPage() {
                 {view === 'partner'  && <EarnPage userId={currentUser?.id ?? null} />}
                 {/* J — WorkspacesPanel view */}
                 {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} wsChannelCounts={wsChannelCounts} />}
+                {view === 'autopilot' && <AutoPilotPanel userId={currentUser?.id ?? null} integrations={activeIntegrations} subscription={subscription} onUpgrade={() => setPricingOpen(true)} />}
               </motion.div>
             </AnimatePresence>
           </main>
