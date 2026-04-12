@@ -6233,7 +6233,11 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const midFrameNote = [midFrame1Url, midFrame2Url].filter(Boolean).length > 0
       ? ` Smoothly transition through ${[midFrame1Url, midFrame2Url].filter(Boolean).length} intermediate scene(s) maintaining visual continuity.`
       : '';
-    const enrichedPrompt = promptText + midFrameNote;
+    // When start/end frames are provided, anchor the model to them explicitly
+    const frameConsistencyNote = resolvedStartUrl
+      ? ' CRITICAL: The provided reference frames define the exact visual scene — maintain the identical character appearance, background, environment, and lighting from the reference frames throughout the entire clip. Do not introduce any new scene, setting, or background. The character and environment must remain exactly as shown in the reference images.'
+      : '';
+    const enrichedPrompt = promptText + midFrameNote + frameConsistencyNote;
 
     if (resolvedStartUrl) {
       const frameId = `f${Date.now()}-p0`;

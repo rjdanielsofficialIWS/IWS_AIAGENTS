@@ -32,11 +32,11 @@ Deno.serve(async(req)=>{
     if(!FAL)throw new Error("FAL_API_KEY not configured");
     let model,payload;
     if(textToVideo){
-      model="fal-ai/kling-video/v2/master/text-to-video";
+      model="fal-ai/kling-video/v2.1/master/text-to-video";
       payload={prompt,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, ugly, distorted",cfg_scale:0.5};
     } else {
       model="fal-ai/kling-video/v3/pro/image-to-video";
-      payload={prompt,image_url:imageUrl,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, text overlay, ugly, distorted",cfg_scale:0.5,generate_audio:true};
+      payload={prompt,image_url:imageUrl,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, text overlay, ugly, distorted, scene change, different background",cfg_scale:0.7,generate_audio:true};
       if(tailImageUrl)payload.tail_image_url=tailImageUrl;
     }
     const sr=await fetch("https://queue.fal.run/"+model,{method:"POST",headers:{"Authorization":"Key "+FAL,"Content-Type":"application/json"},body:JSON.stringify(payload)});
