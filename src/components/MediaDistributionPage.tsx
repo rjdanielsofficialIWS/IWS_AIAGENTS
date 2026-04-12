@@ -1104,39 +1104,20 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
   const [submitOk, setSubmitOk]         = useState(false);
 
   useEffect(() => {
-    if (!open || !post.postGroupId) return;
+    if (!open) return;
     setLoading(true); setError(null); setSubmitOk(false); setSubmitError(null);
-    (async () => {
-      try {
-        let { data: { session } } = await supabase.auth.getSession();
-        if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-        if (!await getToken()) throw new Error('Session expired');
-        const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
-          body: JSON.stringify({ action: 'get_post_group', postGroupId: post.postGroupId }),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Failed to load post');
-        // Build one row per platform with its own caption
-        const perPlatform: Record<string,string> = data.perPlatformContent || {};
-        const builtRows = (data.platforms as string[]).map(p => ({
-          platform: p,
-          content: perPlatform[p.toLowerCase()] ?? data.content ?? '',
-        }));
-        setRows(builtRows);
-        setSelectedPlatforms(builtRows.map(r => r.platform));
-        setMediaUrls(Array.isArray(data.mediaUrls) ? data.mediaUrls : []);
-        // Convert UTC scheduledAt to local datetime-local string
-        try {
-          const d = new Date(data.scheduledAt);
-          const localMs = d.getTime() - d.getTimezoneOffset() * 60000;
-          setScheduleDate(new Date(localMs).toISOString().slice(0, 16));
-        } catch { setScheduleDate(''); }
-      } catch (e: any) { setError(e.message || 'Failed to load post data'); }
-      finally { setLoading(false); }
-    })();
-  }, [open, post.postGroupId]);
+    // Load directly from the post prop — we already have everything we need
+    const platforms = Array.isArray(post.platforms) ? post.platforms : [];
+    setRows(platforms.map(p => ({ platform: p, content: post.content || '' })));
+    setSelectedPlatforms(platforms);
+    setMediaUrls(Array.isArray((post as any).mediaUrls) ? (post as any).mediaUrls : []);
+    try {
+      const d = new Date(post.scheduledAt);
+      const localMs = d.getTime() - d.getTimezoneOffset() * 60000;
+      setScheduleDate(new Date(localMs).toISOString().slice(0, 16));
+    } catch { setScheduleDate(''); }
+    setLoading(false);
+  }, [open, post.id]);
 
   const handleSave = async () => {
     if (!scheduleDateStr) { setSubmitError('Pick a schedule date and time.'); return; }
@@ -1147,17 +1128,20 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
       let { data: { session } } = await supabase.auth.getSession();
       if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
       if (!await getToken()) throw new Error('Session expired.');
-      // Cancel old posts (preserve media)
+      // Cancel old post at Zernio + remove from DB
+      const deletePayload = post.postGroupId
+        ? { action: 'delete_post', postGroupId: post.postGroupId }
+        : { action: 'delete_post', postId: post.id };
       const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
-        body: JSON.stringify({ action: 'delete_post', postGroupId: post.postGroupId, skipMediaCleanup: true }),
+        body: JSON.stringify(deletePayload),
       });
       if (!delRes.ok) { const d = await delRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
-      // Re-post each platform
+      // Re-post with updated content + new schedule time
       const scheduleISO = new Date(scheduleDateStr).toISOString();
       await Promise.all(filledRows.map(row =>
-        ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null, postGroupId: post.postGroupId! })
+        ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null })
       ));
       setSubmitOk(true);
       setTimeout(onSaved, 800);

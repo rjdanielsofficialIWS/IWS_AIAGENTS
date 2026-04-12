@@ -1,6 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { publishSocialPost } from "../_shared/publish-social.ts";
 
+const ZERNIO_API_KEY = Deno.env.get("ZERNIO_API_KEY") ?? "sk_1adb5186f3be9a2321b4c2ede480187d250c324f03fce819cc22632d19abb7c2";
+const ZERNIO_API_URL = "https://zernio.com/api/v1";
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin") ?? "";
   const allowed = ["https://infinitewealthsolutionsai.com", "https://www.infinitewealthsolutionsai.com"].includes(origin)
@@ -55,6 +58,45 @@ Deno.serve(async (req) => {
   }
   if (!userId) return respond(401, { error: "Not authenticated." });
 
+  const action = typeof body.action === "string" ? body.action : "";
+
+  // ── delete_post ───────────────────────────────────────────────────────────────
+  if (action === "delete_post") {
+    const postId = typeof body.postId === "string" ? body.postId.trim() : "";
+    const postGroupId = typeof body.postGroupId === "string" ? body.postGroupId.trim() : "";
+    if (!postId && !postGroupId) return respond(400, { error: "postId or postGroupId required" });
+
+    // Look up DB record(s) to get the Zernio post ID for cancellation
+    let q = supabase
+      .from("scheduled_posts")
+      .select("id, ayrshare_post_id, profile_key")
+      .eq("supabase_user_id", userId);
+    q = postGroupId ? (q as any).eq("post_group_id", postGroupId) : (q as any).eq("id", postId);
+    const { data: dbPosts } = await q;
+
+    // Cancel at Zernio (best-effort — don't fail the delete if this errors)
+    if (Array.isArray(dbPosts) && dbPosts.length > 0) {
+      await Promise.allSettled(
+        dbPosts.map(async (p: any) => {
+          if (p.ayrshare_post_id && p.profile_key) {
+            await fetch(`${ZERNIO_API_URL}/posts/${p.ayrshare_post_id}?profileId=${p.profile_key}`, {
+              method: "DELETE",
+              headers: { Authorization: `Bearer ${ZERNIO_API_KEY}` },
+            });
+          }
+        })
+      );
+    }
+
+    // Delete from our DB
+    let del = supabase.from("scheduled_posts").delete().eq("supabase_user_id", userId);
+    del = postGroupId ? (del as any).eq("post_group_id", postGroupId) : (del as any).eq("id", postId);
+    await del;
+
+    return respond(200, { success: true });
+  }
+
+  // ── publish post (default) ────────────────────────────────────────────────────
   const result = await publishSocialPost({
     supabase,
     userId,
