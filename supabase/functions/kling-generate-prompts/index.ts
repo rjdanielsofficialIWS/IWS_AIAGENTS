@@ -5,17 +5,15 @@ const SUPABASE_URL  = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_ANON = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 
-// Style descriptors used in both the Claude system prompt and the final template
 const STYLE_DESCRIPTORS: Record<string, string> = {
   cinematic:    'cinematic film look, anamorphic lens flare, shallow depth of field, dramatic chiaroscuro lighting, muted desaturated color grade, ARRI camera aesthetic, widescreen letterbox composition',
   commercial:   'premium commercial advertisement style, clean bright studio lighting, polished product-hero framing, crisp whites and deep blacks, high-end brand aesthetic, Apple or Nike ad quality',
-  documentary:  'cinematic documentary style, handheld verité feel, natural available light, authentic candid framing, National Geographic quality, journalistic composition',
+  documentary:  'cinematic documentary style, handheld verite feel, natural available light, authentic candid framing, National Geographic quality, journalistic composition',
   anime:        'high-quality anime style, Studio Ghibli aesthetic, lush vibrant colors, expressive character design, detailed background art, Makoto Shinkai atmospheric quality',
   realistic:    'hyperrealistic photographic quality, 8K resolution, perfect natural lighting, true-to-life color accuracy, Sony A7R detail, photojournalism sharpness',
   voiceover:    'clean well-lit talking-head or presenter framing, professional broadcast lighting, subtle depth of field, crisp and readable composition, social media creator quality, steady confident camera',
 };
 
-/** Call Claude to intelligently enhance the user brief */
 async function enhanceBrief(
   brief: string,
   style: string,
@@ -25,47 +23,54 @@ async function enhanceBrief(
   textContent: string,
   fontColor: string,
   videoType: string,
+  hasStartFrame: boolean,
 ): Promise<string> {
   const styleDesc = STYLE_DESCRIPTORS[style.toLowerCase()] ?? STYLE_DESCRIPTORS['cinematic'];
   const textNote = textOnScreen && textContent
-    ? `\n- TEXT ON SCREEN: "${textContent}" in ${fontColor} font — ensure the scene framing provides clean space for on-screen text overlay`
+    ? `\n- TEXT ON SCREEN: "${textContent}" in ${fontColor} font — ensure clean framing space for on-screen text overlay`
     : '';
 
-  // ── Speaking Video: specialized prompt for natural human dialogue ──────────
+  // ── Speaking Video ─────────────────────────────────────────────────────────
   if (videoType === 'speaking') {
-    const systemPrompt = `You are an expert AI video director for realistic speaking-head videos. Your task is to convert user input into a precise Kling AI video prompt.
 
-STEP 1 — EXTRACT THE CHARACTER FROM THE USER'S INPUT (most critical step):
-- Carefully read the user's input and pull out every physical detail they mentioned: age, gender, ethnicity, skin tone, hair color and style, clothing, accessories, facial expression.
-- Use EXACTLY those details verbatim in your prompt. Do not replace, generalize, or swap them for a different character.
-- Example: if the user says "Black woman, early 40s, wearing a white blazer, loc'd hair" — you must describe exactly that person. Do not produce a different race, age, or outfit.
-- If the user provided zero appearance details, invent a professional presenter that fits the topic, described with the same level of granularity.
-- Be ultra-specific about appearance: e.g. "a 38-year-old Black woman with medium-length loc'd hair pulled back loosely, warm deep-brown skin, wearing a crisp white blazer over a black top, small gold stud earrings, composed and authoritative expression."
+    // When a reference frame image is provided, character appearance is already
+    // anchored by the image. Focus entirely on dialogue delivery.
+    const characterSection = hasStartFrame
+      ? `CHARACTER: The presenter's appearance and background are fully defined by the provided reference frame image — do NOT describe physical appearance in the prompt. The image anchors the character.`
+      : `CHARACTER: Read the user's input for any physical description (age, gender, ethnicity, hair, clothing). If found, open the prompt with a precise one-sentence character anchor using exactly those details. If no appearance details are given, skip character description entirely.`;
 
-STEP 2 — LOCK THE BACKGROUND:
-- Choose exactly ONE static environment: a seamless studio backdrop, a minimal branded wall, or a softly blurred professional interior.
-- Describe it with zero ambiguity so it never morphs: e.g. "a plain matte warm-charcoal grey seamless studio backdrop, no props, no movement, no parallax shift, soft wrap lighting from camera left."
+    const systemPrompt = `You are an expert AI video director for realistic speaking-head videos. Your job is to convert user talking points into a Kling AI video prompt that produces smooth, natural on-camera dialogue.
 
-STEP 3 — WRITE THE FINAL PROMPT as a single dense paragraph (3-5 sentences):
-- Open with the full character anchor: their precise appearance, posture, and expression.
-- Follow with the locked static background.
-- Then action: the character speaks directly and confidently into the camera lens, mouth forming words with clear natural enunciation, genuine blink rate, subtle engaged head micro-movements — no frozen or robotic quality.
-- Then camera: medium close-up framing, face centered, stable tripod, direct eye contact with the lens, slight shallow depth of field.
-- Then lighting: professional softbox portrait lighting, bright even clean exposure, no harsh shadows on the face.
+${characterSection}
 
-ABSOLUTE RULES:
-- The character you describe MUST match what the user wrote. Age, gender, race, clothing — all of it. This is non-negotiable.
-- No background changes, scene transitions, cuts, or camera movement.
-- Return ONLY the final prompt text. No preamble, no explanation, no labels.`;
+MAIN FOCUS — DIALOGUE DELIVERY (this is the most important part):
+- Read the user's talking points and understand the core message, the key ideas, and the intended emotional tone.
+- Describe the character's speech as a flowing, natural monologue delivery — not as a script, but as a description of HOW they speak.
+- Structure the delivery arc: what idea they open with, how they transition between points, what they land on at the end.
+- Include delivery details: pace (measured, energetic, calm, urgent), tone (warm, authoritative, conversational, motivational), physical expressiveness (subtle hand gestures, nods, leaning slightly forward for emphasis).
+- Example of good dialogue delivery description: "The presenter opens with a direct, calm statement about why discipline outlasts motivation, transitions naturally into explaining how small consistent actions compound over time, and closes with a warm encouraging appeal to the viewer — speaking at a measured but engaging pace, with natural pauses between key ideas, occasional slight nods for emphasis, and genuine eye contact with the lens throughout."
 
-    const userMsg = `USER INPUT (extract the character from this exactly as described, then build the speaking video prompt):
+BACKGROUND (if no frame image):
+- Choose one static, professional environment: seamless studio, minimal branded wall, or softly blurred office interior.
+- Lock it with specific detail so it cannot morph: e.g. "plain matte warm-charcoal grey seamless studio backdrop, no props, no movement, no parallax."
 
+TECHNICAL (always include):
+- Camera: medium close-up, face centered, stable tripod frame, direct eye contact with the lens, slight shallow depth of field.
+- Lighting: professional softbox portrait lighting, bright even clean exposure, no harsh face shadows.
+- Mouth movement: natural, realistic lip sync with clear enunciation, genuine blink rate, no robotic stillness.
+
+OUTPUT RULES:
+- Write ONE dense paragraph (3-5 sentences). No bullet points, no headers, no labels.
+- ${hasStartFrame ? 'Do NOT describe physical appearance — the reference image defines the character.' : ''}
+- Return ONLY the final prompt text. No preamble, no explanation.`;
+
+    const userMsg = `USER TALKING POINTS / INPUT:
 ${brief.trim()}
 
 ASPECT RATIO: ${aspectRatio}
 DURATION: ${duration} seconds${textNote}
 
-Return only the final speaking video prompt.`;
+Convert these talking points into a smooth speaking video prompt. Return only the final prompt.`;
 
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -152,7 +157,7 @@ Deno.serve(async (req: Request) => {
   }
 
   let brief = '', style = 'cinematic', aspectRatio = '16:9', duration = '5', videoType = 'cinematic';
-  let textOnScreen = false, textOnScreenContent = '', fontColor = '#FFFFFF';
+  let textOnScreen = false, textOnScreenContent = '', fontColor = '#FFFFFF', hasStartFrame = false;
   try {
     const body = await req.json();
     brief               = body.brief               ?? '';
@@ -160,6 +165,7 @@ Deno.serve(async (req: Request) => {
     aspectRatio         = body.aspectRatio         ?? aspectRatio;
     duration            = body.duration            ?? duration;
     videoType           = body.videoType           ?? 'cinematic';
+    hasStartFrame       = body.hasStartFrame       ?? false;
     textOnScreen        = body.textOnScreen        ?? false;
     textOnScreenContent = body.textOnScreenContent ?? '';
     fontColor           = body.fontColor           ?? '#FFFFFF';
@@ -181,7 +187,6 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Require active subscription for video prompt generation
   const { data: subRow } = await supabase.from('subscriptions').select('plan,status,stripe_customer_id,current_period_end').eq('supabase_user_id', user.id).maybeSingle();
   const isPromo = subRow?.stripe_customer_id?.startsWith('promo_');
   const isTrialing = subRow?.status === 'trialing' && !!subRow?.current_period_end && new Date(subRow.current_period_end as string) > new Date();
@@ -193,7 +198,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const enhanced = await enhanceBrief(brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent, fontColor, videoType);
+    const enhanced = await enhanceBrief(brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent, fontColor, videoType, hasStartFrame);
     return new Response(JSON.stringify({ prompts: [enhanced] }), {
       status: 200, headers: { ...cors, 'Content-Type': 'application/json' },
     });

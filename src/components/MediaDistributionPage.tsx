@@ -6094,7 +6094,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       // 1. Always enhance the brief into a high-quality cinematic video prompt via Claude
       const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ brief, style, aspectRatio, duration, videoType, textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined }),
+        body: JSON.stringify({ brief, style, aspectRatio, duration, videoType, hasStartFrame: frameMode === 'manual' && !!startFrameUrl, textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined }),
       });
       const promptData = await promptRes.json();
       if (!promptRes.ok) throw new Error(promptData.error || 'Failed to enhance brief');
@@ -6570,17 +6570,19 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
               </div>
               <div>
                 <label className="text-xs font-bold text-white/30 uppercase tracking-wider">
-                  {videoType === 'speaking' ? 'Talking Points / Description' : 'Video Brief'}
+                  {videoType === 'speaking' ? 'Talking Points' : 'Video Brief'}
                 </label>
-                <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={4}
+                <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={5}
                   placeholder={videoType === 'speaking'
-                    ? 'Describe your character and what they should say. E.g. "Professional Black woman in her 30s, navy blazer, short natural hair. She\'s talking about why consistency beats motivation for building wealth."'
+                    ? 'Enter your talking points or key ideas. E.g.:\n- Consistency beats motivation every time\n- Small daily actions compound into massive results\n- Discipline is the real secret to building wealth\n\nClaude will shape these into smooth, natural dialogue.'
                     : 'Describe the video you want. E.g. \'A cinematic shot of a lone wolf running through a misty forest at dawn…\''}
                   className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
                   style={{ borderColor: BORDER }} />
                 {videoType === 'speaking' && (
                   <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    Claude will engineer a detailed prompt with a locked character appearance, stable background, and natural dialogue delivery — no shifting backgrounds or robotic movement.
+                    {frameMode === 'manual' && startFrameUrl
+                      ? 'Character appearance is defined by your start frame image. Claude will focus on turning your talking points into smooth, flowing dialogue.'
+                      : 'Upload a start frame image below to define your character\'s appearance. Claude will turn your talking points into smooth, natural dialogue delivery.'}
                   </p>
                 )}
               </div>
