@@ -5125,9 +5125,12 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   const loadPosts = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
-    // Always fetch counts directly from DB — independent of edge function auth
+    // Always fetch counts directly from DB — scoped to workspace (or personal if no workspace)
     try {
-      const { data: countData } = await supabase.from('scheduled_posts').select('status').eq('supabase_user_id', userId);
+      let countQuery = supabase.from('scheduled_posts').select('status').eq('supabase_user_id', userId);
+      if (workspaceId) countQuery = countQuery.eq('workspace_id', workspaceId);
+      else countQuery = (countQuery as any).is('workspace_id', null);
+      const { data: countData } = await countQuery;
       if (countData) {
         const scheduled = countData.filter((p: any) => p.status === 'scheduled').length;
         const published = countData.filter((p: any) => p.status === 'published').length;
