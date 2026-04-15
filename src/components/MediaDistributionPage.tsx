@@ -1298,11 +1298,12 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
 }
 
 // ─── PostLogModal ─────────────────────────────────────────────────────────────
-function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId, integrations = [], queueItems = [], unseenCounts, onTabSeen }: {
+function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceId, integrations = [], queueItems = [], unseenCounts, onTabSeen, postsScheduled }: {
   open: boolean; onClose: () => void; userId: string | null; initialFilter?: string; workspaceId?: string | null; integrations?: PostizIntegration[];
   queueItems?: QueueItem[];
   unseenCounts?: { queue: number; scheduled: number; published: number; failed: number };
   onTabSeen?: (tab: string) => void;
+  postsScheduled?: number;
 }) {
   const [posts, setPosts]           = useState<ScheduledPost[]>([]);
   const [loading, setLoading]       = useState(false);
@@ -1381,7 +1382,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     : filter === 'error' ? posts.filter(p => p.status === 'error')
     : filter === 'failed' ? posts.filter(p => p.status === 'failed')
     : posts;
-  const counts = { all: posts.length, scheduled: posts.filter(p => p.status === 'scheduled').length, published: posts.filter(p => p.status === 'published').length, failed: posts.filter(p => p.status === 'failed').length, error: posts.filter(p => p.status === 'error').length };
+  const counts = { all: posts.length, scheduled: postsScheduled ?? posts.filter(p => p.status === 'scheduled').length, published: posts.filter(p => p.status === 'published').length, failed: posts.filter(p => p.status === 'failed').length, error: posts.filter(p => p.status === 'error').length };
   const dedupedFiltered = filtered;
 
   return (
@@ -5036,13 +5037,14 @@ function ReferralBanner({ userId }: { userId: string | null }) {
   );
 }
 
-function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed, onUpgrade, workspaceId }: {
+function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerMode, onVideoConsumed, onUpgrade, workspaceId, postsScheduled }: {
   integrations: PostizIntegration[];
   userId: string | null;
   initialVideoUrl?: string | null;
   initialComposerMode?: 'media' | 'text' | 'saved';
   onVideoConsumed?: () => void;
   onUpgrade?: () => void;
+  postsScheduled?: number;
 }) {
   const [logOpen, setLogOpen]             = useState(false);
   const [logFilter, setLogFilter]         = useState<'queue' | 'all' | 'scheduled' | 'published' | 'failed' | 'error'>('all');
@@ -5285,7 +5287,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       </div>
 
       {/* Modals */}
-      <PostLogModal key={workspaceId ?? 'personal'} open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} workspaceId={workspaceId} integrations={integrations} queueItems={queueItems} unseenCounts={unseenCounts} onTabSeen={handleTabSeen} />
+      <PostLogModal key={workspaceId ?? 'personal'} open={logOpen} onClose={() => setLogOpen(false)} userId={userId} initialFilter={logFilter} workspaceId={workspaceId} integrations={integrations} queueItems={queueItems} unseenCounts={unseenCounts} onTabSeen={handleTabSeen} postsScheduled={postsScheduled} />
 
       {addModalOpen && (
         <AddPlannerItemModal
@@ -9122,7 +9124,7 @@ export function MediaDistributionPage() {
                 className="flex-1 flex flex-col min-h-0 h-full"
               >
                 {/* K — pass activeIntegrations to ComposerPanel */}
-                {view === 'composer' && <ComposerPanel key={activeWorkspaceId ?? 'personal'} integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
+                {view === 'composer' && <ComposerPanel key={activeWorkspaceId ?? 'personal'} integrations={activeIntegrations} userId={currentUser?.id ?? null} initialVideoUrl={videoHandoff?.url} initialComposerMode={videoHandoff?.mode} onVideoConsumed={() => setVideoHandoff(null)} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} postsScheduled={globalUsage?.posts?.used} />}
                 {view === 'calendar' && <CalendarView key={activeWorkspaceId ?? 'personal'}  integrations={activeIntegrations} userId={currentUser?.id ?? null} workspaceId={activeWorkspaceId} onUpgrade={() => setPricingOpen(true)} />}
                 {view === 'planner'  && <PlannerPanel key={activeWorkspaceId ?? 'personal'}  userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
                 {view === 'video' && <AIVideoStudio userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} onUseVideo={(url) => {
