@@ -5121,7 +5121,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const { data: { session } } = await supabase.auth.getSession();
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, {
         headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
