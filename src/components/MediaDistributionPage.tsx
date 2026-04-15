@@ -1353,6 +1353,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
   postsScheduled?: number;
 }) {
   const [posts, setPosts]           = useState<ScheduledPost[]>([]);
+  const [serverCounts, setServerCounts] = useState<{ scheduled: number; published: number; failed: number } | null>(null);
   const [loading, setLoading]       = useState(false);
   const [filter, setFilter]         = useState<'queue' | 'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
   const [retrying, setRetrying]     = useState<Record<string, boolean>>({});
@@ -1379,6 +1380,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
         headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
+      if (data.counts) setServerCounts(data.counts);
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
@@ -1430,7 +1432,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     : filter === 'error' ? posts.filter(p => p.status === 'error')
     : filter === 'failed' ? posts.filter(p => p.status === 'failed')
     : posts;
-  const counts = { all: posts.length, scheduled: posts.filter(p => p.status === 'scheduled').reduce((sum, p) => sum + p.platforms.length, 0), published: posts.filter(p => p.status === 'published').length, failed: posts.filter(p => p.status === 'failed').length, error: posts.filter(p => p.status === 'error').length };
+  const counts = { all: posts.length, scheduled: serverCounts?.scheduled ?? posts.filter(p => p.status === 'scheduled').length, published: serverCounts?.published ?? posts.filter(p => p.status === 'published').length, failed: serverCounts?.failed ?? posts.filter(p => p.status === 'failed').length, error: serverCounts?.failed ?? posts.filter(p => p.status === 'error').length };
   const dedupedFiltered = filtered;
 
   return (
@@ -5107,6 +5109,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   const [queueItems, setQueueItems]       = useState<QueueItem[]>([]);
   const [unseenCounts, setUnseenCounts]   = useState({ queue: 0, scheduled: 0, published: 0, failed: 0 });
   const [loading, setLoading]             = useState(false);
+  const [serverCounts, setServerCounts]   = useState<{ scheduled: number; published: number; failed: number } | null>(null);
   const [addModalOpen, setAddModalOpen]   = useState(false);
   const [addDate]                         = useState(() => new Date().toISOString().split('T')[0]);
   const [pendingItem, setPendingItem]     = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
@@ -5122,6 +5125,11 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
         headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
+      if (data.counts) setServerCounts(data.counts);
+      const scheduledCount = data.counts?.scheduled ?? data.posts?.filter((p: any) => p.status === 'scheduled').length ?? 0;
+      const publishedCount = data.counts?.published ?? data.posts?.filter((p: any) => p.status === 'published').length ?? 0;
+      const failedCount    = data.counts?.failed    ?? data.posts?.filter((p: any) => p.status === 'error' || p.status === 'failed').length ?? 0;
+      setServerCounts({ scheduled: scheduledCount, published: publishedCount, failed: failedCount });
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
@@ -5134,10 +5142,10 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
   const counts = {
-    scheduled: posts.filter(p => p.status === 'scheduled').reduce((sum, p) => sum + p.platforms.length, 0),
-    published: posts.filter(p => p.status === 'published').length,
-    failed:    posts.filter(p => p.status === 'failed' || p.status === 'error').length,
-    error:     posts.filter(p => p.status === 'failed' || p.status === 'error').length,
+    scheduled: serverCounts?.scheduled ?? posts.filter(p => p.status === 'scheduled').reduce((sum, p) => sum + p.platforms.length, 0),
+    published: serverCounts?.published ?? posts.filter(p => p.status === 'published').length,
+    failed:    serverCounts?.failed    ?? posts.filter(p => p.status === 'failed' || p.status === 'error').length,
+    error:     serverCounts?.failed    ?? posts.filter(p => p.status === 'failed' || p.status === 'error').length,
   };
 
   const handleQueueAdd = React.useCallback((item: QueueItem) => {
