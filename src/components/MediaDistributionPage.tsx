@@ -1382,7 +1382,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     : filter === 'error' ? posts.filter(p => p.status === 'error')
     : filter === 'failed' ? posts.filter(p => p.status === 'failed')
     : posts;
-  const counts = { all: posts.length, scheduled: posts.filter(p => p.status === 'scheduled').reduce((sum, p) => sum + (p.platformCount ?? p.platforms?.length ?? 1), 0), published: posts.filter(p => p.status === 'published').length, failed: posts.filter(p => p.status === 'failed').length, error: posts.filter(p => p.status === 'error').length };
+  const counts = { all: posts.length, scheduled: posts.filter(p => p.status === 'scheduled').reduce((sum, p) => sum + p.platforms.length, 0), published: posts.filter(p => p.status === 'published').length, failed: posts.filter(p => p.status === 'failed').length, error: posts.filter(p => p.status === 'error').length };
   const dedupedFiltered = filtered;
 
   return (
