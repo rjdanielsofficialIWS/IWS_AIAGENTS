@@ -1380,6 +1380,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
         headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
+      console.log('[STATS DEBUG] status:', res.status, 'counts:', data.counts, 'posts_len:', data.posts?.length);
       if (data.counts) setServerCounts(data.counts);
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
