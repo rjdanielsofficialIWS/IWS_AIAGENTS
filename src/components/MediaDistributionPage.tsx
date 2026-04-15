@@ -1377,7 +1377,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
+        headers: { 'Authorization': `Bearer ${session?.access_token || await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
       console.log('[STATS DEBUG] status:', res.status, 'counts:', data.counts, 'posts_len:', data.posts?.length);
@@ -5123,7 +5123,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
       const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, {
-        headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
+        headers: { 'Authorization': `Bearer ${session?.access_token || await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
       if (data.counts) setServerCounts(data.counts);
