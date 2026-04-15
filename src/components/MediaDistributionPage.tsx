@@ -5125,6 +5125,16 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   const loadPosts = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
+    // Always fetch counts directly from DB — independent of edge function auth
+    try {
+      const { data: countData } = await supabase.from('scheduled_posts').select('status').eq('supabase_user_id', userId);
+      if (countData) {
+        const scheduled = countData.filter((p: any) => p.status === 'scheduled').length;
+        const published = countData.filter((p: any) => p.status === 'published').length;
+        const failed    = countData.filter((p: any) => p.status === 'error' || p.status === 'failed').length;
+        setServerCounts({ scheduled, published, failed });
+      }
+    } catch (_) {}
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
@@ -5133,11 +5143,6 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
         headers: { 'Authorization': `Bearer ${session?.access_token || await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
-      if (data.counts) setServerCounts(data.counts);
-      const scheduledCount = data.counts?.scheduled ?? data.posts?.filter((p: any) => p.status === 'scheduled').length ?? 0;
-      const publishedCount = data.counts?.published ?? data.posts?.filter((p: any) => p.status === 'published').length ?? 0;
-      const failedCount    = data.counts?.failed    ?? data.posts?.filter((p: any) => p.status === 'error' || p.status === 'failed').length ?? 0;
-      setServerCounts({ scheduled: scheduledCount, published: publishedCount, failed: failedCount });
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
