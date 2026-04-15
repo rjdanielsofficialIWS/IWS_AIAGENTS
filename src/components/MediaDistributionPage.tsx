@@ -5079,7 +5079,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
   const counts = {
-    scheduled: posts.filter(p => p.status === 'scheduled').length,
+    scheduled: posts.filter(p => p.status === 'scheduled').reduce((sum, p) => sum + p.platforms.length, 0),
     published: posts.filter(p => p.status === 'published').length,
     failed:    posts.filter(p => p.status === 'failed' || p.status === 'error').length,
     error:     posts.filter(p => p.status === 'failed' || p.status === 'error').length,
