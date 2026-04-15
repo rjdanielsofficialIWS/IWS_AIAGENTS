@@ -1381,7 +1381,14 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       });
       const data = res.ok ? await res.json() : { posts: [] };
       console.log('[STATS DEBUG] status:', res.status, 'counts:', data.counts, 'posts_len:', data.posts?.length);
-      if (data.counts) setServerCounts(data.counts);
+      // Direct DB count fallback — edge function counts are unreliable
+      const { data: countData } = await supabase.from('scheduled_posts').select('status').eq('supabase_user_id', userId);
+      if (countData) {
+        const scheduled = countData.filter((p: any) => p.status === 'scheduled').length;
+        const published = countData.filter((p: any) => p.status === 'published').length;
+        const failed    = countData.filter((p: any) => p.status === 'error' || p.status === 'failed').length;
+        setServerCounts({ scheduled, published, failed });
+      }
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
