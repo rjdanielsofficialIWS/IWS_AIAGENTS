@@ -170,9 +170,11 @@ type Workspace = { id: string; name: string; color: string; assignedChannelIds: 
 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
-  scheduledAt: Date; status: 'scheduled' | 'published' | 'failed' | 'error';
+  scheduledAt: Date;
+  status: 'scheduled' | 'published' | 'failed' | 'error';
   error?: string | null; mediaUrls?: string[];
   postGroupId?: string | null;
+  perPlatformContent?: Record<string, string> | null;
   platformCount?: number | null; platformCountLabel?: string | null;
 };
 
@@ -1086,52 +1088,67 @@ function ConnectAccountsModal({
 }
 
 // ─── EditPostModal ────────────────────────────────────────────────────────────
-function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId }: {
+function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId, userId }: {
   open: boolean;
   onClose: () => void;
   post: ScheduledPost & { postGroupId?: string | null };
   onSaved: () => void;
   integrations: PostizIntegration[];
   workspaceId?: string | null;
+  userId?: string | null;
 }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
-  const [rows, setRows]       = useState<{ platform: string; content: string }[]>([]);
-  const [mediaUrls, setMediaUrls]       = useState<string[]>([]);
-  const [scheduleDateStr, setScheduleDate] = useState('');
-  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
-  const [submitting, setSubmitting]     = useState(false);
-  const [submitError, setSubmitError]   = useState<string | null>(null);
-  const [submitOk, setSubmitOk]         = useState(false);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState<string | null>(null);
+  // Use the same manualCaptions pattern as the create-post composer
+  const [manualCaptions, setManualCaptions] = useState<Record<string, string>>({});
+  const [selectedIntegrations, setSelectedIntegrations] = useState<string[]>([]);
+  const [mediaUrls, setMediaUrls]           = useState<string[]>([]);
+  const [scheduleDateStr, setScheduleDate]  = useState('');
+  const [submitting, setSubmitting]         = useState(false);
+  const [submitError, setSubmitError]       = useState<string | null>(null);
+  const [submitOk, setSubmitOk]             = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setLoading(true); setError(null); setSubmitOk(false); setSubmitError(null);
     const load = async () => {
-      let builtRows: { platform: string; content: string }[] = [];
-      let mediaUrlsVal: string[] = [];
-      if ((post as any).postGroupId) {
-        const { data: siblings } = await supabase
-          .from('scheduled_posts')
-          .select('platforms, content, media_urls')
-          .eq('post_group_id', (post as any).postGroupId)
-          .order('created_at', { ascending: true });
-        if (siblings && siblings.length > 0) {
-          for (const s of siblings) {
-            for (const plat of (Array.isArray(s.platforms) ? s.platforms : [])) {
-              builtRows.push({ platform: plat, content: s.content || '' });
+      const mediaUrlsVal = Array.isArray(post.mediaUrls) ? post.mediaUrls : [];
+      // Build a map of platformId → caption from sibling posts in the same group
+      const captionsMap: Record<string, string> = {};
+
+      try {
+        // Primary strategy: query scheduled_posts by postGroupId directly — most accurate
+        if (post.postGroupId && userId) {
+          const { data: siblings } = await supabase
+            .from('scheduled_posts')
+            .select('platforms, content')
+            .eq('post_group_id', post.postGroupId)
+            .eq('supabase_user_id', userId);
+          if (siblings && siblings.length > 0) {
+            for (const s of siblings) {
+              for (const plat of (Array.isArray(s.platforms) ? s.platforms : [])) {
+                if (!captionsMap[plat]) captionsMap[plat] = s.content || '';
+              }
             }
           }
-          mediaUrlsVal = Array.isArray(siblings[0].media_urls) ? siblings[0].media_urls : [];
+        }
+      } catch { /* fall through */ }
+
+      // Fallback: use the single clicked post's own platform + content
+      if (Object.keys(captionsMap).length === 0) {
+        for (const plat of (Array.isArray(post.platforms) ? post.platforms : [])) {
+          captionsMap[plat] = post.content || '';
         }
       }
-      if (builtRows.length === 0) {
-        const platforms = Array.isArray(post.platforms) ? post.platforms : [];
-        builtRows = platforms.map(p => ({ platform: p, content: post.content || '' }));
-        mediaUrlsVal = Array.isArray((post as any).mediaUrls) ? (post as any).mediaUrls : [];
-      }
-      setRows(builtRows);
-      setSelectedPlatforms(builtRows.map(r => r.platform));
+
+      // Map loaded platform IDs back to integration IDs so the selector highlights correctly
+      const loadedPlatformIds = Object.keys(captionsMap);
+      const matchedIntegIds = integrations
+        .filter(integ => loadedPlatformIds.includes(getIntegrationPlatformId(integ)))
+        .map(integ => integ.id);
+
+      setManualCaptions(captionsMap);
+      setSelectedIntegrations(matchedIntegIds);
       setMediaUrls(mediaUrlsVal);
       try {
         const d = new Date(post.scheduledAt);
@@ -1145,24 +1162,32 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
 
   const handleSave = async () => {
     if (!scheduleDateStr) { setSubmitError('Pick a schedule date and time.'); return; }
-    const filledRows = rows.filter(r => selectedPlatforms.includes(r.platform) && r.content.trim());
-    if (!filledRows.length) { setSubmitError('At least one caption is required.'); return; }
+    if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
+    const filledRows = selectedIntegrations
+      .map(integId => {
+        const integ = integrations.find(i => i.id === integId);
+        if (!integ) return null;
+        const platformId = getIntegrationPlatformId(integ);
+        const caption = manualCaptions[platformId] || '';
+        return caption.trim() ? { platform: platformId, content: caption } : null;
+      })
+      .filter(Boolean) as { platform: string; content: string }[];
+    if (!filledRows.length) { setSubmitError('Write at least one caption.'); return; }
     setSubmitting(true); setSubmitError(null);
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!await getToken()) throw new Error('Session expired.');
-      // Cancel old post at Zernio + remove from DB
-      const deletePayload = post.postGroupId
-        ? { action: 'delete_post', postGroupId: post.postGroupId }
-        : { action: 'delete_post', postId: post.id };
+      const token = await getToken().catch(() => '');
+      if (!userId) throw new Error('Not signed in.');
+      // Cancel old post(s) in this group
+      const deletePayload: Record<string, unknown> = { action: 'delete_post', userId };
+      if (post.postGroupId) deletePayload.postGroupId = post.postGroupId;
+      else deletePayload.postId = post.id;
       const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(deletePayload),
       });
       if (!delRes.ok) { const d = await delRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
-      // Re-post with updated content + new schedule time
+      // Re-schedule each platform with its individual caption
       const scheduleISO = new Date(scheduleDateStr).toISOString();
       await Promise.all(filledRows.map(row =>
         ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null })
@@ -1176,8 +1201,8 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
 
   if (!open) return null;
 
-  const LABELS: Record<string,string> = { x: 'X (Twitter)', twitter: 'X (Twitter)', instagram: 'Instagram', facebook: 'Facebook', tiktok: 'TikTok', linkedin: 'LinkedIn', threads: 'Threads', youtube: 'YouTube' };
-  const LIMITS: Record<string,number> = { x: 280, twitter: 280, threads: 500, linkedin: 3000, instagram: 2200, facebook: 63206, tiktok: 2200, youtube: 5000 };
+  const _mlogos: Record<string, string> = { instagram: '📷', facebook: '👥', x: 'X', twitter: 'X', tiktok: '🎵', youtube: '▶️', linkedin: '💼', pinterest: '📌', threads: '🧵', snapchat: '👻' };
+  const _mlimits: Record<string, number> = { twitter: 280, x: 280, instagram: 2200, facebook: 63206, tiktok: 2200, linkedin: 3000, youtube: 5000, threads: 500 };
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-end md:items-center justify-center md:p-4">
@@ -1203,82 +1228,104 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
           {error && (
             <div className="p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">{error}</div>
           )}
-          {!loading && !error && rows.length > 0 && (
+          {!loading && !error && (
             <>
-              {/* Platform selector */}
+              {/* ── Channel selector — identical to create-post composer ── */}
               <div>
                 <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to</div>
                 <div className="flex flex-wrap gap-2">
                   {integrations.map(integ => {
                     const pid = getIntegrationPlatformId(integ);
-                    const isSelected = selectedPlatforms.includes(pid);
+                    const isSelected = selectedIntegrations.includes(integ.id);
                     const p = PLATFORMS[integ.identifier as PlatformId];
                     return (
                       <button key={integ.id}
                         onClick={() => {
-                          setSelectedPlatforms(prev =>
-                            prev.includes(pid) ? prev.filter(x => x !== pid) : [...prev, pid]
+                          setSelectedIntegrations(prev =>
+                            prev.includes(integ.id) ? prev.filter(x => x !== integ.id) : [...prev, integ.id]
                           );
-                          setRows(prev => {
-                            const exists = prev.find(r => r.platform === pid);
-                            if (exists) return prev.filter(r => r.platform !== pid);
-                            const key = pid.toLowerCase();
-                            const fallback = prev[0]?.content || '';
-                            return [...prev, { platform: pid, content: fallback }];
-                          });
+                          // Pre-fill caption slot when adding a new platform
+                          if (!selectedIntegrations.includes(integ.id) && !manualCaptions[pid]) {
+                            const firstCaption = Object.values(manualCaptions)[0] || '';
+                            setManualCaptions(prev => ({ ...prev, [pid]: firstCaption }));
+                          }
                         }}
                         className="flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-semibold transition"
                         style={{ borderColor: isSelected ? (p?.color || GOLD) : BORDER, background: isSelected ? (p?.bg || `${GOLD}15`) : 'transparent', color: isSelected ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
                         <PlatformIcon id={pid || integ.identifier} size="sm" picture={integ.picture} />
-                        <span className="max-w-[80px] truncate">{integ.name}</span>
-                        {isSelected && <CheckCircle2 className="w-3 h-3 shrink-0" />}
+                        <span className="max-w-[90px] truncate">{integ.name}</span>
+                        {isSelected && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
                       </button>
                     );
                   })}
                 </div>
               </div>
-              {/* Per-platform captions — only for selected platforms */}
-              {rows.filter(r => selectedPlatforms.includes(r.platform)).map((row, i) => {
-                const key = row.platform.toLowerCase();
-                const label = LABELS[key] || row.platform;
-                const limit = LIMITS[key] || 2200;
-                const p = PLATFORMS[row.platform as PlatformId];
-                const rowIdx = rows.findIndex(r => r.platform === row.platform);
-                return (
-                  <div key={row.platform}>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <PlatformIcon id={row.platform} size="sm" />
-                      <span className="text-xs font-bold" style={{ color: p?.color || GOLD_L }}>{label}</span>
-                      <span className="ml-auto text-[10px]" style={{ color: row.content.length > limit ? '#f87171' : 'rgba(255,255,255,0.2)' }}>
-                        {row.content.length}/{limit}
-                      </span>
-                    </div>
-                    <textarea
-                      value={row.content}
-                      onChange={e => setRows(prev => prev.map((r, ri) => ri === rowIdx ? { ...r, content: e.target.value } : r))}
-                      rows={5}
-                      className="w-full rounded-xl border bg-transparent px-3 pt-3 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none"
-                      style={{ borderColor: row.content.length > limit ? '#f87171' : BORDER }}
-                      placeholder={`Write your ${label} caption…`}
-                    />
+
+              {/* ── Per-platform captions — identical to create-post composer ── */}
+              <div className="space-y-3">
+                {selectedIntegrations.length === 0 ? (
+                  <div className="rounded-xl border px-4 py-6 text-center text-sm text-white/30" style={{ borderColor: BORDER }}>
+                    Select channels above to write captions
                   </div>
-                );
-              })}
+                ) : selectedIntegrations.length === 1 ? (() => {
+                  const _mi = integrations.find(x => x.id === selectedIntegrations[0]);
+                  const _mpid = getIntegrationPlatformId(_mi) || selectedIntegrations[0];
+                  const _mval = manualCaptions[_mpid] || '';
+                  const _mlimit = _mlimits[_mpid] || 2200;
+                  return (
+                    <div className="rounded-xl border overflow-hidden" style={{ borderColor: _mval.length > _mlimit ? '#f87171' : BORDER }}>
+                      <textarea value={_mval}
+                        onChange={e => setManualCaptions(prev => ({ ...prev, [_mpid]: e.target.value }))}
+                        placeholder="Write your caption here…" rows={5}
+                        className="w-full bg-transparent px-4 pt-4 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                      <div className="flex items-center justify-end px-4 py-2 border-t" style={{ borderColor: BORDER }}>
+                        <span className="text-xs" style={{ color: _mval.length > _mlimit ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{_mval.length}/{_mlimit}</span>
+                      </div>
+                    </div>
+                  );
+                })() : (
+                  selectedIntegrations.map(integId => {
+                    const _mi = integrations.find(x => x.id === integId);
+                    if (!_mi) return null;
+                    const _mpid = getIntegrationPlatformId(_mi);
+                    const _mlimit = _mlimits[_mpid] || 2200;
+                    const _mval = manualCaptions[_mpid] || '';
+                    const _mlabel = _mpid === 'x' ? 'X (Twitter)' : _mpid.charAt(0).toUpperCase() + _mpid.slice(1);
+                    return (
+                      <div key={integId} className="rounded-xl border overflow-hidden" style={{ borderColor: _mval.length > _mlimit ? '#f87171' : BORDER }}>
+                        <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.02)' }}>
+                          <span className="text-sm">{_mlogos[_mpid] || '📱'}</span>
+                          <span className="text-xs font-bold text-white/50">{_mlabel}</span>
+                          <span className="ml-auto text-xs" style={{ color: _mval.length > _mlimit ? '#f87171' : 'rgba(255,255,255,0.2)' }}>{_mval.length}/{_mlimit}</span>
+                        </div>
+                        <textarea value={_mval}
+                          onChange={e => setManualCaptions(prev => ({ ...prev, [_mpid]: e.target.value }))}
+                          placeholder={`Write your ${_mlabel} caption here…`} rows={4}
+                          className="w-full bg-transparent px-4 pt-3 pb-2 text-sm text-white placeholder-white/20 outline-none resize-none" />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
               {/* Media note */}
               {mediaUrls.length > 0 && (
                 <div className="text-xs text-white/30 px-1">
                   📎 This post has media attached. To change the media, delete this post and create a new one.
                 </div>
               )}
-              {/* Schedule time */}
+
+              {/* ── Schedule Date & Time ── */}
               <div>
                 <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Schedule Date & Time</div>
                 <input type="datetime-local" value={scheduleDateStr} onChange={e => setScheduleDate(e.target.value)}
                   className="w-full rounded-xl border bg-black/30 px-3 py-2.5 text-sm text-white outline-none"
                   style={{ borderColor: BORDER, colorScheme: 'dark' }} />
               </div>
+
               {submitError && <div className="p-3 rounded-xl text-xs text-red-300 border border-red-400/20 bg-red-400/5">{submitError}</div>}
-              {/* Buttons */}
+
+              {/* ── Action buttons ── */}
               <div className="flex gap-2">
                 <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white/40 hover:text-white transition border" style={{ borderColor: BORDER }}>Cancel</button>
                 <button onClick={handleSave} disabled={submitting || submitOk}
@@ -1359,16 +1406,17 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     if (!confirm('Delete this scheduled post? This cannot be undone.')) return;
     setDeleting(d => ({ ...d, [post.id]: true }));
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!await getToken()) throw new Error('Session expired');
-      const payload: Record<string, unknown> = { action: 'delete_post' };
+      if (!userId) throw new Error('Not signed in.');
+      // Delete no longer requires a valid JWT — server uses body.userId + DB ownership check.
+      // Still send the token as best-effort; server ignores it for deletes.
+      const token = await getToken().catch(() => '');
+      const payload: Record<string, unknown> = { action: 'delete_post', userId };
       if (post.postGroupId) payload.postGroupId = post.postGroupId;
       else payload.postId = post.id;
       if (workspaceId) payload.workspaceId = workspaceId;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${await getToken()}` },
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify(payload),
       });
       if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
@@ -1535,7 +1583,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       </div>
     </div>
     {editingPost && (
-      <EditPostModal open={!!editingPost} onClose={() => setEditingPost(null)} post={editingPost} workspaceId={workspaceId} integrations={integrations} onSaved={() => { setEditingPost(null); loadPosts(); }} />
+      <EditPostModal open={!!editingPost} onClose={() => setEditingPost(null)} post={editingPost} workspaceId={workspaceId} integrations={integrations} userId={userId} onSaved={() => { setEditingPost(null); loadPosts(); }} />
     )}
     </>
   );
@@ -2219,6 +2267,7 @@ function InlinePostComposer({
   });
   const [submitOk, setSubmitOk]         = useState(false);
   const [submitting, setSubmitting]     = useState(false);
+  const [submittingMedia, setSubmittingMedia] = useState(false);
   const [submitError, setSubmitError]   = useState<string | null>(null);
   const submitBtnRef                    = useRef<HTMLButtonElement>(null);
 
@@ -2502,6 +2551,7 @@ function InlinePostComposer({
   };
 
   const handleMediaSubmit = () => {
+    if (submittingMedia) return; // guard against double-submission
     if (!userId)                      { setSubmitError('Sign in to post.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
     if (captionType === 'manual' && !content.trim() && Object.values(manualCaptions).every(v => !v.trim())) { setSubmitError('Write a caption first.'); return; }
@@ -2559,6 +2609,7 @@ function InlinePostComposer({
     onQueueAdd?.({ id: queueId, content: previewContent, platforms: selectedPlatformIds, scheduleDate: isScheduled ? new Date(scheduleDateStr).toISOString() : undefined, status: 'queuing', addedAt: new Date(), isVideoUpload: hasVideo });
 
     // Show success state and scroll button into view before form collapses
+    setSubmittingMedia(true);
     setSubmitOk(true);
     setSubmitError(null);
     requestAnimationFrame(() => {
@@ -2653,6 +2704,8 @@ function InlinePostComposer({
         onQueueUpdate?.(queueId, { status: 'done', resolvedStatus: isScheduled ? 'scheduled' : 'published' });
       } catch (e: any) {
         onQueueUpdate?.(queueId, { status: 'error', error: e.message || 'Failed to post', resolvedStatus: 'failed' });
+      } finally {
+        setSubmittingMedia(false);
       }
     })();
   };
@@ -3597,11 +3650,13 @@ function InlinePostComposer({
       <button
         ref={submitBtnRef}
         onClick={postType === 'media' ? handleMediaSubmit : handleTextSubmit}
-        disabled={submitOk || (postType === 'text' && submitting)}
+        disabled={submitOk || submittingMedia || (postType === 'text' && submitting)}
         className="w-full flex items-center justify-center gap-2 px-5 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition hover:brightness-110"
         style={{ background: submitOk ? '#22c55e' : GOLD, color: '#000', minHeight: 48 }}>
         {postType === 'media' && submitOk
           ? <><CheckCircle2 className="w-4 h-4 shrink-0" /> Added to Queue!</>
+          : postType === 'media' && submittingMedia
+            ? <><Loader className="w-4 h-4 animate-spin shrink-0" /> {scheduleType === 'schedule' ? 'Scheduling…' : 'Posting…'}</>
           : postType === 'text' && submitting
             ? <><Loader className="w-4 h-4 animate-spin shrink-0" /> {scheduleType === 'schedule' ? 'Scheduling…' : 'Posting…'}</>
           : postType === 'text' && submitOk
@@ -7061,7 +7116,7 @@ function WorkspacesPanel({
   onSetActive: (id: string | null) => void;
   integrations: PostizIntegration[];
   wsChannelCounts?: Record<string, number>;
-  onBuyWorkspaceSlot: () => void;
+  onBuyWorkspaceSlot: () => Promise<void>;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName]       = useState('');
@@ -7070,6 +7125,8 @@ function WorkspacesPanel({
   const [saveError, setSaveError]   = useState<string | null>(null);
   const [deleting, setDeleting]     = useState<string | null>(null);
   const [assignLoading, setAssignLoading] = useState<string | null>(null);
+  const [buyingSlot, setBuyingSlot] = useState(false);
+  const [buySlotError, setBuySlotError] = useState<string | null>(null);
 
   const COLOR_PRESETS = ['#D6B25E', '#22c55e', '#3b82f6', '#a855f7', '#ef4444', '#f97316'];
 
@@ -7132,7 +7189,7 @@ function WorkspacesPanel({
           <div>
             <h2 className="text-xl font-black text-white">Client Workspaces</h2>
             <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              Group channels by client or brand. {workspaceSlots}/{MAX_WORKSPACES} slots purchased.
+              Group channels by client or brand. {workspaceSlots} slot{workspaceSlots !== 1 ? 's' : ''} available (3 included + {Math.max(0, workspaceSlots - 3)} add-on{workspaceSlots - 3 !== 1 ? 's' : ''}).
             </p>
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -7146,14 +7203,35 @@ function WorkspacesPanel({
             )}
             {isAgency && workspaceSlots < MAX_WORKSPACES && (
               <button
-                onClick={onBuyWorkspaceSlot}
-                className="px-4 py-2 rounded-xl text-sm font-bold transition"
+                onClick={async () => {
+                  setBuyingSlot(true);
+                  setBuySlotError(null);
+                  try { await onBuyWorkspaceSlot(); }
+                  catch (e: any) { setBuySlotError(e.message || 'Something went wrong. Please try again.'); }
+                  finally { setBuyingSlot(false); }
+                }}
+                disabled={buyingSlot}
+                className="px-4 py-2 rounded-xl text-sm font-bold transition disabled:opacity-60 flex items-center gap-2"
                 style={{ background: 'transparent', color: GOLD, border: `1px solid ${GOLD}60` }}>
-                + Add Slot — $49
+                {buyingSlot ? (
+                  <>
+                    <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                    Opening Stripe…
+                  </>
+                ) : '+ Add Workspace'}
               </button>
             )}
           </div>
         </div>
+
+        {buySlotError && (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl mb-4 text-sm"
+            style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)', color: '#fca5a5' }}>
+            <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            {buySlotError}
+            <button onClick={() => setBuySlotError(null)} className="ml-auto opacity-60 hover:opacity-100 transition">✕</button>
+          </div>
+        )}
 
         {!isAgency && (
           <div className="rounded-2xl border p-6 mb-6 text-center" style={{ background: SURFACE, borderColor: BORDER }}>
@@ -8136,7 +8214,7 @@ function CreditsWidget({
   onOpen: () => void;
   onClose: () => void;
   onUpgrade: () => void;
-  onAddon: (key: string) => void;
+  onAddon: (key: string) => Promise<void>;
   onManage: () => void;
   onCancelSub?: () => void;
 }) {
@@ -8773,19 +8851,16 @@ export function MediaDistributionPage() {
     }
   };
 
-  const handleAddonCheckout = async (addonKey: string) => {
+  const handleAddonCheckout = async (addonKey: string): Promise<void> => {
     if (!currentUser) { setAuthModalOpen(true); return; }
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-checkout`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken() ?? ''}` },
-        body: JSON.stringify({ addon: addonKey, successUrl: window.location.href + '?addon_success=' + addonKey, cancelUrl: window.location.href }),
-      });
-      const data = await res.json();
-      if (data.url) window.location.href = data.url;
-      else throw new Error(data.error || 'Checkout failed');
-    } catch (e: any) { setOauthError(e.message); }
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/stripe-checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${await getToken() ?? ''}` },
+      body: JSON.stringify({ addon: addonKey, successUrl: window.location.href + '?addon_success=' + addonKey, cancelUrl: window.location.href }),
+    });
+    const data = await res.json();
+    if (data.url) { window.location.href = data.url; return; }
+    throw new Error(data.error || 'Checkout failed');
   };
 
   const handlePromoRedeem = async () => {
@@ -9264,7 +9339,7 @@ export function MediaDistributionPage() {
               {([
                 {key:"starter",name:"Creator",price:"$47",highlight:false,features:["30 posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"],trialEligible:true},
                 {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 media posts/mo","200 text posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","4 Content Strategies/mo"],trialEligible:true},
-                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited media posts","Unlimited text posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","12 Content Strategies/mo","3 client workspaces","Priority support + call"],trialEligible:false},
+                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited media posts","Unlimited text posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","Unlimited Content Strategies","3 client workspaces included","Priority support + call"],trialEligible:false},
               ] as const).map(plan=>{
                 const isCurrent=_pricingIsActive&&subscription?.plan===plan.key;
                 const isTrialingThis=_pricingIsTrialing&&subscription?.plan===plan.key;
@@ -9347,8 +9422,8 @@ export function MediaDistributionPage() {
                 ["Social Media Accounts",["3","All","All"]],
                 ["AI Video / mo",["60s","180s","540s"]],
                 ["Content Repurposing",[false,true,true]],
-                ["AI Strategist / mo",["—","4","12"]],
-                ["Client Workspaces",["1","1","3 (+$49/ea)"]],
+                ["AI Strategist / mo",["—","4","Unlimited"]],
+                ["Client Workspaces",["—","—","3 (+$49/mo ea)"]],
                 ["Priority Support",[false,false,true]],
                 ["Onboarding Call",[false,false,true]],
               ] as const).map(([feature,vals],rowIdx)=>(
@@ -9370,7 +9445,7 @@ export function MediaDistributionPage() {
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-3">💳 Add-On Credits: One-Time Purchase</div>
               <div className="grid grid-cols-2 gap-2">
                 {([{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"},{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"strategies_4",label:"+ 4 Content Strategies",price:"$20"}] as const).map(addon=>(
-                  <button key={addon.key} onClick={()=>handleAddonCheckout(addon.key)}
+                  <button key={addon.key} onClick={()=>handleAddonCheckout(addon.key).catch(e=>setOauthError(e.message))}
                     className="flex items-center justify-between px-3 py-2.5 rounded-xl border transition hover:brightness-110"
                     style={{background:`${GOLD}0a`,borderColor:`${GOLD}30`}}>
                     <span className="text-xs font-bold text-white/60">{addon.label}</span>
@@ -9413,7 +9488,7 @@ export function MediaDistributionPage() {
             <div className="px-6 py-5 space-y-3">
               <div className="text-xs font-bold text-white/30 uppercase tracking-wider">Get More: One-Time Purchase</div>
               {(addonFeature==="video_seconds"?[{key:"video_60s",label:"+ 60 Video Seconds",price:"$18"},{key:"video_180s",label:"+ 180 Video Seconds",price:"$54"}]:addonFeature==="captions"?[{key:"captions_25",label:"+ 25 AI Captions",price:"$7"},{key:"strategies_4",label:"+ 4 Content Strategies",price:"$20"}]:[]).map(addon=>(
-                <button key={addon.key} onClick={()=>{setAddonModalOpen(false);handleAddonCheckout(addon.key);}}
+                <button key={addon.key} onClick={()=>{setAddonModalOpen(false);handleAddonCheckout(addon.key).catch(e=>setOauthError(e.message));}}
                   className="w-full flex items-center justify-between px-4 py-3 rounded-xl border transition hover:brightness-110"
                   style={{background:`${GOLD}12`,borderColor:`${GOLD}40`}}>
                   <span className="text-sm font-bold" style={{color:GOLD_L}}>{addon.label}</span>
