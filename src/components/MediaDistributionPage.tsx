@@ -173,6 +173,7 @@ type ScheduledPost = {
   scheduledAt: Date; status: 'scheduled' | 'published' | 'failed' | 'error';
   error?: string | null; mediaUrls?: string[];
   postGroupId?: string | null;
+  platformCount?: number | null; platformCountLabel?: string | null;
 };
 
 type QueueItem = {
@@ -1106,17 +1107,40 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
   useEffect(() => {
     if (!open) return;
     setLoading(true); setError(null); setSubmitOk(false); setSubmitError(null);
-    // Load directly from the post prop — we already have everything we need
-    const platforms = Array.isArray(post.platforms) ? post.platforms : [];
-    setRows(platforms.map(p => ({ platform: p, content: post.content || '' })));
-    setSelectedPlatforms(platforms);
-    setMediaUrls(Array.isArray((post as any).mediaUrls) ? (post as any).mediaUrls : []);
-    try {
-      const d = new Date(post.scheduledAt);
-      const localMs = d.getTime() - d.getTimezoneOffset() * 60000;
-      setScheduleDate(new Date(localMs).toISOString().slice(0, 16));
-    } catch { setScheduleDate(''); }
-    setLoading(false);
+    const load = async () => {
+      let builtRows: { platform: string; content: string }[] = [];
+      let mediaUrlsVal: string[] = [];
+      if ((post as any).postGroupId) {
+        const { data: siblings } = await supabase
+          .from('scheduled_posts')
+          .select('platforms, content, media_urls')
+          .eq('post_group_id', (post as any).postGroupId)
+          .order('created_at', { ascending: true });
+        if (siblings && siblings.length > 0) {
+          for (const s of siblings) {
+            for (const plat of (Array.isArray(s.platforms) ? s.platforms : [])) {
+              builtRows.push({ platform: plat, content: s.content || '' });
+            }
+          }
+          mediaUrlsVal = Array.isArray(siblings[0].media_urls) ? siblings[0].media_urls : [];
+        }
+      }
+      if (builtRows.length === 0) {
+        const platforms = Array.isArray(post.platforms) ? post.platforms : [];
+        builtRows = platforms.map(p => ({ platform: p, content: post.content || '' }));
+        mediaUrlsVal = Array.isArray((post as any).mediaUrls) ? (post as any).mediaUrls : [];
+      }
+      setRows(builtRows);
+      setSelectedPlatforms(builtRows.map(r => r.platform));
+      setMediaUrls(mediaUrlsVal);
+      try {
+        const d = new Date(post.scheduledAt);
+        const localMs = d.getTime() - d.getTimezoneOffset() * 60000;
+        setScheduleDate(new Date(localMs).toISOString().slice(0, 16));
+      } catch { setScheduleDate(''); }
+      setLoading(false);
+    };
+    load().catch(e => { setError(e.message || 'Failed to load post'); setLoading(false); });
   }, [open, post.id]);
 
   const handleSave = async () => {
@@ -1310,7 +1334,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null, platformCount: p.platformCount ?? null, platformCountLabel: p.platformCountLabel ?? null };
       }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
     } catch (e) {}
     finally { setLoading(false); }
@@ -1352,14 +1376,13 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     finally { setDeleting(d => ({ ...d, [post.id]: false })); }
   };
 
-  const filtered = posts.filter(p => filter === 'all' || p.status === filter);
+  const filtered = filter === 'scheduled' ? posts.filter(p => p.status === 'scheduled')
+    : filter === 'published' ? posts.filter(p => p.status === 'published')
+    : filter === 'error' ? posts.filter(p => p.status === 'error')
+    : filter === 'failed' ? posts.filter(p => p.status === 'failed')
+    : posts;
   const counts = { all: posts.length, scheduled: posts.filter(p => p.status === 'scheduled').length, published: posts.filter(p => p.status === 'published').length, failed: posts.filter(p => p.status === 'failed').length, error: posts.filter(p => p.status === 'error').length };
-  const seenGroups = new Set<string>();
-  const dedupedFiltered = filtered.filter(p => {
-    if (!p.postGroupId) return true;
-    if (seenGroups.has(p.postGroupId)) return false;
-    seenGroups.add(p.postGroupId); return true;
-  });
+  const dedupedFiltered = filtered;
 
   return (
     <>
@@ -1460,10 +1483,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
               const isRetrying = retrying[post.id];
               const isDeleting = deleting[post.id];
               const retriedResult = retried[post.id];
-              const groupPlatforms = post.postGroupId
-                ? [...new Set(posts.filter(p => p.postGroupId === post.postGroupId).flatMap(p => p.platforms))]
-                : post.platforms;
-              const siblingCount = post.postGroupId ? posts.filter(p => p.postGroupId === post.postGroupId).length : 1;
+              const groupPlatforms = post.platforms;
               return (
                 <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border group"
                   style={{ borderColor: isFailed ? 'rgba(239,68,68,0.25)' : isScheduled ? `${GOLD}20` : BORDER }}>
@@ -1481,7 +1501,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
                         <Clock className="w-3 h-3" />
                         {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </span>
-                      {siblingCount > 1 && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>{siblingCount} platforms</span>}
+                      {post.platformCountLabel && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>{post.platformCountLabel}</span>}
                       {isFailed && !retriedResult && (
                         <button onClick={() => handleRetry(post)} disabled={isRetrying} className="text-xs font-bold px-2 py-0.5 rounded-md transition" style={{ background: `${GOLD}20`, color: GOLD_L, opacity: isRetrying ? 0.5 : 1 }}>
                           {isRetrying ? 'Posting…' : '↺ Retry Now'}
@@ -4883,10 +4903,10 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
                               className="mt-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold transition disabled:opacity-50"
                               style={{ background: points ? 'rgba(34,197,94,0.10)' : 'rgba(168,85,247,0.12)', color: points ? '#86efac' : '#c084fc', border: `1px solid ${points ? 'rgba(34,197,94,0.25)' : 'rgba(168,85,247,0.25)'}` }}>
                               {isLoading
-                                ? <><Loader className="w-3 h-3 animate-spin" /> Generating…</>
+                                ? <span className="flex items-center gap-1.5 whitespace-nowrap"><Loader className="w-3 h-3 animate-spin shrink-0" /> Generating…</span>
                                 : points
-                                ? tpCollapsed.has(item.id) ? <><Sparkles className="w-3 h-3" /> Show Talking Points</> : <>✓ Hide Talking Points</>
-                                : <><Sparkles className="w-3 h-3" /> 5 Viral Talking Points</>}
+                                ? tpCollapsed.has(item.id) ? <span className="flex items-center gap-1.5 whitespace-nowrap"><Sparkles className="w-3 h-3 shrink-0" /> Show Talking Points</span> : <span className="whitespace-nowrap">✓ Hide Talking Points</span>
+                                : <span className="flex items-center gap-1.5 whitespace-nowrap"><Sparkles className="w-3 h-3 shrink-0" /> 5 Viral Talking Points</span>}
                             </button>
                           </div>
                           <button onClick={() => deleteItem(item.id)}
@@ -5048,7 +5068,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null, platformCount: p.platformCount ?? null, platformCountLabel: p.platformCountLabel ?? null };
       }));
     } catch (e) {}
     finally { setLoading(false); }
@@ -5313,7 +5333,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       const list  = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [] };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null, platformCount: p.platformCount ?? null, platformCountLabel: p.platformCountLabel ?? null };
       }));
     } catch (e) {}
     finally { setLoading(false); }
@@ -6773,11 +6793,11 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
               </div>
 
               <button onClick={handleGeneratePrompts} disabled={generatingPrompts || !brief.trim()}
-                className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
+                className="w-full flex items-center justify-center py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
                 {generatingPrompts
-                  ? <><Loader className="w-4 h-4 animate-spin" /> {generatingAssets ? 'Generating AI assets…' : 'Enhancing brief…'}</>
-                  : <><Wand2 className="w-4 h-4" /> Generate Video Brief</>}
+                  ? <span className="flex items-center gap-2 whitespace-nowrap"><Loader className="w-4 h-4 animate-spin shrink-0" /> {generatingAssets ? 'Generating AI assets…' : 'Enhancing brief…'}</span>
+                  : <span className="flex items-center gap-2 whitespace-nowrap"><Wand2 className="w-4 h-4 shrink-0" /> Generate Video Brief</span>}
               </button>
             </div>
           )}
@@ -7028,9 +7048,10 @@ function WorkspacesPanel({
   onSetActive,
   integrations,
   wsChannelCounts,
+  onBuyWorkspaceSlot,
 }: {
   userId: string | null;
-  subscription: { plan: string; status: string; stripe_customer_id?: string; } | null;
+  subscription: { plan: string; status: string; stripe_customer_id?: string; workspace_slots?: number; } | null;
   onUpgrade: () => void;
   workspaces: Workspace[];
   onWorkspacesChanged: () => void;
@@ -7038,6 +7059,7 @@ function WorkspacesPanel({
   onSetActive: (id: string | null) => void;
   integrations: PostizIntegration[];
   wsChannelCounts?: Record<string, number>;
+  onBuyWorkspaceSlot: () => void;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName]       = useState('');
@@ -7056,8 +7078,12 @@ function WorkspacesPanel({
     subscription?.plan === 'agency'
   );
 
+  const MAX_WORKSPACES = 10;
+  const workspaceSlots = subscription?.workspace_slots ?? 0;
+
   const handleCreate = async () => {
     if (!userId || !newName.trim()) return;
+    if (workspaces.length >= workspaceSlots) { setSaveError('Purchase a workspace slot first.'); return; }
     setSaving(true); setSaveError(null);
     try {
       const { error } = await supabase.from('workspaces').insert({
@@ -7104,17 +7130,27 @@ function WorkspacesPanel({
           <div>
             <h2 className="text-xl font-black text-white">Client Workspaces</h2>
             <p className="text-sm mt-1" style={{ color: 'rgba(255,255,255,0.4)' }}>
-              Group channels by client or brand. Up to 4 workspaces per account.
+              Group channels by client or brand. {workspaceSlots}/{MAX_WORKSPACES} slots purchased.
             </p>
           </div>
-          {isAgency && workspaces.length < 4 && (
-            <button
-              onClick={() => setCreateOpen(v => !v)}
-              className="px-4 py-2 rounded-xl text-sm font-bold transition"
-              style={{ background: `${GOLD}20`, color: GOLD_L, border: `1px solid ${GOLD}40` }}>
-              + Create Workspace
-            </button>
-          )}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            {isAgency && workspaces.length < workspaceSlots && (
+              <button
+                onClick={() => setCreateOpen(v => !v)}
+                className="px-4 py-2 rounded-xl text-sm font-bold transition"
+                style={{ background: `${GOLD}20`, color: GOLD_L, border: `1px solid ${GOLD}40` }}>
+                + Create Workspace
+              </button>
+            )}
+            {isAgency && workspaceSlots < MAX_WORKSPACES && (
+              <button
+                onClick={onBuyWorkspaceSlot}
+                className="px-4 py-2 rounded-xl text-sm font-bold transition"
+                style={{ background: 'transparent', color: GOLD, border: `1px solid ${GOLD}60` }}>
+                + Add Slot — $49
+              </button>
+            )}
+          </div>
         </div>
 
         {!isAgency && (
@@ -7269,16 +7305,18 @@ const HOURS = Array.from({ length: 24 }, (_, i) => {
   return { value: i, label: `${h}:00 ${ampm}` };
 });
 
-function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
+function AutoPilotPanel({ userId, integrations, subscription, onUpgrade, workspaceId }: {
   userId: string | null;
   integrations: PostizIntegration[];
   subscription: { plan: string; status: string; stripe_customer_id?: string; current_period_end?: string } | null;
   onUpgrade: () => void;
+  workspaceId?: string | null;
 }) {
   const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
   const isTrialing = subscription?.status === 'trialing' && !!(subscription as any)?.current_period_end && new Date((subscription as any).current_period_end) > new Date();
   const isActive = (subscription?.status === 'active' || isPromo || isTrialing) && !!subscription?.plan;
   const plan = isActive ? (subscription?.plan?.toLowerCase() ?? 'free') : 'free';
+  const hasAccess = ['viral', 'agency'].includes(plan);
 
   // Only show integrations for supported platforms
   const SUPPORTED = ['x', 'twitter', 'linkedin', 'threads'];
@@ -7299,6 +7337,9 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
   const [running, setRunning] = useState(false);
   const [saveMsg, setSaveMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [runResult, setRunResult] = useState<{ total: number; byPlatform: Record<string, number>; errors: string[] } | null>(null);
+  const [trendingTopics, setTrendingTopics] = useState<string[]>([]);
+  const [lastRunDate, setLastRunDate] = useState<string | null>(null);
+  const [ranToday, setRanToday] = useState(false);
   const [loaded, setLoaded] = useState(false);
 
   // Default: all supported connected platforms selected
@@ -7313,31 +7354,120 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
   }, [supportedIntegrations, loaded]);
 
   useEffect(() => {
+    // Reset when workspace changes so we show loader and fetch fresh config
+    setLoaded(false);
+    setNiche(''); setProductService(''); setTwitterAccounts(['', '', '']); setTone('');
+    setStartHour(8); setEndHour(20); setPlatforms([]); setIsActiveToggle(true);
+    setSaveMsg(null); setRunResult(null); setTrendingTopics([]); setLastRunDate(null); setRanToday(false);
+  }, [workspaceId]);
+
+  useEffect(() => {
     if (!userId) return;
     (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) return;
+        const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/autopilot-config${wsParam}`, {
+          headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+        });
+        if (res.ok) {
+          const { config } = await res.json();
+          if (config) {
+            setNiche(config.niche ?? '');
+            setProductService(config.product_service ?? '');
+            const accts = config.twitter_accounts ?? [];
+            setTwitterAccounts([accts[0] ?? '', accts[1] ?? '', accts[2] ?? '']);
+            setTone(config.tone ?? '');
+            setStartHour(config.start_hour ?? 8);
+            setEndHour(config.end_hour ?? 20);
+            setPlatforms(config.platforms ?? []);
+            setIsActiveToggle(config.is_active !== false);
+            if (Array.isArray(config.trending_topics) && config.trending_topics.length > 0) {
+              setTrendingTopics(config.trending_topics);
+            }
+            if (config.last_run_at) {
+              // Normalize Postgres timestamptz format before parsing:
+              // Postgres outputs "2026-04-13 12:00:00+00" — space instead of T,
+              // and +00 without colon. Both cause Safari's strict ISO parser to
+              // return Invalid Date, silently falling to the date-only branch.
+              const iso = String(config.last_run_at).replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
+              const d = new Date(iso);
+              if (!isNaN(d.getTime())) {
+                setLastRunDate(d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }));
+              }
+            } else if (config.last_run_date) {
+              // Legacy date-only fallback — use UTC noon to avoid timezone day-shift
+              const d = new Date(config.last_run_date + 'T12:00:00Z');
+              setLastRunDate(d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+            }
+            // Check if already ran today (compare EST date stored in DB against today UTC — close enough for daily cap)
+            const todayUTC = new Date().toISOString().slice(0, 10);
+            if (config.last_run_date && config.last_run_date >= todayUTC) {
+              setRanToday(true);
+            }
+          }
+        }
+      } catch {
+        // Network or parse error — fall through to setLoaded so the panel renders
+      } finally {
+        setLoaded(true);
+      }
+    })();
+  }, [userId, workspaceId]);
+
+  // Re-fetch only the run-status fields (trending topics + last-run timestamp).
+  // Called on a 60-second interval and whenever the browser tab regains focus so
+  // that automatic cron runs are reflected without the user navigating away.
+  const loadRunStatus = useCallback(async () => {
+    if (!userId) return;
+    try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       if (!token) return;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/autopilot-config`, {
+      const wsParam = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : '';
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/autopilot-config${wsParam}`, {
         headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
       });
-      if (res.ok) {
-        const { config } = await res.json();
-        if (config) {
-          setNiche(config.niche ?? '');
-          setProductService(config.product_service ?? '');
-          const accts = config.twitter_accounts ?? [];
-          setTwitterAccounts([accts[0] ?? '', accts[1] ?? '', accts[2] ?? '']);
-          setTone(config.tone ?? '');
-          setStartHour(config.start_hour ?? 8);
-          setEndHour(config.end_hour ?? 20);
-          setPlatforms(config.platforms ?? []);
-          setIsActiveToggle(config.is_active !== false);
-        }
+      if (!res.ok) return;
+      const { config } = await res.json();
+      if (!config) return;
+      if (Array.isArray(config.trending_topics) && config.trending_topics.length > 0) {
+        setTrendingTopics(config.trending_topics);
       }
-      setLoaded(true);
-    })();
-  }, [userId]);
+      if (config.last_run_at) {
+        const iso = String(config.last_run_at).replace(' ', 'T').replace(/([+-]\d{2})$/, '$1:00');
+        const d = new Date(iso);
+        if (!isNaN(d.getTime())) {
+          setLastRunDate(d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }));
+        }
+      } else if (config.last_run_date) {
+        const d = new Date(config.last_run_date + 'T12:00:00Z');
+        setLastRunDate(d.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }));
+      }
+      const todayUTC = new Date().toISOString().slice(0, 10);
+      if (config.last_run_date && config.last_run_date >= todayUTC) {
+        setRanToday(true);
+      }
+    } catch {
+      // ignore polling errors silently
+    }
+  }, [userId, workspaceId]);
+
+  // Poll every 60 s while today's run hasn't happened yet.
+  useEffect(() => {
+    if (ranToday) return;
+    const id = setInterval(loadRunStatus, 60_000);
+    return () => clearInterval(id);
+  }, [ranToday, loadRunStatus]);
+
+  // Also refresh immediately when the user switches back to this browser tab.
+  useEffect(() => {
+    const onVisibility = () => { if (document.visibilityState === 'visible') loadRunStatus(); };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [loadRunStatus]);
 
   function togglePlatform(pid: string) {
     setPlatforms(prev => prev.includes(pid) ? prev.filter(x => x !== pid) : [...prev, pid]);
@@ -7345,7 +7475,7 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
 
   async function handleSave() {
     if (!userId) return;
-    if (!isActive || plan === 'free') { onUpgrade(); return; }
+    if (!hasAccess) { onUpgrade(); return; }
     setSaving(true); setSaveMsg(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -7358,6 +7488,7 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
           twitter_accounts: twitterAccounts.filter(a => a.trim()),
           tone, start_hour: startHour, end_hour: endHour,
           platforms, is_active: isActiveToggle,
+          ...(workspaceId ? { workspace_id: workspaceId } : {}),
         }),
       });
       const json = await res.json();
@@ -7371,18 +7502,25 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
 
   async function handleRunNow() {
     if (!userId) return;
-    if (!isActive || plan === 'free') { onUpgrade(); return; }
+    if (!hasAccess) { onUpgrade(); return; }
     setRunning(true); setRunResult(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/autopilot-run`, {
         method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY },
+        headers: { Authorization: `Bearer ${token}`, apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...(workspaceId ? { workspaceId } : {}) }),
       });
       const json = await res.json();
       if (res.ok && json.results?.[0]) {
         const r = json.results[0];
+        if (Array.isArray(r.trendingTopics) && r.trendingTopics.length > 0) {
+          setTrendingTopics(r.trendingTopics);
+        }
+        const runTime = new Date().toISOString();
+        setLastRunDate(new Date(runTime).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }));
+        setRanToday(true);
         setRunResult({ total: r.scheduled?.total ?? 0, byPlatform: r.scheduled?.byPlatform ?? {}, errors: r.errors ?? [] });
       } else {
         setRunResult({ total: 0, byPlatform: {}, errors: [json.error ?? 'Run failed.'] });
@@ -7413,11 +7551,23 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
   return (
     <div className="mm-scroll flex-1 overflow-y-auto pb-32 md:pb-8">
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '24px 16px' }}>
+        {/* Upgrade banner for non-Viral users */}
+        {!hasAccess && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 16px', borderRadius: 12, marginBottom: 20, background: `${GOLD}12`, border: `1px solid ${GOLD}40` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Zap className="w-4 h-4 shrink-0" style={{ color: GOLD }} />
+              <span style={{ fontSize: 13, color: '#ccc' }}>Auto-Posting requires the <span style={{ color: GOLD, fontWeight: 700 }}>Viral</span> plan to save and run.</span>
+            </div>
+            <button onClick={onUpgrade} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', cursor: 'pointer', background: GOLD, color: '#111', fontWeight: 700, fontSize: 12, whiteSpace: 'nowrap' }}>
+              Upgrade
+            </button>
+          </div>
+        )}
         {/* Header */}
         <div style={{ marginBottom: 28 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <Zap className="w-6 h-6" style={{ color: GOLD }} />
-            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Auto-Pilot</h2>
+            <h2 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Auto-Posting</h2>
             {/* Active toggle */}
             <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
               <span style={{ fontSize: 13, color: isActiveToggle ? GOLD : '#666' }}>{isActiveToggle ? 'Active' : 'Paused'}</span>
@@ -7438,6 +7588,13 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
           <p style={{ fontSize: 14, color: '#777', margin: 0 }}>
             Every day at your start time, AI generates 10 posts per account (9 value + 1 sell) and schedules them automatically throughout your time window.
           </p>
+          {/* Last run log */}
+          {lastRunDate && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 10 }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4ade80', flexShrink: 0 }} />
+              <span style={{ fontSize: 12, color: '#666', fontWeight: 600 }}>Last run: <span style={{ color: '#aaa', fontWeight: 700 }}>{lastRunDate}</span></span>
+            </div>
+          )}
         </div>
 
         {/* Niche */}
@@ -7575,51 +7732,85 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade }: {
           <p style={{ fontSize: 13, color: '#666', marginBottom: 14 }}>
             Generate and schedule today's posts immediately, regardless of time window.
           </p>
-          <button
-            onClick={handleRunNow}
-            disabled={running}
-            style={{
-              display: 'flex', alignItems: 'center', gap: 8,
-              padding: '11px 24px', borderRadius: 10, border: `1px solid ${GOLD}`,
-              background: 'transparent', color: GOLD, fontWeight: 700, fontSize: 14,
-              cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.6 : 1,
-            }}
-          >
-            {running ? <Loader className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-            {running ? 'Generating & Scheduling…' : 'Run Now'}
-          </button>
+          {ranToday ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', borderRadius: 10, border: '1px solid #2a2a2a', background: '#111' }}>
+              <CheckCircle className="w-4 h-4 shrink-0" style={{ color: '#4ade80' }} />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#4ade80' }}>Already posted today</div>
+                <div style={{ fontSize: 12, color: '#555', marginTop: 2 }}>Auto-Posting runs once per day. Resets at midnight EST.</div>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={handleRunNow}
+              disabled={running}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '11px 24px', borderRadius: 10, border: `1px solid ${GOLD}`,
+                background: 'transparent', color: GOLD, fontWeight: 700, fontSize: 14,
+                cursor: running ? 'not-allowed' : 'pointer', opacity: running ? 0.6 : 1,
+              }}
+            >
+              {running ? <Loader className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+              {running ? 'Generating & Scheduling…' : 'Run Now'}
+            </button>
+          )}
 
           {runResult && (
-            <div style={{ marginTop: 16, padding: 16, background: '#111', borderRadius: 10, border: '1px solid #222' }}>
-              {runResult.total > 0 ? (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4ade80', fontWeight: 700, marginBottom: 10 }}>
-                    <CheckCircle className="w-5 h-5" />
-                    {runResult.total} posts scheduled successfully
+            <div style={{ marginTop: 16 }}>
+              <div style={{ padding: 16, background: '#111', borderRadius: 10, border: '1px solid #222' }}>
+                {runResult.total > 0 ? (
+                  <>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#4ade80', fontWeight: 700, marginBottom: 10 }}>
+                      <CheckCircle className="w-5 h-5" />
+                      {runResult.total} posts scheduled successfully
+                    </div>
+                    <div style={{ display: 'flex', gap: 12 }}>
+                      {Object.entries(runResult.byPlatform).map(([p, count]) => (
+                        <div key={p} style={{ fontSize: 13, color: '#aaa' }}>
+                          <span style={{ color: '#fff', fontWeight: 600 }}>{count}</span> {p === 'x' ? 'X' : p[0].toUpperCase() + p.slice(1)}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ color: '#f87171', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <AlertCircle className="w-4 h-4" /> No posts scheduled
                   </div>
-                  <div style={{ display: 'flex', gap: 12 }}>
-                    {Object.entries(runResult.byPlatform).map(([p, count]) => (
-                      <div key={p} style={{ fontSize: 13, color: '#aaa' }}>
-                        <span style={{ color: '#fff', fontWeight: 600 }}>{count}</span> {p === 'x' ? 'X' : p[0].toUpperCase() + p.slice(1)}
-                      </div>
+                )}
+                {runResult.errors.length > 0 && (
+                  <div style={{ marginTop: 10 }}>
+                    {runResult.errors.slice(0, 5).map((e, i) => (
+                      <div key={i} style={{ fontSize: 12, color: '#f87171', marginBottom: 2 }}>{e}</div>
                     ))}
                   </div>
-                </>
-              ) : (
-                <div style={{ color: '#f87171', fontSize: 13, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <AlertCircle className="w-4 h-4" /> No posts scheduled
-                </div>
-              )}
-              {runResult.errors.length > 0 && (
-                <div style={{ marginTop: 10 }}>
-                  {runResult.errors.slice(0, 5).map((e, i) => (
-                    <div key={i} style={{ fontSize: 12, color: '#f87171', marginBottom: 2 }}>{e}</div>
-                  ))}
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
         </div>
+
+        {/* Trending topics — persistent until next run */}
+        {trendingTopics.length > 0 && (
+          <div style={{ marginTop: 24, padding: 20, background: '#0a0a0a', borderRadius: 12, border: `1px solid ${GOLD}40` }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+              <TrendingUp className="w-4 h-4" style={{ color: GOLD }} />
+              <span style={{ fontSize: 14, fontWeight: 700, color: GOLD }}>Trending Stories in Your Niche</span>
+              <span style={{ fontSize: 11, color: '#555', marginLeft: 'auto' }}>Posts are written to reference these</span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {trendingTopics.map((topic, i) => (
+                <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'flex-start', padding: '10px 14px', background: '#111', borderRadius: 8, border: '1px solid #1e1e1e' }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: GOLD, minWidth: 20, marginTop: 1, opacity: 0.8 }}>{i + 1}</span>
+                  <span style={{ fontSize: 13, color: '#ddd', lineHeight: 1.5 }}>{topic}</span>
+                </div>
+              ))}
+            </div>
+            <p style={{ fontSize: 11, color: '#444', marginTop: 12, marginBottom: 0 }}>
+              Updated each time a run completes. Stays visible until the next generation.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -7642,7 +7833,7 @@ function Sidebar({ view, setView, integrations, onOpenConnect, workspaces, activ
     { id: 'video'    as ViewMode, label: 'AI Video',   icon: <Film className="w-5 h-5" /> },
     { id: 'partner'  as ViewMode, label: 'Earn',       icon: <svg viewBox="0 0 24 24" fill="none" className="w-5 h-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> },
     { id: 'workspaces' as ViewMode, label: 'Workspaces', icon: <Users className="w-5 h-5" /> },
-    { id: 'autopilot'  as ViewMode, label: 'Auto-Pilot', icon: <Zap className="w-5 h-5" /> },
+    { id: 'autopilot'  as ViewMode, label: 'Auto-Posting', icon: <Zap className="w-5 h-5" /> },
   ];
 
   const activeWs = workspaces.find(w => w.id === activeWorkspaceId) ?? null;
@@ -8111,7 +8302,7 @@ export function MediaDistributionPage() {
   const [videoHandoff, setVideoHandoff]         = useState<{ url: string; mode: 'media' | 'text' | 'saved' } | null>(null);
   const [oauthLoading, setOauthLoading]         = useState(false);
   const [oauthError, setOauthError]             = useState<string | null>(null);
-  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; cancel_at_period_end?: boolean; stripe_customer_id?: string; } | null>(null);
+  const [subscription, setSubscription]         = useState<{ plan: string; status: string; current_period_end: string; cancel_at_period_end?: boolean; stripe_customer_id?: string; workspace_slots?: number; } | null>(null);
   const [trialLoading, setTrialLoading]         = useState<string | null>(null);
   const [phoneVerifyOpen, setPhoneVerifyOpen]   = useState(false);
   const [phoneVerifyPlan, setPhoneVerifyPlan]   = useState<string | null>(null);
@@ -8179,7 +8370,7 @@ export function MediaDistributionPage() {
     // Load subscription + global usage
     (async () => {
       try {
-        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+        const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id,workspace_slots').eq('supabase_user_id', currentUserId).maybeSingle();
         if (data) setSubscription(data);
       } catch (_) {}
       // Load workspaces
@@ -8232,7 +8423,7 @@ export function MediaDistributionPage() {
     // Handle ?checkout=success or ?addon_success= return — refresh subscription + usage
     const params = new URLSearchParams(window.location.search);
     const refreshAfterPurchase = async () => {
-      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id').eq('supabase_user_id', currentUserId).maybeSingle();
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id,workspace_slots').eq('supabase_user_id', currentUserId).maybeSingle();
       if (data) setSubscription(data);
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -8249,7 +8440,14 @@ export function MediaDistributionPage() {
     }
     if (params.get('addon_success')) {
       window.history.replaceState({}, '', window.location.pathname);
-      setTimeout(refreshAfterPurchase, 3000);
+      setTimeout(async () => {
+        await refreshAfterPurchase();
+        // Re-fetch subscription so workspace_slots (and any other sub-level changes) reflect immediately
+        try {
+          const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id,workspace_slots').eq('supabase_user_id', currentUserId).maybeSingle();
+          if (data) setSubscription(data);
+        } catch (_) {}
+      }, 3000);
     }
     // Handle ?ref= referral code — record it when user is logged in
     const refCode = params.get('ref') || localStorage.getItem('mm_ref_code');
@@ -8451,7 +8649,7 @@ export function MediaDistributionPage() {
         else alert(d.message || 'Could not start trial. Please try again.');
         return;
       }
-      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id').eq('supabase_user_id', currentUser!.id).maybeSingle();
+      const { data } = await supabase.from('subscriptions').select('plan,status,current_period_end,cancel_at_period_end,stripe_customer_id,workspace_slots').eq('supabase_user_id', currentUser!.id).maybeSingle();
       if (data) setSubscription(data);
       try {
         const { data: { session: s2 } } = await supabase.auth.getSession();
@@ -8939,8 +9137,8 @@ export function MediaDistributionPage() {
                 }} />}
                 {view === 'partner'  && <EarnPage userId={currentUser?.id ?? null} />}
                 {/* J — WorkspacesPanel view */}
-                {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} wsChannelCounts={wsChannelCounts} />}
-                {view === 'autopilot' && <AutoPilotPanel userId={currentUser?.id ?? null} integrations={activeIntegrations} subscription={subscription} onUpgrade={() => setPricingOpen(true)} />}
+                {view === 'workspaces' && <WorkspacesPanel userId={currentUser?.id ?? null} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaces={workspaces} onWorkspacesChanged={async () => { const { data: ws } = await supabase.from('workspaces').select('*').eq('owner_user_id', currentUser!.id).order('created_at'); if (ws) setWorkspaces(ws.map((w: any) => ({ id: w.id, name: w.name, color: w.color, assignedChannelIds: Array.isArray(w.assigned_channel_ids) ? w.assigned_channel_ids : [], createdAt: w.created_at }))); }} activeWorkspaceId={activeWorkspaceId} onSetActive={(id) => setActiveWorkspaceId(id)} integrations={integrations} wsChannelCounts={wsChannelCounts} onBuyWorkspaceSlot={() => handleAddonCheckout('workspace_slot')} />}
+                {view === 'autopilot' && <AutoPilotPanel key={activeWorkspaceId ?? 'personal'} userId={currentUser?.id ?? null} integrations={activeIntegrations} subscription={subscription} onUpgrade={() => setPricingOpen(true)} workspaceId={activeWorkspaceId} />}
               </motion.div>
             </AnimatePresence>
           </main>
