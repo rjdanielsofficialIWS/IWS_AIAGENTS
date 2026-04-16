@@ -1384,10 +1384,22 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const { data: rows, error: dbErr } = await query;
       if (dbErr) throw dbErr;
 
-      // Group rows by post_group_id so each unique post appears once with all its platforms merged
+      // Group rows by post_group_id so each unique post appears once with all its platforms merged.
+      // For legacy rows where post_group_id is null, group by scheduled_at + content fingerprint.
       const groupMap = new Map<string, any>();
       for (const p of (rows ?? [])) {
-        const groupKey = p.post_group_id || p.id;
+        let groupKey: string;
+        if (p.post_group_id) {
+          // Modern rows — group by their shared post_group_id, but also factor in content
+          // so that "AI per Platform" posts (same group_id, different captions) each show separately.
+          const contentKey = (p.content || '').slice(0, 80);
+          groupKey = `${p.post_group_id}::${contentKey}`;
+        } else {
+          // Legacy rows — group by content fingerprint + scheduled time
+          const contentKey = (p.content || '').slice(0, 80);
+          const timeKey = p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime';
+          groupKey = `legacy::${timeKey}::${contentKey}`;
+        }
         if (!groupMap.has(groupKey)) {
           groupMap.set(groupKey, {
             id: p.id,
@@ -1397,10 +1409,9 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
             status: (p.status || 'scheduled') as any,
             error: p.error ?? null,
             mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
-            postGroupId: groupKey,
+            postGroupId: p.post_group_id || p.id,
             platformCount: null,
             platformCountLabel: null,
-            _rowCount: 1,
           });
         } else {
           const existing = groupMap.get(groupKey);
@@ -1409,7 +1420,6 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           for (const pl of incoming) {
             if (!existing.platforms.includes(pl)) existing.platforms.push(pl);
           }
-          existing._rowCount += 1;
           // If any row in the group has an error, surface it
           if (p.status === 'error' || p.status === 'failed') {
             existing.status = p.status;
