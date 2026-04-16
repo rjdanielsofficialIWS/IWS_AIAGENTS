@@ -1373,28 +1373,36 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     if (!userId || !open) return;
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const end   = new Date(); end.setMonth(end.getMonth() + 3);
-      const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: { 'Authorization': `Bearer ${session?.access_token || await getToken() || SUPABASE_ANON_KEY}` },
+      // Fetch posts directly from DB — bypasses unreliable edge function auth
+      let query = supabase
+        .from('scheduled_posts')
+        .select('id, content, platforms, scheduled_at, status, error, media_urls, post_group_id')
+        .eq('supabase_user_id', userId)
+        .order('scheduled_at', { ascending: false });
+      if (workspaceId) query = query.eq('workspace_id', workspaceId);
+      else query = (query as any).is('workspace_id', null);
+      const { data: rows, error: dbErr } = await query;
+      if (dbErr) throw dbErr;
+      const list = (rows ?? []).map((p: any) => ({
+        id: p.id,
+        content: p.content || '',
+        platforms: Array.isArray(p.platforms) ? p.platforms : [],
+        scheduledAt: new Date(p.scheduled_at),
+        status: (p.status || 'scheduled') as any,
+        error: p.error ?? null,
+        mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
+        postGroupId: p.post_group_id ?? null,
+        platformCount: null,
+        platformCountLabel: null,
+      }));
+      setPosts(list);
+      // Update counts from the same data
+      setServerCounts({
+        scheduled: list.filter((p: any) => p.status === 'scheduled').length,
+        published: list.filter((p: any) => p.status === 'published').length,
+        failed:    list.filter((p: any) => p.status === 'error' || p.status === 'failed').length,
       });
-      const data = res.ok ? await res.json() : { posts: [] };
-      console.log('[STATS DEBUG] status:', res.status, 'counts:', data.counts, 'posts_len:', data.posts?.length);
-      // Direct DB count fallback — edge function counts are unreliable
-      const { data: countData } = await supabase.from('scheduled_posts').select('status').eq('supabase_user_id', userId);
-      if (countData) {
-        const scheduled = countData.filter((p: any) => p.status === 'scheduled').length;
-        const published = countData.filter((p: any) => p.status === 'published').length;
-        const failed    = countData.filter((p: any) => p.status === 'error' || p.status === 'failed').length;
-        setServerCounts({ scheduled, published, failed });
-      }
-      const list = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => {
-        const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null, platformCount: p.platformCount ?? null, platformCountLabel: p.platformCountLabel ?? null };
-      }).sort((a: ScheduledPost, b: ScheduledPost) => b.scheduledAt.getTime() - a.scheduledAt.getTime()));
-    } catch (e) {}
+    } catch (e) { console.error('[PostLogModal] loadPosts error:', e); }
     finally { setLoading(false); }
   }, [userId, open, workspaceId]);
 
