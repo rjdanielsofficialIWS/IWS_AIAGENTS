@@ -1113,31 +1113,36 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
     setLoading(true); setError(null); setSubmitOk(false); setSubmitError(null);
     const load = async () => {
       const mediaUrlsVal = Array.isArray(post.mediaUrls) ? post.mediaUrls : [];
-      // Build a map of platformId → caption from sibling posts in the same group
+      // Build a map of platformId → caption.
+      // Prefer perPlatformContent already loaded on the card (no extra DB fetch needed).
       const captionsMap: Record<string, string> = {};
 
-      try {
-        // Primary strategy: query scheduled_posts by postGroupId directly — most accurate
-        if (post.postGroupId && userId) {
-          const { data: siblings } = await supabase
-            .from('scheduled_posts')
-            .select('platforms, content')
-            .eq('post_group_id', post.postGroupId)
-            .eq('supabase_user_id', userId);
-          if (siblings && siblings.length > 0) {
-            for (const s of siblings) {
-              for (const plat of (Array.isArray(s.platforms) ? s.platforms : [])) {
-                if (!captionsMap[plat]) captionsMap[plat] = s.content || '';
+      if (post.perPlatformContent && Object.keys(post.perPlatformContent).length > 0) {
+        // Fast path — data is already on the card from loadPosts grouping
+        Object.assign(captionsMap, post.perPlatformContent);
+      } else {
+        try {
+          // Fallback: query siblings from DB (legacy cards or cache miss)
+          if (post.postGroupId && userId) {
+            const { data: siblings } = await supabase
+              .from('scheduled_posts')
+              .select('platforms, content')
+              .eq('post_group_id', post.postGroupId)
+              .eq('supabase_user_id', userId);
+            if (siblings && siblings.length > 0) {
+              for (const s of siblings) {
+                for (const plat of (Array.isArray(s.platforms) ? s.platforms : [])) {
+                  if (!captionsMap[plat]) captionsMap[plat] = s.content || '';
+                }
               }
             }
           }
-        }
-      } catch { /* fall through */ }
-
-      // Fallback: use the single clicked post's own platform + content
-      if (Object.keys(captionsMap).length === 0) {
-        for (const plat of (Array.isArray(post.platforms) ? post.platforms : [])) {
-          captionsMap[plat] = post.content || '';
+        } catch { /* fall through */ }
+        // Last resort: use the card's own platform + content
+        if (Object.keys(captionsMap).length === 0) {
+          for (const plat of (Array.isArray(post.platforms) ? post.platforms : [])) {
+            captionsMap[plat] = post.content || '';
+          }
         }
       }
 
@@ -1384,43 +1389,53 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       const { data: rows, error: dbErr } = await query;
       if (dbErr) throw dbErr;
 
-      // Group rows by post_group_id so each unique post appears once with all its platforms merged.
-      // For legacy rows where post_group_id is null, group by scheduled_at + content fingerprint.
+      // Group rows into one card per post_group_id (or per content+time for legacy null rows).
+      // Each card carries perPlatformContent so the edit modal never needs a separate DB fetch.
       const groupMap = new Map<string, any>();
       for (const p of (rows ?? [])) {
+        // Determine the grouping key
         let groupKey: string;
         if (p.post_group_id) {
-          // Modern rows — group by their shared post_group_id, but also factor in content
-          // so that "AI per Platform" posts (same group_id, different captions) each show separately.
-          const contentKey = (p.content || '').slice(0, 80);
-          groupKey = `${p.post_group_id}::${contentKey}`;
+          groupKey = p.post_group_id;
         } else {
-          // Legacy rows — group by content fingerprint + scheduled time
-          const contentKey = (p.content || '').slice(0, 80);
+          // Legacy rows have no post_group_id — group by scheduled minute + first 80 chars of content
           const timeKey = p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime';
+          const contentKey = (p.content || '').slice(0, 80);
           groupKey = `legacy::${timeKey}::${contentKey}`;
         }
+
+        const platformsForRow: string[] = Array.isArray(p.platforms) ? p.platforms : [];
+
         if (!groupMap.has(groupKey)) {
+          // First row for this group — seed the card
+          const perPlatformContent: Record<string, string> = {};
+          for (const pl of platformsForRow) {
+            perPlatformContent[pl] = p.content || '';
+          }
           groupMap.set(groupKey, {
             id: p.id,
-            content: p.content || '',
-            platforms: Array.isArray(p.platforms) ? [...p.platforms] : [],
+            content: p.content || '',          // preview caption (first row wins)
+            platforms: [...platformsForRow],
             scheduledAt: new Date(p.scheduled_at),
             status: (p.status || 'scheduled') as any,
             error: p.error ?? null,
             mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
-            postGroupId: p.post_group_id || p.id,
+            postGroupId: p.post_group_id || groupKey,
+            perPlatformContent,
             platformCount: null,
             platformCountLabel: null,
           });
         } else {
           const existing = groupMap.get(groupKey);
-          // Merge platforms
-          const incoming = Array.isArray(p.platforms) ? p.platforms : [];
-          for (const pl of incoming) {
+          // Merge each platform and store its specific caption
+          for (const pl of platformsForRow) {
             if (!existing.platforms.includes(pl)) existing.platforms.push(pl);
+            // Only set if not already present — preserves first caption for duplicate platform rows
+            if (!existing.perPlatformContent[pl]) {
+              existing.perPlatformContent[pl] = p.content || '';
+            }
           }
-          // If any row in the group has an error, surface it
+          // Bubble up error status if any sibling failed
           if (p.status === 'error' || p.status === 'failed') {
             existing.status = p.status;
             existing.error = p.error ?? existing.error;
