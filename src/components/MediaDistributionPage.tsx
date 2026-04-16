@@ -1418,6 +1418,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           for (const pl of platformsForRow) {
             perPlatformContent[pl] = p.content || '';
           }
+          const initCount = platformsForRow.length;
           groupMap.set(groupKey, {
             id: p.id,
             content: p.content || '',          // preview caption (first row wins)
@@ -1428,8 +1429,8 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
             mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
             postGroupId: p.post_group_id || groupKey,
             perPlatformContent,
-            platformCount: null,
-            platformCountLabel: null,
+            platformCount: initCount,
+            platformCountLabel: `${initCount} platform${initCount === 1 ? '' : 's'}`,
           });
         } else {
           const existing = groupMap.get(groupKey);
@@ -1446,6 +1447,10 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
             existing.status = p.status;
             existing.error = p.error ?? existing.error;
           }
+          // Keep platformCountLabel in sync as platforms are merged
+          const n = existing.platforms.length;
+          existing.platformCount = n;
+          existing.platformCountLabel = `${n} platform${n === 1 ? '' : 's'}`;
         }
       }
       const list = Array.from(groupMap.values());
