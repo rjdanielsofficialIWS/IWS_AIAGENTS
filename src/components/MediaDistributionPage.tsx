@@ -1192,10 +1192,11 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
         body: JSON.stringify(deletePayload),
       });
       if (!delRes.ok) { const d = await delRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
-      // Re-schedule each platform with its individual caption
+      // Re-schedule each platform with its individual caption, preserving the group ID
       const scheduleISO = new Date(scheduleDateStr).toISOString();
+      const groupId = post.postGroupId || undefined;
       await Promise.all(filledRows.map(row =>
-        ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null })
+        ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null, postGroupId: groupId })
       ));
       setSubmitOk(true);
       setTimeout(onSaved, 800);
