@@ -1378,6 +1378,11 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     if (!userId || !open) return;
     setLoading(true);
     try {
+      // Ensure the supabase client has a valid session before querying (RLS requires auth.uid())
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        await supabase.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token ?? '' });
+      }
       // Fetch posts directly from DB — bypasses unreliable edge function auth
       let query = supabase
         .from('scheduled_posts')
