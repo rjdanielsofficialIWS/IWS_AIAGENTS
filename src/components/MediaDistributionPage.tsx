@@ -1123,7 +1123,8 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
       } else {
         try {
           // Fallback: query siblings from DB (legacy cards or cache miss)
-          if (post.postGroupId && userId) {
+          // Skip the DB query for legacy:: keys — those are frontend-only fingerprints, not real UUIDs.
+          if (post.postGroupId && !post.postGroupId.startsWith('legacy::') && userId) {
             const { data: siblings } = await supabase
               .from('scheduled_posts')
               .select('platforms, content')
@@ -1485,19 +1486,37 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     setDeleting(d => ({ ...d, [post.id]: true }));
     try {
       if (!userId) throw new Error('Not signed in.');
-      // Delete no longer requires a valid JWT — server uses body.userId + DB ownership check.
-      // Still send the token as best-effort; server ignores it for deletes.
       const token = await getToken().catch(() => '');
-      const payload: Record<string, unknown> = { action: 'delete_post', userId };
-      if (post.postGroupId) payload.postGroupId = post.postGroupId;
-      else payload.postId = post.id;
-      if (workspaceId) payload.workspaceId = workspaceId;
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
+      const isLegacyGroup = post.postGroupId?.startsWith('legacy::');
+      const hasRealGroupId = post.postGroupId && !isLegacyGroup;
+
+      if (hasRealGroupId) {
+        // Real UUID group — single API call deletes all siblings at once
+        const payload: Record<string, unknown> = { action: 'delete_post', userId, postGroupId: post.postGroupId };
+        if (workspaceId) payload.workspaceId = workspaceId;
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
+      } else {
+        // Single post or legacy:: group — legacy keys are frontend-only fingerprints and
+        // are not stored in the DB, so we must delete each post by its real DB id.
+        const toDelete = isLegacyGroup
+          ? posts.filter(p => p.postGroupId === post.postGroupId)
+          : [post];
+        await Promise.all(toDelete.map(async (p) => {
+          const payload: Record<string, unknown> = { action: 'delete_post', userId, postId: p.id };
+          if (workspaceId) payload.workspaceId = workspaceId;
+          const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify(payload),
+          });
+          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
+        }));
+      }
       setPosts(ps => ps.filter(p => post.postGroupId ? p.postGroupId !== post.postGroupId : p.id !== post.id));
     } catch (e: any) { alert(e.message || 'Failed to delete post'); }
     finally { setDeleting(d => ({ ...d, [post.id]: false })); }
