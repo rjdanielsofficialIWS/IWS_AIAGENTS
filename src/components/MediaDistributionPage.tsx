@@ -1383,24 +1383,48 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       else query = (query as any).is('workspace_id', null);
       const { data: rows, error: dbErr } = await query;
       if (dbErr) throw dbErr;
-      const list = (rows ?? []).map((p: any) => ({
-        id: p.id,
-        content: p.content || '',
-        platforms: Array.isArray(p.platforms) ? p.platforms : [],
-        scheduledAt: new Date(p.scheduled_at),
-        status: (p.status || 'scheduled') as any,
-        error: p.error ?? null,
-        mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
-        postGroupId: p.post_group_id ?? null,
-        platformCount: null,
-        platformCountLabel: null,
-      }));
+
+      // Group rows by post_group_id so each unique post appears once with all its platforms merged
+      const groupMap = new Map<string, any>();
+      for (const p of (rows ?? [])) {
+        const groupKey = p.post_group_id || p.id;
+        if (!groupMap.has(groupKey)) {
+          groupMap.set(groupKey, {
+            id: p.id,
+            content: p.content || '',
+            platforms: Array.isArray(p.platforms) ? [...p.platforms] : [],
+            scheduledAt: new Date(p.scheduled_at),
+            status: (p.status || 'scheduled') as any,
+            error: p.error ?? null,
+            mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
+            postGroupId: groupKey,
+            platformCount: null,
+            platformCountLabel: null,
+            _rowCount: 1,
+          });
+        } else {
+          const existing = groupMap.get(groupKey);
+          // Merge platforms
+          const incoming = Array.isArray(p.platforms) ? p.platforms : [];
+          for (const pl of incoming) {
+            if (!existing.platforms.includes(pl)) existing.platforms.push(pl);
+          }
+          existing._rowCount += 1;
+          // If any row in the group has an error, surface it
+          if (p.status === 'error' || p.status === 'failed') {
+            existing.status = p.status;
+            existing.error = p.error ?? existing.error;
+          }
+        }
+      }
+      const list = Array.from(groupMap.values());
       setPosts(list);
-      // Update counts from the same data
+      // Counts reflect individual platform rows (not grouped), so count raw rows
+      const rawRows = rows ?? [];
       setServerCounts({
-        scheduled: list.filter((p: any) => p.status === 'scheduled').length,
-        published: list.filter((p: any) => p.status === 'published').length,
-        failed:    list.filter((p: any) => p.status === 'error' || p.status === 'failed').length,
+        scheduled: rawRows.filter((p: any) => p.status === 'scheduled').length,
+        published: rawRows.filter((p: any) => p.status === 'published').length,
+        failed:    rawRows.filter((p: any) => p.status === 'error' || p.status === 'failed').length,
       });
     } catch (e) { console.error('[PostLogModal] loadPosts error:', e); }
     finally { setLoading(false); }
