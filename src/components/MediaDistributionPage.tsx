@@ -1183,9 +1183,13 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
     try {
       const token = await getToken().catch(() => '');
       if (!userId) throw new Error('Not signed in.');
-      // Cancel old post(s) in this group
+      // Cancel old post(s) in this group.
+      // legacy:: keys are frontend-only fingerprints — never stored as UUIDs in the DB.
+      // For those, delete by the specific post's id rather than by group.
+      const isLegacyGroup = post.postGroupId?.startsWith('legacy::');
+      const hasRealGroupId = post.postGroupId && !isLegacyGroup;
       const deletePayload: Record<string, unknown> = { action: 'delete_post', userId };
-      if (post.postGroupId) deletePayload.postGroupId = post.postGroupId;
+      if (hasRealGroupId) deletePayload.postGroupId = post.postGroupId;
       else deletePayload.postId = post.id;
       const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
         method: 'POST',
@@ -1193,9 +1197,11 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
         body: JSON.stringify(deletePayload),
       });
       if (!delRes.ok) { const d = await delRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
-      // Re-schedule each platform with its individual caption, preserving the group ID
+      // Re-schedule each platform with its individual caption.
+      // Preserve a real UUID group ID so siblings stay linked; for legacy posts
+      // don't pass the synthetic key — the new posts get a fresh group ID from the caller.
       const scheduleISO = new Date(scheduleDateStr).toISOString();
-      const groupId = post.postGroupId || undefined;
+      const groupId = hasRealGroupId ? post.postGroupId : undefined;
       await Promise.all(filledRows.map(row =>
         ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null, postGroupId: groupId })
       ));
