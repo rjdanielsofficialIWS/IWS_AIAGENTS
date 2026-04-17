@@ -64,6 +64,22 @@ function scheduleTimes(startHour: number, endHour: number, startFromNow = false)
 
 // ── Topic fetching via Tavily (primary) + scrapers (fallback) ────────────────
 
+const SOURCE_NAMES = new Set([
+  'reuters','bloomberg','forbes','cnbc','cnn','bbc','fox news','the guardian',
+  'new york times','nyt','washington post','wsj','wall street journal',
+  'associated press','ap news','marketwatch','business insider','techcrunch',
+  'the verge','wired','fortune','time','newsweek','axios','politico',
+  'financial times','ft','yahoo finance','yahoo news','google news','msn',
+]);
+
+function isSourceOnlyTitle(title: string): boolean {
+  const lower = title.toLowerCase().trim();
+  if (title.length < 25 && SOURCE_NAMES.has(lower)) return true;
+  // "Source - Section" pattern with no real story content
+  if (/^[a-z\s]+\s[-|]\s[a-z\s]+$/i.test(title) && title.length < 40) return true;
+  return false;
+}
+
 async function tavilySearch(query: string, maxResults = 5): Promise<string[]> {
   if (!TAVILY_KEY) throw new Error('No Tavily key');
   const r = await fetch('https://api.tavily.com/search', {
@@ -73,15 +89,22 @@ async function tavilySearch(query: string, maxResults = 5): Promise<string[]> {
       api_key: TAVILY_KEY,
       query,
       search_depth: 'basic',
-      max_results: maxResults,
+      max_results: maxResults + 3,
       include_answer: false,
     }),
   });
   if (!r.ok) throw new Error('Tavily error: ' + r.status);
   const d = await r.json();
   return (d.results ?? [])
-    .map((item: any) => (item.title ?? '').trim())
-    .filter((t: string) => t.length > 10)
+    .map((item: any) => {
+      const title = (item.title ?? '').trim();
+      if (isSourceOnlyTitle(title) && item.content) {
+        const snippet = (item.content as string).split(/[.!?]/)[0]?.trim() ?? '';
+        return snippet.length > 20 ? snippet.slice(0, 120) : '';
+      }
+      return title;
+    })
+    .filter((t: string) => t.length > 20)
     .slice(0, maxResults) as string[];
 }
 
@@ -313,6 +336,7 @@ Non-negotiable bans:
 - No emojis
 - No markdown fences
 - No generic marketing filler
+- Never reference, name, cite, or allude to any publication, news source, website, or media outlet — not even vaguely ("according to reports", "a recent study", "experts say", "sources say"). Write from a pure personal perspective, as if this is your own insight or observation.
 - Never use: game-changer, leverage, synergy, unlock, empower, transformative, elevate, cutting-edge, dive deep, journey, landscape, streamline
 
 Output rules:
@@ -406,7 +430,7 @@ ${postAssignments}
 Post 10: sell post — tie any one research story to why the product/service matters right now.
 
 REQUIREMENTS:
-- Each value post (1-9) MUST be rooted exclusively in its assigned story above. Extract a specific insight, hard truth, angle, or lesson directly from that story — translate it into original copy that stands on its own. Do not quote headlines. Do not name any news source. Do not mention the product/service. Use a different angle, hook type, and sentence structure on every post.
+- Each value post (1-9) MUST be rooted exclusively in its assigned story above. Extract a specific insight, hard truth, angle, or lesson from that story and express it as YOUR OWN perspective and voice — never quote headlines, never name any source or publication, never allude to where you learned it. Write as if this is something you believe and observed, not something you read. Do not mention the product/service. Use a different angle, hook type, and sentence structure on every post.
 - Post 10: sell post for the product/service. Makes the pitch feel timely and earned, not like an ad. Must end with a CTA. Rotate CTA style: "Link in bio", a reply-driving question, "DM me [word]", scarcity nudge, soft qualifier, curiosity tease, or benefit-forward command. Never name a source or platform in the post copy.
 - All posts must feel handwritten, platform-native, and sharp.
 
