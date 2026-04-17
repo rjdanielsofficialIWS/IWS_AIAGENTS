@@ -3860,13 +3860,6 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     } catch {}
   }, [trendsResults]);
 
-  React.useEffect(() => {
-    try {
-      if (videoIdeas) localStorage.setItem('mm_repurpose_results', JSON.stringify(videoIdeas));
-      else localStorage.removeItem('mm_repurpose_results');
-    } catch {}
-  }, [videoIdeas]);
-
   // Video repurpose state
   const [videoFile, setVideoFile]       = useState<File | null>(null);
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
@@ -3875,6 +3868,13 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
   const [videoIdeas, setVideoIdeas]     = useState<any | null>(() => {
     try { return JSON.parse(localStorage.getItem('mm_repurpose_results') || 'null'); } catch { return null; }
   });
+
+  React.useEffect(() => {
+    try {
+      if (videoIdeas) localStorage.setItem('mm_repurpose_results', JSON.stringify(videoIdeas));
+      else localStorage.removeItem('mm_repurpose_results');
+    } catch {}
+  }, [videoIdeas]);
   const [videoTone, setVideoTone]       = useState('');
   const [repurposeInputMode, setRepurposeInputMode] = useState<'video' | 'description'>('video');
   const [repurposeDescription, setRepurposeDescription] = useState('');
