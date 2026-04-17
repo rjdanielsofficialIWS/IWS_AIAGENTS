@@ -6823,7 +6823,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                 </label>
                 <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={5}
                   placeholder={style === 'speaking'
-                    ? 'Enter your talking points or key ideas. E.g.:\n- Consistency beats motivation every time\n- Small daily actions compound into massive results\n- Discipline is the real secret to building wealth\n\nClaude will shape these into smooth, natural dialogue.'
+                    ? 'Enter your talking points or key ideas. E.g.:\n- Consistency beats motivation every time\n- Small daily actions compound into massive results\n- Discipline is the real secret to building wealth'
                     : style === 'anime'
                       ? 'Describe your anime scene. E.g. \'A young warrior stands at the edge of a cliff overlooking a glowing city at dusk…\''
                       : style === 'commercial'
@@ -6836,8 +6836,8 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                 {style === 'speaking' && (
                   <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
                     {frameMode === 'manual' && startFrameUrl
-                      ? 'Character appearance is defined by your start frame image. Claude will focus on turning your talking points into smooth, flowing dialogue.'
-                      : 'Upload a start frame image below to define your character\'s appearance. Claude will turn your talking points into smooth, natural dialogue delivery.'}
+                      ? 'Character appearance is defined by your start frame image.'
+                      : 'Upload a start frame image below to define your character\'s appearance.'}
                   </p>
                 )}
               </div>
@@ -6886,7 +6886,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                     style={{ borderColor: BORDER }} />
                 )}
                 {transcriptMode === 'ai' && (
-                  <p className="text-[10px] text-white/30 px-1">Claude will write a video script from your brief. You can edit it before processing.</p>
+                  <p className="text-[10px] text-white/30 px-1">A video script will be generated from your brief. You can edit it before processing.</p>
                 )}
               </div>
 
