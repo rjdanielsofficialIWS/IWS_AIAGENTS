@@ -21,6 +21,7 @@ const corsFor = (req: Request) => {
 };
 
 const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const TAVILY_KEY = Deno.env.get("TAVILY_API_KEY");
 const CURRENT_DATE = new Date().toISOString().slice(0, 10);
 
 function buildToneDirective(tone: string): string {
@@ -67,6 +68,43 @@ Role guardrails:
 Output rules:
 - Return ONLY valid JSON
 - Never include commentary outside the JSON`;
+}
+
+async function tavilySearch(query: string, maxResults = 5): Promise<string> {
+  if (!TAVILY_KEY) throw new Error("TAVILY_API_KEY not configured");
+  const r = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: TAVILY_KEY,
+      query,
+      search_depth: "advanced",
+      max_results: maxResults,
+      include_answer: true,
+    }),
+  });
+  if (!r.ok) throw new Error("Tavily error: " + await r.text());
+  const d = await r.json();
+  const answer = d.answer ? `Summary: ${d.answer}\n\n` : "";
+  const results = (d.results ?? []).map((item: any, i: number) =>
+    `[${i + 1}] ${item.title}\n${item.content?.slice(0, 400) ?? ""}`
+  ).join("\n\n");
+  return (answer + results).trim();
+}
+
+async function fetchTrendIntel(niche: string, platformList: string): Promise<string> {
+  const month = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+  const [topicsRes, formatsRes, platformRes] = await Promise.allSettled([
+    tavilySearch(`trending ${niche} content social media ${month}`, 5),
+    tavilySearch(`${niche} viral content formats creators ${month}`, 4),
+    tavilySearch(`${niche} ${platformList} algorithm trends audience ${new Date().getFullYear()}`, 4),
+  ]);
+  const sections: string[] = [];
+  if (topicsRes.status === "fulfilled" && topicsRes.value) sections.push(`TRENDING TOPICS RESEARCH:\n${topicsRes.value}`);
+  if (formatsRes.status === "fulfilled" && formatsRes.value) sections.push(`VIRAL FORMATS RESEARCH:\n${formatsRes.value}`);
+  if (platformRes.status === "fulfilled" && platformRes.value) sections.push(`PLATFORM & ALGORITHM RESEARCH:\n${platformRes.value}`);
+  if (sections.length === 0) throw new Error("All Tavily searches failed");
+  return sections.join("\n\n---\n\n");
 }
 
 async function callClaude(system: string, user: string, maxTokens = 4000): Promise<string> {
@@ -363,94 +401,74 @@ REQUIREMENTS:
       const platformList = (platforms as string[]).join(", ") || "Instagram, TikTok, LinkedIn";
       const goalList = (goals as string[]).join(", ") || "grow audience, generate leads";
 
-      // Use Claude with web search to research real-time trends
-      const webSearchBody = {
-        model: "claude-sonnet-4-6",
-        max_tokens: 8192,
-        tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 3 }],
-        system: strategistSystem("trend researcher and content strategist") + `\nYou use web search to find real, current signals and convert them into strategic intelligence.`,
-        messages: [
-          {
-            role: "user",
-            content: `Research the current trends for this niche and return structured intelligence:
+      // Step 1: fetch live search intel via Tavily (3 parallel searches)
+      let searchIntel = "";
+      try {
+        searchIntel = await fetchTrendIntel(niche.trim(), platformList);
+      } catch (tavilyErr) {
+        console.warn("Tavily unavailable, proceeding with Claude knowledge only:", tavilyErr);
+      }
+
+      const jsonSchema = `{
+  "niche_overview": "2 sentence synthesis of the current landscape and opportunity in this niche",
+  "trending_topics": [{"topic":"str","why":"str","content_angle":"str"}],
+  "viral_formats": [{"format":"str","description":"str","example":"str"}],
+  "rising_keywords": ["keyword1","keyword2","keyword3"],
+  "platform_trends": [{"platform":"str","trend":"str","tip":"str"}],
+  "competitor_gaps": ["gap1","gap2","gap3"],
+  "researched_at": "${new Date().toISOString()}"
+}`;
+
+      const requirements = `REQUIREMENTS:
+- trending_topics: exactly 4 entries
+- viral_formats: exactly 3 entries specific to this niche and these platforms
+- rising_keywords: exactly 8 keywords or phrases (each under 5 words)
+- platform_trends: one entry per platform in [${platformList}]
+- competitor_gaps: exactly 3 specific gaps (each under 20 words)
+- niche_overview: 2 sentences max
+- ALL string values under 25 words - sharp and specific, not generic
+- Every insight specific to "${niche.trim()}" - zero generic advice
+- Output MUST start with { and end with } - nothing outside the JSON`;
+
+      const trendPrompt = searchIntel
+        ? `You are synthesizing LIVE web research data into structured trend intelligence. Your job is to extract the sharpest signals from the real-world data below.
 
 NICHE: ${niche.trim()}
 TARGET AUDIENCE: ${audience || "general audience interested in this niche"}
 ACTIVE PLATFORMS: ${platformList}
 GOALS: ${goalList}
 ${offer ? `OFFER: ${offer}` : ""}
+TODAY: ${CURRENT_DATE}
 
-Search for:
-1. What topics are trending right now in "${niche}" on social media
-2. What content formats are going viral in this space
-3. Rising keywords, hashtags, and search terms
-4. Platform-specific algorithm trends and what's getting pushed
-5. Content gaps — what competitors are NOT covering that the audience wants
+LIVE RESEARCH (gathered from the web right now):
+${searchIntel}
 
-After your research, return ONLY this JSON structure:
+Synthesize the above into ONLY this JSON - no preamble, no explanation:
+${jsonSchema}
 
-{
-  "niche_overview": "2-3 sentence synthesis of the current landscape and opportunity in this niche",
-  "trending_topics": [
-    {
-      "topic": "Specific trending topic title",
-      "why": "Why this is trending right now and why the audience cares",
-      "content_angle": "The exact angle to take to own this topic"
-    }
-  ],
-  "viral_formats": [
-    {
-      "format": "Format name (e.g. 'POV story', 'Hot take thread', 'Before/After')",
-      "description": "Why this format is working in this niche right now",
-      "example": "Specific example title/concept to use"
-    }
-  ],
-  "rising_keywords": ["keyword1", "keyword2", "keyword3"],
-  "platform_trends": [
-    {
-      "platform": "instagram",
-      "trend": "What the algorithm is rewarding / what's working",
-      "tip": "Specific tactical tip to capitalize on this"
-    }
-  ],
-  "competitor_gaps": [
-    "Specific underserved topic or angle that this audience wants but nobody is delivering well"
-  ],
-  "researched_at": "${new Date().toISOString()}"
-}
+${requirements}`
+        : `You are a senior trend researcher. Use your knowledge of social media, content marketing, and audience behavior to generate strategic intelligence for this niche.
 
-REQUIREMENTS:
-- trending_topics: exactly 4 entries, all based on real current trends you found
-- viral_formats: exactly 3 entries specific to this niche
-- rising_keywords: exactly 8 keywords/phrases (keep each under 5 words)
-- platform_trends: one entry per platform in [${platformList}] (tip under 20 words each)
-- competitor_gaps: exactly 3 specific gaps (each under 20 words)
-- niche_overview: 2 sentences max
-- All content must be specific to "${niche}" — no generic advice
-- Keep ALL string values concise — under 25 words each
-- Return ONLY the JSON object, nothing else`,
-          },
-        ],
-      };
+NICHE: ${niche.trim()}
+TARGET AUDIENCE: ${audience || "general audience interested in this niche"}
+ACTIVE PLATFORMS: ${platformList}
+GOALS: ${goalList}
+${offer ? `OFFER: ${offer}` : ""}
+TODAY: ${CURRENT_DATE}
 
-      const r = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_KEY!,
-          "anthropic-version": "2023-06-01",
-          "anthropic-beta": "web-search-2025-03-05",
-        },
-        body: JSON.stringify(webSearchBody),
-      });
-      if (!r.ok) throw new Error("Claude web search error: " + await r.text());
-      const d = await r.json();
+Return ONLY this JSON - no preamble, no explanation:
+${jsonSchema}
 
-      // Extract the final text block (last text content block after tool use)
-      const textBlock = (d.content as any[])?.filter((b: any) => b.type === "text").pop();
-      if (!textBlock?.text) throw new Error("No text response from Claude");
+${requirements}`;
 
-      const result = stripDashes(stripCites(safeParse(textBlock.text)));
+      // Step 2: Claude synthesizes search intel into clean JSON
+      const raw = await callClaude(
+        strategistSystem("trend researcher and content strategist"),
+        trendPrompt,
+        4000,
+      );
+
+      const result = stripDashes(stripCites(safeParse(raw)));
       if (!result.researched_at) result.researched_at = new Date().toISOString();
       return json(result);
 

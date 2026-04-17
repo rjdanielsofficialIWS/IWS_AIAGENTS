@@ -3860,12 +3860,21 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     } catch {}
   }, [trendsResults]);
 
+  React.useEffect(() => {
+    try {
+      if (videoIdeas) localStorage.setItem('mm_repurpose_results', JSON.stringify(videoIdeas));
+      else localStorage.removeItem('mm_repurpose_results');
+    } catch {}
+  }, [videoIdeas]);
+
   // Video repurpose state
   const [videoFile, setVideoFile]       = useState<File | null>(null);
   const [videoObjectUrl, setVideoObjectUrl] = useState<string | null>(null);
   const [videoLoading, setVideoLoading] = useState(false);
   const [videoError, setVideoError]     = useState<string | null>(null);
-  const [videoIdeas, setVideoIdeas]     = useState<any | null>(null);
+  const [videoIdeas, setVideoIdeas]     = useState<any | null>(() => {
+    try { return JSON.parse(localStorage.getItem('mm_repurpose_results') || 'null'); } catch { return null; }
+  });
   const [videoTone, setVideoTone]       = useState('');
   const [repurposeInputMode, setRepurposeInputMode] = useState<'video' | 'description'>('video');
   const [repurposeDescription, setRepurposeDescription] = useState('');
@@ -6329,9 +6338,21 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     try {
       const headers = await getAuthHeaders();
 
+      const hasStart = frameMode === 'manual' && !!startFrameUrl;
+      const hasEnd   = frameMode === 'manual' && !!endFrameUrl;
+      const extractImage = (dataUrl: string) => ({
+        base64: dataUrl.split(',')[1],
+        mediaType: dataUrl.split(';')[0].split(':')[1] as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+      });
       const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ brief, style, aspectRatio, duration, hasStartFrame: frameMode === 'manual' && !!startFrameUrl, hasEndFrame: frameMode === 'manual' && !!endFrameUrl, textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined }),
+        body: JSON.stringify({
+          brief, style, aspectRatio, duration,
+          hasStartFrame: hasStart, hasEndFrame: hasEnd,
+          ...(hasStart && startFrameUrl ? { startFrameBase64: extractImage(startFrameUrl).base64, startFrameMediaType: extractImage(startFrameUrl).mediaType } : {}),
+          ...(hasEnd && endFrameUrl   ? { endFrameBase64:   extractImage(endFrameUrl).base64,   endFrameMediaType:   extractImage(endFrameUrl).mediaType   } : {}),
+          textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined,
+        }),
       });
       const promptData = await promptRes.json();
       if (!promptRes.ok) throw new Error(promptData.error || 'Failed to enhance brief');
@@ -6579,14 +6600,24 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     pollTimers.current[vidId] = interval;
   };
 
-    const handleFrameUpload = (type: 'start' | 'end', file: File) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const dataUrl = e.target?.result as string;
+  const handleFrameUpload = (type: 'start' | 'end', file: File) => {
+    const img = new window.Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const MAX = 512;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+      const mediaType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+      const dataUrl = canvas.toDataURL(mediaType, 0.85);
       if (type === 'start') setStartFrameUrl(dataUrl);
-      else if (type === 'end') setEndFrameUrl(dataUrl);
+      else setEndFrameUrl(dataUrl);
     };
-    reader.readAsDataURL(file);
+    img.src = objectUrl;
   };
 
   const resetStudio = () => {
@@ -6920,7 +6951,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                   <div key={vid.id} className="rounded-xl border overflow-hidden" style={{ borderColor: BORDER }}>
                     <div className="relative bg-black" style={{ aspectRatio: '16/9' }}>
                       {vid.status === 'done' && vid.videoUrl
-                        ? <video key={vid.videoUrl} src={vid.videoUrl} autoPlay muted loop playsInline controls poster={vid.frameUrl} className="w-full h-full object-contain" />
+                        ? <video key={vid.videoUrl} src={vid.videoUrl} loop playsInline controls poster={vid.frameUrl} className="w-full h-full object-contain" />
                         : vid.status === 'error'
                         ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"><AlertCircle className="w-5 h-5 text-red-400" /><span className="text-xs text-red-300">{vid.error}</span></div>
                         : <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4">

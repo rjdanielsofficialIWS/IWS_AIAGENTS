@@ -3,6 +3,7 @@ import { publishSocialPost } from '../_shared/publish-social.ts';
 
 const CORS = ['https://infinitewealthsolutionsai.com', 'https://www.infinitewealthsolutionsai.com'];
 const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
+const TAVILY_KEY = Deno.env.get('TAVILY_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
@@ -61,8 +62,30 @@ function scheduleTimes(startHour: number, endHour: number, startFromNow = false)
   return times;
 }
 
-// ── Multi-source trending topics ─────────────────────────────────────────────
+// ── Topic fetching via Tavily (primary) + scrapers (fallback) ────────────────
 
+async function tavilySearch(query: string, maxResults = 5): Promise<string[]> {
+  if (!TAVILY_KEY) throw new Error('No Tavily key');
+  const r = await fetch('https://api.tavily.com/search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: TAVILY_KEY,
+      query,
+      search_depth: 'basic',
+      max_results: maxResults,
+      include_answer: false,
+    }),
+  });
+  if (!r.ok) throw new Error('Tavily error: ' + r.status);
+  const d = await r.json();
+  return (d.results ?? [])
+    .map((item: any) => (item.title ?? '').trim())
+    .filter((t: string) => t.length > 10)
+    .slice(0, maxResults) as string[];
+}
+
+// Fallback scrapers used when Tavily is unavailable
 async function fetchGoogleNews(niche: string): Promise<string[]> {
   try {
     const query = encodeURIComponent(niche.trim());
@@ -76,7 +99,7 @@ async function fetchGoogleNews(niche: string): Promise<string[]> {
     const topics: string[] = [];
     const itemMatches = xml.matchAll(/<item>[\s\S]*?<\/item>/gi);
     for (const itemMatch of itemMatches) {
-      if (topics.length >= 5) break;
+      if (topics.length >= 6) break;
       const itemXml = itemMatch[0];
       const cdataMatch = itemXml.match(/<title><!\[CDATA\[([\s\S]*?)\]\]><\/title>/i);
       const plainMatch = itemXml.match(/<title>([\s\S]*?)<\/title>/i);
@@ -85,86 +108,75 @@ async function fetchGoogleNews(niche: string): Promise<string[]> {
       if (clean && clean.length > 10) topics.push(clean);
     }
     return topics;
-  } catch {
-    return [];
-  }
+  } catch { return []; }
 }
 
 async function fetchHackerNews(niche: string): Promise<string[]> {
   try {
     const query = encodeURIComponent(niche.trim());
-    const url = `https://hn.algolia.com/api/v1/search?query=${query}&tags=story&hitsPerPage=5`;
+    const url = `https://hn.algolia.com/api/v1/search?query=${query}&tags=story&hitsPerPage=10`;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 6_000);
     const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'Mozilla/5.0' } });
     clearTimeout(timeout);
     if (!res.ok) return [];
     const data = await res.json();
-    const titles: string[] = [];
-    for (const hit of (data.hits ?? [])) {
-      const title = (hit.title ?? '').trim();
-      if (title && title.length > 10 && titles.length < 3) titles.push(title);
-    }
-    return titles;
-  } catch {
-    return [];
-  }
+    return (data.hits ?? []).map((h: any) => (h.title ?? '').trim()).filter((t: string) => t.length > 10).slice(0, 8);
+  } catch { return []; }
 }
 
-async function fetchRedditTrending(niche: string): Promise<string[]> {
-  try {
-    const query = encodeURIComponent(niche.trim());
-    const url = `https://www.reddit.com/search.json?q=${query}&sort=hot&t=week&limit=5`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 6_000);
-    const res = await fetch(url, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'trending-bot/1.0', 'Accept': 'application/json' },
-    });
-    clearTimeout(timeout);
-    if (!res.ok) return [];
-    const data = await res.json();
-    const posts: string[] = [];
-    for (const child of (data?.data?.children ?? [])) {
-      const title = (child?.data?.title ?? '').trim();
-      const score = child?.data?.score ?? 0;
-      if (title && title.length > 10 && score > 10 && posts.length < 3) posts.push(title);
-    }
-    return posts;
-  } catch {
-    return [];
-  }
+interface TopicSets {
+  trending: string[];
+  recent: string[];
 }
 
-async function fetchTrendingTopics(niche: string): Promise<string[]> {
-  // Run all sources in parallel, take best results
-  const [googleResults, hnResults, redditResults] = await Promise.allSettled([
-    fetchGoogleNews(niche),
-    fetchHackerNews(niche),
-    fetchRedditTrending(niche),
+async function fetchTopicsViaTavily(niche: string): Promise<TopicSets> {
+  const month = new Date().toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const [trendingRes, recentRes] = await Promise.allSettled([
+    tavilySearch(`trending ${niche} news ${month}`, 4),
+    tavilySearch(`latest ${niche} news stories ${month}`, 5),
   ]);
 
-  const google = googleResults.status === 'fulfilled' ? googleResults.value : [];
-  const hn = hnResults.status === 'fulfilled' ? hnResults.value : [];
-  const reddit = redditResults.status === 'fulfilled' ? redditResults.value : [];
+  const trendingRaw = trendingRes.status === 'fulfilled' ? trendingRes.value : [];
+  const recentRaw   = recentRes.status   === 'fulfilled' ? recentRes.value   : [];
 
-  // Interleave: prefer Google News as primary, supplement with HN and Reddit
-  const combined: string[] = [];
+  const trendingSeen = new Set(trendingRaw.map((t: string) => t.toLowerCase().slice(0, 40)));
+  const trending = trendingRaw.slice(0, 2);
+  const recent = recentRaw
+    .filter((t: string) => !trendingSeen.has(t.toLowerCase().slice(0, 40)))
+    .slice(0, 3);
+
+  if (trending.length === 0 && recent.length === 0) throw new Error('Tavily returned no results');
+  return { trending, recent };
+}
+
+async function fetchTopicsFallback(niche: string): Promise<TopicSets> {
+  const [googleRes, hnRes] = await Promise.allSettled([
+    fetchGoogleNews(niche),
+    fetchHackerNews(niche),
+  ]);
+  const all = [
+    ...(googleRes.status === 'fulfilled' ? googleRes.value : []),
+    ...(hnRes.status === 'fulfilled' ? hnRes.value : []),
+  ];
   const seen = new Set<string>();
-
-  const addUnique = (item: string) => {
+  const deduped: string[] = [];
+  for (const item of all) {
     const key = item.toLowerCase().slice(0, 40);
-    if (!seen.has(key) && combined.length < 5) { seen.add(key); combined.push(item); }
-  };
+    if (!seen.has(key)) { seen.add(key); deduped.push(item); }
+  }
+  return { trending: deduped.slice(0, 2), recent: deduped.slice(2, 5) };
+}
 
-  // Take top 3 from Google, then fill from HN and Reddit
-  google.slice(0, 3).forEach(addUnique);
-  hn.forEach(addUnique);
-  reddit.forEach(addUnique);
-  // Fill remaining slots from google if needed
-  google.slice(3).forEach(addUnique);
-
-  return combined.slice(0, 5);
+async function fetchTopics(niche: string): Promise<TopicSets> {
+  if (TAVILY_KEY) {
+    try {
+      return await fetchTopicsViaTavily(niche);
+    } catch (e) {
+      console.warn('Tavily topic fetch failed, falling back to scrapers:', e);
+    }
+  }
+  return fetchTopicsFallback(niche);
 }
 
 // ── Nitter RSS fetching ────────────────────────────────────────────────────────
@@ -315,6 +327,8 @@ async function generatePosts(
   platforms: string[],
   inspirationTweets: Record<string, string[]>,
   trendingTopics: string[],
+  recentTopics: string[],
+  previousTopics: string[],
 ): Promise<GeneratedPosts> {
   const toneDirective = buildTone(config.tone);
 
@@ -347,14 +361,24 @@ async function generatePosts(
     .join('\n');
 
   const trendingBlock = trendingTopics.length > 0
-    ? `\nRESEARCH FINDINGS — these are real trending stories and headlines found in your niche right now. These are your PRIMARY source material for posts 1-9. Each post must be rooted in one of these specific findings — extract an insight, hard truth, angle, lesson, or perspective FROM the actual story. Do not write generically about the niche. Do not quote or name the headline directly — translate it into original copy that stands completely on its own:\n${trendingTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n`
+    ? `\nTRENDING STORIES (top ${trendingTopics.length} — highest engagement right now, actively going viral):\n${trendingTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n`
+    : '';
+
+  const recentBlock = recentTopics.length > 0
+    ? `\nRECENT STORIES (${recentTopics.length} freshly published — new today, not necessarily viral yet):\n${recentTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n`
+    : '';
+
+  const allTopicsCount = trendingTopics.length + recentTopics.length;
+
+  const previousBlock = previousTopics.length > 0
+    ? `\nYESTERDAY'S TOPICS (ALREADY COVERED — DO NOT REVISIT): These stories and angles were published yesterday. You must NOT write about any of these topics, themes, or angles. Find completely fresh ground — different stories, different sub-topics, different angles entirely:\n${previousTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n`
     : '';
 
   const userMsg = `Generate 10 posts for each of these platforms: ${platforms.map(p => p === 'x' ? 'X (Twitter)' : p[0].toUpperCase() + p.slice(1)).join(', ')}.
 
 NICHE (used only to find the research above — not the subject of posts): ${config.niche}
 ${config.product_service ? `PRODUCT/SERVICE: ${config.product_service}` : ''}
-${trendingBlock}${inspoBlock}
+${previousBlock}${trendingBlock}${recentBlock}${inspoBlock}
 
 TONE DIRECTIVE:
 ${toneDirective}
@@ -365,10 +389,13 @@ ${platformInstructions}
 ANGLE VARIETY — every post must use a completely different angle. Rotate through:
 contrarian take, surprising insight, hard truth, pattern interrupt, personal story format, common mistake, bold prediction, myth bust, behind-the-scenes, aspirational outcome, fear/risk angle, social proof format, curiosity gap, micro-lesson, hot take (never use the words "hot take")
 
+FRESHNESS RULE — this runs every day. The posts you write today must cover completely different ground than yesterday's posts. If you received a "YESTERDAY'S TOPICS" block above, treat it as a strict exclusion list — no overlapping topics, no recycled angles, no retreading the same sub-topics in different words. Find new stories, new angles, new entry points within the niche every single day.
+
 REQUIREMENTS:
-- Posts 1-9: 90% of each post's inspiration must come directly from one of the research findings above. The niche label is just what was searched — the research findings are what you actually write from. Draw a specific insight, angle, or lesson out of a real finding, then craft it into sharp original copy. Spread coverage across different findings. Never quote a headline, never name a news source. Never mention the product/service. Vary angle, hook type, and structure on every post.
-- Post 10: sell post for the product/service. If any of the research findings are relevant to the offer, use one to make the pitch feel timely and earned — tying a real trend or insight to why the product/service matters right now. Feels natural, not like an ad. Must end with a CTA. Rotate through CTA styles — never repeat the same one across platforms. Options: a direct link prompt ("Link in bio"), a question that drives replies, a DM invitation ("DM me [word]"), a scarcity/urgency nudge, a soft qualifier ("If you're serious about X, this is for you"), a curiosity tease ("Reply 'info' and I'll send details"), or a benefit-forward command ("Go read/watch/grab [it] now"). Never name any news source, platform name (e.g. Reddit, Google, HackerNews), or headline in the post copy.
-- All posts must feel handwritten, platform-native, and sharp — the currency comes from the specific insight drawn from real findings, not from generic niche commentary. Never name any research source, news outlet, or platform in any post.
+- You have ${allTopicsCount} research stories above (${trendingTopics.length} trending + ${recentTopics.length} recent). Every single story MUST be covered — write at least one post rooted in each story. Spread the 9 value posts across all ${allTopicsCount} stories. Never skip a story. Never write more than 2 posts about the same story.
+- Posts 1-9 (value posts): Each post must be rooted in one of the stories above. Extract a specific insight, hard truth, angle, or lesson directly from the story — translate it into original copy that stands on its own. Do not quote headlines. Do not name any news source. Do not mention the product/service. Vary angle, hook type, and sentence structure on every post.
+- Post 10: sell post for the product/service. Tie one of the research stories to why the product/service matters right now — makes the pitch feel timely and earned, not like an ad. Must end with a CTA. Rotate CTA style: "Link in bio", a reply-driving question, "DM me [word]", scarcity nudge, soft qualifier, curiosity tease, or benefit-forward command. Never name a source or platform in the post copy.
+- All posts must feel handwritten, platform-native, and sharp. The value comes from the specific insight drawn from a real story — never generic niche commentary.
 
 Return ONLY the JSON object with keys for each requested platform, each containing an array of exactly 10 strings.`;
 
@@ -434,6 +461,7 @@ interface RunResult {
   scheduled: { total: number; byPlatform: Record<string, number> };
   errors: string[];
   trendingTopics: string[];
+  recentTopics: string[];
 }
 
 async function runForUser(config: AutopilotConfig, supabase: ReturnType<typeof createClient>, startFromNow = false, fromCron = false): Promise<RunResult> {
@@ -442,20 +470,25 @@ async function runForUser(config: AutopilotConfig, supabase: ReturnType<typeof c
   const byPlatform: Record<string, number> = {};
   let total = 0;
 
-  // Fetch trending topics and inspiration tweets in parallel
+  // Fetch topics and inspiration tweets in parallel
   const handles = (config.twitter_accounts ?? []).filter(Boolean);
-  const [trendingTopics, ...tweetResults] = await Promise.allSettled([
-    fetchTrendingTopics(config.niche),
+  const [topicsResult, ...tweetResults] = await Promise.allSettled([
+    fetchTopics(config.niche),
     ...handles.map(h => fetchRecentTweets(h)),
   ]);
-  const trending: string[] = trendingTopics.status === 'fulfilled' ? trendingTopics.value : [];
+  const topics: TopicSets = topicsResult.status === 'fulfilled' ? topicsResult.value : { trending: [], recent: [] };
   const inspirationTweets: Record<string, string[]> = {};
   handles.forEach((handle, i) => {
     const r = tweetResults[i];
     inspirationTweets[handle] = r?.status === 'fulfilled' ? (r.value as string[]) : [];
   });
 
-  const generated = await generatePosts(config, platforms, inspirationTweets, trending);
+  // Topics from the previous run — used to force Claude onto fresh angles today
+  const previousTopics: string[] = Array.isArray((config as any).trending_topics)
+    ? (config as any).trending_topics as string[]
+    : [];
+
+  const generated = await generatePosts(config, platforms, inspirationTweets, topics.trending, topics.recent, previousTopics);
   const times = scheduleTimes(config.start_hour, config.end_hour, startFromNow);
 
   for (const platform of platforms) {
@@ -492,7 +525,7 @@ async function runForUser(config: AutopilotConfig, supabase: ReturnType<typeof c
   }
 
   const updatePayload: Record<string, unknown> = {
-    trending_topics: trending,
+    trending_topics: [...topics.trending, ...topics.recent],
     last_run_at: new Date().toISOString(),
     last_run_date: getEstDateStr(), // always stamp — enforces 1-per-day for both manual and cron
   };
@@ -505,7 +538,7 @@ async function runForUser(config: AutopilotConfig, supabase: ReturnType<typeof c
     .update(updatePayload)
     .eq('id', config.id);
 
-  return { userId: config.supabase_user_id, scheduled: { total, byPlatform }, errors, trendingTopics: trending };
+  return { userId: config.supabase_user_id, scheduled: { total, byPlatform }, errors, trendingTopics: topics.trending, recentTopics: topics.recent };
 }
 
 // ── Handler ────────────────────────────────────────────────────────────────────
@@ -589,6 +622,8 @@ Deno.serve(async (req) => {
         userId: config.supabase_user_id,
         scheduled: { total: 0, byPlatform: {} },
         errors: [e instanceof Error ? e.message : String(e)],
+        trendingTopics: [],
+        recentTopics: [],
       });
     }
   }
