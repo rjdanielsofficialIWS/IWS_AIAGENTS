@@ -274,26 +274,53 @@ Deno.serve(async (req: Request) => {
 - Goals: ${goalList}
 - Current Stage: ${currentStage}`;
 
-      // Split into 3 parallel calls to avoid token limit truncation
+      // Phase 1: Tavily research — run first so all 3 Claude calls get real intel
+      let strategyIntel = "";
+      try {
+        const month = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+        const [performingRes, audienceRes] = await Promise.allSettled([
+          tavilySearch(`${niche} content creators what is working social media ${month}`, 5),
+          tavilySearch(`${niche} audience biggest pain points questions frustrations ${new Date().getFullYear()}`, 4),
+        ]);
+        const sections: string[] = [];
+        if (performingRes.status === "fulfilled" && performingRes.value)
+          sections.push(`WHAT IS CURRENTLY WORKING IN THIS NICHE:\n${performingRes.value}`);
+        if (audienceRes.status === "fulfilled" && audienceRes.value)
+          sections.push(`AUDIENCE PAIN POINTS & PSYCHOLOGY:\n${audienceRes.value}`);
+        if (sections.length > 0) strategyIntel = sections.join("\n\n---\n\n");
+      } catch { /* fall through to Claude-only */ }
+
+      const researchBlock = strategyIntel
+        ? `\nLIVE MARKET RESEARCH (gathered right now — use this to make every output specific and current):\n${strategyIntel}\n`
+        : "";
+
+      // Phase 2: 3 parallel Claude calls, all fed with real-world research
       const [calendarRaw, hooksRaw, strategyRaw] = await Promise.all([
 
         callClaude(SYS, `${BRIEF}
-
-Generate a 7-day content calendar. Return ONLY this JSON with NO extra fields:
+${researchBlock}
+Generate a 7-day content calendar grounded in the research above. Return ONLY this JSON:
 {"content_pillars":[{"name":"str","description":"str"},{"name":"str","description":"str"},{"name":"str","description":"str"}],"week1_priority":{"day":1,"reason":"str"},"calendar":[{"day":1,"pillar":"Reach","content_type":"Reel","platform":"instagram","topic":"str","hook":"str","goal":"str","best_time":"9am"}],"evergreen_posts":[{"topic":"str","hook":"str"}]}
-REQUIREMENTS: exactly 7 calendar entries (days 1-7), exactly 3 content_pillars, exactly 2 evergreen_posts. Keep all string values concise (under 15 words each). Every topic specific to "${niche}".`, 2000),
+REQUIREMENTS: exactly 7 calendar entries (days 1-7), exactly 3 content_pillars, exactly 2 evergreen_posts. Topics must be specific, current, and tied to real audience pain points from the research. Keep all string values under 15 words. Every topic specific to "${niche}".`, 2000),
 
         callClaude(SYS, `${BRIEF}
-
-Generate 10 scroll-stopping hooks. Return ONLY this JSON:
+${researchBlock}
+Generate 10 scroll-stopping hooks grounded in the research above. Return ONLY this JSON:
 {"hooks":[{"hook_text":"str","formula":"Curiosity Gap","scroll_stop_score":8,"best_platform":"instagram"}],"top_2_recommended":[{"index":0,"reason":"str"}]}
-REQUIREMENTS: exactly 10 hooks, 2 top_2_recommended. Vary formulas: AIDA, Curiosity Gap, Pain+Solution, Social Proof, Contrarian, Story, Listicle. Keep hook_text under 20 words. Specific to "${niche}".`, 1500),
+REQUIREMENTS: exactly 10 hooks, 2 top_2_recommended. Hooks must exploit REAL pain points and desires from the audience research above — not generic niche commentary. Vary formulas: AIDA, Curiosity Gap, Pain+Solution, Social Proof, Contrarian, Story, Listicle. hook_text under 20 words. Specific to "${niche}".`, 1500),
 
         callClaude(SYS, `${BRIEF}
-
-Generate quick wins. Return ONLY this JSON:
-{"quick_wins":["str","str","str","str","str"],"content_pillars_ratio":{"reach":40,"trust":35,"sales":25}}
-REQUIREMENTS: exactly 5 quick_wins, each under 20 words, specific and actionable for "${niche}".`, 600),
+${researchBlock}
+Generate a conversion strategy grounded in the research above. Return ONLY this JSON:
+{"quick_wins":["str","str","str","str","str"],"content_pillars_ratio":{"reach":40,"trust":35,"sales":25},"conversion_system":{"post_types_that_generate_dms":["str","str","str"],"dm_opener":"str","cta_language":["str","str","str"],"warming_sequence":[{"post":1,"type":"str","angle":"str","goal":"str"}]}}
+REQUIREMENTS:
+- quick_wins: exactly 5, each a specific tactical action for "${niche}" this week (under 20 words each)
+- content_pillars_ratio: percentages that add to 100, tuned for ${goalList}
+- conversion_system.post_types_that_generate_dms: exactly 3 specific post types that make ${audience} reach out
+- conversion_system.dm_opener: one natural, non-salesy opener to use when someone engages
+- conversion_system.cta_language: exactly 3 CTAs that feel native to ${platformList} (under 15 words each)
+- conversion_system.warming_sequence: exactly 5 posts — a sequence that moves someone from stranger to buyer
+All outputs must be grounded in the research above and specific to "${niche}".`, 2000),
 
       ]);
 
