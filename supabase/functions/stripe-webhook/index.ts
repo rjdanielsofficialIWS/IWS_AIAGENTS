@@ -17,7 +17,10 @@ const P2P: Record<string, string> = {
   "price_1T9d6TE9lvvsgykltb5DtnyE": "agency",
 };
 
-const ADDONS: Record<string, { videoSeconds?: number; captionCredits?: number }> = {
+// Workspace slot recurring add-on — set STRIPE_WORKSPACE_SLOT_PRICE_ID in Supabase secrets
+const WORKSPACE_SLOT_PRICE_ID = Deno.env.get("STRIPE_WORKSPACE_SLOT_PRICE_ID") ?? "price_1TMWhb2ayBXZURgpciESFCRO";
+
+const ADDONS: Record<string, { videoSeconds?: number; captionCredits?: number; workspaceSlots?: number }> = {
   "price_1TBNxeE9lvvsgyklaQbyEvOg": { videoSeconds: 60 },
   "price_1TBNxhE9lvvsgyklh6cbC8NV": { videoSeconds: 180 },
   "price_1TBNxlE9lvvsgyklSgVMQdY2": { captionCredits: 25 },
@@ -63,10 +66,17 @@ async function creditAddon(uid: string, priceId: string) {
   const p = getPeriod();
   await supabase.from("usage_tracking").upsert({
     supabase_user_id: uid, period: p,
-    ai_analyses_used: 0, posts_scheduled: 0, video_seconds_used: 0, video_seconds_bonus: 0, caption_credits_bonus: 0,
+    ai_analyses_used: 0, posts_scheduled: 0, text_posts_scheduled: 0, video_seconds_used: 0, video_seconds_bonus: 0, caption_credits_bonus: 0,
   }, { onConflict: "supabase_user_id,period", ignoreDuplicates: true });
   if (a.videoSeconds) await supabase.rpc("increment_video_seconds_bonus", { p_user_id: uid, p_period: p, p_seconds: a.videoSeconds });
   if (a.captionCredits) await supabase.rpc("increment_caption_credits_bonus", { p_user_id: uid, p_period: p, p_credits: a.captionCredits });
+  if (a.workspaceSlots) {
+    const { data: sub } = await supabase.from("subscriptions").select("workspace_slots").eq("supabase_user_id", uid).maybeSingle();
+    const current = sub?.workspace_slots ?? 0;
+    if (current < 10) {
+      await supabase.from("subscriptions").update({ workspace_slots: Math.min(current + a.workspaceSlots, 10) }).eq("supabase_user_id", uid);
+    }
+  }
 }
 
 // Legacy commission — writes to old referral_commissions table (kept for backward compat)
@@ -162,9 +172,29 @@ Deno.serve(async (req) => {
         const s = event.data.object;
         const pid = s.items.data[0]?.price?.id ?? "";
         const uid = await getUID(s.customer);
+
+        // Handle workspace slot add-on subscription (monthly $49/mo recurring)
+        if (pid === WORKSPACE_SLOT_PRICE_ID) {
+          if (s.status === "active" && uid) {
+            const { data: sub } = await supabase.from("subscriptions").select("workspace_slots").eq("supabase_user_id", uid).maybeSingle();
+            const current = sub?.workspace_slots ?? 0;
+            if (current < 10) {
+              await supabase.from("subscriptions").update({ workspace_slots: current + 1, updated_at: new Date().toISOString() }).eq("supabase_user_id", uid);
+            }
+          }
+          break;
+        }
+
         await upsertSub({ cid: s.customer, sid: s.id, plan: P2P[pid] ?? "unknown", status: s.status, ps: s.current_period_start, pe: s.current_period_end, cape: s.cancel_at_period_end, ca: s.canceled_at ?? null, uid });
         if (s.status === "active" && uid) {
           await supabase.from("referrals").update({ status: "active", activated_at: new Date().toISOString() }).eq("referred_user_id", uid).eq("status", "pending");
+          // Agency plan includes 3 workspace slots — ensure they're set on activation
+          if (P2P[pid] === "agency") {
+            const { data: sub } = await supabase.from("subscriptions").select("workspace_slots").eq("supabase_user_id", uid).maybeSingle();
+            if ((sub?.workspace_slots ?? 0) < 3) {
+              await supabase.from("subscriptions").update({ workspace_slots: 3 }).eq("supabase_user_id", uid);
+            }
+          }
         }
         break;
       }
@@ -172,6 +202,20 @@ Deno.serve(async (req) => {
         const s = event.data.object;
         const pid = s.items.data[0]?.price?.id ?? "";
         const uid = await getUID(s.customer);
+
+        // Handle workspace slot cancellation — remove the purchased slot
+        if (pid === WORKSPACE_SLOT_PRICE_ID) {
+          if (uid) {
+            const { data: sub } = await supabase.from("subscriptions").select("workspace_slots").eq("supabase_user_id", uid).maybeSingle();
+            const current = sub?.workspace_slots ?? 0;
+            // Keep at least 3 (the agency plan's included slots)
+            if (current > 3) {
+              await supabase.from("subscriptions").update({ workspace_slots: current - 1, updated_at: new Date().toISOString() }).eq("supabase_user_id", uid);
+            }
+          }
+          break;
+        }
+
         await upsertSub({ cid: s.customer, sid: s.id, plan: P2P[pid] ?? "unknown", status: "canceled", ps: s.current_period_start, pe: s.current_period_end, cape: s.cancel_at_period_end, ca: s.canceled_at ?? Math.floor(Date.now() / 1000), uid });
         if (uid) {
           await supabase.from("referrals").update({ status: "cancelled" }).eq("referred_user_id", uid);

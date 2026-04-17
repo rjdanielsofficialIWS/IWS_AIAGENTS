@@ -3,6 +3,9 @@ import Stripe from "https://esm.sh/stripe@14.21.0?target=deno";
 const CORS_ORIGINS=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"];
 const PLAN_PRICE_IDS={"starter":"price_1TBNx6E9lvvsgykljqvbHkNt","viral":"price_1TBNx9E9lvvsgyklTfsIiHGQ","agency":"price_1TBNxCE9lvvsgyklJwtWCfHP"};
 const ADDON_PRICE_IDS={"video_60s":{priceId:"price_1TBNxeE9lvvsgyklaQbyEvOg",videoSeconds:60,label:"60 Video Seconds"},"video_180s":{priceId:"price_1TBNxhE9lvvsgyklh6cbC8NV",videoSeconds:180,label:"180 Video Seconds"},"captions_25":{priceId:"price_1TBNxlE9lvvsgyklSgVMQdY2",captionCredits:25,label:"25 Caption Credits"},"captions_100":{priceId:"price_1TBNxnE9lvvsgyklWqYQQbPh",captionCredits:100,label:"100 Caption Credits"}};
+// Workspace slot is a monthly recurring subscription add-on ($49/mo).
+// Create a recurring price in Stripe at $49/mo and set STRIPE_WORKSPACE_SLOT_PRICE_ID in Supabase secrets.
+const WORKSPACE_SLOT_PRICE_ID=Deno.env.get("STRIPE_WORKSPACE_SLOT_PRICE_ID")??"price_1TMWhb2ayBXZURgpciESFCRO";
 const REFERRAL_COUPON_ID="yfctlvZ1";
 Deno.serve(async(req)=>{
   const _o=req.headers.get("Origin")??"";const cors={"Access-Control-Allow-Origin":CORS_ORIGINS.includes(_o)?_o:CORS_ORIGINS[0],"Access-Control-Allow-Headers":"authorization, x-client-info, apikey, content-type","Access-Control-Allow-Methods":"POST, OPTIONS"};
@@ -19,6 +22,11 @@ Deno.serve(async(req)=>{
     const{data:existingSub}=await supabase.from("subscriptions").select("stripe_customer_id").eq("supabase_user_id",user.id).maybeSingle();
     let customerId=existingSub?.stripe_customer_id;
     if(!customerId||customerId.startsWith("promo_")){const c=await stripe.customers.create({email:user.email,metadata:{supabase_user_id:user.id}});customerId=c.id;}
+    if(addon==="workspace_slot"){
+      // Workspace slot is a monthly recurring subscription — $49/mo
+      const s=await stripe.checkout.sessions.create({customer:customerId,payment_method_types:["card"],mode:"subscription",line_items:[{price:WORKSPACE_SLOT_PRICE_ID,quantity:1}],success_url:body.successUrl||"https://infinitewealthsolutionsai.com/MediaMachine?addon_success=workspace_slot",cancel_url:body.cancelUrl||"https://infinitewealthsolutionsai.com/MediaMachine",metadata:{supabase_user_id:user.id,addon_type:"workspace_slot"},subscription_data:{metadata:{supabase_user_id:user.id,addon_type:"workspace_slot"}}});
+      return new Response(JSON.stringify({url:s.url,addon:"workspace_slot",label:"1 Client Workspace"}),{status:200,headers:{...cors,"Content-Type":"application/json"}});
+    }
     if(addon){
       const ac=ADDON_PRICE_IDS[addon];
       if(!ac)return new Response(JSON.stringify({error:"Invalid addon"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});

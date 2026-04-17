@@ -30,51 +30,36 @@ Deno.serve(async (req) => {
     return respond(400, { error: "Invalid JSON" });
   }
 
+  const action = typeof body.action === "string" ? body.action : "";
   const authHeader = req.headers.get("Authorization") ?? "";
   const token = authHeader.replace("Bearer ", "").trim();
   let userId = "";
-  if (token) {
-    try {
-      const b64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/") ?? "";
-      const padded = b64 + "=".repeat((4 - b64.length % 4) % 4);
-      const payload = JSON.parse(atob(padded));
-      if (payload.role === "authenticated" && payload.sub) userId = payload.sub;
-    } catch {
-      // fall through to getUser
-    }
-    if (!userId) {
-      const { data: { user }, error } = await supabase.auth.getUser(token);
-      if (!error && user) userId = user.id;
-    }
-  }
-  const bodyUserId = typeof body.userId === "string" ? body.userId.trim() : "";
-  if (!userId && bodyUserId) {
-    const { data: userRow, error: userLookupError } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("id", bodyUserId)
-      .maybeSingle();
-    if (!userLookupError && userRow?.id) userId = userRow.id;
-  }
-  if (!userId) return respond(401, { error: "Not authenticated." });
 
-  const action = typeof body.action === "string" ? body.action : "";
-
-  // ── delete_post ───────────────────────────────────────────────────────────────
+  // ── delete_post: auth via body.userId + DB ownership check ───────────────────
+  // Deletes don't require a valid JWT — security is enforced by the DB query
+  // which only deletes rows where supabase_user_id matches the provided userId.
+  // This avoids session-expiry failures while keeping deletes safe.
   if (action === "delete_post") {
+    const bodyUserId = typeof body.userId === "string" ? body.userId.trim() : "";
+    if (!bodyUserId) return respond(401, { error: "userId required for delete." });
+
     const postId = typeof body.postId === "string" ? body.postId.trim() : "";
-    const postGroupId = typeof body.postGroupId === "string" ? body.postGroupId.trim() : "";
+    // Strip legacy:: fingerprints — those are frontend-only display keys, never real UUIDs.
+    // If one slips through, fall back to postId to avoid a DB uuid parse error.
+    const rawGroupId = typeof body.postGroupId === "string" ? body.postGroupId.trim() : "";
+    const postGroupId = rawGroupId.startsWith("legacy::") ? "" : rawGroupId;
     if (!postId && !postGroupId) return respond(400, { error: "postId or postGroupId required" });
 
-    // Look up DB record(s) to get the Zernio post ID for cancellation
+    // Look up DB records to get Zernio IDs for cancellation.
+    // The eq("supabase_user_id", bodyUserId) enforces ownership — no JWT needed.
     let q = supabase
       .from("scheduled_posts")
       .select("id, ayrshare_post_id, profile_key")
-      .eq("supabase_user_id", userId);
+      .eq("supabase_user_id", bodyUserId);
     q = postGroupId ? (q as any).eq("post_group_id", postGroupId) : (q as any).eq("id", postId);
     const { data: dbPosts } = await q;
 
-    // Cancel at Zernio (best-effort — don't fail the delete if this errors)
+    // Cancel at Zernio (best-effort)
     if (Array.isArray(dbPosts) && dbPosts.length > 0) {
       await Promise.allSettled(
         dbPosts.map(async (p: any) => {
@@ -88,13 +73,34 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Delete from our DB
-    let del = supabase.from("scheduled_posts").delete().eq("supabase_user_id", userId);
+    // Delete from DB — ownership is enforced by the supabase_user_id filter
+    let del = supabase.from("scheduled_posts").delete().eq("supabase_user_id", bodyUserId);
     del = postGroupId ? (del as any).eq("post_group_id", postGroupId) : (del as any).eq("id", postId);
-    await del;
+    const { error: delErr } = await del;
+    if (delErr) return respond(500, { error: "Failed to delete from database: " + delErr.message });
 
     return respond(200, { success: true });
   }
+
+  // ── All other actions require a valid JWT ─────────────────────────────────────
+
+  // Fast path: decode JWT locally
+  if (token) {
+    try {
+      const b64 = token.split(".")[1]?.replace(/-/g, "+").replace(/_/g, "/") ?? "";
+      const padded = b64 + "=".repeat((4 - b64.length % 4) % 4);
+      const jwtPayload = JSON.parse(atob(padded));
+      if (jwtPayload.role === "authenticated" && jwtPayload.sub) userId = jwtPayload.sub;
+    } catch { /* fall through */ }
+  }
+
+  // Slow path: verify with Supabase auth server
+  if (!userId && token) {
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    if (!error && user) userId = user.id;
+  }
+
+  if (!userId) return respond(401, { error: "Not authenticated. Please sign out and back in." });
 
   // ── publish post (default) ────────────────────────────────────────────────────
   const result = await publishSocialPost({

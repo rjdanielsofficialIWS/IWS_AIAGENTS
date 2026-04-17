@@ -4,7 +4,12 @@ const LATE_API_KEY = Deno.env.get("ZERNIO_API_KEY") ?? "sk_1adb5186f3be9a2321b4c
 const LATE_API_URL = "https://zernio.com/api/v1";
 const MEDIA_REQUIRED = new Set(["youtube", "tiktok", "instagram"]);
 const VIDEO_ONLY = new Set(["youtube", "tiktok"]);
-const PLAN_LIMITS = { starter: { posts: 100, platforms: 3 }, viral: { posts: 100, platforms: -1 }, agency: { posts: -1, platforms: -1 } };
+// posts = media posts limit, textPosts = text/autopilot posts limit (tracked separately)
+const PLAN_LIMITS = {
+  starter: { posts: 30,  textPosts: 60,  platforms: 3  },
+  viral:   { posts: 100, textPosts: 200, platforms: -1 },
+  agency:  { posts: -1,  textPosts: -1,  platforms: -1 },
+};
 const CF_STREAM_POLL_MS = 4_000;
 const CF_MP4_POLL_MAX_MS = 80_000;
 
@@ -93,6 +98,9 @@ export type PublishPayload = {
   thread?: string[];
   carousel?: boolean;
   postGroupId?: string;
+  // When true, skip the cross-post idempotency guard. Autopilot posts must set
+  // this so they are completely decoupled from manually scheduled posts.
+  skipDuplicateCheck?: boolean;
 };
 
 export async function publishSocialPost({
@@ -116,18 +124,27 @@ export async function publishSocialPost({
   const plan = isActive ? String(sub!.plan).toLowerCase() : "free";
   if (plan === "free") return { ok: false as const, status: 403, error: "upgrade_required", message: "You need an active subscription to post.", plan };
 
-  const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] ?? { posts: 0, platforms: 0 };
+  const limits = PLAN_LIMITS[plan as keyof typeof PLAN_LIMITS] ?? { posts: 0, textPosts: 0, platforms: 0 };
   const period = getPeriod();
-  if (limits.posts !== -1) {
+  // Determine which bucket this post belongs to based on whether it has media.
+  // Media posts (images/video) count against posts_scheduled (limit = posts).
+  // Text-only posts — including all autopilot posts — count against text_posts_scheduled (limit = textPosts).
+  // We can't check payload.mediaUrls here because URLs aren't resolved yet; we use the raw payload array.
+  const hasMediaPayload = Array.isArray(payload.mediaUrls) && payload.mediaUrls.length > 0;
+  const postBucket = hasMediaPayload ? "posts_scheduled" : "text_posts_scheduled";
+  const postBucketLimit = hasMediaPayload ? limits.posts : limits.textPosts;
+  const postBucketLabel = hasMediaPayload ? "media posts" : "text posts";
+
+  if (postBucketLimit !== -1) {
     const { data: usage } = await supabase
       .from("usage_tracking")
-      .select("posts_scheduled")
+      .select(postBucket)
       .eq("supabase_user_id", userId)
       .eq("period", period)
       .maybeSingle();
-    const used = usage?.posts_scheduled ?? 0;
-    if (used >= limits.posts) {
-      return { ok: false as const, status: 429, error: "limit_reached", feature: "posts", message: `You have scheduled ${used} of ${limits.posts} posts this month.`, used, limit: limits.posts, plan };
+    const used = (usage as any)?.[postBucket] ?? 0;
+    if (used >= postBucketLimit) {
+      return { ok: false as const, status: 429, error: "limit_reached", feature: "posts", message: `You have scheduled ${used} of ${postBucketLimit} ${postBucketLabel} this month.`, used, limit: postBucketLimit, plan };
     }
   }
 
@@ -173,6 +190,7 @@ export async function publishSocialPost({
   const workspaceId = typeof payload.workspaceId === "string" ? payload.workspaceId.trim() : "";
   let profileKey = "";
   let cachedChannels: Array<{ id?: string; profile?: string; platform?: string; accountId?: string }> = [];
+  let workspaceChannelsSet = false;
   if (workspaceId) {
     const { data: ws } = await supabase
       .from("workspaces")
@@ -180,9 +198,15 @@ export async function publishSocialPost({
       .eq("id", workspaceId)
       .eq("owner_user_id", userId)
       .maybeSingle();
-    if (ws?.profile_key) {
-      profileKey = ws.profile_key;
+    if (ws) {
+      // Use the workspace's profile key when it has one.
+      if (ws.profile_key) profileKey = ws.profile_key;
+      // ALWAYS use the workspace's own cached_channels for account selection,
+      // even when the workspace shares a profile key with the global profile.
+      // This is what enforces per-workspace isolation — posts can only go to
+      // accounts explicitly connected within this workspace.
       cachedChannels = Array.isArray(ws.cached_channels) ? ws.cached_channels : [];
+      workspaceChannelsSet = true;
     }
   }
   if (!profileKey) {
@@ -193,7 +217,11 @@ export async function publishSocialPost({
       .maybeSingle();
     if (!profile?.profile_key) return { ok: false as const, status: 400, error: "No connected accounts found." };
     profileKey = profile.profile_key;
-    cachedChannels = Array.isArray(profile.cached_channels) ? profile.cached_channels : [];
+    // Only fall back to global channels when the workspace didn't set its own.
+    // Never let the global channel list bleed into a workspace-scoped post.
+    if (!workspaceChannelsSet) {
+      cachedChannels = Array.isArray(profile.cached_channels) ? profile.cached_channels : [];
+    }
   }
 
   const mappedPlatforms = rawPlatforms.map((raw) => {
@@ -218,6 +246,35 @@ export async function publishSocialPost({
 
   if (mappedPlatforms.length === 0) {
     return { ok: false as const, status: 400, error: "No connected accounts for selected platforms." };
+  }
+
+  // Idempotency guard: if identical content is already scheduled/published for this user
+  // within the same time window, skip the Zernio call silently. This prevents duplicate
+  // posts caused by double-clicks or re-submissions while the first request is in-flight.
+  // Autopilot posts bypass this check entirely — they must never be blocked by or
+  // confused with manually scheduled posts (or posts from other workspaces).
+  if (scheduleDate && !payload.skipDuplicateCheck) {
+    const windowStart = new Date(new Date(scheduleDate).getTime() - 60_000).toISOString();
+    const windowEnd   = new Date(new Date(scheduleDate).getTime() + 60_000).toISOString();
+    let dedupQ = supabase
+      .from("scheduled_posts")
+      .select("id")
+      .eq("supabase_user_id", userId)
+      .eq("content", post)
+      .in("status", ["scheduled", "published"])
+      .gte("scheduled_at", windowStart)
+      .lte("scheduled_at", windowEnd);
+    // Scope dedup to the same workspace so posts in different workspaces with the
+    // same content at the same time don't accidentally suppress each other.
+    if (workspaceId) {
+      dedupQ = (dedupQ as any).eq("workspace_id", workspaceId);
+    } else {
+      dedupQ = (dedupQ as any).is("workspace_id", null);
+    }
+    const { data: existing } = await (dedupQ as any).maybeSingle();
+    if (existing) {
+      return { ok: true as const, status: 200, result: {}, postId: null, profileKey, duplicate: true };
+    }
   }
 
   let requestBody: Record<string, unknown>;
@@ -269,6 +326,7 @@ export async function publishSocialPost({
       status: isError ? "error" : (scheduleDate ? "scheduled" : "published"),
       error: errorMsg ?? null,
       workspace_id: workspaceId || null,
+      post_group_id: payload.postGroupId || null,
     });
   } catch (e) {
     console.error("DB insert failed:", e);
@@ -280,7 +338,7 @@ export async function publishSocialPost({
   }
 
   try {
-    await supabase.rpc("increment_usage", { p_user_id: userId, p_period: period, p_field: "posts_scheduled" });
+    await supabase.rpc("increment_usage", { p_user_id: userId, p_period: period, p_field: postBucket });
   } catch (e) {
     console.error("Usage increment failed:", e);
   }

@@ -1,5 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const CORS_ORIGINS=["https://infinitewealthsolutionsai.com","https://www.infinitewealthsolutionsai.com"];
+// Single source of truth for plan limits — must match publish-social.ts PLAN_LIMITS exactly.
+// posts_per_month      = media posts (images/video)
+// text_posts_per_month = text-only posts including autopilot
 const PLAN_LIMITS={
   starter:{ai_captions_per_month:15,posts_per_month:30,text_posts_per_month:60,platforms_allowed:3,video_seconds_per_month:60,strategies_per_month:0,repurpose_allowed:false,ai_ideas_allowed:false},
   viral:  {ai_captions_per_month:100,posts_per_month:100,text_posts_per_month:200,platforms_allowed:-1,video_seconds_per_month:180,strategies_per_month:4,repurpose_allowed:true,ai_ideas_allowed:true},
@@ -22,15 +25,27 @@ Deno.serve(async(req)=>{
   const plan=isActive?sub!.plan.toLowerCase():"free";
   const limits=PLAN_LIMITS[plan]??PLAN_LIMITS.free;
   const period=getPeriod();
-  const{data:u}=await supabase.from("usage_tracking").select("ai_analyses_used,posts_scheduled,video_seconds_used,video_seconds_bonus,caption_credits_bonus").eq("supabase_user_id",user.id).eq("period",period).maybeSingle();
-  const usage={ai_captions_used:u?.ai_analyses_used??0,posts_scheduled:u?.posts_scheduled??0,video_seconds_used:u?.video_seconds_used??0,video_seconds_bonus:u?.video_seconds_bonus??0,caption_credits_bonus:u?.caption_credits_bonus??0,strategies_used:0};
-  // strategies_used may not exist as a column yet — query separately and handle gracefully
+  const{data:u}=await supabase.from("usage_tracking").select("ai_analyses_used,posts_scheduled,text_posts_scheduled,video_seconds_used,video_seconds_bonus,caption_credits_bonus").eq("supabase_user_id",user.id).eq("period",period).maybeSingle();
+  const usage={
+    ai_captions_used:u?.ai_analyses_used??0,
+    posts_scheduled:u?.posts_scheduled??0,
+    text_posts_scheduled:u?.text_posts_scheduled??0,
+    video_seconds_used:u?.video_seconds_used??0,
+    video_seconds_bonus:u?.video_seconds_bonus??0,
+    caption_credits_bonus:u?.caption_credits_bonus??0,
+    strategies_used:0,
+  };
   try{const{data:su}=await supabase.from("usage_tracking").select("strategies_used").eq("supabase_user_id",user.id).eq("period",period).maybeSingle();usage.strategies_used=su?.strategies_used??0;}catch{/* column not yet migrated */}
-  const effectiveLimits={...limits,video_seconds_per_month:limits.video_seconds_per_month===-1?-1:limits.video_seconds_per_month+(u?.video_seconds_bonus??0),ai_captions_per_month:limits.ai_captions_per_month===-1?-1:limits.ai_captions_per_month+(u?.caption_credits_bonus??0)};
+  const effectiveLimits={
+    ...limits,
+    video_seconds_per_month:limits.video_seconds_per_month===-1?-1:limits.video_seconds_per_month+(u?.video_seconds_bonus??0),
+    ai_captions_per_month:limits.ai_captions_per_month===-1?-1:limits.ai_captions_per_month+(u?.caption_credits_bonus??0),
+  };
   return new Response(JSON.stringify({
     plan,isActive,limits:effectiveLimits,usage,period,
     at_caption_limit:effectiveLimits.ai_captions_per_month!==-1&&usage.ai_captions_used>=effectiveLimits.ai_captions_per_month,
     at_post_limit:effectiveLimits.posts_per_month!==-1&&usage.posts_scheduled>=effectiveLimits.posts_per_month,
+    at_text_post_limit:effectiveLimits.text_posts_per_month!==-1&&usage.text_posts_scheduled>=effectiveLimits.text_posts_per_month,
     at_video_limit:effectiveLimits.video_seconds_per_month!==-1&&usage.video_seconds_used>=effectiveLimits.video_seconds_per_month,
     at_strategy_limit:limits.strategies_per_month!==0&&limits.strategies_per_month!==-1&&usage.strategies_used>=limits.strategies_per_month,
   }),{headers:{...cors,"Content-Type":"application/json"}});

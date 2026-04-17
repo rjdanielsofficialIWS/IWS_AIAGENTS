@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
 
   let query = supabase
     .from("scheduled_posts")
-    .select("id, content, platforms, scheduled_at, status, error, media_urls, ayrshare_post_id, profile_key")
+    .select("id, content, platforms, scheduled_at, status, error, media_urls, ayrshare_post_id, profile_key, post_group_id")
     .eq("supabase_user_id", userId)
     .gte("scheduled_at", start)
     .lte("scheduled_at", end)
@@ -33,6 +33,7 @@ Deno.serve(async (req) => {
     .limit(200);
 
   if (workspaceId) query = (query as any).eq("workspace_id", workspaceId);
+  else query = (query as any).is("workspace_id", null);
 
   const { data: posts, error: dbError } = await query;
   if (dbError) return respond(500, { error: "DB error" });
@@ -84,6 +85,7 @@ Deno.serve(async (req) => {
       status:      p.status,
       error:       p.error ?? null,
       mediaUrls:   Array.isArray(p.media_urls) ? p.media_urls : [],
+      postGroupId: p.post_group_id ?? null,
     })),
   });
 });

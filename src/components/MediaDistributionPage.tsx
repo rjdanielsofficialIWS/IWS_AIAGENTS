@@ -198,6 +198,7 @@ type PlannerItem = {
   plannedTime?: string;
   category: string;
   sourceLabel?: string;
+  talkingPoints?: string[];
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -260,7 +261,7 @@ function generateState() {
 async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
-  workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
+  workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string; skipDuplicateCheck?: boolean;
 }) {
   // Always call refreshSession once to get a guaranteed-fresh token.
   // This avoids stale-token issues and refresh-token rotation races from getToken() being called multiple times.
@@ -729,10 +730,10 @@ async function transcribeVideo(videoFile: File, authToken = ''): Promise<string>
 
 // ─── Small shared components ──────────────────────────────────────────────────
 
-function PlatformIcon({ id, size = 'md', picture }: { id: string; size?: 'sm' | 'md' | 'lg'; picture?: string }) {
-  const px = size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
-  const iconPx = size === 'sm' ? 14 : size === 'lg' ? 24 : 20;
-  const r = size === 'sm' ? 7 : size === 'lg' ? 12 : 10;
+function PlatformIcon({ id, size = 'md', picture }: { id: string; size?: 'xs' | 'sm' | 'md' | 'lg'; picture?: string }) {
+  const px = size === 'xs' ? 16 : size === 'sm' ? 24 : size === 'lg' ? 40 : 32;
+  const iconPx = size === 'xs' ? 9 : size === 'sm' ? 14 : size === 'lg' ? 24 : 20;
+  const r = size === 'xs' ? 5 : size === 'sm' ? 7 : size === 'lg' ? 12 : 10;
   const key = (id || '').toLowerCase().replace('twitter', 'x');
 
   const logos: Record<string, { bg: string; node: React.ReactNode }> = {
@@ -1185,25 +1186,40 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
       if (!userId) throw new Error('Not signed in.');
       // Cancel old post(s) in this group.
       // legacy:: keys are frontend-only fingerprints — never stored as UUIDs in the DB.
-      // For those, delete by the specific post's id rather than by group.
+      // For legacy groups we must delete each sibling by its own id.
       const isLegacyGroup = post.postGroupId?.startsWith('legacy::');
       const hasRealGroupId = post.postGroupId && !isLegacyGroup;
-      const deletePayload: Record<string, unknown> = { action: 'delete_post', userId };
-      if (hasRealGroupId) deletePayload.postGroupId = post.postGroupId;
-      else deletePayload.postId = post.id;
-      const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-        body: JSON.stringify(deletePayload),
-      });
-      if (!delRes.ok) { const d = await delRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
+      if (hasRealGroupId) {
+        const delRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ action: 'delete_post', userId, postGroupId: post.postGroupId }),
+        });
+        if (!delRes.ok) { const d = await delRes.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
+      } else {
+        // Legacy group: delete each sibling row by id. allIds contains every DB row in the group.
+        const idsToDelete: string[] = (post as any).allIds?.length > 0 ? (post as any).allIds : [post.id];
+        const results = await Promise.all(idsToDelete.map(pid =>
+          fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify({ action: 'delete_post', userId, postId: pid }),
+          })
+        ));
+        const failed = results.find(r => !r.ok);
+        if (failed) { const d = await failed.json().catch(() => ({})); throw new Error(d.error || 'Failed to cancel post'); }
+      }
+      // Brief pause so Zernio has time to process the cancellation before we re-create.
+      // Without this, re-posting the same content at the same time races with Zernio's
+      // async cancel and can produce "already scheduled" errors on repeated edits.
+      await new Promise(r => setTimeout(r, 800));
       // Re-schedule each platform with its individual caption.
       // Preserve a real UUID group ID so siblings stay linked; for legacy posts
-      // don't pass the synthetic key — the new posts get a fresh group ID from the caller.
+      // a fresh group ID is minted below via generateUUID (passed as undefined falls through).
       const scheduleISO = new Date(scheduleDateStr).toISOString();
-      const groupId = hasRealGroupId ? post.postGroupId : undefined;
+      const groupId = hasRealGroupId ? post.postGroupId : generateUUID();
       await Promise.all(filledRows.map(row =>
-        ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null, postGroupId: groupId })
+        ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null, postGroupId: groupId, skipDuplicateCheck: true })
       ));
       setSubmitOk(true);
       setTimeout(onSaved, 800);
@@ -1411,10 +1427,12 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
         if (p.post_group_id) {
           groupKey = p.post_group_id;
         } else {
-          // Legacy rows have no post_group_id — group by scheduled minute + first 80 chars of content
+          // Legacy rows have no post_group_id — group by workspace + scheduled minute.
+          // Per-platform captions differ per row, so including content in the key would
+          // prevent rows for the same multi-platform post from grouping together.
           const timeKey = p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime';
-          const contentKey = (p.content || '').slice(0, 80);
-          groupKey = `legacy::${timeKey}::${contentKey}`;
+          const wsKey = p.workspace_id ?? 'null';
+          groupKey = `legacy::${wsKey}::${timeKey}`;
         }
 
         const platformsForRow: string[] = Array.isArray(p.platforms) ? p.platforms : [];
@@ -1428,6 +1446,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           const initCount = platformsForRow.length;
           groupMap.set(groupKey, {
             id: p.id,
+            allIds: [p.id],                    // all DB row IDs in this group (needed for legacy deletes)
             content: p.content || '',          // preview caption (first row wins)
             platforms: [...platformsForRow],
             scheduledAt: new Date(p.scheduled_at),
@@ -1441,6 +1460,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           });
         } else {
           const existing = groupMap.get(groupKey);
+          existing.allIds.push(p.id);
           // Merge each platform and store its specific caption
           for (const pl of platformsForRow) {
             if (!existing.platforms.includes(pl)) existing.platforms.push(pl);
@@ -4850,6 +4870,8 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
     try {
       const startStr = days[0].toISOString().split('T')[0];
       const endStr   = days[6].toISOString().split('T')[0];
+
+      // Load planner strategy items
       let q = supabase
         .from('content_planner')
         .select('*')
@@ -4860,12 +4882,20 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
       else q = q.is('workspace_id', null);
       const { data, error } = await q;
       if (!error && data) {
-        setItems(data.map((r: any) => ({
+        const mapped = data.map((r: any) => ({
           id: r.id, title: r.title, notes: r.notes,
           plannedDate: r.planned_date, plannedTime: r.planned_time,
           category: r.category || 'idea', sourceLabel: r.source_label,
-        })));
+          talkingPoints: Array.isArray(r.talking_points) ? r.talking_points : undefined,
+        }));
+        setItems(mapped);
+        const restored: Record<string, string[]> = {};
+        for (const item of mapped) {
+          if (item.talkingPoints) restored[item.id] = item.talkingPoints;
+        }
+        setTpResults(prev => ({ ...prev, ...restored }));
       }
+
     } catch (e) {}
     finally { setLoading(false); }
   }, [userId, weekStart, workspaceId]);
@@ -4907,6 +4937,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
       if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
       if (data.talking_points && Array.isArray(data.talking_points)) {
         setTpResults(prev => ({ ...prev, [itemId]: data.talking_points }));
+        await supabase.from('content_planner').update({ talking_points: data.talking_points }).eq('id', itemId);
       } else {
         throw new Error('No talking points returned');
       }
@@ -5021,7 +5052,7 @@ function PlannerPanel({ userId, subscription, onUpgrade, workspaceId }: {
                   </div>
                 </button>
 
-                {/* Items — always visible, collapse on tap */}
+                {/* Strategy items — always visible, collapse on tap */}
                 <div className={`${expanded === false ? 'hidden' : 'block'} border-t`} style={{ borderColor: BORDER }}>
                   {dayItems.map(item => {
                     const col = CATEGORY_COLORS[item.category] || GOLD;
@@ -5480,140 +5511,186 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integrations: PostizIntegration[]; userId: string | null; workspaceId?: string | null; onUpgrade?: () => void }) {
   const [posts, setPosts]               = useState<ScheduledPost[]>([]);
   const [loading, setLoading]           = useState(false);
-  const [currentDate, setCurrentDate]   = useState(new Date());
-  const [selectedDay, setSelectedDay]   = useState<number | null>(null);
+  const [biweekStart, setBiweekStart]   = useState<Date>(() => {
+    const d = new Date(); d.setHours(0,0,0,0);
+    d.setDate(d.getDate() - d.getDay()); // start of current week (Sunday)
+    return d;
+  });
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [dayLogOpen, setDayLogOpen]     = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerDate, setComposerDate] = useState<Date | undefined>();
+  const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
 
-  const year        = currentDate.getFullYear();
-  const month       = currentDate.getMonth();
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDay    = new Date(year, month, 1).getDay();
-  const monthName   = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-  const today       = new Date();
+  const today      = new Date(); today.setHours(0,0,0,0);
+  const biweekEnd  = new Date(biweekStart.getTime() + 13 * 86400000);
+  const days14     = Array.from({ length: 14 }, (_, i) => new Date(biweekStart.getTime() + i * 86400000));
+
+  const fmt = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const rangeLabel = `${fmt(biweekStart)} – ${fmt(biweekEnd)}, ${biweekStart.getFullYear()}`;
+
+  const prevBiweek = () => setBiweekStart(d => new Date(d.getTime() - 14 * 86400000));
+  const nextBiweek = () => setBiweekStart(d => new Date(d.getTime() + 14 * 86400000));
+  const goToday    = () => {
+    const d = new Date(); d.setHours(0,0,0,0); d.setDate(d.getDate() - d.getDay());
+    setBiweekStart(d);
+  };
 
   const loadPosts = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const start = new Date(year, month, 1).toISOString();
-      const end   = new Date(year, month + 1, 0, 23, 59, 59).toISOString();
-      const res   = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}${workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : ''}`, {
-        headers: { 'Authorization': `Bearer ${await getToken() || SUPABASE_ANON_KEY}` },
-      });
-      const data  = res.ok ? await res.json() : { posts: [] };
-      const list  = Array.isArray(data?.posts) ? data.posts : [];
-      setPosts(list.map((p: any) => {
-        const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null, platformCount: p.platformCount ?? null, platformCountLabel: p.platformCountLabel ?? null };
-      }));
+      const start = new Date(biweekStart.getTime()).toISOString();
+      const end   = new Date(biweekEnd.getTime() + 86400000 - 1).toISOString();
+      let q = supabase
+        .from('scheduled_posts')
+        .select('id,content,platforms,status,scheduled_at,media_urls,post_group_id,error')
+        .eq('supabase_user_id', userId)
+        .in('status', ['scheduled', 'published', 'error', 'failed'])
+        .gte('scheduled_at', start)
+        .lte('scheduled_at', end)
+        .order('scheduled_at', { ascending: true });
+      if (workspaceId) q = (q as any).eq('workspace_id', workspaceId);
+      else q = (q as any).is('workspace_id', null);
+      const { data, error } = await q;
+      if (error || !data) return;
+      // Group by post_group_id so multi-platform posts appear as one card
+      const groupMap = new Map<string, any>();
+      for (const p of data) {
+        const key = p.post_group_id || p.id;
+        const plats: string[] = Array.isArray(p.platforms) ? p.platforms : [];
+        if (!groupMap.has(key)) {
+          groupMap.set(key, { id: key, content: p.content || '', platforms: [...plats], scheduledAt: new Date(p.scheduled_at), status: p.status || 'scheduled', error: p.error ?? null, mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [], postGroupId: key });
+        } else {
+          const ex = groupMap.get(key);
+          for (const pl of plats) { if (!ex.platforms.includes(pl)) ex.platforms.push(pl); }
+          if (p.status === 'error' || p.status === 'failed') { ex.status = p.status; ex.error = p.error ?? ex.error; }
+        }
+      }
+      setPosts(Array.from(groupMap.values()));
     } catch (e) {}
     finally { setLoading(false); }
-  }, [userId, year, month, workspaceId]);
+  }, [userId, biweekStart.getTime(), workspaceId]);
 
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
-  const STATUS_COLOR = (s: string) => s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
-
-  const postsOnDay = (day: number) =>
-    posts.filter(p => {
-      const d = p.scheduledAt;
-      return d.getFullYear() === year && d.getMonth() === month && d.getDate() === day;
+  const postsOnDay = (day: Date) => {
+    const y = day.getFullYear(), m = day.getMonth(), d = day.getDate();
+    return posts.filter(p => {
+      const s = p.scheduledAt;
+      return s.getFullYear() === y && s.getMonth() === m && s.getDate() === d;
     }).sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+  };
+
+  const STATUS_COLOR = (s: string) => s === 'published' ? '#22c55e' : (s === 'error' || s === 'failed') ? '#ef4444' : GOLD;
+  const STATUS_BG    = (s: string) => s === 'published' ? 'rgba(34,197,94,0.12)' : (s === 'error' || s === 'failed') ? 'rgba(239,68,68,0.12)' : `${GOLD}15`;
+  const STATUS_LABEL = (s: string) => s === 'published' ? 'Published' : (s === 'error' || s === 'failed') ? 'Failed' : 'Scheduled';
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
+      {/* Header */}
       <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
         <div className="flex items-center gap-1.5">
-          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() - 1, 1))}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+          <button onClick={prevBiweek} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm md:text-base font-bold text-white w-32 md:w-44 text-center">{monthName}</span>
-          <button onClick={() => setCurrentDate(d => new Date(d.getFullYear(), d.getMonth() + 1, 1))}
-            className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+          <span className="text-sm font-bold text-white w-44 text-center">{rangeLabel}</span>
+          <button onClick={nextBiweek} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <button onClick={() => setCurrentDate(new Date())}
-            className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition"
+          <button onClick={goToday} className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition"
             style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
             Today
           </button>
           {loading && <Loader className="w-4 h-4 animate-spin text-white/20" />}
         </div>
         <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
-          className="flex items-center gap-1.5 px-3 py-2 md:px-4 md:py-2 rounded-xl text-xs md:text-sm font-bold transition hover:brightness-110"
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
           style={{ background: GOLD, color: '#000' }}>
-          <Plus className="w-3.5 h-3.5 md:w-4 md:h-4" />
-          <span className="hidden sm:inline">New Post</span>
+          <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">New Post</span>
         </button>
       </div>
 
+      {/* Day-of-week headers */}
       <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
-        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
-          <div key={d} className="py-2 text-center text-[10px] md:text-xs font-bold text-white/25 uppercase tracking-wider">{d}</div>
+        {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
+          <div key={d} className="py-2 text-center text-[10px] font-bold text-white/25 uppercase tracking-wider">{d}</div>
         ))}
       </div>
 
-      <div className="mm-scroll flex-1 overflow-y-auto pb-32 md:pb-0 grid grid-cols-7" style={{ gridAutoRows: 'minmax(72px, 1fr)' }}>
-        {Array.from({ length: firstDay }).map((_, i) => (
-          <div key={`e${i}`} className="border-r border-b" style={{ borderColor: BORDER, background: 'rgba(255,255,255,0.01)' }} />
-        ))}
-        {Array.from({ length: daysInMonth }).map((_, i) => {
-          const day       = i + 1;
-          const dayPosts  = postsOnDay(day);
-          const isToday   = today.getDate() === day && today.getMonth() === month && today.getFullYear() === year;
-          const isWeekend = [0, 6].includes(new Date(year, month, day).getDay());
-          const dotPosts  = dayPosts.slice(0, 4);
-          const overflow  = dayPosts.length - dotPosts.length;
+      {/* 14-day grid — 7 cols × 2 rows, fills remaining page height */}
+      <div className="flex-1 min-h-0 grid grid-cols-7 grid-rows-2">
+          {days14.map(day => {
+            const dateStr   = day.toISOString().split('T')[0];
+            const dayPosts  = postsOnDay(day);
+            const isToday   = day.getTime() === today.getTime();
+            const isWeekend = [0, 6].includes(day.getDay());
+            const isExpanded = expandedDays.has(dateStr);
+            const visible   = isExpanded ? dayPosts : dayPosts.slice(0, 3);
+            const overflow  = dayPosts.length - 3;
 
-          return (
-            <div key={day}
-              className="border-r border-b p-1.5 transition hover:bg-white/3 group cursor-pointer relative"
-              style={{ borderColor: BORDER, background: isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}
-              onClick={() => dayPosts.length > 0
-                ? (setSelectedDay(day), setDayLogOpen(true))
-                : (setComposerDate(new Date(year, month, day, 10, 0)), setComposerOpen(true))}>
-              <div className="w-5 h-5 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[10px] md:text-xs font-bold mb-1.5"
-                style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.55)' }}>
-                {day}
-              </div>
-              {dayPosts.length > 0 && (
-                <div className="flex flex-wrap gap-0.5 items-center">
-                  {dotPosts.map(post => (
-                    <span key={post.id} className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: STATUS_COLOR(post.status) }} />
+            return (
+              <div key={dateStr} className="border-r border-b flex flex-col min-h-0 overflow-hidden"
+                style={{ borderColor: BORDER, background: isToday ? `${GOLD}06` : isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+                {/* Day number + add button */}
+                <div className="flex items-center justify-between px-2 pt-2 pb-1">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0"
+                    style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.55)' }}>
+                    {day.getDate()}
+                  </div>
+                  <button
+                    onClick={() => { setComposerDate(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10, 0)); setComposerOpen(true); }}
+                    className="w-5 h-5 rounded flex items-center justify-center opacity-0 hover:opacity-100 group-hover:opacity-100 hover:bg-white/10 transition text-white/30">
+                    <Plus className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Post cards */}
+                <div className="flex flex-col gap-1 px-1.5 pb-1.5 flex-1 overflow-y-auto mm-scroll">
+                  {visible.map(post => (
+                    <button key={post.id}
+                      onClick={() => { setSelectedDate(day); setDayLogOpen(true); }}
+                      className="w-full text-left rounded px-1.5 py-1 transition hover:brightness-110"
+                      style={{ background: STATUS_BG(post.status), border: `1px solid ${STATUS_COLOR(post.status)}25` }}>
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <div className="flex items-center gap-0.5 shrink-0">
+                          {post.platforms.slice(0, 4).map((pid, i) => (
+                            <PlatformIcon key={i} id={pid} size="xs" />
+                          ))}
+                          {post.platforms.length > 4 && <span className="text-[8px] text-white/40 font-bold">+{post.platforms.length - 4}</span>}
+                        </div>
+                        <span className="text-[9px] font-semibold ml-auto shrink-0" style={{ color: STATUS_COLOR(post.status) }}>
+                          {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-white/60 leading-tight line-clamp-2">{post.content || '(No caption)'}</p>
+                    </button>
                   ))}
+                  {dayPosts.length === 0 && (
+                    <button
+                      onClick={() => { setComposerDate(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10, 0)); setComposerOpen(true); }}
+                      className="flex-1 flex items-center justify-center opacity-0 hover:opacity-100 transition text-white/15 text-xs">
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  )}
                   {overflow > 0 && (
-                    <span className="text-[8px] font-bold" style={{ color: 'rgba(255,255,255,0.3)', lineHeight: 1 }}>
-                      +{overflow}
-                    </span>
+                    <button
+                      onClick={e => { e.stopPropagation(); setExpandedDays(prev => { const n = new Set(prev); n.has(dateStr) ? n.delete(dateStr) : n.add(dateStr); return n; }); }}
+                      className="text-[10px] font-bold text-left px-1 py-0.5 rounded transition hover:bg-white/5"
+                      style={{ color: `${GOLD}90` }}>
+                      {isExpanded ? '↑ less' : `↓ +${overflow} more`}
+                    </button>
                   )}
                 </div>
-              )}
-              {dayPosts.length > 0 && (
-                <div className="mt-1 text-[9px] font-semibold" style={{ color: 'rgba(255,255,255,0.2)' }}>
-                  {dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}
-                </div>
-              )}
-              {dayPosts.length === 0 && (
-                <div className="opacity-0 group-hover:opacity-100 transition absolute bottom-1 right-1">
-                  <Plus className="w-2.5 h-2.5 text-white/20" />
-                </div>
-              )}
-            </div>
-          );
-        })}
+              </div>
+            );
+          })}
       </div>
 
-      {dayLogOpen && selectedDay !== null && (() => {
-        const dayPosts  = postsOnDay(selectedDay);
-        const dateLabel = new Date(year, month, selectedDay)
-          .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-        const STATUS_COLOR2 = (s: string) => s === 'published' ? '#22c55e' : s === 'failed' ? '#ef4444' : GOLD;
-        const STATUS_BG2    = (s: string) => s === 'published' ? 'rgba(34,197,94,0.12)' : s === 'failed' ? 'rgba(239,68,68,0.12)' : `${GOLD}12`;
+      {/* Day detail modal */}
+      {dayLogOpen && selectedDate && (() => {
+        const dayPosts  = postsOnDay(selectedDate);
+        const dateLabel = selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
         return (
           <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setDayLogOpen(false)} />
@@ -5625,13 +5702,12 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
                   <div className="text-xs text-white/35 mt-0.5">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <button onClick={() => { setComposerDate(new Date(year, month, selectedDay, 10, 0)); setDayLogOpen(false); setComposerOpen(true); }}
+                  <button onClick={() => { setComposerDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 10, 0)); setDayLogOpen(false); setComposerOpen(true); }}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition"
                     style={{ background: GOLD, color: '#000' }}>
                     <Plus className="w-3 h-3" /> Add Post
                   </button>
-                  <button onClick={() => setDayLogOpen(false)}
-                    className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
+                  <button onClick={() => setDayLogOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
@@ -5654,8 +5730,8 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
                       </div>
                     </div>
                     <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
-                      style={{ background: STATUS_BG2(post.status), color: STATUS_COLOR2(post.status) }}>
-                      {post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                      style={{ background: STATUS_BG(post.status), color: STATUS_COLOR(post.status) }}>
+                      {STATUS_LABEL(post.status)}
                     </span>
                   </div>
                 ))}
@@ -5665,7 +5741,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
         );
       })()}
 
-      {/* Calendar New Post modal — uses regular modal for calendar view */}
+      {/* New Post composer modal */}
       {composerOpen && (
         <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
           <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setComposerOpen(false)} />
@@ -6159,7 +6235,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   const [editablePrompt, setEditablePrompt]     = React.useState('');
   const [editableTranscript, setEditableTranscript] = React.useState('');
   const [brief, setBrief]             = React.useState('');
-  const [videoType, setVideoType]     = React.useState<'cinematic' | 'speaking'>('cinematic');
   const [style, setStyle]             = React.useState('cinematic');
   const [aspectRatio, setAspectRatio] = React.useState('16:9');
   const [duration, setDuration]       = React.useState('5');
@@ -6274,7 +6349,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       // 1. Always enhance the brief into a high-quality cinematic video prompt via Claude
       const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ brief, style, aspectRatio, duration, videoType, hasStartFrame: frameMode === 'manual' && !!startFrameUrl, textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined }),
+        body: JSON.stringify({ brief, style, aspectRatio, duration, hasStartFrame: frameMode === 'manual' && !!startFrameUrl, textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined }),
       });
       const promptData = await promptRes.json();
       if (!promptRes.ok) throw new Error(promptData.error || 'Failed to enhance brief');
@@ -6679,7 +6754,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     }
   };
 
-  const STYLES = ['cinematic','documentary','commercial','anime','realistic','voiceover'];
+  const STYLES = ['cinematic','speaking','commercial','anime','voiceover'];
   const allFramesDone = frames.length > 0 && frames.every(f => f.status === 'done' || f.status === 'error');
 
   return (
@@ -6730,35 +6805,35 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
 
           {step === 'brief' && (
             <div className="space-y-4">
-              {/* Video Type selector */}
               <div>
-                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Video Type</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => setVideoType('cinematic')}
-                    className="flex flex-col items-start gap-1 p-3 rounded-xl border transition text-left"
-                    style={{ borderColor: videoType === 'cinematic' ? GOLD : BORDER, background: videoType === 'cinematic' ? `${GOLD}14` : 'rgba(0,0,0,0.2)' }}>
-                    <span className="text-sm font-black" style={{ color: videoType === 'cinematic' ? GOLD_L : 'rgba(255,255,255,0.7)' }}>Scene / Cinematic</span>
-                    <span className="text-[11px] leading-snug" style={{ color: videoType === 'cinematic' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)' }}>Landscapes, products, storytelling, B-roll</span>
-                  </button>
-                  <button onClick={() => setVideoType('speaking')}
-                    className="flex flex-col items-start gap-1 p-3 rounded-xl border transition text-left"
-                    style={{ borderColor: videoType === 'speaking' ? GOLD : BORDER, background: videoType === 'speaking' ? `${GOLD}14` : 'rgba(0,0,0,0.2)' }}>
-                    <span className="text-sm font-black" style={{ color: videoType === 'speaking' ? GOLD_L : 'rgba(255,255,255,0.7)' }}>Speaking / Presenter</span>
-                    <span className="text-[11px] leading-snug" style={{ color: videoType === 'speaking' ? 'rgba(255,255,255,0.55)' : 'rgba(255,255,255,0.3)' }}>Character speaks naturally from talking points</span>
-                  </button>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Style</label>
+                <div className="flex flex-wrap gap-2">
+                  {STYLES.map(s => (
+                    <button key={s} onClick={() => setStyle(s)}
+                      className="px-3 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
+                      style={{ borderColor: style === s ? GOLD : BORDER, background: style === s ? `${GOLD}18` : 'transparent', color: style === s ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                      {s}
+                    </button>
+                  ))}
                 </div>
               </div>
               <div>
                 <label className="text-xs font-bold text-white/30 uppercase tracking-wider">
-                  {videoType === 'speaking' ? 'Talking Points' : 'Video Brief'}
+                  {style === 'speaking' ? 'Talking Points' : 'Video Brief'}
                 </label>
                 <textarea value={brief} onChange={e => setBrief(e.target.value)} rows={5}
-                  placeholder={videoType === 'speaking'
+                  placeholder={style === 'speaking'
                     ? 'Enter your talking points or key ideas. E.g.:\n- Consistency beats motivation every time\n- Small daily actions compound into massive results\n- Discipline is the real secret to building wealth\n\nClaude will shape these into smooth, natural dialogue.'
-                    : 'Describe the video you want. E.g. \'A cinematic shot of a lone wolf running through a misty forest at dawn…\''}
+                    : style === 'anime'
+                      ? 'Describe your anime scene. E.g. \'A young warrior stands at the edge of a cliff overlooking a glowing city at dusk…\''
+                      : style === 'commercial'
+                        ? 'Describe your product or brand moment. E.g. \'A sleek black smartphone resting on a marble surface…\''
+                        : style === 'voiceover'
+                          ? 'Describe the visuals that should accompany your narration. E.g. \'Aerial shot of a sunrise over a city skyline…\''
+                          : 'Describe the video you want. E.g. \'A lone wolf running through a misty forest at dawn, golden light filtering through the trees…\''}
                   className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
                   style={{ borderColor: BORDER }} />
-                {videoType === 'speaking' && (
+                {style === 'speaking' && (
                   <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
                     {frameMode === 'manual' && startFrameUrl
                       ? 'Character appearance is defined by your start frame image. Claude will focus on turning your talking points into smooth, flowing dialogue.'
@@ -6766,20 +6841,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                   </p>
                 )}
               </div>
-              {videoType === 'cinematic' && (
-                <div>
-                  <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Style</label>
-                  <div className="flex flex-wrap gap-2">
-                    {STYLES.map(s => (
-                      <button key={s} onClick={() => setStyle(s)}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold border transition capitalize"
-                        style={{ borderColor: style === s ? GOLD : BORDER, background: style === s ? `${GOLD}18` : 'transparent', color: style === s ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Aspect Ratio</label>
