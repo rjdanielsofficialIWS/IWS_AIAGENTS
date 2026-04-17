@@ -6222,10 +6222,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   // AI-generated frames (shown in review step)
   const [generatedStartFrameUrl, setGeneratedStartFrameUrl] = React.useState<string | null>(null);
   const [generatedEndFrameUrl, setGeneratedEndFrameUrl]     = React.useState<string | null>(null);
-  const [midFrame1Url, setMidFrame1Url] = React.useState<string | null>(null);
-  const [midFrame2Url, setMidFrame2Url] = React.useState<string | null>(null);
-  const midFrame1Ref = React.useRef<HTMLInputElement>(null);
-  const midFrame2Ref = React.useRef<HTMLInputElement>(null);
   const [generatingAssets, setGeneratingAssets] = React.useState(false);
   const [editablePrompt, setEditablePrompt]     = React.useState('');
   const [brief, setBrief]             = React.useState('');
@@ -6356,15 +6352,12 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const resolvedStartUrl = frameMode === 'manual' ? startFrameUrl : null;
     const resolvedEndUrl   = frameMode === 'manual' ? endFrameUrl   : null;
 
-    // Build enriched prompt mentioning middle frames for better coherence
-    const midFrameNote = [midFrame1Url, midFrame2Url].filter(Boolean).length > 0
-      ? ` Smoothly transition through ${[midFrame1Url, midFrame2Url].filter(Boolean).length} intermediate scene(s) maintaining visual continuity.`
-      : '';
+
     // When start/end frames are provided, anchor the model to them explicitly
     const frameConsistencyNote = resolvedStartUrl
       ? ' CRITICAL: The provided reference frames define the exact visual scene — maintain the identical character appearance, background, environment, and lighting from the reference frames throughout the entire clip. Do not introduce any new scene, setting, or background. The character and environment must remain exactly as shown in the reference images.'
       : '';
-    const enrichedPrompt = promptText + midFrameNote + frameConsistencyNote;
+    const enrichedPrompt = promptText + frameConsistencyNote;
 
     if (resolvedStartUrl) {
       const frameId = `f${Date.now()}-p0`;
@@ -6586,14 +6579,12 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     pollTimers.current[vidId] = interval;
   };
 
-    const handleFrameUpload = (type: 'start' | 'end' | 'mid1' | 'mid2', file: File) => {
+    const handleFrameUpload = (type: 'start' | 'end', file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const dataUrl = e.target?.result as string;
       if (type === 'start') setStartFrameUrl(dataUrl);
       else if (type === 'end') setEndFrameUrl(dataUrl);
-      else if (type === 'mid1') setMidFrame1Url(dataUrl);
-      else setMidFrame2Url(dataUrl);
     };
     reader.readAsDataURL(file);
   };
@@ -6604,7 +6595,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null);
     setFrameMode('none'); setStartFrameUrl(null); setEndFrameUrl(null);
     setGeneratedStartFrameUrl(null); setGeneratedEndFrameUrl(null);
-    setMidFrame1Url(null); setMidFrame2Url(null);
     setEditablePrompt(''); setGeneratingAssets(false);
   };
 
@@ -6771,42 +6761,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                         </button>
                         {startFrameUrl && <button onClick={() => setStartFrameUrl(null)} className="mt-1 text-[10px] text-white/20 hover:text-white/45 w-full text-center">remove</button>}
                       </div>
-                      {/* Mid Frame 1 */}
-                      <div>
-                        <p className="text-[10px] text-white/25 mb-1.5 font-semibold">🖼 Middle Frame 1 <span className="text-white/15 font-normal">(optional)</span></p>
-                        <input ref={midFrame1Ref} type="file" accept="image/*" className="hidden"
-                          onChange={e => e.target.files?.[0] && handleFrameUpload('mid1', e.target.files[0])} />
-                        <button onClick={() => midFrame1Ref.current?.click()}
-                          className="w-full rounded-xl border overflow-hidden transition hover:border-white/20"
-                          style={{ borderColor: midFrame1Url ? GOLD + '60' : BORDER, aspectRatio: '4/3', background: 'rgba(0,0,0,0.3)' }}>
-                          {midFrame1Url
-                            ? <img src={midFrame1Url} className="w-full h-full object-cover" alt="Mid 1" />
-                            : <div className="w-full h-full flex flex-col items-center justify-center gap-1.5">
-                                <Upload className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                                <span className="text-[10px] text-white/20">Upload image</span>
-                              </div>
-                          }
-                        </button>
-                        {midFrame1Url && <button onClick={() => setMidFrame1Url(null)} className="mt-1 text-[10px] text-white/20 hover:text-white/45 w-full text-center">remove</button>}
-                      </div>
-                      {/* Mid Frame 2 */}
-                      <div>
-                        <p className="text-[10px] text-white/25 mb-1.5 font-semibold">🖼 Middle Frame 2 <span className="text-white/15 font-normal">(optional)</span></p>
-                        <input ref={midFrame2Ref} type="file" accept="image/*" className="hidden"
-                          onChange={e => e.target.files?.[0] && handleFrameUpload('mid2', e.target.files[0])} />
-                        <button onClick={() => midFrame2Ref.current?.click()}
-                          className="w-full rounded-xl border overflow-hidden transition hover:border-white/20"
-                          style={{ borderColor: midFrame2Url ? GOLD + '60' : BORDER, aspectRatio: '4/3', background: 'rgba(0,0,0,0.3)' }}>
-                          {midFrame2Url
-                            ? <img src={midFrame2Url} className="w-full h-full object-cover" alt="Mid 2" />
-                            : <div className="w-full h-full flex flex-col items-center justify-center gap-1.5">
-                                <Upload className="w-4 h-4" style={{ color: 'rgba(255,255,255,0.2)' }} />
-                                <span className="text-[10px] text-white/20">Upload image</span>
-                              </div>
-                          }
-                        </button>
-                        {midFrame2Url && <button onClick={() => setMidFrame2Url(null)} className="mt-1 text-[10px] text-white/20 hover:text-white/45 w-full text-center">remove</button>}
-                      </div>
                       {/* End Frame */}
                       <div>
                         <p className="text-[10px] text-white/25 mb-1.5 font-semibold">🎬 End Frame</p>
@@ -6826,9 +6780,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                         {endFrameUrl && <button onClick={() => setEndFrameUrl(null)} className="mt-1 text-[10px] text-white/20 hover:text-white/45 w-full text-center">remove</button>}
                       </div>
                     </div>
-                    {(midFrame1Url || midFrame2Url) && (
-                      <p className="text-[10px] text-white/25 px-1">Middle frames guide the AI on visual transitions. The more frames you provide, the more coherent the motion will be.</p>
-                    )}
                   </div>
                 )}
               </div>
