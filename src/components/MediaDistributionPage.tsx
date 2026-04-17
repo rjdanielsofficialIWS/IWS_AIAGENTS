@@ -7533,9 +7533,8 @@ function AutoPilotPanel({ userId, integrations, subscription, onUpgrade, workspa
       const json = await res.json();
       if (res.ok && json.results?.[0]) {
         const r = json.results[0];
-        if (Array.isArray(r.trendingTopics) && r.trendingTopics.length > 0) {
-          setTrendingTopics(r.trendingTopics);
-        }
+        const allTopics = [...(r.trendingTopics ?? []), ...(r.recentTopics ?? [])];
+        if (allTopics.length > 0) setTrendingTopics(allTopics);
         const runTime = new Date().toISOString();
         setLastRunDate(new Date(runTime).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }));
         setRanToday(true);

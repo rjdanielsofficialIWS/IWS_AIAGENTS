@@ -374,6 +374,16 @@ async function generatePosts(
     ? `\nYESTERDAY'S TOPICS (ALREADY COVERED — DO NOT REVISIT): These stories and angles were published yesterday. You must NOT write about any of these topics, themes, or angles. Find completely fresh ground — different stories, different sub-topics, different angles entirely:\n${previousTopics.map((t, i) => `${i + 1}. ${t}`).join('\n')}\n`
     : '';
 
+  // Build explicit per-post story assignments so Claude cannot pile posts onto one topic
+  const allStories = [
+    ...trendingTopics.map((t, i) => `[TRENDING ${i + 1}] ${t}`),
+    ...recentTopics.map((t, i) => `[RECENT ${i + 1}] ${t}`),
+  ];
+  const postAssignments = Array.from({ length: 9 }, (_, i) => {
+    const story = allStories[i % allStories.length];
+    return `Post ${i + 1}: ${story}`;
+  }).join('\n');
+
   const userMsg = `Generate 10 posts for each of these platforms: ${platforms.map(p => p === 'x' ? 'X (Twitter)' : p[0].toUpperCase() + p.slice(1)).join(', ')}.
 
 NICHE (used only to find the research above — not the subject of posts): ${config.niche}
@@ -391,11 +401,14 @@ contrarian take, surprising insight, hard truth, pattern interrupt, personal sto
 
 FRESHNESS RULE — this runs every day. The posts you write today must cover completely different ground than yesterday's posts. If you received a "YESTERDAY'S TOPICS" block above, treat it as a strict exclusion list — no overlapping topics, no recycled angles, no retreading the same sub-topics in different words. Find new stories, new angles, new entry points within the niche every single day.
 
+MANDATORY POST-TO-STORY ASSIGNMENTS — this is the law. Every value post is pre-assigned to a specific story. Follow it exactly with no deviations:
+${postAssignments}
+Post 10: sell post — tie any one research story to why the product/service matters right now.
+
 REQUIREMENTS:
-- You have ${allTopicsCount} research stories above (${trendingTopics.length} trending + ${recentTopics.length} recent). Every single story MUST be covered — write at least one post rooted in each story. Spread the 9 value posts across all ${allTopicsCount} stories. Never skip a story. Never write more than 2 posts about the same story.
-- Posts 1-9 (value posts): Each post must be rooted in one of the stories above. Extract a specific insight, hard truth, angle, or lesson directly from the story — translate it into original copy that stands on its own. Do not quote headlines. Do not name any news source. Do not mention the product/service. Vary angle, hook type, and sentence structure on every post.
-- Post 10: sell post for the product/service. Tie one of the research stories to why the product/service matters right now — makes the pitch feel timely and earned, not like an ad. Must end with a CTA. Rotate CTA style: "Link in bio", a reply-driving question, "DM me [word]", scarcity nudge, soft qualifier, curiosity tease, or benefit-forward command. Never name a source or platform in the post copy.
-- All posts must feel handwritten, platform-native, and sharp. The value comes from the specific insight drawn from a real story — never generic niche commentary.
+- Each value post (1-9) MUST be rooted exclusively in its assigned story above. Extract a specific insight, hard truth, angle, or lesson directly from that story — translate it into original copy that stands on its own. Do not quote headlines. Do not name any news source. Do not mention the product/service. Use a different angle, hook type, and sentence structure on every post.
+- Post 10: sell post for the product/service. Makes the pitch feel timely and earned, not like an ad. Must end with a CTA. Rotate CTA style: "Link in bio", a reply-driving question, "DM me [word]", scarcity nudge, soft qualifier, curiosity tease, or benefit-forward command. Never name a source or platform in the post copy.
+- All posts must feel handwritten, platform-native, and sharp.
 
 Return ONLY the JSON object with keys for each requested platform, each containing an array of exactly 10 strings.`;
 
