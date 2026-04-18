@@ -3898,31 +3898,37 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     ...prev, goals: prev.goals.includes(g) ? prev.goals.filter(x => x !== g) : [...prev.goals, g],
   }));
 
+  const callContentStrategist = async (body: unknown): Promise<Response> => {
+    let token = await getToken();
+    let res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      token = refreshed.session?.access_token || await getToken();
+      res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify(body),
+      });
+    }
+    return res;
+  };
+
   const handleFetchTrends = async (briefSnapshot: typeof brief) => {
     if (!briefSnapshot.niche.trim()) return;
     if (!userId) return;
     setTrendsLoading(true); setTrendsError(null); setTrendsResults(null);
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-      // Proactively refresh — Safari ITP causes stale sessions
-      { const r = await supabase.auth.refreshSession(); if (r.data.session) session = r.data.session; }
-      // Plain fetch with no AbortController — lets the edge function run to completion (60-90 s)
-      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session!.access_token}`,
-        },
-        body: JSON.stringify({
-          mode: 'trends_research',
-          niche: briefSnapshot.niche,
-          audience: briefSnapshot.audience,
-          platforms: briefSnapshot.platforms,
-          goals: briefSnapshot.goals,
-          offer: briefSnapshot.offer,
-        }),
+      const res = await callContentStrategist({
+        mode: 'trends_research',
+        niche: briefSnapshot.niche,
+        audience: briefSnapshot.audience,
+        platforms: briefSnapshot.platforms,
+        goals: briefSnapshot.goals,
+        offer: briefSnapshot.offer,
       });
       const rawText = await res.text();
       let data: any;
@@ -3947,14 +3953,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     if (!userId) { setError('Sign in to use the AI Strategist.'); return; }
     setLoading(true); setError(null); setResults(null);
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ mode: 'full_strategy', ...brief }),
-      });
+      const res = await callContentStrategist({ mode: 'full_strategy', ...brief });
       const data = await res.json();
       if (data.error === 'upgrade_required') { onUpgrade?.(); setLoading(false); return; }
       if (data.error === 'limit_reached') { setError(data.message || 'Monthly strategy limit reached. Upgrade to Agency for unlimited strategies.'); setLoading(false); return; }
@@ -3972,15 +3971,8 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     if (!userId) { setVideoError('Sign in first'); return; }
     setVideoLoading(true); setVideoError(null); setVideoIdeas(null);
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-      const transcript = await transcribeVideo(videoFile, session!.access_token);
-      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ mode: 'repurpose_from_video', transcript, tone: videoTone }),
-      });
+      const transcript = await transcribeVideo(videoFile, await getToken());
+      const res = await callContentStrategist({ mode: 'repurpose_from_video', transcript, tone: videoTone });
       const data = await res.json();
       if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
       if (!res.ok) throw new Error(data.error || 'Failed');
@@ -3994,14 +3986,7 @@ function InlineContentStrategist({ userId, onAddToPlanner, onUpgrade }: {
     if (!userId) { setVideoError('Sign in first'); return; }
     setVideoLoading(true); setVideoError(null); setVideoIdeas(null);
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session) throw new Error('Your session has expired. Please sign out and sign back in.');
-      const res = await fetch(`${SUPABASE_URL_LOCAL}/functions/v1/content-strategist`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session!.access_token}` },
-        body: JSON.stringify({ mode: 'repurpose_from_description', description: repurposeDescription.trim(), tone: videoTone }),
-      });
+      const res = await callContentStrategist({ mode: 'repurpose_from_description', description: repurposeDescription.trim(), tone: videoTone });
       const data = await res.json();
       if (data.error === 'upgrade_required') { onUpgrade?.(); return; }
       if (!res.ok) throw new Error(data.error || 'Failed');
