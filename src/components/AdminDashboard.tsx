@@ -1,10 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
 
-
-
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_URL  = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 const GOLD    = '#C9A84C';
 const GOLD_D  = '#a07830';
 const SURFACE = 'rgba(18,18,18,0.98)';
@@ -80,6 +77,10 @@ function MiniBar({ data }: { data: Record<string,number> }) {
   );
 }
 
+const PASSCODE_KEY = 'admin_passcode';
+const VERIFIED_KEY = 'admin_passcode_verified';
+function getSavedPasscode() { return localStorage.getItem(PASSCODE_KEY) ?? 'IWS'; }
+
 export default function AdminDashboard() {
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string|null>(null);
@@ -90,33 +91,18 @@ export default function AdminDashboard() {
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   // Passcode gate
-  const STORAGE_KEY = 'admin_passcode_verified';
   const [passcode, setPasscode]       = useState('');
   const [passcodeError, setPasscodeError] = useState('');
-  const [verified, setVerified]       = useState(() => sessionStorage.getItem(STORAGE_KEY) === 'true');
-  const [savedCode, setSavedCode]     = useState('IWS');
-  const [loadingCode, setLoadingCode] = useState(true);
+  const [verified, setVerified]       = useState(() => sessionStorage.getItem(VERIFIED_KEY) === 'true');
   const [showSettings, setShowSettings] = useState(false);
   const [newCode, setNewCode]         = useState('');
   const [newCodeConfirm, setNewCodeConfirm] = useState('');
   const [savingCode, setSavingCode]   = useState(false);
   const [saveMsg, setSaveMsg]         = useState('');
 
-  // Load saved passcode from Supabase user metadata
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser();
-        const code = user?.user_metadata?.admin_passcode;
-        if (code) setSavedCode(code);
-      } catch {}
-      finally { setLoadingCode(false); }
-    })();
-  }, []);
-
   const handlePasscode = () => {
-    if (passcode.trim().toUpperCase() === savedCode.toUpperCase()) {
-      sessionStorage.setItem(STORAGE_KEY, 'true');
+    if (passcode.trim().toUpperCase() === getSavedPasscode().toUpperCase()) {
+      sessionStorage.setItem(VERIFIED_KEY, 'true');
       setVerified(true);
       setPasscodeError('');
     } else {
@@ -125,28 +111,22 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleSaveCode = async () => {
+  const handleSaveCode = () => {
     if (!newCode.trim()) { setSaveMsg('Passcode cannot be empty.'); return; }
     if (newCode !== newCodeConfirm) { setSaveMsg('Passcodes do not match.'); return; }
     setSavingCode(true); setSaveMsg('');
-    try {
-      await supabase.auth.updateUser({ data: { admin_passcode: newCode.trim() } });
-      setSavedCode(newCode.trim());
-      setNewCode(''); setNewCodeConfirm('');
-      setSaveMsg('Passcode updated.');
-      setTimeout(() => { setSaveMsg(''); setShowSettings(false); }, 1500);
-    } catch { setSaveMsg('Failed to save. Try again.'); }
-    finally { setSavingCode(false); }
+    localStorage.setItem(PASSCODE_KEY, newCode.trim());
+    setNewCode(''); setNewCodeConfirm('');
+    setSaveMsg('Passcode updated.');
+    setSavingCode(false);
+    setTimeout(() => { setSaveMsg(''); setShowSettings(false); }, 1500);
   };
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      let { data: { session } } = await supabase.auth.getSession();
-      if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-      if (!session) { setError('Not authenticated'); setLoading(false); return; }
       const res  = await fetch(SUPABASE_URL + '/functions/v1/admin-dashboard', {
-        headers: { Authorization: 'Bearer ' + session.access_token },
+        headers: { Authorization: 'Bearer ' + SUPABASE_ANON },
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to load'); setLoading(false); return; }
@@ -166,7 +146,7 @@ export default function AdminDashboard() {
   });
 
   // Passcode gate
-  if (!verified && !loadingCode) return (
+  if (!verified) return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#0a0a0a' }}>
       <div className="w-full max-w-sm mx-auto px-6">
         <div className="rounded-2xl border p-8 space-y-6" style={{ background: 'rgba(18,18,18,0.98)', borderColor: BORDER }}>
