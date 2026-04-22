@@ -12,91 +12,117 @@ Deno.serve(async (req) => {
 
   if (req.method === "OPTIONS") return new Response("ok", { status: 200, headers: cors });
 
-  const json = (body: unknown, status = 200) =>
+  const reply = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
   try {
+    // Auth
     const auth = req.headers.get("Authorization") ?? "";
-    if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
-
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    if (!auth.startsWith("Bearer ")) return reply({ error: "Unauthorized" }, 401);
+    const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
     const { data: { user }, error: ae } = await supabase.auth.getUser(auth.replace("Bearer ", ""));
-    if (ae || !user) return json({ error: "Unauthorized" }, 401);
+    if (ae || !user) return reply({ error: "Unauthorized" }, 401);
 
-    const body = await req.json();
     const FAL = Deno.env.get("FAL_API_KEY");
-    if (!FAL) throw new Error("FAL_API_KEY not configured");
+    if (!FAL) return reply({ error: "FAL_API_KEY not configured" }, 500);
     const falAuth = { "Authorization": `Key ${FAL}` };
 
-    // ── New path: Seedance 2.0 / queue.fal.run (requestId + statusUrl + responseUrl) ──
-    if (body.requestId && body.statusUrl && body.responseUrl) {
-      const statusRes = await fetch(`${body.statusUrl}?logs=0`, { headers: falAuth });
-      if (!statusRes.ok) throw new Error(`fal status check failed (${statusRes.status})`);
-      const statusData = await statusRes.json();
-      const st: string = statusData.status;
+    const body = await req.json();
+
+    // ── New path: Seedance 2.0 (requestId + modelEndpoint) ──
+    if (body.requestId && body.modelEndpoint) {
+      // Always reconstruct URLs from requestId + model to avoid any encoding issues
+      const base = `https://queue.fal.run/${body.modelEndpoint}/requests/${body.requestId}`;
+      const statusUrl = body.statusUrl || `${base}/status`;
+      const responseUrl = body.responseUrl || base;
+
+      let statusData: any;
+      try {
+        const sr = await fetch(`${statusUrl}?logs=0`, { headers: falAuth });
+        statusData = await sr.json();
+      } catch (e) {
+        console.error("fal status fetch error:", e);
+        return reply({ status: "processing" });
+      }
+
+      const st = statusData?.status ?? statusData?.state ?? "";
+      console.log("fal status:", st, JSON.stringify(statusData).slice(0, 200));
 
       if (st === "COMPLETED") {
-        const resultRes = await fetch(body.responseUrl, { headers: falAuth });
-        if (!resultRes.ok) throw new Error(`fal result fetch failed (${resultRes.status})`);
-        const result = await resultRes.json();
-        const videoUrl: string = result.video?.url ?? result.video_url ?? result.output?.video?.url;
-        if (!videoUrl) throw new Error("No video URL in fal result: " + JSON.stringify(result).slice(0, 200));
-        return json({ status: "succeed", videoUrl });
+        // fal.ai returns errors as COMPLETED with an error field
+        if (statusData?.error) {
+          return reply({ status: "failed", error: statusData.error });
+        }
+        let result: any;
+        try {
+          const rr = await fetch(responseUrl, { headers: falAuth });
+          result = await rr.json();
+        } catch (e) {
+          console.error("fal result fetch error:", e);
+          return reply({ status: "processing" });
+        }
+        const videoUrl: string =
+          result?.video?.url ?? result?.video_url ?? result?.output?.video?.url ?? result?.videos?.[0]?.url;
+        if (!videoUrl) {
+          console.error("No video URL in result:", JSON.stringify(result).slice(0, 300));
+          return reply({ status: "failed", error: "No video URL in generation result" });
+        }
+        return reply({ status: "succeed", videoUrl });
       }
 
-      if (st === "FAILED") {
-        const errMsg = statusData.error ?? statusData.detail ?? "Generation failed";
-        return json({ status: "failed", error: typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg) });
-      }
-
-      // IN_QUEUE or IN_PROGRESS
-      return json({ status: "processing" });
+      // IN_QUEUE, IN_PROGRESS, or unknown — keep polling
+      return reply({ status: "processing" });
     }
 
     // ── Old path: taskId + type (kling-generate-image, kling-generate-audio) ──
     if (body.taskId && body.type) {
       const { taskId, type } = body;
 
-      // fal.ai supports model-agnostic request lookup by request ID
-      const statusRes = await fetch(`https://queue.fal.run/requests/${taskId}/status?logs=0`, { headers: falAuth });
-      if (!statusRes.ok) throw new Error(`fal task status failed (${statusRes.status})`);
-      const statusData = await statusRes.json();
-      const st: string = statusData.status;
+      let statusData: any;
+      try {
+        const sr = await fetch(`https://queue.fal.run/requests/${taskId}/status?logs=0`, { headers: falAuth });
+        statusData = await sr.json();
+      } catch (e) {
+        console.error("fal task status fetch error:", e);
+        return reply({ status: "processing" });
+      }
+
+      const st = statusData?.status ?? statusData?.state ?? "";
 
       if (st === "COMPLETED") {
-        const resultRes = await fetch(`https://queue.fal.run/requests/${taskId}`, { headers: falAuth });
-        if (!resultRes.ok) throw new Error(`fal task result failed (${resultRes.status})`);
-        const result = await resultRes.json();
+        let result: any;
+        try {
+          const rr = await fetch(`https://queue.fal.run/requests/${taskId}`, { headers: falAuth });
+          result = await rr.json();
+        } catch (e) {
+          return reply({ status: "processing" });
+        }
 
         if (type === "image") {
           const imageUrl: string =
-            result.images?.[0]?.url ?? result.image?.url ?? result.output?.[0]?.url;
-          if (!imageUrl) throw new Error("No image URL in result: " + JSON.stringify(result).slice(0, 200));
-          return json({ status: "succeed", imageUrl });
+            result?.images?.[0]?.url ?? result?.image?.url ?? result?.output?.[0]?.url;
+          if (!imageUrl) return reply({ status: "failed", error: "No image URL in result" });
+          return reply({ status: "succeed", imageUrl });
         }
 
-        // video or audio
         const videoUrl: string =
-          result.video?.url ?? result.video_url ?? result.output?.video?.url;
-        if (!videoUrl) throw new Error("No video URL in result: " + JSON.stringify(result).slice(0, 200));
-        return json({ status: "succeed", videoUrl });
+          result?.video?.url ?? result?.video_url ?? result?.output?.video?.url;
+        if (!videoUrl) return reply({ status: "failed", error: "No video URL in result" });
+        return reply({ status: "succeed", videoUrl });
       }
 
-      if (st === "FAILED") {
-        const errMsg = statusData.error ?? statusData.detail ?? "Generation failed";
-        return json({ status: "failed", error: typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg) });
+      if (st === "FAILED" || st === "ERROR") {
+        const errMsg = statusData?.error ?? statusData?.detail ?? "Generation failed";
+        return reply({ status: "failed", error: typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg) });
       }
 
-      return json({ status: "processing" });
+      return reply({ status: "processing" });
     }
 
-    return json({ error: "Missing required fields: requestId+statusUrl+responseUrl or taskId+type" }, 400);
+    return reply({ error: "Missing required fields: requestId+modelEndpoint or taskId+type" }, 400);
 
   } catch (e: any) {
-    console.error("fal-poll error:", e);
-    return json({ error: e?.message ?? "Internal server error" }, 500);
+    console.error("fal-poll unhandled error:", e?.message, e?.stack);
+    return reply({ error: e?.message ?? "Internal server error" }, 500);
   }
 });
