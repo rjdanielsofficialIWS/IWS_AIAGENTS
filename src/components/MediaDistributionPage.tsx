@@ -7101,7 +7101,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
               {step === 'video' && (
                 <div className="p-3 rounded-xl text-xs text-amber-300/80 border border-amber-400/20 bg-amber-400/5 flex items-center gap-2">
                   <Loader className="w-3.5 h-3.5 animate-spin shrink-0" />
-                  AI video generation takes 2–5 minutes. Page will update automatically.
+                  AI video generation can take up to 10 minutes. Don't refresh the page.
                 </div>
               )}
               <div className="space-y-4">
