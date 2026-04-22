@@ -70,6 +70,13 @@ Tone handling:
 - Let the requested tone heavily influence diction, pacing, intensity, sentence length, worldview, and attitude
 - If the user asks for a specific voice, honor it strongly while keeping the output platform-native
 
+Character limits — hard constraints, no exceptions:
+- All non-YouTube posts: exactly 220–280 characters (spaces and punctuation count)
+- Count every character before responding
+- Under 220 = too short, rewrite until it hits the floor
+- Over 280 = too long, cut until it fits the ceiling
+- Never sacrifice the character range for any other instruction
+
 Output rules:
 - Return ONLY valid JSON
 - For YouTube: keys youtube_title (max 100 chars) and youtube (description, 2-3 sentences)`;
@@ -95,6 +102,13 @@ Hook mechanics — embody a different one per post. Never name or label the mech
 - Micro-lesson (distills something complex to its sharpest, most usable form)
 - Social proof frame (positions through credibility, results, or pattern recognition)
 
+Character limits — hard constraints, no exceptions:
+- Every post: exactly 220–280 characters (spaces and punctuation included)
+- Count characters before finalising each post
+- Under 220: too short — expand the hook or add a sharper line
+- Over 280: too long — cut ruthlessly until it lands under the ceiling
+- Never sacrifice the character range for tone, style, or any other rule
+
 Non-negotiable bans:
 - No em-dashes
 - No emojis
@@ -106,10 +120,10 @@ const PR={
   tiktok:"TikTok caption: 1-2 lines max. Spoken casual tone. Strong hook in first 5 words. 3-5 relevant hashtags. End with 'follow for part 2' or 'watch till the end' style CTA.",
   instagram:"Instagram caption: FIRST LINE must be a scroll-stopping hook (no more than 10 words, leaves a curiosity gap). Then line break. Then 3-6 short punchy paragraphs or bullet points. Relatable and specific. 3-6 strategic hashtags at end. End with an engagement CTA (comment, save, or share).",
   facebook:"Facebook caption: Open with a relatable scenario or bold statement. 2-4 conversational sentences. Tell a micro-story or share a specific insight. End with a question that sparks comments. 0-2 hashtags max.",
-  linkedin:"LinkedIn post: Professional but human — not corporate. Hook in first line (must make people click 'see more'). Then line breaks between short paragraphs. Share a specific insight, lesson, or story. 3-4 paragraphs. End with a clear CTA or thought-provoking question. 2-3 relevant hashtags.",
-  x:"X/Twitter: Must be between 200 and 280 characters — both are hard limits. Never under 200, never over 280. Count every character before responding. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
+  linkedin:"LinkedIn post: Hard character range 220–280 — count every character, never go under 220 or over 280. Professional but human — not corporate. Hook in the first line. One sharp, specific insight or lesson. End with a thought-provoking question or CTA. 1-2 hashtags.",
+  x:"X/Twitter: Hard character range 220–280 — count every character, never go under 220 or over 280. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
   youtube:"YouTube: youtube_title under 100 chars (curiosity-driven, specific, no clickbait) and youtube description (2-3 sentences, what the video covers, natural keyword inclusion).",
-  threads:"Threads: Casual, conversational. 1-3 sentences. Feels like a text to a friend. No hashtags needed.",
+  threads:"Threads: Hard character range 220–280 — count every character, never go under 220 or over 280. Casual, conversational, feels like a text to a friend. No hashtags.",
   bluesky:"Bluesky: Thoughtful and direct. Under 200 chars. Intellectual but approachable tone."
 };
 async function callClaude(sys,usr,max=3000){const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),55000);let r:Response;try{r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json","x-api-key":ANTHROPIC_API_KEY,"anthropic-version":"2023-06-01"},body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:max,system:sys,messages:[{role:"user",content:usr}]}),signal:ctrl.signal});}catch(e:any){clearTimeout(t);if(e?.name==="AbortError")throw new Error("AI generation timed out. Please try again.");throw e;}finally{clearTimeout(t);}if(!r.ok)throw new Error("Claude error: "+await r.text());const d=await r.json();const raw0=(d.content?.[0]?.text||"{}").replace(/```json|```/g,"").replace(/—/g,"-").trim();const s=raw0.indexOf("{");if(s===-1)return"{}";let depth=0,inStr=false,esc=false,end=-1;for(let i=s;i<raw0.length;i++){const c=raw0[i];if(esc){esc=false;continue;}if(c==="\\"&&inStr){esc=true;continue;}if(c==='"'){inStr=!inStr;continue;}if(inStr)continue;if(c==="{")depth++;else if(c==="}"){depth--;if(depth===0){end=i;break;}}}const extracted=end>=0?raw0.slice(s,end+1):raw0.slice(s);const sanitized=extracted.replace(/"(?:[^"\\]|\\.)*"/g,(m)=>m.replace(/\n/g,"\\n").replace(/\r/g,"\\r").replace(/\t/g,"\\t"));try{JSON.parse(sanitized);return sanitized;}catch{let fix=sanitized.replace(/,\s*$/,"").replace(/:\s*"[^"]*$/,': ""');const closers:string[]=[];let d2=0;for(const ch of fix){if(ch==="{"){d2++;closers.push("}");}else if(ch==="["){d2++;closers.push("]");}else if(ch==="}"||ch==="]"){d2--;closers.pop();}}fix+=closers.reverse().join("");try{JSON.parse(fix);return fix;}catch{return "{}";}}}

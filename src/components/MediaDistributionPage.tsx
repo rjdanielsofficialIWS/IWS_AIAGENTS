@@ -2933,6 +2933,8 @@ function InlinePostComposer({
     if (!autoSchedStart || !autoSchedEnd || new Date(autoSchedEnd) <= new Date(autoSchedStart)) {
       setSubmitError('End date/time must be after start.'); return;
     }
+    const totalSelected = Object.values(textAiMultiSelected).reduce((s, q) => s + q.length, 0);
+    if (totalSelected === 0) { setSubmitError('Select at least one post to schedule.'); return; }
     setAutoSchedLoading(true); setAutoSchedResult(null); setSubmitError(null);
     const allAccounts = selectedTextAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
@@ -2943,10 +2945,9 @@ function InlinePostComposer({
       for (const [platform, posts] of Object.entries(textAiPosts)) {
         const isLi  = platform === 'linkedin';
         const pIds  = allAccounts.filter(a => isLi ? a.isLinkedIn : !a.isLinkedIn).map(a => a.platformId);
-        if (pIds.length === 0 || posts.length === 0) continue;
-        // Honour click-order queue; fall back to natural order if nothing queued
-        const queued         = textAiMultiSelected[platform] ?? [];
-        const orderedIndices = queued.length > 0 ? queued : posts.map((_, i) => i);
+        const queued = textAiMultiSelected[platform] ?? [];
+        if (pIds.length === 0 || queued.length === 0) continue;
+        const orderedIndices = queued;
         const orderedPosts   = orderedIndices.map(i => posts[i]).filter(Boolean);
         const times = spreadScheduleTimes(autoSchedStart, autoSchedEnd, orderedPosts.length);
         for (let i = 0; i < orderedPosts.length; i++) {
@@ -3804,7 +3805,10 @@ function InlinePostComposer({
                           className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border transition hover:brightness-110"
                           style={{ borderColor: GOLD + '40', color: GOLD_L, background: GOLD + '08' }}>
                           <Calendar className="w-3.5 h-3.5" />
-                          Auto-Schedule All {Object.values(textAiPosts).reduce((s, p) => s + p.length, 0)} Posts
+                          {(() => {
+                            const n = Object.values(textAiMultiSelected).reduce((s, q) => s + q.length, 0);
+                            return n > 0 ? `Auto-Schedule ${n} Selected Post${n !== 1 ? 's' : ''}` : 'Auto-Schedule Posts';
+                          })()}
                         </button>
                       ) : (
                         <div className="space-y-3 rounded-xl p-3" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${GOLD}25` }}>
@@ -3850,7 +3854,10 @@ function InlinePostComposer({
                             style={{ background: `linear-gradient(135deg, ${GOLD_D ?? GOLD}, ${GOLD})`, color: '#000' }}>
                             {autoSchedLoading
                               ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Scheduling…</>
-                              : <><Calendar className="w-3.5 h-3.5" /> Schedule All Posts</>}
+                              : (() => {
+                                  const n = Object.values(textAiMultiSelected).reduce((s, q) => s + q.length, 0);
+                                  return <><Calendar className="w-3.5 h-3.5" /> {n > 0 ? `Schedule ${n} Post${n !== 1 ? 's' : ''}` : 'Select Posts to Schedule'}</>;
+                                })()}
                           </button>
                         </div>
                       )}
