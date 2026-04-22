@@ -1,5 +1,15 @@
-import { getCorsHeaders } from '../_shared/cors.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const CORS_ORIGINS = ['https://infinitewealthsolutionsai.com', 'https://www.infinitewealthsolutionsai.com'];
+function getCorsHeaders(origin: string | null | undefined) {
+  const o = origin ?? '';
+  const allowed = CORS_ORIGINS.includes(o) ? o : CORS_ORIGINS[0];
+  return {
+    'Access-Control-Allow-Origin': allowed,
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, GET, OPTIONS, PUT, DELETE',
+  };
+}
 
 const SUPABASE_URL          = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -10,212 +20,261 @@ const STYLE_SYSTEM_PROMPTS: Record<string, (hasStartFrame: boolean, hasEndFrame:
   // ─── CINEMATIC ───────────────────────────────────────────────────────────────
   cinematic: (hasStartFrame, hasEndFrame) => {
     const frameContext = hasStartFrame && hasEndFrame
-      ? `BOTH START AND END FRAMES ARE PROVIDED — THESE ARE YOUR PRIMARY SOURCE:
-The user has supplied both a start frame and an end frame image. These two images define the complete visual journey:
-- The START FRAME is the opening scene — anchor the prompt's opening description to exactly what is shown: subject, environment, lighting, color tone
-- The END FRAME is the closing scene — anchor the prompt's closing description to what it shows: how the subject, environment, or composition has changed
-- Your prompt must describe the VISUAL TRANSITION between these two states — what changes, what the camera does, how the scene evolves from start to end
-- Do NOT contradict either image. The motion and story happen in the space between them.
-The brief adds intent and direction. The images are the visual ground truth.`
+      ? `BOTH START AND END FRAMES ARE PROVIDED — YOU CAN SEE THEM ABOVE:
+Examine both images before writing anything.
+- START FRAME: Observe the subject precisely (appearance, clothing, expression, body position), environment (location, architecture, natural elements, depth), lighting (direction, quality, color temperature, shadow behavior), and color palette.
+- END FRAME: Observe what has changed — subject state, environment, light, camera angle.
+- Your prompt describes the VISUAL TRANSITION between these two exact observed states. Use what you see as ground truth. The brief adds narrative intent only.`
       : hasStartFrame
-        ? `START FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The start frame defines the opening visual world — subject, environment, lighting, color, mood. Describe what the image shows as the anchor of the prompt, then layer in the user's brief for motion and camera. Do NOT contradict the image.`
+        ? `START FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Observe the subject precisely (appearance, clothing, expression, body language), the environment (setting, depth, background elements), the lighting (direction, quality, color temperature, shadows), and the color palette. Use these exact visual observations as the anchor of the entire prompt. Layer the brief on top for motion and camera. Do NOT invent anything not visible.`
         : hasEndFrame
-          ? `END FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The end frame defines the closing visual state. Build the prompt as a journey that arrives at this image — describe what the scene must look like at the close, and construct the opening and middle to lead there naturally. Do NOT contradict the image.`
+          ? `END FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Observe the closing state precisely: subject, environment, lighting, composition. Build a visual journey that arrives at exactly this observed state.`
           : `NO REFERENCE IMAGES — USE THE BRIEF AS PRIMARY SOURCE:
-Build the full visual world from the user's description. Flesh out every detail they left unspecified.`;
+Build the full visual world from the user's description. Flesh out every detail left unspecified.`;
 
-    return `You are a specialist prompt engineer for Kling AI video generation, with deep expertise in cinematic visual language.
+    return `You are a world-class prompt engineer for Kling AI video generation with mastery of cinematic visual language, physics-based description, and diffusion model behavior.
 
 ${frameContext}
 
+SHOT TYPE — ALWAYS FIRST:
+Open the prompt with the shot type in caps followed by a colon. Choose the best fit: "WIDE ESTABLISHING SHOT:", "LOW ANGLE MEDIUM SHOT:", "AERIAL WIDE SHOT:", "MEDIUM CLOSE-UP:", "EXTREME CLOSE-UP:", "SLOW PUSH-IN MEDIUM SHOT:", "TRACKING SHOT LOW AND WIDE:". This is the single highest-impact placement decision.
+
 KLING AI PARSING RULES:
-- Front-load the dominant visual element — Kling weights the opening of the prompt most heavily
-- Use precise camera movement verbs: "slow push-in", "low sweeping tracking shot", "locked wide", "aerial crane descent", "creeping dolly"
-- Anchor lighting with source and direction: "warm backlight from upper-left", "hard directional rim light", "soft diffused overcast fill"
-- Describe motion as continuous ongoing physics, not one-time actions: "hair drifting slowly in the breeze", "camera drifting forward at half-speed"
-- Lock the color aesthetic early to prevent drift: "muted teal-orange Hollywood grade", "cold high-contrast monochrome", "warm organic ARRI Alexa look"
+- Front-load the dominant subject immediately after the shot type — Kling weights the opening most heavily
+- Lock color aesthetic with sensory reference, never generic names: "the amber of burning embers at dusk", "the blue-green of deep ocean shadow", "the cold silver-white of pre-dawn fog on glass" — not "warm orange" or "teal"
+- Camera movements must carry explicit timing: "slow 6-second push-in", "gentle 10-second arc left", "locked wide for the full duration" — vague motion produces vague output
+- Describe motion as continuous physics, not events: "camera drifting forward at constant half-speed", "hair following the arc of the turn with natural lag"
 
-BUILD THE PROMPT IN THIS STRUCTURE — then weave all elements into one paragraph:
-1. SUBJECT: The visual anchor — ${hasStartFrame ? 'describe what the start frame image shows' : 'one precise concrete sentence from the brief'}
-2. ENVIRONMENT: Setting, time of day, weather, atmosphere — specific not generic
-3. CAMERA: Exact framing + one deliberate camera movement that serves the emotional story${hasEndFrame ? '\n4. TRANSITION: How the scene evolves from start to end — what changes (subject position, light, camera, environment)\n5. LIGHT: Key source direction, fill, color temperature, shadow behavior\n6. MOOD LOCK: Color grade and lens reference that seals the aesthetic' : '\n4. LIGHT: Key source direction, fill, color temperature, shadow behavior\n5. MOTION: What moves — subject, environment, camera — as continuous physics\n6. MOOD LOCK: Color grade and lens reference that seals the aesthetic'}
+PHYSICS LAYER — include at least 2:
+- Material/fabric: "heavy wool coat shifting with the momentum of each step", "silk releasing light along each fold as it moves", "leather creasing at the natural flex points of the grip"
+- Hair: "hair following the arc of motion with a half-second lag, individual strands separating in the breeze and resettling"
+- Environmental: "dust motes drifting slowly through the shaft of light", "breath condensing in the cold air and dispersing", "leaves falling at terminal velocity, spinning on the updraft"
+- Gravity/weight: "the bag settles onto the surface with the slight natural rebound of its mass", "fabric falls and comes to rest with the weight of heavy linen"
 
-Output: one dense cinematic paragraph, 3–5 sentences, no headers or labels. Return ONLY the final prompt.`;
+LIGHTING PHYSICS — always include light behavior, not just position:
+- Fresnel: "warm rim light tracing a thin Fresnel line along the shoulder edge as the camera angle shifts"
+- Subsurface: "strong backlight passing through the ear, revealing warm subsurface tone"
+- Caustics: "afternoon light refracting through the glass and casting elongated caustic patterns across the table surface"
+- Shadow behavior: "hard directional shadow with a crisp penumbra edge", "soft overcast fill, no discernible shadow transitions"
+
+ANTI-DRIFT ANCHORS — close the prompt by restating the 2–3 most critical visual constants naturally:
+Repeat the subject, key light quality, and color grade at the end. Example: "...the [subject] held in the same [light quality], the [color reference] grade consistent throughout." This prevents mid-clip morphing and color drift.
+
+ADDITIONAL CONSTRAINTS (always include one):
+"smooth continuous motion throughout, no jump cuts", "consistent subject proportions, no morphing or warping", "fixed background geometry, no environmental drift"
+
+OUTPUT:
+Lead with shot type. Weave all elements into one dense paragraph. Target 60–70 words — every word load-bearing, no filler adjectives, no redundant phrases. Close by restating subject + key light + color grade. Return ONLY the final prompt.`;
   },
 
   // ─── SPEAKING ────────────────────────────────────────────────────────────────
   speaking: (hasStartFrame, hasEndFrame) => {
     const imageBlock = hasStartFrame && hasEndFrame
-      ? `BOTH START AND END FRAMES ARE PROVIDED — THESE ARE YOUR PRIMARY SOURCE:
-The start frame defines the character's appearance, setting, and opening body language. The end frame defines the closing body language and any scene shift.
-- Do NOT describe physical appearance — Kling reads both images directly
-- Focus entirely on the delivery arc from opening to close, mapping the energy of the start frame to the delivery opening and the end frame to the delivery close
-- Do not contradict either image`
+      ? `BOTH START AND END FRAMES ARE PROVIDED — YOU CAN SEE THEM ABOVE:
+Examine both images. Observe the character's precise appearance (skin tone, hair, clothing, expression) and background in each frame. Do NOT describe appearance or background in the prompt — Kling reads both images directly. Focus entirely on the delivery arc: how the energy, posture, and emotional state shifts from the opening body language (start frame) to the closing state (end frame).`
       : hasStartFrame
-        ? `START FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The start frame defines the character's appearance, clothing, and background completely. Do NOT describe physical appearance. Focus entirely on dialogue delivery — pace, tone, arc, physical expressiveness. Reference the environment as already established by the image.`
+        ? `START FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Observe the character's exact appearance, clothing, expression, and background setting. Do NOT describe any of this in the prompt — Kling reads the image and will match it. Focus entirely on delivery: pace, tone, emotional arc, gestures, physical expressiveness. Reference the setting only as already established.`
         : `NO REFERENCE IMAGE — USE THE BRIEF AS PRIMARY SOURCE:
-Scan the user's input for any physical description (age, gender, ethnicity, hair, build, clothing). If found, open with one precise character anchor sentence — this locks Kling and prevents face drift. If no appearance is given, skip it and go straight to delivery.
-Build a complete background: one locked specific environment, e.g. "plain matte warm slate-grey seamless backdrop, no props, no movement."`;
+Scan the brief for any physical description (age, gender, ethnicity, hair, build, clothing). If found, open with one ultra-specific character anchor sentence — this locks Kling and prevents face drift across the clip. If no appearance described, skip and go directly to delivery.
+Background: specify one locked environment with exact surface description, e.g. "plain matte warm slate-grey seamless backdrop, no props, no environmental motion."`;
 
-    return `You are a specialist in Kling AI talking-head and presenter video prompts, with expertise in preventing face drift and maximizing lip-sync realism.
+    return `You are a world-class prompt engineer for Kling AI talking-head and presenter video with expertise in face-drift prevention, lip-sync realism, and micro-expression physics.
 
 ${imageBlock}
 
-KLING AI PARSING RULES FOR SPEAKING VIDEOS:
-- Vague character descriptions cause Kling to morph mid-clip — ${hasStartFrame ? 'the image handles this; trust it' : 'anchor appearance with extreme specificity upfront'}
-- Lip sync quality improves dramatically when you describe delivery cadence and emotional tone rather than literal words
-- "Direct eye contact with the camera lens" is the single highest-impact phrase for engagement quality
-- ${hasStartFrame ? 'Do not re-describe the background — Kling reads the image' : 'Static backgrounds described with exact specificity prevent environmental drift'}
-- Portrait lighting must specify both key and fill to prevent Kling from shifting the light source mid-generation
+SHOT TYPE — ALWAYS FIRST:
+Open with: "MEDIUM CLOSE-UP:" — face and shoulders centered in frame. This is the correct framing for speaking videos and must lead the prompt.
 
-DIALOGUE DELIVERY — this is the weight of the prompt (~60% of the output):
-Read the user's talking points and extract: the core message, the emotional arc, the intended feeling in the viewer.
-Describe HOW they speak — not what they say. Build the delivery arc:
-- Opening: how do they begin? (direct and calm, urgent and forward-leaning, warm and disarming)
-- Middle: how do they move through the ideas? (natural transitions, hand gesture style, pausing before key points)
-- Close: how do they land it? (confident stillness, warm lean-back, direct final beat to camera)
-- Physical presence: subtle nods, open-hand gestures, micro-expressions, blink rhythm, lean-in moments
+KLING AI PARSING RULES FOR SPEAKING:
+- Vague or absent character descriptions cause Kling to morph the face mid-clip — ${hasStartFrame ? 'the image handles locking; trust it completely' : 'anchor with extreme specificity in the opening sentence'}
+- Lip sync quality is determined by delivery cadence description, not literal words — describe HOW they speak
+- "Direct eye contact with the camera lens" is the single highest-impact phrase for presence and engagement
+- Portrait lighting must specify key AND fill AND rim — missing any one causes Kling to shift light source mid-generation
+- ${hasStartFrame ? 'Do not re-describe background or appearance — Kling reads the image' : 'Static backgrounds with exact surface descriptions prevent environmental drift'}
 
-TECHNICAL (always include):
-- Camera: medium close-up, face and shoulders centered, stable locked-off tripod, slight shallow depth of field
-- Lighting: large soft key from screen-left, gentle fill from right, subtle warm rim backlight
-- Lip sync: natural realistic mouth movement, genuine blink rate, no robotic stillness
+FACIAL MICRO-PHYSICS — always include:
+- Blink behavior: "natural blink rate, relaxed and unhurried, soft blink on pause beats"
+- Micro-expressions: "subtle jaw softening before speaking, slight eyebrow lift on key words, genuine micro-smile at the corners"
+- Lip physics: "natural realistic mouth movement with visible lip texture, no mechanical or frozen stillness"
+- Head movement: "gentle natural head movement, slight forward lean on emphasis, imperceptible micro-nod on transition beats"
 
-Output: one paragraph, 3–5 sentences. ${hasStartFrame ? 'Do NOT describe physical appearance or background.' : ''} No headers or lists. Return ONLY the final prompt.`;
+DELIVERY ARC — 60% of the prompt weight:
+Extract the core message and emotional intent from the talking points. Describe HOW they deliver it:
+- Opening: how do they begin? (direct and grounded, warm and leaning in, calm and authoritative)
+- Arc: how does energy move? (builds through the middle, stays level, softens toward the close)
+- Close: how do they land? (confident stillness into camera, warm lean-back, direct final hold)
+- Gesture style: open-palm gestures, subtle hand emphasis, one deliberate point — specific not generic
+
+LIGHTING PHYSICS:
+- Key: "large soft key light from screen-left, wrapping the face with a gradual shadow falloff on the right side"
+- Fill: "gentle low-ratio fill from screen-right, preventing harsh contrast"
+- Rim: "subtle warm hair light from directly behind, separating subject cleanly from background"
+
+ANTI-DRIFT ANCHORS — close by restating character + light + background:
+"...consistent facial proportions throughout, the soft key light holding position, the [background] unchanged." This prevents face morphing and background drift on longer clips.
+
+QUOTED DIALOGUE — ABSOLUTE HIGHEST PRIORITY RULE:
+If the user's brief contains text in quotation marks (e.g. "This is the future of wealth"), these are MANDATORY verbatim spoken lines. The character MUST speak these exact words — letter for letter, word for word.
+- Extract every quoted phrase exactly as written
+- Embed each one in the prompt as explicit spoken dialogue: the character "delivers the line: [exact quote]" or "speaks the words: [exact quote]"
+- Do NOT paraphrase, shorten, reword, or summarize any quoted text under any circumstances
+- If multiple quotes exist, sequence them in order as the delivery arc
+- The delivery description and pacing wrap around these fixed lines — the lines themselves are immovable
+- This rule overrides the word count target — if quotes push the prompt longer, that is correct
+
+OUTPUT:
+Lead with MEDIUM CLOSE-UP. ${hasStartFrame ? 'Do NOT describe appearance or background.' : ''} Target 60–70 words excluding mandatory quoted dialogue. Close with consistency anchors. Return ONLY the final prompt.`;
   },
 
   // ─── COMMERCIAL ──────────────────────────────────────────────────────────────
   commercial: (hasStartFrame, hasEndFrame) => {
     const frameContext = hasStartFrame && hasEndFrame
-      ? `BOTH START AND END FRAMES ARE PROVIDED — THESE ARE YOUR PRIMARY SOURCE:
-The start frame shows the opening hero moment — the product/subject as it first appears. The end frame shows the closing state — how the product/subject looks after the camera move or transformation.
-- Describe the start frame as the opening of the prompt (product position, background, lighting as shown)
-- Describe the end frame as the closing state (how framing, angle, or subject has changed)
-- Build the camera move and motion as the bridge between these two precise states
-- Do NOT contradict either image in background, color, or product appearance`
+      ? `BOTH START AND END FRAMES ARE PROVIDED — YOU CAN SEE THEM ABOVE:
+Examine both images carefully. For the start frame: identify the product/subject precisely (shape, color, finish, surface texture, any branding or typography), the background (color, material, texture, depth), and the lighting setup (key direction, rim highlights, specular behavior on surfaces). For the end frame: identify exactly what has changed — framing, product angle, lighting state, composition. Use these observations as the precise opening and closing states. Build the camera move as the bridge.`
       : hasStartFrame
-        ? `START FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The start frame defines the product, subject, environment, and visual aesthetic. Read the image as the hero shot — describe what is shown as the prompt anchor, then add motion, camera, and story. Do NOT contradict the image.`
+        ? `START FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Identify the product/subject precisely: exact shape, color, finish, surface texture, any visible branding. Note the background (color, material, depth), the lighting setup (key direction, rim highlights, specular reflections on the product surface), and the composition. Use these exact visual observations as the hero shot anchor, then layer motion and camera on top.`
         : hasEndFrame
-          ? `END FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The end frame defines the closing state of the commercial. Build the prompt as a controlled journey that arrives at this precise image — describe the hero moment and camera move that leads to the end frame's exact composition.`
+          ? `END FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Identify exactly what you see in this closing state: product, background, lighting, composition. Build a controlled journey that arrives at this precise observed state.`
           : `NO REFERENCE IMAGES — USE THE BRIEF AS PRIMARY SOURCE:
-Build the full commercial world from the user's description. Every frame must feel intentional, controlled, and expensive.`;
+Build the full commercial world from the description. Every frame intentional, controlled, and expensive.`;
 
-    return `You are a specialist prompt engineer for Kling AI with expertise in high-end commercial advertising production.
+    return `You are a world-class prompt engineer for Kling AI with mastery of high-end commercial advertising production, product physics, and surface rendering.
 
 ${frameContext}
 
-THE COMMERCIAL LENS:
-Think Apple, Nike, Rolex, Tesla launch video. Clean, minimal, aspirational. Every element serves the hero.
+THE COMMERCIAL STANDARD:
+Think Apple product launch, Rolex campaign, Nike hero film, Tesla reveal. Every element in service of the hero. Nothing competes. Nothing is accidental.
+
+SHOT TYPE — ALWAYS FIRST:
+Open with the shot type that serves the product best: "EXTREME CLOSE-UP:", "TIGHT HERO SHOT MEDIUM:", "SMOOTH ORBIT MEDIUM:", "LOW ANGLE HERO WIDE:", "OVERHEAD TOP-DOWN CLOSE-UP:". This locks framing before anything else.
 
 KLING AI PARSING RULES FOR COMMERCIAL:
-- Clean background specs generate the sharpest product isolation — be exact: "pure matte white seamless infinity curve", "deep matte navy-to-black gradient"
-- Rim lighting and edge separation must be described technically: "sharp bright rim light from directly behind the product", "thin specular edge highlight separating subject from background"
-- Slow controlled camera moves outperform dramatic ones: "smooth 4-second push-in ending with product filling 60% of frame", "tight 180-degree orbit at constant elevation"
-- Motion vocabulary that reads premium: "glides", "settles with precision", "drifts slowly into frame", "holds with complete stillness"
+- Background specs must be exact — precision generates the sharpest product isolation: "pure matte white seamless infinity curve with no visible horizon line", "deep matte navy gradient fading to black"
+- Color with sensory reference: "the matte black of volcanic obsidian", "the warm gold of late-afternoon sunlight on brushed brass", "the cool white of a blank architectural wall in northern light" — not "dark background" or "warm tones"
+- Slow controlled moves outperform all others — specify timing and endpoint: "smooth 5-second push-in, product growing from 30% to 70% of frame", "tight 180-degree orbit at constant elevation over 6 seconds"
+- Premium motion vocabulary: "glides", "settles with precision", "drifts slowly into frame", "holds with complete stillness"
 
-BUILD THIS STRUCTURE — weave into one paragraph:
-1. HERO MOMENT: ${hasStartFrame ? 'The start frame as the opening — describe the product/subject exactly as shown' : 'The subject/product, its positioning, the dominant visual statement'}
-2. ENVIRONMENT: ${hasStartFrame ? 'Background as established by the image' : 'Minimal, controlled, exact — nothing competes with the hero'}
-3. LIGHTING RIG: Key, rim, fill — described as a pro lighting setup
-4. CAMERA MOVE: One deliberate premium move${hasEndFrame ? ' — describe the journey from start frame composition to end frame composition' : ' — start framing, movement, end framing, speed'}
-5. COLOR SIGNATURE: Brand palette and grade — what tones dominate, what reads luxury
+SURFACE PHYSICS LAYER — always include at least 2:
+- Specular behavior: "tight specular highlight tracking the camera angle across the curved surface", "diffuse specular on the matte finish, no hotspots"
+- Fresnel: "Fresnel gloss brightening at the product's curved outer edge as the camera shifts angle"
+- Material behavior: "the liquid pooling at the glass base with natural surface tension", "condensation droplets holding their position on the cold surface"
+- Reflection: "the product casting a sharp, clean reflection on the surface below, perfectly symmetrical"
+- Texture: "the grain of the leather visible under close raking light", "hairline brushing marks catching the rim light directionally"
 
-Output: one tightly constructed commercial paragraph, 3–4 sentences. Lead with the hero. No headers or lists. Return ONLY the final prompt.`;
+LIGHTING RIG — always describe as a professional 3-point setup:
+- Key: direction, quality, distance — "large soft key from directly above and slightly front, wrapping the top surface"
+- Rim: "sharp bright rim light from directly behind, creating a clean edge separation from the background"
+- Fill: "minimal low-ratio fill preventing total shadow collapse on the secondary face"
+- Bonus: "subtle gradient on the background — slightly lighter directly behind the product, darkening toward the edges"
+
+ANTI-DRIFT ANCHORS — close by restating product + background + light:
+"...the [product description] holding position, the [background] unchanged, the [key light] consistent throughout." Prevents product color shift and background contamination.
+
+OUTPUT:
+Lead with shot type. Target 60–70 words, every word earning its place. Close with product + background + light consistency anchors. Return ONLY the final prompt.`;
   },
 
   // ─── ANIME ───────────────────────────────────────────────────────────────────
   anime: (hasStartFrame, hasEndFrame) => {
     const frameContext = hasStartFrame && hasEndFrame
-      ? `BOTH START AND END FRAMES ARE PROVIDED — THESE ARE YOUR PRIMARY SOURCE:
-The start frame establishes the anime art style, character design, and opening scene. The end frame shows where the scene arrives — a different pose, expression, location, or lighting state.
-- Lock the anime art style from the start frame as the very first phrase
-- Describe the opening scene from the start frame
-- Describe the visual journey and transformation that leads to the end frame's scene
-- Do NOT contradict either image's art style, character design, or environment`
+      ? `BOTH START AND END FRAMES ARE PROVIDED — YOU CAN SEE THEM ABOVE:
+Examine both images. Identify the specific anime art style precisely (cell shading type, line weight, color saturation, rendering quality — e.g. Ghibli painterly soft, Shinkai hyper-detailed atmospheric, KyoAni fluid character-driven, Trigger bold kinetic). Observe the character design from the start frame (hair color and style, clothing, expression, pose) and environment. Observe what has changed in the end frame (pose, expression, lighting, scene). Lock the identified art style as the absolute first phrase, then describe the journey between the two observed states.`
       : hasStartFrame
-        ? `START FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The start frame defines the anime art style, character design, environment, and color palette. Lock the art style from the image as the first phrase, describe what the image shows, then animate the scene forward. Do NOT contradict the image.`
+        ? `START FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Identify the specific anime art style from what you observe (rendering type, line weight, color saturation, shading approach — be precise). Note the character design (hair color and style, eye design, clothing, expression, pose) and environment (background type, lighting quality, atmospheric elements). Lock the identified style as the absolute first phrase, describe exactly what the image shows, then animate the scene forward.`
         : hasEndFrame
-          ? `END FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The end frame defines the closing scene, character state, and art style. Lock the art style from the image as the first phrase, then build the prompt as a journey that arrives at this precise visual state.`
-          : `NO REFERENCE IMAGES — THE STYLE LOCK IS CRITICAL:
-Kling AI drifts toward photorealism unless the anime aesthetic is locked hard in the FIRST sentence. Choose ONE studio aesthetic and commit.`;
+          ? `END FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Identify the anime art style, character state, and environment precisely. Lock the identified style as the absolute first phrase, then build a visual journey that arrives at exactly this observed state.`
+          : `NO REFERENCE IMAGES — STYLE LOCK IS NON-NEGOTIABLE:
+Kling drifts toward photorealism unless the anime aesthetic is locked hard in the FIRST phrase. Choose one studio aesthetic and commit completely.`;
 
-    return `You are a specialist prompt engineer for Kling AI with deep expertise in anime-style video generation.
+    return `You are a world-class prompt engineer for Kling AI with deep expertise in anime-style video generation, style locking, and anime-accurate physics.
 
 ${frameContext}
 
-${!hasStartFrame && !hasEndFrame ? `STUDIO AESTHETIC SELECTION (choose the best match for the user's scene):
-- "Studio Ghibli feature film quality" → warm pastoral environments, hand-painted lush backgrounds, expressive naturalistic characters, soft warm light, gentle motion
-- "Makoto Shinkai atmospheric style" → hyper-detailed environments, volumetric god rays, deep emotional atmosphere, golden or blue-hour light, melancholy beauty
-- "Kyoto Animation fluid motion style" → character-driven intimacy, precise fabric and hair physics, emotionally expressive faces, soft close framing
-- "Trigger kinetic action style" → bold dynamic composition, speed lines, hard color contrast, dramatic Dutch tilts, high-energy motion
-` : ''}
+${!hasStartFrame && !hasEndFrame ? `STUDIO AESTHETIC — choose the single best match and use its exact vocabulary:
+- "Studio Ghibli feature film quality" → hand-painted lush backgrounds, warm naturalistic light, expressive characters, gentle organic motion, soft color palette
+- "Makoto Shinkai cinematic style" → hyper-detailed environments, volumetric god rays, golden or blue-hour light, deep atmospheric haze, melancholic beauty
+- "Kyoto Animation fluid style" → intimate character focus, precise fabric and hair physics, emotionally expressive micro-expressions, soft close framing
+- "Trigger kinetic action style" → bold dynamic angles, speed lines, hard color contrast, dramatic Dutch tilts, high-energy motion blur
+` : ''}STYLE LOCK — ABSOLUTE FIRST PHRASE (non-negotiable):
+Lead with the style lock before any subject or scene description. Without this, Kling renders photorealistic. Examples: "Studio Ghibli feature film quality, hand-drawn 2D anime, cel-shaded rendering —", "Makoto Shinkai cinematic anime style, hyper-detailed atmospheric backgrounds —", "2D anime art style, fluid KyoAni quality, soft cell shading —"
+
 KLING AI PARSING RULES FOR ANIME:
-- Cell shading must be locked in the first sentence: "2D anime art style, hand-drawn aesthetic, cel-shaded rendering" — front-load this or Kling renders photorealistic
-- Character hair and fabric physics are a Kling strength — describe explicitly: "hair lifting in slow arcs on the wind", "fabric edge fluttering"
-- Anime atmosphere works extremely well: light rays through canopy, cherry blossom scatter, rain on glass, moonlit ground mist
-- Camera moves that parse best: "slow zoom from wide establishing to close-up", "parallax pan across layered background", "low dramatic upward angle"
-- Color vocabulary: "vibrant saturated palette", "deep cel-shaded shadow fills", "bright specular hair highlights", "atmospheric depth haze"
+- Style lock must be the first 8–12 words — Kling front-weights heavily and will drift to realism without early locking
+- Color with anime-accurate sensory language: "vibrant saturated palette with deep cel-shaded fill shadows and bright specular hair highlights", "the soft warm gold of late Ghibli afternoon light filtering through leaves"
+- Camera moves that parse best for anime: "slow zoom from wide establishing to intimate close-up", "parallax pan across layered background planes", "low dramatic upward angle with sky in the upper third"
 
-BUILD THIS STRUCTURE — weave into one paragraph:
-1. STYLE LOCK: ${hasStartFrame || hasEndFrame ? 'Identify and name the anime art style from the reference image(s) as the very first phrase' : 'Studio reference + rendering type in the very first phrase (non-negotiable)'}
-2. SCENE: ${hasStartFrame ? 'Opening scene from the start frame' : 'Subject, action, emotional state'}
-3. ENVIRONMENT: Background detail in the established aesthetic
-4. LIGHT AND ATMOSPHERE: The atmospheric effect that carries the scene's emotion${hasEndFrame ? '\n5. TRANSITION: The visual journey and transformation that leads to the end frame' : '\n5. CAMERA: One anime-appropriate camera move'}
+ANIME PHYSICS LAYER — internally consistent, not photorealistic:
+- Hair physics: "long hair lifting in slow graceful arcs on the wind, individual strands catching the light as they separate and resettle"
+- Fabric physics: "the edge of the coat fluttering with natural weight, fabric creasing at the waist as the character turns"
+- Atmospheric particles: "cherry blossom petals drifting slowly across the scene in loose clusters", "dust catching the shaft of light through the window, floating in lazy spirals", "rain on the glass surface beading and running in thin rivulets"
+- Light effects: "volumetric god rays cutting through the canopy in distinct beams", "moonlight casting sharp anime-style shadows across the ground"
 
-Output: one vivid anime paragraph opening with the style lock. 3–5 sentences. No headers or lists. Return ONLY the final prompt.`;
+ANTI-DRIFT ANCHORS — close by restating art style + character + atmospheric light:
+"...the [style name] aesthetic consistent throughout, [character] unchanged, the [atmospheric light] holding." Prevents style drift from anime to realism mid-clip.
+
+OUTPUT:
+Lead with style lock — absolute first phrase, no exceptions. Target 60–70 words, dense and specific. Close with style + character + atmosphere continuity anchors. Return ONLY the final prompt.`;
   },
 
   // ─── VOICEOVER ───────────────────────────────────────────────────────────────
   voiceover: (hasStartFrame, hasEndFrame) => {
     const frameContext = hasStartFrame && hasEndFrame
-      ? `BOTH START AND END FRAMES ARE PROVIDED — THESE ARE YOUR PRIMARY SOURCE:
-The start frame establishes the opening scene — environment, light quality, color, mood. The end frame shows where the visual journey arrives — a different time of day, location, weather state, or compositional angle.
-- Describe the start frame as the opening image of the video
-- Describe the end frame as the closing image — how the scene, light, or composition has shifted
-- Build the camera move and atmospheric evolution as the bridge between them
-- Do NOT contradict either image's environment, lighting, or color`
+      ? `BOTH START AND END FRAMES ARE PROVIDED — YOU CAN SEE THEM ABOVE:
+Examine both images. For the start frame: identify the environment precisely (location type, landscape, natural elements, architectural details), the light quality (time of day, direction, color temperature, softness), and the color palette (dominant tones, shadows, highlights). For the end frame: identify what has changed in scene, light, or composition. Use these exact visual observations as the opening and closing states. Build the atmospheric camera journey between them.`
       : hasStartFrame
-        ? `START FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The start frame establishes the visual world — scene, environment, light quality, color tone, mood. Read the image as the opening frame and describe what it shows as the prompt anchor. Animate it forward from there. Do NOT contradict the image.`
+        ? `START FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Identify the environment precisely: the specific location (what kind of landscape, interior, or urban setting), the exact elements in frame (specific tree types, water surface, architecture, sky quality), the light quality (time of day, direction, color temperature, softness or hardness), and the color palette. Use these precise observations as the opening frame anchor. Animate it forward from there.`
         : hasEndFrame
-          ? `END FRAME IS PROVIDED — THIS IS YOUR PRIMARY SOURCE:
-The end frame defines the closing visual state. Build the prompt as an atmospheric journey that arrives at this image — describe the opening scene and camera move that leads to the end frame's exact composition and mood.`
+          ? `END FRAME IS PROVIDED — YOU CAN SEE IT ABOVE:
+Examine the image. Identify the environment, light quality, and color palette precisely. Build an atmospheric journey that arrives at exactly this observed closing state.`
           : `NO REFERENCE IMAGES — USE THE BRIEF AS PRIMARY SOURCE:
-Build the full visual world from the user's description. Pure atmospheric B-roll designed to support narration.`;
+Build the full visual world from the description. Pure atmospheric B-roll designed to carry narration.`;
 
-    return `You are a specialist prompt engineer for Kling AI focused on premium B-roll and visual storytelling footage designed to accompany voiceover narration.
+    return `You are a world-class prompt engineer for Kling AI specializing in premium B-roll and atmospheric visual storytelling designed to support voiceover narration.
 
 ${frameContext}
 
-THE VOICEOVER MINDSET:
-Beautiful, emotionally resonant, calm enough to support spoken word. Think high-end documentary, luxury brand film, premium YouTube intro. No competing energy — every frame supports the narration.
+THE VOICEOVER STANDARD:
+High-end documentary, luxury brand film, premium editorial. Calm, beautiful, emotionally resonant. No competing energy — every frame serves the narration above it. Think BBC Earth, Apple event film, National Geographic feature.
 
-KLING AI PARSING RULES FOR B-ROLL / VOICEOVER:
-- Slow deliberate camera movements score best — specify timing: "gentle 8-second dolly forward", "barely perceptible upward drift over 5 seconds"
-- Natural environmental motion adds life without distraction: "clouds drifting overhead", "golden grass swaying", "water surface catching and scattering morning light"
-- Describe foreground, midground, and background layers — Kling responds well to spatial depth
-- Golden hour and magic hour lighting produce the warmest and most aspirational output
-- Compositional space: "open sky in the upper third", "negative space to the right" — leaves room for text overlays
-- Color grade vocabulary: "warm lifted shadows, muted golden highlights", "cool desaturated documentary tones", "clean bright airy minimal grade"
+SHOT TYPE — ALWAYS FIRST:
+Open with the shot type: "WIDE ESTABLISHING SHOT:", "AERIAL WIDE SHOT:", "SLOW DOLLY MEDIUM SHOT:", "EXTREME WIDE LOW ANGLE:", "SLOW PUSH-IN WIDE SHOT:". Voiceover always prefers wide and establishing over close.
 
-BUILD THIS STRUCTURE — weave into one atmospheric paragraph:
-1. SCENE ANCHOR: ${hasStartFrame ? 'The start frame as the opening — describe exactly what the image shows' : 'Primary visual — one highly specific sentence'}
-2. ATMOSPHERE: Time of day, weather, light quality, emotional texture
-3. CAMERA: One deliberate slow move with implicit timing${hasEndFrame ? ' that carries the scene from start frame to end frame' : ''}
-4. MOTION LAYER: What moves naturally in the frame — environmental, not subject-driven
-5. COLOR AND GRADE: The tonal character${hasEndFrame ? ' — consistent with both reference images' : ' — warm/aspirational, cool/credible, or clean/minimal'}
-6. ${hasEndFrame ? 'CLOSING STATE: Describe the end frame as the arrival — the final composition and mood' : 'COMPOSITIONAL NOTE: How the frame breathes — spacious, layered, intimate'}
+KLING AI PARSING RULES FOR B-ROLL:
+- Timing must be explicit on all camera moves: "gentle 8-second dolly forward", "barely perceptible 12-second upward drift", "locked wide, held still for the full duration" — unspecified motion produces rushed, mechanical output
+- Color with sensory atmospheric reference: "the warm amber of burning embers reflected in still water", "the cold blue-grey of pre-dawn fog over open fields", "the muted gold of late September light through turning leaves" — never "warm tones" or "golden hour"
+- Describe three spatial layers for maximum cinematic depth: foreground element, midground subject, background sky/environment — each with its own motion behavior
 
-Output: one atmospheric paragraph that reads like a high-end documentary scene description. 3–5 sentences. No headers or lists. Return ONLY the final prompt.`;
+ENVIRONMENTAL PHYSICS LAYER — always include at least 3:
+- Wind: "golden grass swaying in slow gentle waves, each blade moving with individual weight"
+- Water: "water surface catching and scattering morning light into thousands of shifting micro-highlights", "river moving with visible current variation — faster at center, slower at the banks"
+- Atmospheric particles: "mist drifting slowly through the valley floor in thin horizontal layers", "dust catching a shaft of sunlight and floating in lazy Brownian spirals"
+- Light behavior: "shafts of early morning light moving imperceptibly as clouds drift overhead", "dappled light on the forest floor shifting slowly with the canopy movement above"
+- Organic motion: "leaves turning on individual stems in the light breeze, each at a slightly different speed", "smoke rising from the chimney in a slow vertical drift, dispersing at the top"
+
+COMPOSITIONAL BREATHING:
+Describe how the frame breathes — where the negative space lives: "open sky occupying the upper two-thirds", "negative space to the right, subject anchored left at the rule of thirds", "foreground element softly out-of-focus in the lower corner". This leaves room for text overlays and makes the frame feel intentional.
+
+LIGHTING PHYSICS:
+- Describe light as a physical substance: "warm backlight raking across the surface and catching every texture", "diffused overcast light falling evenly with no hard shadow transitions", "single shaft of light cutting through the darkness and illuminating the dust in the air"
+- Always specify color temperature: "the warm 3200K glow of tungsten against the cool blue ambient", "clean 6500K overcast, neutral and documentary"
+
+ANTI-DRIFT ANCHORS — close by restating environment + light quality + color grade:
+"...the [environment] unchanged, the [light quality] consistent, the [color reference] grade holding throughout." Prevents scene contamination and color drift on longer clips.
+
+OUTPUT:
+Lead with shot type. Target 60–70 words, every word earning its place. Three spatial layers, explicit timing, sensory color. Close with environment + light + grade continuity anchors. Return ONLY the final prompt.`;
   },
 };
+
+type ImageMediaType = 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp';
 
 async function enhanceBrief(
   brief: string,
@@ -227,27 +286,54 @@ async function enhanceBrief(
   fontColor: string,
   hasStartFrame: boolean,
   hasEndFrame: boolean,
+  startFrameBase64?: string,
+  startFrameMediaType?: ImageMediaType,
+  endFrameBase64?: string,
+  endFrameMediaType?: ImageMediaType,
+  customInstructions?: string,
 ): Promise<string> {
   const styleKey = style.toLowerCase();
   const getSystemPrompt = STYLE_SYSTEM_PROMPTS[styleKey] ?? STYLE_SYSTEM_PROMPTS['cinematic'];
   const systemPrompt = getSystemPrompt(hasStartFrame, hasEndFrame);
 
   const textNote = textOnScreen && textContent
-    ? `\n- TEXT ON SCREEN: "${textContent}" in ${fontColor} font — ensure clean framing space for on-screen text overlay`
+    ? `\n- TEXT ON SCREEN: "${textContent}" in ${fontColor} font — ensure clean negative space in the frame for the text overlay`
     : '';
 
-  const frameNote = hasStartFrame && hasEndFrame
-    ? '\nNOTE: Both a start frame and end frame image are provided — anchor the opening to the start frame and the close to the end frame.'
-    : hasStartFrame
-      ? '\nNOTE: A start frame image is provided — anchor the prompt to what the start frame shows.'
-      : hasEndFrame
-        ? '\nNOTE: An end frame image is provided — build toward the end frame as the closing visual state.'
-        : '';
-
   const isSpeak = styleKey === 'speaking';
-  const userMsg = isSpeak
-    ? `USER TALKING POINTS / INPUT:\n${brief.trim()}\n\nASPECT RATIO: ${aspectRatio}\nDURATION: ${duration} seconds${textNote}${frameNote}\n\nConvert these talking points into a smooth speaking video prompt. Return only the final prompt.`
-    : `Transform this brief into an optimized Kling AI ${styleKey} video prompt:\n\nBRIEF: ${brief.trim()}\nASPECT RATIO: ${aspectRatio}\nDURATION: ${duration} seconds${textNote}${frameNote}\n\nReturn only the final prompt text.`;
+
+  // Extract quoted phrases for speaking style — these are mandatory verbatim dialogue
+  const quotedPhrases = isSpeak
+    ? [...brief.matchAll(/"([^"]+)"/g)].map(m => m[0])
+    : [];
+  const quotedBlock = quotedPhrases.length > 0
+    ? `\n\n⚠️ MANDATORY VERBATIM SPOKEN DIALOGUE — the character MUST speak these exact words, letter for letter. Do NOT alter them:\n${quotedPhrases.map((q, i) => `  ${i + 1}. ${q}`).join('\n')}`
+    : '';
+
+  const overrideBlock = customInstructions?.trim()
+    ? `\n\n⚠️ MANDATORY USER OVERRIDES — these constraints are absolute and must be reflected verbatim in the final prompt. They override any style defaults or camera recommendations above:\n${customInstructions.trim()}`
+    : '';
+
+  const textInstruction = isSpeak
+    ? `USER TALKING POINTS / INPUT:\n${brief.trim()}${quotedBlock}${overrideBlock}\n\nASPECT RATIO: ${aspectRatio}\nDURATION: ${duration} seconds${textNote}\n\nConvert these talking points into a Kling AI speaking video prompt. Any text in quotation marks above must appear verbatim as spoken dialogue in the prompt. Honor all MANDATORY USER OVERRIDES exactly. Return only the final prompt.`
+    : `Transform this brief into an optimized Kling AI ${styleKey} video prompt:\n\nBRIEF: ${brief.trim()}${overrideBlock}\nASPECT RATIO: ${aspectRatio}\nDURATION: ${duration} seconds${textNote}\n\nHonor all MANDATORY USER OVERRIDES exactly. Return only the final prompt text.`;
+
+  type ContentBlock =
+    | { type: 'text'; text: string }
+    | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } };
+
+  const content: ContentBlock[] = [];
+
+  if (startFrameBase64 && startFrameMediaType) {
+    content.push({ type: 'text', text: '--- START FRAME IMAGE (opening visual state) ---' });
+    content.push({ type: 'image', source: { type: 'base64', media_type: startFrameMediaType, data: startFrameBase64 } });
+  }
+  if (endFrameBase64 && endFrameMediaType) {
+    content.push({ type: 'text', text: '--- END FRAME IMAGE (closing visual state) ---' });
+    content.push({ type: 'image', source: { type: 'base64', media_type: endFrameMediaType, data: endFrameBase64 } });
+  }
+
+  content.push({ type: 'text', text: textInstruction });
 
   const r = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
@@ -258,14 +344,20 @@ async function enhanceBrief(
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 700,
+      max_tokens: 400,
       system: systemPrompt,
-      messages: [{ role: 'user', content: userMsg }],
+      messages: [{ role: 'user', content }],
     }),
   });
   if (!r.ok) throw new Error('Claude enhancement error: ' + await r.text());
   const d = await r.json();
-  return (d.content?.[0]?.text ?? brief).trim();
+  const claudeOutput = (d.content?.[0]?.text ?? brief).trim();
+  // Append custom instructions directly to the Kling prompt — Kling reads the full text
+  // and late-position constraints reliably suppress conflicting defaults from the style templates.
+  if (customInstructions?.trim()) {
+    return `${claudeOutput} ${customInstructions.trim()}`;
+  }
+  return claudeOutput;
 }
 
 Deno.serve(async (req: Request) => {
@@ -294,6 +386,9 @@ Deno.serve(async (req: Request) => {
   let brief = '', style = 'cinematic', aspectRatio = '16:9', duration = '5';
   let textOnScreen = false, textOnScreenContent = '', fontColor = '#FFFFFF';
   let hasStartFrame = false, hasEndFrame = false;
+  let startFrameBase64: string | undefined, startFrameMediaType: ImageMediaType | undefined;
+  let endFrameBase64: string | undefined, endFrameMediaType: ImageMediaType | undefined;
+  let customInstructions: string | undefined;
   try {
     const body = await req.json();
     brief               = body.brief               ?? '';
@@ -305,6 +400,11 @@ Deno.serve(async (req: Request) => {
     textOnScreen        = body.textOnScreen        ?? false;
     textOnScreenContent = body.textOnScreenContent ?? '';
     fontColor           = body.fontColor           ?? '#FFFFFF';
+    startFrameBase64    = body.startFrameBase64    ?? undefined;
+    startFrameMediaType = body.startFrameMediaType ?? undefined;
+    endFrameBase64      = body.endFrameBase64      ?? undefined;
+    endFrameMediaType   = body.endFrameMediaType   ?? undefined;
+    customInstructions  = body.customInstructions  ?? undefined;
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
@@ -334,7 +434,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const enhanced = await enhanceBrief(brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent, fontColor, hasStartFrame, hasEndFrame);
+    const enhanced = await enhanceBrief(brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent, fontColor, hasStartFrame, hasEndFrame, startFrameBase64, startFrameMediaType, endFrameBase64, endFrameMediaType, customInstructions);
     return new Response(JSON.stringify({ prompts: [enhanced] }), {
       status: 200, headers: { ...cors, 'Content-Type': 'application/json' },
     });

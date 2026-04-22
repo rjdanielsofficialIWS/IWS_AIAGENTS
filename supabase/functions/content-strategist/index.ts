@@ -64,6 +64,7 @@ Role guardrails:
 - If the task is strategy, return strategy, not captions or tweets
 - If the task is ideation, return ideas and angles, not finished platform copy unless explicitly requested
 - Keep outputs tailored to the requested artifact
+- Never fabricate personal anecdotes, first-person stories, or claims on behalf of the user. No "Here's how I...", "When I started...", "I used to struggle with...", "I remember when..." — you are a strategist advising them, not pretending to be them. Write angles and frameworks they can use, not invented personal experiences.
 
 Output rules:
 - Return ONLY valid JSON
@@ -500,28 +501,60 @@ ${requirements}`;
       return json(result);
 
     } else if (mode === "talking_points") {
-      const { idea, niche = "", audience = "" } = body;
+      const { idea, niche = "", audience = "", platforms = [], tone = "" } = body;
       if (!idea || !idea.trim()) return json({ error: "idea is required" }, 400);
+
+      const platformList = Array.isArray(platforms) && platforms.length > 0
+        ? platforms.join(", ")
+        : "instagram, x (twitter)";
+      const toneDirective = buildToneDirective(tone);
+      const month = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+
+      // Tavily: what angles are resonating + audience pain points
+      let tpResearch = "";
+      if (TAVILY_KEY && niche) {
+        try {
+          const [viralRes, audienceRes] = await Promise.allSettled([
+            tavilySearch(`${niche} ${idea.trim().slice(0, 60)} viral content ${month}`, 4),
+            tavilySearch(`${niche} audience pain points questions ${audience ? audience.slice(0, 40) : ""} ${new Date().getFullYear()}`, 4),
+          ]);
+          const sections: string[] = [];
+          if (viralRes.status === "fulfilled" && viralRes.value) sections.push(`WHAT IS WORKING IN THIS NICHE RIGHT NOW:\n${viralRes.value}`);
+          if (audienceRes.status === "fulfilled" && audienceRes.value) sections.push(`AUDIENCE PAIN POINTS AND QUESTIONS:\n${audienceRes.value}`);
+          tpResearch = sections.join("\n\n---\n\n");
+        } catch { /* proceed without research */ }
+      }
+
+      const researchBlock = tpResearch
+        ? `\nLIVE RESEARCH (use to make points specific and grounded):\n${tpResearch}\n`
+        : "";
 
       const raw = await callClaude(
         strategistSystem("viral social media strategist and on-camera coach"),
-        `Generate 5 viral talking points for this content idea:
+        `Generate 5 viral talking points for this content idea. Each point is a ready-to-say on-camera line.
 
 IDEA: ${idea.trim()}${niche ? `\nNICHE: ${niche}` : ""}${audience ? `\nTARGET AUDIENCE: ${audience}` : ""}
+PLATFORMS: ${platformList}
+TONE DIRECTIVE: ${toneDirective}${researchBlock}
 
 Return ONLY this JSON:
 {"talking_points":["point1","point2","point3","point4","point5"]}
 
+STRUCTURE — use these 5 formulas in order:
+1. Pattern Interrupt — a surprising stat, counterintuitive claim, or bold declaration that forces the viewer to rethink something they assumed was true. Stops the scroll.
+2. Stakes Amplifier — make the cost of NOT knowing this feel real and immediate. Specific consequence tied to the audience's actual situation. No vague warnings.
+3. Contrarian Take — the thing people believe that is wrong, and why. Short, specific, slightly uncomfortable. The most shareable point.
+4. Credibility Anchor — a specific insight, observable pattern, or data point that proves the creator knows what they are talking about. Grounded in the live research above where possible.
+5. Action Close — a direct challenge, provocative question, or call to action that triggers a comment, share, or DM. Feels like a dare, not a sales pitch.
+
 REQUIREMENTS:
-- Exactly 5 talking points
-- Each point is a specific, bold, compelling statement or question (1-2 sentences max)
-- Written as actual on-camera spoken lines — not notes or bullet fragments
-- Vary structure: open with a hook, build tension, include a contrarian take, use social proof or stats if relevant, close with a strong CTA or call to reflection
-- Every point must feel urgent, authentic, and impossible to scroll past
-- NO generic filler — every word earns its place
-- No emojis
-- No em-dashes`,
-        800
+- Every line written as actual spoken words, conversational and direct, no bullet fragments
+- Grounded in the live research above where available, specific always beats generic
+- Tone must match the TONE DIRECTIVE exactly in vocabulary, rhythm, and energy
+- Under 40 words per point
+- No emojis, no em-dashes, no robotic phrasing
+- If a point could be copy-pasted into any other niche unchanged, rewrite it`,
+        1400
       );
       const data = stripDashes(safeParse(raw));
       return json(data);

@@ -2486,6 +2486,24 @@ function InlinePostComposer({
   const [textAiSelected, setTextAiSelected] = useState<Record<string, number | null>>({});
   const [textAiPostStatus, setTextAiPostStatus] = useState<Record<string, Record<number, 'posted' | 'scheduled'>>>({});
 
+  // Auto-schedule state
+  const [showAutoSchedule, setShowAutoSchedule]   = useState(false);
+  const [autoSchedStart, setAutoSchedStart]       = useState<string>(() => {
+    const p = (n: number) => String(n).padStart(2, '0');
+    const d = new Date(); d.setHours(9, 0, 0, 0);
+    if (d <= new Date()) d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T09:00`;
+  });
+  const [autoSchedEnd, setAutoSchedEnd]           = useState<string>(() => {
+    const p = (n: number) => String(n).padStart(2, '0');
+    const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(20, 0, 0, 0);
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T20:00`;
+  });
+  const [autoSchedLoading, setAutoSchedLoading]   = useState(false);
+  const [autoSchedResult, setAutoSchedResult]     = useState<{ scheduled: number; failed: number } | null>(null);
+  // Ordered multi-select for auto-schedule queue — click order = schedule order
+  const [textAiMultiSelected, setTextAiMultiSelected] = useState<Record<string, number[]>>({});
+
   // Multi-select for text post accounts
   const [selectedTextAccounts, setSelectedTextAccounts] = useState<string[]>([]);
   const toggleTextAccount = (id: string) => setSelectedTextAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -2625,7 +2643,7 @@ function InlinePostComposer({
 
   const handleTextAiGenerate = async () => {
     if (textAiSelPlatformKeys.length === 0) { setTextAiError('Select at least one account above first.'); return; }
-    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({}); setTextAiPostStatus({});
+    setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({}); setTextAiPostStatus({}); setTextAiMultiSelected({});
     try {
       const { data: { session: freshSession } } = await supabase.auth.refreshSession();
       const token = freshSession?.access_token || await getToken();
@@ -2896,6 +2914,62 @@ function InlinePostComposer({
       setSubmitting(false);
     }
   };
+
+  // Spread N posts evenly between two datetime-local strings across a multi-day window
+  function spreadScheduleTimes(start: string, end: string, count: number): string[] {
+    if (count === 0) return [];
+    const startMs = new Date(start).getTime();
+    const endMs   = new Date(end).getTime();
+    if (count === 1 || endMs <= startMs) return [new Date(startMs).toISOString()];
+    const step = (endMs - startMs) / (count - 1);
+    return Array.from({ length: count }, (_, i) =>
+      new Date(startMs + Math.round(step * i)).toISOString()
+    );
+  }
+
+  const handleAutoScheduleAll = async () => {
+    if (!textAiPosts || Object.keys(textAiPosts).length === 0) return;
+    if (selectedTextAccounts.length === 0) { setSubmitError('Select at least one account to post to.'); return; }
+    if (!autoSchedStart || !autoSchedEnd || new Date(autoSchedEnd) <= new Date(autoSchedStart)) {
+      setSubmitError('End date/time must be after start.'); return;
+    }
+    setAutoSchedLoading(true); setAutoSchedResult(null); setSubmitError(null);
+    const allAccounts = selectedTextAccounts.map(id => {
+      const acct = textPostAccounts.find(a => a.integ.id === id);
+      return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
+    }).filter(a => a.platformId);
+    let scheduled = 0, failed = 0;
+    try {
+      for (const [platform, posts] of Object.entries(textAiPosts)) {
+        const isLi  = platform === 'linkedin';
+        const pIds  = allAccounts.filter(a => isLi ? a.isLinkedIn : !a.isLinkedIn).map(a => a.platformId);
+        if (pIds.length === 0 || posts.length === 0) continue;
+        // Honour click-order queue; fall back to natural order if nothing queued
+        const queued         = textAiMultiSelected[platform] ?? [];
+        const orderedIndices = queued.length > 0 ? queued : posts.map((_, i) => i);
+        const orderedPosts   = orderedIndices.map(i => posts[i]).filter(Boolean);
+        const times = spreadScheduleTimes(autoSchedStart, autoSchedEnd, orderedPosts.length);
+        for (let i = 0; i < orderedPosts.length; i++) {
+          try {
+            await ayrsharePost({ platforms: pIds, post: orderedPosts[i], scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
+            scheduled++;
+            setTextAiPostStatus(prev => ({ ...prev, [platform]: { ...(prev[platform] ?? {}), [orderedIndices[i]]: 'scheduled' } }));
+          } catch { failed++; }
+        }
+      }
+      setAutoSchedResult({ scheduled, failed });
+    } catch (e: any) {
+      setSubmitError(e.message || 'Auto-scheduling failed');
+    } finally {
+      setAutoSchedLoading(false);
+    }
+  };
+
+  const toggleMultiSelect = (platform: string, idx: number) =>
+    setTextAiMultiSelected(prev => {
+      const cur = prev[platform] ?? [];
+      return { ...prev, [platform]: cur.includes(idx) ? cur.filter(i => i !== idx) : [...cur, idx] };
+    });
 
   const scheduleSectionJsx = (
     <div>
@@ -3630,14 +3704,17 @@ function InlinePostComposer({
 
                     <div className="space-y-1.5 max-h-[320px] md:max-h-[480px] overflow-y-auto pr-1">
                       {(textAiPosts[textTab] ?? []).map((post, idx) => {
-                        const platform = textTab;
+                        const platform  = textTab;
                         const isSel     = textAiSelected[platform] === idx;
                         const isEditing = editingIdx?.tab === platform && editingIdx?.idx === idx;
                         const liveText  = isEditing ? aiEditText : post;
+                        const queue     = textAiMultiSelected[platform] ?? [];
+                        const queuePos  = queue.indexOf(idx); // -1 if not queued
+                        const isQueued  = queuePos !== -1;
 
                         return (
                           <div key={idx} className="relative rounded-xl border overflow-hidden transition"
-                            style={{ borderColor: isSel ? GOLD : BORDER, background: isSel ? `${GOLD}08` : 'rgba(0,0,0,0.2)' }}>
+                            style={{ borderColor: isQueued ? GOLD : isSel ? GOLD + '55' : BORDER, background: isQueued ? `${GOLD}12` : isSel ? `${GOLD}05` : 'rgba(0,0,0,0.2)' }}>
 
                             {/* Edit button — top right */}
                             <button
@@ -3680,9 +3757,9 @@ function InlinePostComposer({
                               />
                             ) : (
                               <div
-                                onClick={() => useTextAiPost(platform, idx)}
+                                onClick={() => { useTextAiPost(platform, idx); toggleMultiSelect(platform, idx); }}
                                 className="px-3 pt-3 pb-2 pr-8 text-xs leading-relaxed cursor-pointer"
-                                style={{ color: isSel ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.5)' }}>
+                                style={{ color: isQueued ? 'rgba(255,255,255,0.85)' : isSel ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.5)' }}>
                                 {liveText}
                               </div>
                             )}
@@ -3697,8 +3774,11 @@ function InlinePostComposer({
                               {textAiPostStatus[platform]?.[idx] === 'scheduled' && (
                                 <span className="text-[10px] font-bold text-sky-400">🗓 Scheduled</span>
                               )}
-                              {!textAiPostStatus[platform]?.[idx] && isSel && !isEditing && (
-                                <span className="text-[10px] font-bold" style={{ color: GOLD }}>✓ Selected</span>
+                              {!textAiPostStatus[platform]?.[idx] && isQueued && !isEditing && (
+                                <span className="text-[10px] font-bold" style={{ color: GOLD }}>#{queuePos + 1} in queue</span>
+                              )}
+                              {!textAiPostStatus[platform]?.[idx] && !isQueued && isSel && !isEditing && (
+                                <span className="text-[10px] font-bold" style={{ color: GOLD + 'aa' }}>✓ Active</span>
                               )}
                               {isEditing && (
                                 <span className="text-[10px] font-bold text-amber-400/70">editing…</span>
@@ -3714,6 +3794,66 @@ function InlinePostComposer({
                           </div>
                         );
                       })}
+                    </div>
+
+                    {/* Auto-Schedule All panel */}
+                    <div className="pt-2 border-t" style={{ borderColor: 'rgba(255,255,255,0.07)' }}>
+                      {!showAutoSchedule ? (
+                        <button
+                          onClick={() => { setShowAutoSchedule(true); setAutoSchedResult(null); }}
+                          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold border transition hover:brightness-110"
+                          style={{ borderColor: GOLD + '40', color: GOLD_L, background: GOLD + '08' }}>
+                          <Calendar className="w-3.5 h-3.5" />
+                          Auto-Schedule All {Object.values(textAiPosts).reduce((s, p) => s + p.length, 0)} Posts
+                        </button>
+                      ) : (
+                        <div className="space-y-3 rounded-xl p-3" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${GOLD}25` }}>
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold" style={{ color: GOLD_L }}>
+                              <Calendar className="w-3 h-3 inline mr-1.5" />Auto-Schedule Window
+                            </span>
+                            <button onClick={() => setShowAutoSchedule(false)} className="text-white/25 hover:text-white/50 transition text-xs leading-none">✕</button>
+                          </div>
+
+                          <div className="flex gap-2">
+                            {(['Start', 'End'] as const).map((label, li) => {
+                              const val    = li === 0 ? autoSchedStart : autoSchedEnd;
+                              const setVal = li === 0 ? setAutoSchedStart : setAutoSchedEnd;
+                              return (
+                                <div key={label} className="flex-1">
+                                  <div className="text-[10px] text-white/30 mb-1">{label}</div>
+                                  <input
+                                    type="datetime-local"
+                                    value={val}
+                                    onChange={e => setVal(e.target.value)}
+                                    className="w-full rounded-lg border bg-black/30 px-2 py-1.5 text-xs text-white outline-none"
+                                    style={{ borderColor: 'rgba(255,255,255,0.12)', colorScheme: 'dark' }}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          <p className="text-[10px] text-white/25 leading-relaxed">
+                            Posts are spread evenly across this window in the order you clicked them. If no posts are selected, all posts are scheduled in order.
+                          </p>
+
+                          {autoSchedResult && (
+                            <div className="text-xs font-bold text-center py-1 rounded-lg" style={{ color: autoSchedResult.failed === 0 ? '#4ade80' : '#fbbf24', background: autoSchedResult.failed === 0 ? 'rgba(74,222,128,0.08)' : 'rgba(251,191,36,0.08)' }}>
+                              {autoSchedResult.scheduled} post{autoSchedResult.scheduled !== 1 ? 's' : ''} scheduled
+                              {autoSchedResult.failed > 0 ? ` · ${autoSchedResult.failed} failed` : ' successfully'}
+                            </div>
+                          )}
+
+                          <button onClick={handleAutoScheduleAll} disabled={autoSchedLoading}
+                            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                            style={{ background: `linear-gradient(135deg, ${GOLD_D ?? GOLD}, ${GOLD})`, color: '#000' }}>
+                            {autoSchedLoading
+                              ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Scheduling…</>
+                              : <><Calendar className="w-3.5 h-3.5" /> Schedule All Posts</>}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -6198,7 +6338,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
 type VideoStudioStep = 'brief' | 'prompts' | 'frames' | 'video' | 'done';
 type VideoPrompt = { id: string; text: string; selected: boolean; };
 type GeneratedFrame = { id: string; promptText: string; imageUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'done'|'error'; error?: string; };
-type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; };
+type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; lipsyncStatus?: 'syncing'|'done'|'error'; lipsyncError?: string; script?: string; };
 type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl: string; thumbnailUrl?: string; };
 
 function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
@@ -6230,7 +6370,9 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   });
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [globalError, setGlobalError] = React.useState<string | null>(null);
-  const [generatingPrompts, setGeneratingPrompts] = React.useState(false);
+  const [generatingPrompts, setGeneratingPrompts]       = React.useState(false);
+  const [spokenScript, setSpokenScript]                 = React.useState('');
+  const [customInstructions, setCustomInstructions]     = React.useState('');
   const [textOnScreen, setTextOnScreen]           = React.useState(false);
   const [textOnScreenContent, setTextOnScreenContent] = React.useState('');
   const [fontColor, setFontColor]                 = React.useState('#FFFFFF');
@@ -6312,7 +6454,8 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   };
 
   const handleGeneratePrompts = async () => {
-    if (!brief.trim()) { setGlobalError('Enter a video brief first'); return; }
+    const canProceedWithScriptOnly = style === 'speaking' && !!spokenScript.trim();
+    if (!brief.trim() && !canProceedWithScriptOnly) { setGlobalError('Enter a video brief first'); return; }
     if (!userId) { setGlobalError('Sign in to generate AI video'); return; }
     const isPromo = subscription?.stripe_customer_id?.startsWith('promo_');
     const isTrialing = subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date();
@@ -6332,11 +6475,12 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({
-          brief, style, aspectRatio, duration,
+          brief: brief.trim() || spokenScript.trim(), style, aspectRatio, duration,
           hasStartFrame: hasStart, hasEndFrame: hasEnd,
           ...(hasStart && startFrameUrl ? { startFrameBase64: extractImage(startFrameUrl).base64, startFrameMediaType: extractImage(startFrameUrl).mediaType } : {}),
           ...(hasEnd && endFrameUrl   ? { endFrameBase64:   extractImage(endFrameUrl).base64,   endFrameMediaType:   extractImage(endFrameUrl).mediaType   } : {}),
           textOnScreen, textOnScreenContent: textOnScreen ? textOnScreenContent : undefined, fontColor: textOnScreen ? fontColor : undefined,
+          customInstructions: customInstructions.trim() || undefined,
         }),
       });
       const promptData = await promptRes.json();
@@ -6378,7 +6522,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ prompt: promptText, duration, aspectRatio, quality: 'high', textToVideo: true }),
+          body: JSON.stringify({ prompt: promptText, duration, aspectRatio, quality: 'high', textToVideo: true, style }),
         });
         const data = await res.json();
         if (data.error === 'upgrade_required') { setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: 'Plan required' } : v)); setStep('brief'); onUpgrade(); return; }
@@ -6399,10 +6543,10 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const effectiveImageUrl = overrideStartUrl || imageUrl;
     setStep('video');
     const vidId = `v${Date.now()}-${frameId}`;
-    const newVideo: GeneratedVideo = { id: vidId, frameUrl: effectiveImageUrl, promptText, videoUrl: null, taskId: null, status: 'generating' };
+    const newVideo: GeneratedVideo = { id: vidId, frameUrl: effectiveImageUrl, promptText, videoUrl: null, taskId: null, status: 'generating', script: style === 'speaking' ? spokenScript.trim() : undefined };
     setVideos([newVideo]);
     try {
-      const falBody: Record<string, unknown> = { imageUrl: effectiveImageUrl, prompt: promptText, duration, aspectRatio, quality: 'high' };
+      const falBody: Record<string, unknown> = { imageUrl: effectiveImageUrl, prompt: promptText, duration, aspectRatio, quality: 'high', style };
       if (tailUrl) falBody.tailImageUrl = tailUrl;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
@@ -6533,14 +6677,14 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const doneFr = frames.filter(f => f.status === 'done' && f.imageUrl);
     if (!doneFr.length) { setGlobalError('No completed frames'); return; }
     setGlobalError(null);
-    const newVideos: GeneratedVideo[] = doneFr.map(f => ({ id: `v${Date.now()}-${f.id}`, frameUrl: f.imageUrl!, promptText: f.promptText, videoUrl: null, taskId: null, status: 'generating' }));
+    const newVideos: GeneratedVideo[] = doneFr.map(f => ({ id: `v${Date.now()}-${f.id}`, frameUrl: f.imageUrl!, promptText: f.promptText, videoUrl: null, taskId: null, status: 'generating' as const, script: style === 'speaking' ? spokenScript.trim() : undefined }));
     setVideos(newVideos); setStep('video');
     const headers = await getAuthHeaders();
     for (const vid of newVideos) {
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ imageUrl: vid.frameUrl, prompt: vid.promptText, duration, aspectRatio, quality: 'high' }),
+          body: JSON.stringify({ imageUrl: vid.frameUrl, prompt: vid.promptText, duration, aspectRatio, quality: 'high', style }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed');
@@ -6551,6 +6695,26 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       } catch (e: any) {
         setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, status: 'error', error: e.message } : v));
       }
+    }
+  };
+
+  const triggerLipsync = async (vidId: string, videoUrl: string, script: string, promptText: string, frameUrl: string, headers: Record<string, string>) => {
+    try {
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/lipsync-video`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+        body: JSON.stringify({ videoUrl, script }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || 'Lip sync failed');
+      const syncedUrl: string = data.videoUrl;
+      if (!syncedUrl) throw new Error('No video URL returned from lip sync');
+      setVideos(prev => prev.map(v => v.id === vidId ? { ...v, videoUrl: syncedUrl, lipsyncStatus: 'done' as const } : v));
+      addToHistory(promptText, syncedUrl, frameUrl);
+      try { localStorage.setItem('mm_video_history', JSON.stringify([{ id: Date.now().toString(), createdAt: new Date().toISOString(), brief: promptText, videoUrl: syncedUrl, thumbnailUrl: frameUrl }, ...JSON.parse(localStorage.getItem('mm_video_history') || '[]')].slice(0, 20))); } catch {}
+    } catch (e: any) {
+      console.error('Lipsync failed:', e);
+      setVideos(prev => prev.map(v => v.id === vidId ? { ...v, lipsyncStatus: 'error' as const, lipsyncError: e?.message || 'Unknown error' } : v));
+      addToHistory(promptText, videoUrl, frameUrl);
     }
   };
 
@@ -6572,9 +6736,14 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
         const pd = await pr.json();
         if (pd.status === 'succeed' && pd.videoUrl) {
           clearInterval(interval);
-          setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: pd.videoUrl } : v));
-          addToHistory(promptText, pd.videoUrl, frameUrl);
-          setStep('done'); // Audio already baked into video by Kling 3.0 Pro
+          const needsLipsync = style === 'speaking' && spokenScript.trim();
+          setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: pd.videoUrl, lipsyncStatus: needsLipsync ? 'syncing' as const : undefined } : v));
+          setStep('done');
+          if (needsLipsync) {
+            triggerLipsync(vidId, pd.videoUrl, spokenScript.trim(), promptText, frameUrl, headers);
+          } else {
+            addToHistory(promptText, pd.videoUrl, frameUrl);
+          }
         } else if (pd.status === 'failed') {
           clearInterval(interval);
           setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: pd.error || 'Failed' } : v));
@@ -6608,7 +6777,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   const resetStudio = () => {
     Object.values(pollTimers.current).forEach(clearInterval);
     pollTimers.current = {};
-    setStep('brief'); setBrief(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null);
+    setStep('brief'); setBrief(''); setSpokenScript(''); setCustomInstructions(''); setPrompts([]); setFrames([]); setVideos([]); setGlobalError(null);
     setFrameMode('none'); setStartFrameUrl(null); setEndFrameUrl(null);
     setGeneratedStartFrameUrl(null); setGeneratedEndFrameUrl(null);
     setEditablePrompt(''); setGeneratingAssets(false);
@@ -6711,11 +6880,29 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                   className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
                   style={{ borderColor: BORDER }} />
                 {style === 'speaking' && (
-                  <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                    {frameMode === 'manual' && startFrameUrl
-                      ? 'Character appearance is defined by your start frame image.'
-                      : 'Upload a start frame image below to define your character\'s appearance.'}
-                  </p>
+                  <>
+                    <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                      {frameMode === 'manual' && startFrameUrl
+                        ? 'Character appearance is defined by your start frame image.'
+                        : 'Upload a start frame image below to define your character\'s appearance.'}
+                    </p>
+                    <div className="mt-3">
+                      <label className="text-xs font-bold uppercase tracking-wider block mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                        Exact Script <span className="normal-case font-normal" style={{ color: GOLD }}>— for perfect lip sync</span>
+                      </label>
+                      <textarea
+                        value={spokenScript}
+                        onChange={e => setSpokenScript(e.target.value)}
+                        rows={3}
+                        placeholder="Type the exact words the speaker will say on camera. This is sent to AI voice synthesis for frame-perfect lip sync. Leave blank to skip lip sync."
+                        className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                        style={{ borderColor: spokenScript ? GOLD + '60' : BORDER }}
+                      />
+                      {spokenScript && (
+                        <p className="mt-1 text-[10px]" style={{ color: GOLD }}>Lip sync will run automatically after video generation (~30s extra).</p>
+                      )}
+                    </div>
+                  </>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -6839,7 +7026,22 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                 )}
               </div>
 
-              <button onClick={handleGeneratePrompts} disabled={generatingPrompts || !brief.trim()}
+              {/* Custom Instructions */}
+              <div>
+                <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">
+                  Custom Instructions <span className="normal-case font-normal text-white/20">(optional)</span>
+                </label>
+                <textarea
+                  value={customInstructions}
+                  onChange={e => setCustomInstructions(e.target.value)}
+                  rows={2}
+                  placeholder={'Override any camera or style defaults. E.g. "locked camera, no movement" or "no zoom ins or outs" or "slow motion throughout"'}
+                  className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                  style={{ borderColor: customInstructions.trim() ? GOLD + '60' : BORDER }}
+                />
+              </div>
+
+              <button onClick={handleGeneratePrompts} disabled={generatingPrompts || (!brief.trim() && !(style === 'speaking' && !!spokenScript.trim()))}
                 className="w-full flex items-center justify-center py-3.5 rounded-xl text-sm font-bold disabled:opacity-50 transition"
                 style={{ background: GOLD, color: '#000' }}>
                 {generatingPrompts
@@ -6866,6 +7068,9 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                   <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>{duration}s</span>
                   {textOnScreen && textOnScreenContent && (
                     <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.4)' }}>Text: "{textOnScreenContent}"</span>
+                  )}
+                  {customInstructions.trim() && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold" style={{ background: `${GOLD}18`, color: GOLD }}>Override: "{customInstructions.trim().slice(0, 40)}{customInstructions.trim().length > 40 ? '…' : ''}"</span>
                   )}
                 </div>
               </div>
@@ -6948,6 +7153,40 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                           </div>
                       }
                     </div>
+                    {vid.status === 'done' && vid.lipsyncStatus === 'syncing' && (
+                      <div className="px-3 pt-2 pb-1 flex items-center gap-2 text-xs" style={{ color: GOLD }}>
+                        <Loader className="w-3.5 h-3.5 animate-spin shrink-0" />
+                        Syncing lip movements with your script — takes ~30s…
+                      </div>
+                    )}
+                    {vid.status === 'done' && vid.lipsyncStatus === 'done' && (
+                      <div className="px-3 pt-2 pb-1 flex items-center gap-2 text-xs text-green-400/80">
+                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Lip sync applied
+                      </div>
+                    )}
+                    {vid.status === 'done' && vid.lipsyncStatus === 'error' && (
+                      <div className="px-3 pt-2 pb-2 space-y-1.5">
+                        <div className="flex items-center gap-2 text-xs text-amber-400/70">
+                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                          <span>Lip sync failed — video has no audio</span>
+                        </div>
+                        {vid.lipsyncError && (
+                          <p className="text-[10px] text-red-400/60 pl-5 leading-relaxed">{vid.lipsyncError.slice(0, 200)}</p>
+                        )}
+                        {vid.script && (
+                          <button
+                            onClick={async () => {
+                              const headers = await getAuthHeaders();
+                              setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, lipsyncStatus: 'syncing' as const, lipsyncError: undefined } : v));
+                              triggerLipsync(vid.id, vid.videoUrl!, vid.script!, vid.promptText, vid.frameUrl, headers);
+                            }}
+                            className="ml-5 text-[10px] font-bold px-2.5 py-1 rounded-lg transition hover:brightness-110"
+                            style={{ background: GOLD + '22', color: GOLD, border: `1px solid ${GOLD}40` }}>
+                            Retry Lip Sync
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {vid.status === 'done' && vid.videoUrl && (
                       <div className="p-3 space-y-2">
                         {/* Action buttons */}

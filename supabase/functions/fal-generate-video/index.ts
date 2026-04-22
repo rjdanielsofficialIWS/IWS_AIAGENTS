@@ -18,7 +18,7 @@ Deno.serve(async(req)=>{
     const isActive=((sub?.status==="active"||isPromo)||isTrialing)&&!!sub?.plan;
     const plan=isActive?sub!.plan.toLowerCase():"free";
     if(plan==="free")return new Response(JSON.stringify({error:"upgrade_required",message:"AI video generation requires an active plan. Choose a plan to get started.",plan}),{status:403,headers:{...cors,"Content-Type":"application/json"}});
-    const{imageUrl,tailImageUrl,prompt,duration,aspectRatio,textToVideo}=await req.json();
+    const{imageUrl,tailImageUrl,prompt,duration,aspectRatio,textToVideo,style}=await req.json();
     if(!prompt)return new Response(JSON.stringify({error:"prompt is required"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     if(!textToVideo&&!imageUrl)return new Response(JSON.stringify({error:"imageUrl is required for image-to-video"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     const secs=parseInt(String(duration??5),10);
@@ -33,10 +33,10 @@ Deno.serve(async(req)=>{
     let model,payload;
     if(textToVideo){
       model="fal-ai/kling-video/v2.1/master/text-to-video";
-      payload={prompt,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, ugly, distorted",cfg_scale:0.5};
+      payload={prompt,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, ugly, distorted",cfg_scale:0.5,generate_audio:style==="speaking"?false:true};
     } else {
       model="fal-ai/kling-video/v3/pro/image-to-video";
-      payload={prompt,image_url:imageUrl,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, text overlay, ugly, distorted, scene change, different background",cfg_scale:0.7,generate_audio:true};
+      payload={prompt,image_url:imageUrl,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, text overlay, ugly, distorted, scene change, different background",cfg_scale:0.7,generate_audio:style==="speaking"?false:true};
       if(tailImageUrl)payload.tail_image_url=tailImageUrl;
     }
     const sr=await fetch("https://queue.fal.run/"+model,{method:"POST",headers:{"Authorization":"Key "+FAL,"Content-Type":"application/json"},body:JSON.stringify(payload)});

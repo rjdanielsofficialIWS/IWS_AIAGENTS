@@ -1,0 +1,138 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+const CORS_ORIGINS = ["https://infinitewealthsolutionsai.com", "https://www.infinitewealthsolutionsai.com"];
+const corsFor = (req: Request) => {
+  const o = req.headers.get("Origin") ?? "";
+  return {
+    "Access-Control-Allow-Origin": CORS_ORIGINS.includes(o) ? o : CORS_ORIGINS[0],
+    "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+};
+
+const FAL_KEY = Deno.env.get("FAL_API_KEY");
+const ELEVENLABS_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+
+// Adam — professional male, clear narration
+const DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB";
+
+Deno.serve(async (req: Request) => {
+  const cors = corsFor(req);
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+
+  const json = (data: unknown, status = 200) =>
+    new Response(JSON.stringify(data), { status, headers: { ...cors, "Content-Type": "application/json" } });
+
+  const auth = req.headers.get("Authorization") ?? "";
+  if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
+  const token = auth.replace("Bearer ", "").trim();
+
+  const supabase = createClient(
+    Deno.env.get("SUPABASE_URL") ?? "",
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+    { auth: { persistSession: false } }
+  );
+
+  const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
+  if (authErr || !user) return json({ error: "Unauthorized" }, 401);
+
+  const { data: sub } = await supabase
+    .from("subscriptions")
+    .select("plan,status,stripe_customer_id,current_period_end")
+    .eq("supabase_user_id", user.id)
+    .maybeSingle();
+  const isPromo = sub?.stripe_customer_id?.startsWith("promo_");
+  const isTrialing = sub?.status === "trialing" && !!sub?.current_period_end && new Date(sub.current_period_end) > new Date();
+  const isActive = ((sub?.status === "active" || isPromo) || isTrialing) && !!sub?.plan;
+  const plan = isActive ? sub!.plan.toLowerCase() : "free";
+
+  if (plan === "free" || plan === "starter") {
+    return json({ error: "upgrade_required", message: "AI lip sync is available on the Viral and Agency plans.", plan }, 403);
+  }
+
+  if (!FAL_KEY) return json({ error: "FAL_API_KEY not configured" }, 500);
+  if (!ELEVENLABS_KEY) return json({ error: "ELEVENLABS_API_KEY not configured" }, 500);
+
+  let body: any;
+  try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
+
+  const { videoUrl, script, voiceId = DEFAULT_VOICE_ID } = body;
+  if (!videoUrl) return json({ error: "videoUrl is required" }, 400);
+  if (!script || !script.trim()) return json({ error: "script is required" }, 400);
+
+  try {
+    // Step 1: ElevenLabs TTS
+    const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: "POST",
+      headers: {
+        "xi-api-key": ELEVENLABS_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg",
+      },
+      body: JSON.stringify({
+        text: script.trim(),
+        model_id: "eleven_turbo_v2_5",
+        voice_settings: { stability: 0.5, similarity_boost: 0.8, style: 0.0, use_speaker_boost: true },
+      }),
+    });
+    if (!ttsRes.ok) {
+      const err = await ttsRes.text();
+      throw new Error(`ElevenLabs TTS failed (${ttsRes.status}): ${err.slice(0, 300)}`);
+    }
+    const audioBuffer = await ttsRes.arrayBuffer();
+
+    // Step 2: Upload audio to fal.ai storage
+    const formData = new FormData();
+    formData.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "tts.mp3");
+    const uploadRes = await fetch("https://fal.run/files/upload", {
+      method: "POST",
+      headers: { "Authorization": `Key ${FAL_KEY}` },
+      body: formData,
+    });
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      throw new Error(`fal.ai audio upload failed (${uploadRes.status}): ${err.slice(0, 300)}`);
+    }
+    const uploadData = await uploadRes.json();
+    const audioUrl: string = uploadData.url;
+    if (!audioUrl) throw new Error("No URL returned from fal.ai audio upload");
+
+    // Step 3: Submit sync-lipsync job
+    const queueRes = await fetch("https://queue.fal.run/fal-ai/sync-lipsync", {
+      method: "POST",
+      headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ video_url: videoUrl, audio_url: audioUrl }),
+    });
+    const queueText = await queueRes.text();
+    let queueData: any;
+    try { queueData = JSON.parse(queueText); } catch { throw new Error(`fal non-JSON (${queueRes.status}): ${queueText.slice(0, 300)}`); }
+    if (!queueRes.ok) throw new Error(`sync-lipsync queue failed (${queueRes.status}): ${JSON.stringify(queueData)}`);
+
+    const { request_id, status_url, response_url } = queueData;
+    if (!request_id) throw new Error("No request_id from fal.ai sync-lipsync");
+
+    // Step 4: Poll for completion (sync-lipsync is fast: 15–40s for short clips)
+    const FAL_AUTH = { "Authorization": `Key ${FAL_KEY}` };
+    for (let attempt = 0; attempt < 24; attempt++) {
+      await new Promise(r => setTimeout(r, 5000));
+      const statusRes = await fetch(`${status_url}?logs=0`, { headers: FAL_AUTH });
+      if (!statusRes.ok) continue;
+      const statusData = await statusRes.json();
+      const st = statusData.status;
+      if (st === "COMPLETED") {
+        const resultRes = await fetch(response_url, { headers: FAL_AUTH });
+        if (!resultRes.ok) throw new Error("Failed to fetch lipsync result");
+        const result = await resultRes.json();
+        const syncedUrl: string = result.video?.url ?? result.video_url ?? result.output?.video?.url;
+        if (!syncedUrl) throw new Error("No video URL in lipsync result: " + JSON.stringify(result).slice(0, 200));
+        return json({ videoUrl: syncedUrl });
+      }
+      if (st === "FAILED") throw new Error("Lip sync generation failed: " + JSON.stringify(statusData.error ?? "").slice(0, 200));
+    }
+    throw new Error("Lip sync timed out after 2 minutes");
+
+  } catch (e: any) {
+    console.error("lipsync-video error:", e);
+    return json({ error: e?.message || "Lip sync generation failed. Please try again." }, 500);
+  }
+});
