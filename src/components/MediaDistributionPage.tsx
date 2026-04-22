@@ -6482,7 +6482,9 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({
-          brief: brief.trim() || spokenScript.trim(), style, aspectRatio, duration,
+          brief: style === 'speaking' && spokenScript.trim()
+            ? (brief.trim() ? `${brief.trim()} "${spokenScript.trim()}"` : `"${spokenScript.trim()}"`)
+            : brief.trim() || spokenScript.trim(), style, aspectRatio, duration,
           hasStartFrame: hasStart, hasEndFrame: hasEnd,
           ...(hasStart && startFrameUrl ? { startFrameBase64: extractImage(startFrameUrl).base64, startFrameMediaType: extractImage(startFrameUrl).mediaType } : {}),
           ...(hasEnd && endFrameUrl   ? { endFrameBase64:   extractImage(endFrameUrl).base64,   endFrameMediaType:   extractImage(endFrameUrl).mediaType   } : {}),
@@ -6873,6 +6875,21 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                   </p>
                 )}
               </div>
+              {style === 'speaking' && (
+                <div>
+                  <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Script <span className="text-white/20 normal-case font-normal">(optional)</span></label>
+                  <textarea
+                    value={spokenScript}
+                    onChange={e => setSpokenScript(e.target.value)}
+                    rows={4}
+                    placeholder="Write the exact words you want the character to speak. E.g. 'Hey! Welcome to my channel. Today we're breaking down the #1 mistake people make with their finances…'"
+                    className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
+                    style={{ borderColor: BORDER }} />
+                  <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    The AI character will speak these exact words in the video.
+                  </p>
+                </div>
+              )}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2 block">Aspect Ratio</label>
