@@ -30,13 +30,14 @@ Deno.serve(async(req)=>{
     if(secs>rem)return new Response(JSON.stringify({error:"limit_reached",feature:"video_seconds",message:"Only "+rem+"s remaining. This "+secs+"s video would exceed your limit.",used,limit:eff,remaining:rem,plan}),{status:429,headers:{...cors,"Content-Type":"application/json"}});
     const FAL=Deno.env.get("FAL_API_KEY");
     if(!FAL)throw new Error("FAL_API_KEY not configured");
+    // ElevenLabs lip sync — on standby, not active. Re-enable via lipsync-video function when ready.
     let model,payload;
     if(textToVideo){
-      model="fal-ai/kling-video/v2.1/master/text-to-video";
-      payload={prompt,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, ugly, distorted",cfg_scale:0.5,generate_audio:style==="speaking"?false:true};
+      model="fal-ai/bytedance/seedance-2.0/text-to-video";
+      payload={prompt,duration:secs,aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, ugly, distorted",resolution:"720p"};
     } else {
-      model="fal-ai/kling-video/v3/pro/image-to-video";
-      payload={prompt,image_url:imageUrl,duration:String(secs),aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, text overlay, ugly, distorted, scene change, different background",cfg_scale:0.7,generate_audio:style==="speaking"?false:true};
+      model="fal-ai/bytedance/seedance-2.0/image-to-video";
+      payload={prompt,image_url:imageUrl,duration:secs,aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, text overlay, ugly, distorted, scene change, different background",resolution:"720p"};
       if(tailImageUrl)payload.tail_image_url=tailImageUrl;
     }
     const sr=await fetch("https://queue.fal.run/"+model,{method:"POST",headers:{"Authorization":"Key "+FAL,"Content-Type":"application/json"},body:JSON.stringify(payload)});

@@ -6345,7 +6345,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
 type VideoStudioStep = 'brief' | 'prompts' | 'frames' | 'video' | 'done';
 type VideoPrompt = { id: string; text: string; selected: boolean; };
 type GeneratedFrame = { id: string; promptText: string; imageUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'done'|'error'; error?: string; };
-type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; lipsyncStatus?: 'syncing'|'done'|'error'; lipsyncError?: string; script?: string; };
+type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; };
 type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl: string; thumbnailUrl?: string; };
 
 function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
@@ -6705,25 +6705,9 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     }
   };
 
-  const triggerLipsync = async (vidId: string, videoUrl: string, script: string, promptText: string, frameUrl: string, headers: Record<string, string>) => {
-    try {
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/lipsync-video`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ videoUrl, script }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || 'Lip sync failed');
-      const syncedUrl: string = data.videoUrl;
-      if (!syncedUrl) throw new Error('No video URL returned from lip sync');
-      setVideos(prev => prev.map(v => v.id === vidId ? { ...v, videoUrl: syncedUrl, lipsyncStatus: 'done' as const } : v));
-      addToHistory(promptText, syncedUrl, frameUrl);
-      try { localStorage.setItem('mm_video_history', JSON.stringify([{ id: Date.now().toString(), createdAt: new Date().toISOString(), brief: promptText, videoUrl: syncedUrl, thumbnailUrl: frameUrl }, ...JSON.parse(localStorage.getItem('mm_video_history') || '[]')].slice(0, 20))); } catch {}
-    } catch (e: any) {
-      console.error('Lipsync failed:', e);
-      setVideos(prev => prev.map(v => v.id === vidId ? { ...v, lipsyncStatus: 'error' as const, lipsyncError: e?.message || 'Unknown error' } : v));
-      addToHistory(promptText, videoUrl, frameUrl);
-    }
-  };
+  // triggerLipsync — ElevenLabs lip sync on standby, not active.
+  // To re-enable: uncomment and wire back needsLipsync in pollFalVideoTask.
+  // const triggerLipsync = async (vidId: string, videoUrl: string, script: string, promptText: string, frameUrl: string, headers: Record<string, string>) => { ... };
 
   const pollFalVideoTask = (vidId: string, requestId: string, modelEndpoint: string, promptText: string, frameUrl: string, headers: Record<string, string>, statusUrl?: string, responseUrl?: string) => {
     let attempts = 0;
@@ -6743,14 +6727,9 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
         const pd = await pr.json();
         if (pd.status === 'succeed' && pd.videoUrl) {
           clearInterval(interval);
-          const needsLipsync = style === 'speaking' && spokenScript.trim();
-          setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: pd.videoUrl, lipsyncStatus: needsLipsync ? 'syncing' as const : undefined } : v));
+          setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: pd.videoUrl } : v));
           setStep('done');
-          if (needsLipsync) {
-            triggerLipsync(vidId, pd.videoUrl, spokenScript.trim(), promptText, frameUrl, headers);
-          } else {
-            addToHistory(promptText, pd.videoUrl, frameUrl);
-          }
+          addToHistory(promptText, pd.videoUrl, frameUrl);
         } else if (pd.status === 'failed') {
           clearInterval(interval);
           setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: pd.error || 'Failed' } : v));
@@ -6887,29 +6866,11 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                   className="mt-1.5 w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
                   style={{ borderColor: BORDER }} />
                 {style === 'speaking' && (
-                  <>
-                    <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                      {frameMode === 'manual' && startFrameUrl
-                        ? 'Character appearance is defined by your start frame image.'
-                        : 'Upload a start frame image below to define your character\'s appearance.'}
-                    </p>
-                    <div className="mt-3">
-                      <label className="text-xs font-bold uppercase tracking-wider block mb-1.5" style={{ color: 'rgba(255,255,255,0.3)' }}>
-                        Exact Script <span className="normal-case font-normal" style={{ color: GOLD }}>— for perfect lip sync</span>
-                      </label>
-                      <textarea
-                        value={spokenScript}
-                        onChange={e => setSpokenScript(e.target.value)}
-                        rows={3}
-                        placeholder="Type the exact words the speaker will say on camera. This is sent to AI voice synthesis for frame-perfect lip sync. Leave blank to skip lip sync."
-                        className="w-full rounded-xl border bg-black/30 px-4 py-3 text-sm text-white placeholder-white/20 outline-none resize-none"
-                        style={{ borderColor: spokenScript ? GOLD + '60' : BORDER }}
-                      />
-                      {spokenScript && (
-                        <p className="mt-1 text-[10px]" style={{ color: GOLD }}>Lip sync will run automatically after video generation (~30s extra).</p>
-                      )}
-                    </div>
-                  </>
+                  <p className="mt-1.5 text-[11px] leading-relaxed" style={{ color: 'rgba(255,255,255,0.3)' }}>
+                    {frameMode === 'manual' && startFrameUrl
+                      ? 'Character appearance is defined by your start frame image.'
+                      : 'Upload a start frame image below to define your character\'s appearance.'}
+                  </p>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -7160,40 +7121,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                           </div>
                       }
                     </div>
-                    {vid.status === 'done' && vid.lipsyncStatus === 'syncing' && (
-                      <div className="px-3 pt-2 pb-1 flex items-center gap-2 text-xs" style={{ color: GOLD }}>
-                        <Loader className="w-3.5 h-3.5 animate-spin shrink-0" />
-                        Syncing lip movements with your script — takes ~30s…
-                      </div>
-                    )}
-                    {vid.status === 'done' && vid.lipsyncStatus === 'done' && (
-                      <div className="px-3 pt-2 pb-1 flex items-center gap-2 text-xs text-green-400/80">
-                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Lip sync applied
-                      </div>
-                    )}
-                    {vid.status === 'done' && vid.lipsyncStatus === 'error' && (
-                      <div className="px-3 pt-2 pb-2 space-y-1.5">
-                        <div className="flex items-center gap-2 text-xs text-amber-400/70">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>Lip sync failed — video has no audio</span>
-                        </div>
-                        {vid.lipsyncError && (
-                          <p className="text-[10px] text-red-400/60 pl-5 leading-relaxed">{vid.lipsyncError.slice(0, 200)}</p>
-                        )}
-                        {vid.script && (
-                          <button
-                            onClick={async () => {
-                              const headers = await getAuthHeaders();
-                              setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, lipsyncStatus: 'syncing' as const, lipsyncError: undefined } : v));
-                              triggerLipsync(vid.id, vid.videoUrl!, vid.script!, vid.promptText, vid.frameUrl, headers);
-                            }}
-                            className="ml-5 text-[10px] font-bold px-2.5 py-1 rounded-lg transition hover:brightness-110"
-                            style={{ background: GOLD + '22', color: GOLD, border: `1px solid ${GOLD}40` }}>
-                            Retry Lip Sync
-                          </button>
-                        )}
-                      </div>
-                    )}
                     {vid.status === 'done' && vid.videoUrl && (
                       <div className="p-3 space-y-2">
                         {/* Action buttons */}
