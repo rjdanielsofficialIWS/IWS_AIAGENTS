@@ -31,10 +31,11 @@ Deno.serve(async (req) => {
 
     // ── New path: Seedance 2.0 (requestId + modelEndpoint) ──
     if (body.requestId && body.modelEndpoint) {
-      // Always reconstruct URLs from requestId + model to avoid any encoding issues
       const base = `https://queue.fal.run/${body.modelEndpoint}/requests/${body.requestId}`;
       const statusUrl = body.statusUrl || `${base}/status`;
-      const responseUrl = body.responseUrl || base;
+      // Use the canonical result URL (base), not body.responseUrl — fal.ai sometimes
+      // returns a /response-suffixed URL that 404s on certain models including Seedance 2.0
+      const responseUrl = base;
 
       let statusData: any;
       try {
@@ -62,10 +63,16 @@ Deno.serve(async (req) => {
           return reply({ status: "processing" });
         }
         const videoUrl: string =
-          result?.video?.url ?? result?.video_url ?? result?.output?.video?.url ?? result?.videos?.[0]?.url;
+          result?.video?.url ??
+          result?.video_url ??
+          result?.output?.video?.url ??
+          result?.videos?.[0]?.url ??
+          result?.url ??
+          result?.data?.video?.url ??
+          result?.[0]?.url;
         if (!videoUrl) {
-          console.error("No video URL in result:", JSON.stringify(result).slice(0, 300));
-          return reply({ status: "failed", error: "No video URL in generation result" });
+          console.error("No video URL in result:", JSON.stringify(result).slice(0, 500));
+          return reply({ status: "failed", error: "Video generation failed to produce output. Please try again." });
         }
         return reply({ status: "succeed", videoUrl });
       }
