@@ -6483,7 +6483,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({
           brief: style === 'speaking' && spokenScript.trim()
-            ? (brief.trim() ? `${brief.trim()} "${spokenScript.trim()}"` : `"${spokenScript.trim()}"`)
+            ? (brief.trim() ? `${brief.trim()} ${spokenScript.trim()}` : spokenScript.trim())
             : brief.trim() || spokenScript.trim(), style, aspectRatio, duration,
           hasStartFrame: hasStart, hasEndFrame: hasEnd,
           ...(hasStart && startFrameUrl ? { startFrameBase64: extractImage(startFrameUrl).base64, startFrameMediaType: extractImage(startFrameUrl).mediaType } : {}),
