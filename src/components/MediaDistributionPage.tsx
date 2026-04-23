@@ -6414,7 +6414,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
           body: JSON.stringify({ taskId, type: 'image' }),
         });
         const data = await res.json();
@@ -6442,7 +6442,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       try {
         const headers = await getAuthHeaders();
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
           body: JSON.stringify({ taskId, type: 'video' }),
         });
         const data = await res.json();
@@ -6602,7 +6602,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
           }
           try {
             const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+              method: 'POST', headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
               body: JSON.stringify({ taskId: data.taskId, type: 'audio' }),
             });
             const pd = await pr.json();
@@ -6637,7 +6637,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       }
       try {
         const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
           body: JSON.stringify({ taskId, type: 'image' }),
         });
         const pd = await pr.json();
@@ -6723,7 +6723,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       }
       try {
         const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
+          method: 'POST', headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
           body: JSON.stringify({ requestId, modelEndpoint, statusUrl, responseUrl }),
         });
         const pd = await pr.json();
