@@ -6616,7 +6616,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
               // Audio failed - save silent video
               addToHistory(briefText, videoUrl, frameUrl);
             }
-          } catch {}
+          } catch (pollErr: any) { console.error('fal-poll fetch error:', pollErr?.message); }
         }, 3000);
       }
     } catch (e) {
@@ -6737,7 +6737,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
           setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: pd.error || 'Failed' } : v));
           setGlobalError(pd.error || 'Video generation failed');
         }
-      } catch {}
+      } catch (pollErr: any) { console.error("fal-poll fetch error:", pollErr?.message); }
     }, 5000);
     pollTimers.current[vidId] = interval;
   };
