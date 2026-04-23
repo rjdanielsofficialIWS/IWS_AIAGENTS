@@ -6747,8 +6747,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const objectUrl = URL.createObjectURL(file);
     img.onload = () => {
       URL.revokeObjectURL(objectUrl);
-      const MAX = 512;
-      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const scale = Math.max(300 / Math.max(img.width, img.height), Math.min(1, 512 / Math.max(img.width, img.height)));
       const w = Math.round(img.width * scale);
       const h = Math.round(img.height * scale);
       const canvas = document.createElement('canvas');
