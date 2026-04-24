@@ -1527,21 +1527,22 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
         });
         if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
       } else {
-        // Single post or legacy:: group — legacy keys are frontend-only fingerprints and
-        // are not stored in the DB, so we must delete each post by its real DB id.
-        const toDelete = isLegacyGroup
-          ? posts.filter(p => p.postGroupId === post.postGroupId)
-          : [post];
-        await Promise.all(toDelete.map(async (p) => {
-          const payload: Record<string, unknown> = { action: 'delete_post', userId, postId: p.id };
+        // Legacy group or single post — delete every underlying DB row by its real ID.
+        // allIds contains every platform row in the group; p.id alone is only the first one.
+        const idsToDelete: string[] = (post as any).allIds?.length > 0
+          ? (post as any).allIds
+          : [post.id];
+        const results = await Promise.all(idsToDelete.map(pid => {
+          const payload: Record<string, unknown> = { action: 'delete_post', userId, postId: pid };
           if (workspaceId) payload.workspaceId = workspaceId;
-          const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+          return fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
             body: JSON.stringify(payload),
           });
-          if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
         }));
+        const failed = results.find(r => !r.ok);
+        if (failed) { const d = await failed.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
       }
       setPosts(ps => ps.filter(p => post.postGroupId ? p.postGroupId !== post.postGroupId : p.id !== post.id));
     } catch (e: any) { alert(e.message || 'Failed to delete post'); }
