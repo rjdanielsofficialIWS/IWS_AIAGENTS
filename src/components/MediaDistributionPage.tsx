@@ -5663,6 +5663,8 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerDate, setComposerDate] = useState<Date | undefined>();
   const [expandedDays, setExpandedDays] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting]         = useState<Record<string, boolean>>({});
+  const [editingPost, setEditingPost]   = useState<(ScheduledPost & { postGroupId?: string | null }) | null>(null);
 
   const today      = new Date(); today.setHours(0,0,0,0);
   const biweekEnd  = new Date(biweekStart.getTime() + 13 * 86400000);
@@ -5702,11 +5704,12 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
         const key = p.post_group_id || p.id;
         const plats: string[] = Array.isArray(p.platforms) ? p.platforms : [];
         if (!groupMap.has(key)) {
-          groupMap.set(key, { id: key, content: p.content || '', platforms: [...plats], scheduledAt: new Date(p.scheduled_at), status: p.status || 'scheduled', error: p.error ?? null, mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [], postGroupId: key });
+          groupMap.set(key, { id: key, content: p.content || '', platforms: [...plats], scheduledAt: new Date(p.scheduled_at), status: p.status || 'scheduled', error: p.error ?? null, mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [], postGroupId: key, allIds: [p.id] });
         } else {
           const ex = groupMap.get(key);
           for (const pl of plats) { if (!ex.platforms.includes(pl)) ex.platforms.push(pl); }
           if (p.status === 'error' || p.status === 'failed') { ex.status = p.status; ex.error = p.error ?? ex.error; }
+          ex.allIds.push(p.id);
         }
       }
       setPosts(Array.from(groupMap.values()));
@@ -5722,6 +5725,42 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       const s = p.scheduledAt;
       return s.getFullYear() === y && s.getMonth() === m && s.getDate() === d;
     }).sort((a, b) => a.scheduledAt.getTime() - b.scheduledAt.getTime());
+  };
+
+  const handleDelete = async (post: ScheduledPost & { postGroupId?: string | null }) => {
+    if (!confirm('Delete this scheduled post? This cannot be undone.')) return;
+    setDeleting(d => ({ ...d, [post.id]: true }));
+    try {
+      if (!userId) throw new Error('Not signed in.');
+      const token = await getToken().catch(() => '');
+      const isLegacyGroup = post.postGroupId?.startsWith('legacy::');
+      const hasRealGroupId = post.postGroupId && !isLegacyGroup;
+      if (hasRealGroupId) {
+        const payload: Record<string, unknown> = { action: 'delete_post', userId, postGroupId: post.postGroupId };
+        if (workspaceId) payload.workspaceId = workspaceId;
+        const res = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify(payload),
+        });
+        if (!res.ok) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
+      } else {
+        const idsToDelete: string[] = (post as any).allIds?.length > 0 ? (post as any).allIds : [post.id];
+        const results = await Promise.all(idsToDelete.map(pid => {
+          const payload: Record<string, unknown> = { action: 'delete_post', userId, postId: pid };
+          if (workspaceId) payload.workspaceId = workspaceId;
+          return fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+            body: JSON.stringify(payload),
+          });
+        }));
+        const failed = results.find(r => !r.ok);
+        if (failed) { const d = await failed.json().catch(() => ({})); throw new Error(d.error || 'Delete failed'); }
+      }
+      setPosts(ps => ps.filter(p => post.postGroupId ? p.postGroupId !== post.postGroupId : p.id !== post.id));
+    } catch (e: any) { alert(e.message || 'Failed to delete post'); }
+    finally { setDeleting(d => ({ ...d, [post.id]: false })); }
   };
 
   const STATUS_COLOR = (s: string) => s === 'published' ? '#22c55e' : (s === 'error' || s === 'failed') ? '#ef4444' : GOLD;
@@ -5855,28 +5894,46 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
                 </div>
               </div>
               <div className="mm-scroll flex-1 overflow-y-auto px-5 py-4 space-y-2">
-                {dayPosts.map(post => (
-                  <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
-                    <div className="flex -space-x-1 shrink-0 pt-0.5">
-                      {post.platforms.slice(0, 3).map((pid, i2) => (
-                        <div key={i2} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
-                          <PlatformIcon id={pid} size="sm" />
+                {dayPosts.map(post => {
+                  const isScheduled = post.status === 'scheduled';
+                  const isFailed    = post.status === 'failed' || post.status === 'error';
+                  const isDeleting  = deleting[post.id];
+                  return (
+                    <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                      <div className="flex -space-x-1 shrink-0 pt-0.5">
+                        {post.platforms.slice(0, 3).map((pid, i2) => (
+                          <div key={i2} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
+                            <PlatformIcon id={pid} size="sm" />
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
+                        {isFailed && post.error && <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>}
+                        <div className="flex items-center gap-1.5 mt-1 text-xs text-white/25">
+                          <Clock className="w-3 h-3" />
+                          {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                         </div>
-                      ))}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
-                      <div className="flex items-center gap-1.5 mt-1 text-xs text-white/25">
-                        <Clock className="w-3 h-3" />
-                        {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                      </div>
+                      <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
+                        style={{ background: STATUS_BG(post.status), color: STATUS_COLOR(post.status) }}>
+                        {STATUS_LABEL(post.status)}
+                      </span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {isScheduled && (
+                          <button onClick={() => setEditingPost(post as any)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition" style={{ color: GOLD }} title="Edit post">
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {(isScheduled || isFailed) && (
+                          <button onClick={() => handleDelete(post as any)} disabled={isDeleting} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/50 hover:text-red-400 disabled:opacity-40" title="Delete post">
+                            {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
-                      style={{ background: STATUS_BG(post.status), color: STATUS_COLOR(post.status) }}>
-                      {STATUS_LABEL(post.status)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </div>
@@ -5898,6 +5955,10 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
             </div>
           </div>
         </div>
+      )}
+
+      {editingPost && (
+        <EditPostModal open={!!editingPost} onClose={() => setEditingPost(null)} post={editingPost} workspaceId={workspaceId} integrations={integrations} userId={userId} onSaved={() => { setEditingPost(null); loadPosts(); }} />
       )}
     </div>
   );

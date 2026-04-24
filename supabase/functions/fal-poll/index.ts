@@ -31,11 +31,9 @@ Deno.serve(async (req) => {
 
     // ── New path: Seedance 2.0 (requestId + modelEndpoint) ──
     if (body.requestId && body.modelEndpoint) {
-      const base = `https://queue.fal.run/${body.modelEndpoint}/requests/${body.requestId}`;
-      const statusUrl = body.statusUrl || `${base}/status`;
-      // Use the canonical result URL (base), not body.responseUrl — fal.ai sometimes
-      // returns a /response-suffixed URL that 404s on certain models including Seedance 2.0
-      const responseUrl = base;
+      const statusUrl = body.statusUrl || `https://queue.fal.run/requests/${body.requestId}/status`;
+      // Model-agnostic result URL — avoids /response suffix 404s and model path issues
+      const responseUrl = `https://queue.fal.run/requests/${body.requestId}`;
 
       let statusData: any;
       try {
