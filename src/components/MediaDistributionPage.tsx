@@ -1422,38 +1422,41 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       // Each card carries perPlatformContent so the edit modal never needs a separate DB fetch.
       const groupMap = new Map<string, any>();
       for (const p of (rows ?? [])) {
-        // Determine the grouping key
-        let groupKey: string;
+        // Compute base group key
+        let baseKey: string;
         if (p.post_group_id) {
-          groupKey = p.post_group_id;
+          baseKey = p.post_group_id;
         } else {
-          // Legacy rows have no post_group_id — group by workspace + scheduled minute.
-          // Per-platform captions differ per row, so including content in the key would
-          // prevent rows for the same multi-platform post from grouping together.
           const timeKey = p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime';
           const wsKey = p.workspace_id ?? 'null';
-          groupKey = `legacy::${wsKey}::${timeKey}`;
+          baseKey = `legacy::${wsKey}::${timeKey}`;
         }
+
+        // Failed rows split into their own card so only the failing platform(s) turn red
+        const isFailed = p.status === 'error' || p.status === 'failed';
+        const groupKey = isFailed ? `${baseKey}::failed` : baseKey;
 
         const platformsForRow: string[] = Array.isArray(p.platforms) ? p.platforms : [];
 
         if (!groupMap.has(groupKey)) {
-          // First row for this group — seed the card
           const perPlatformContent: Record<string, string> = {};
           for (const pl of platformsForRow) {
             perPlatformContent[pl] = p.content || '';
           }
           const initCount = platformsForRow.length;
+          // Failed cards get a legacy-prefixed postGroupId so delete uses the allIds path
+          // (deletes only the failed rows, not the whole group)
+          const cardPostGroupId = isFailed ? `legacy::${baseKey}::failed` : (p.post_group_id || baseKey);
           groupMap.set(groupKey, {
             id: p.id,
-            allIds: [p.id],                    // all DB row IDs in this group (needed for legacy deletes)
-            content: p.content || '',          // preview caption (first row wins)
+            allIds: [p.id],
+            content: p.content || '',
             platforms: [...platformsForRow],
             scheduledAt: new Date(p.scheduled_at),
             status: (p.status || 'scheduled') as any,
             error: p.error ?? null,
             mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
-            postGroupId: p.post_group_id || groupKey,
+            postGroupId: cardPostGroupId,
             perPlatformContent,
             platformCount: initCount,
             platformCountLabel: `${initCount} platform${initCount === 1 ? '' : 's'}`,
@@ -1461,20 +1464,12 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
         } else {
           const existing = groupMap.get(groupKey);
           existing.allIds.push(p.id);
-          // Merge each platform and store its specific caption
           for (const pl of platformsForRow) {
             if (!existing.platforms.includes(pl)) existing.platforms.push(pl);
-            // Only set if not already present — preserves first caption for duplicate platform rows
             if (!existing.perPlatformContent[pl]) {
               existing.perPlatformContent[pl] = p.content || '';
             }
           }
-          // Bubble up error status if any sibling failed
-          if (p.status === 'error' || p.status === 'failed') {
-            existing.status = p.status;
-            existing.error = p.error ?? existing.error;
-          }
-          // Keep platformCountLabel in sync as platforms are merged
           const n = existing.platforms.length;
           existing.platformCount = n;
           existing.platformCountLabel = `${n} platform${n === 1 ? '' : 's'}`;
@@ -5698,26 +5693,29 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       else q = (q as any).is('workspace_id', null);
       const { data, error } = await q;
       if (error || !data) return;
-      // Group by post_group_id (or workspace+minute for legacy rows) — same logic as PostLog
+      // Group by post_group_id (or workspace+minute for legacy rows). Failed rows split into
+      // their own card so only the failing platform(s) turn red, not the whole group.
       const groupMap = new Map<string, any>();
       for (const p of data) {
-        let groupKey: string;
+        let baseKey: string;
         if (p.post_group_id) {
-          groupKey = p.post_group_id;
+          baseKey = p.post_group_id;
         } else {
           const timeKey = p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime';
           const wsKey = p.workspace_id ?? 'null';
-          groupKey = `legacy::${wsKey}::${timeKey}`;
+          baseKey = `legacy::${wsKey}::${timeKey}`;
         }
+        const isFailed = p.status === 'error' || p.status === 'failed';
+        const groupKey = isFailed ? `${baseKey}::failed` : baseKey;
         const plats: string[] = Array.isArray(p.platforms) ? p.platforms : [];
         if (!groupMap.has(groupKey)) {
           const n = plats.length;
-          groupMap.set(groupKey, { id: p.id, content: p.content || '', platforms: [...plats], scheduledAt: new Date(p.scheduled_at), status: p.status || 'scheduled', error: p.error ?? null, mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [], postGroupId: p.post_group_id || groupKey, allIds: [p.id], platformCount: n, platformCountLabel: `${n} platform${n === 1 ? '' : 's'}` });
+          const cardPostGroupId = isFailed ? `legacy::${baseKey}::failed` : (p.post_group_id || baseKey);
+          groupMap.set(groupKey, { id: p.id, content: p.content || '', platforms: [...plats], scheduledAt: new Date(p.scheduled_at), status: p.status || 'scheduled', error: p.error ?? null, mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [], postGroupId: cardPostGroupId, allIds: [p.id], platformCount: n, platformCountLabel: `${n} platform${n === 1 ? '' : 's'}` });
         } else {
           const ex = groupMap.get(groupKey);
           ex.allIds.push(p.id);
           for (const pl of plats) { if (!ex.platforms.includes(pl)) ex.platforms.push(pl); }
-          if (p.status === 'error' || p.status === 'failed') { ex.status = p.status; ex.error = p.error ?? ex.error; }
           const n = ex.platforms.length;
           ex.platformCount = n;
           ex.platformCountLabel = `${n} platform${n === 1 ? '' : 's'}`;
