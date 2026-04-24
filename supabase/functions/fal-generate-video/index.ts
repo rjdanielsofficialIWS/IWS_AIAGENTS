@@ -38,10 +38,12 @@ Deno.serve(async(req)=>{
       payload={prompt,duration:String(secs),aspect_ratio:aspectRatio||"16:9",resolution:res};
       if(negativePrompt)payload.negative_prompt=negativePrompt;
     } else {
-      model="bytedance/seedance-2.0/image-to-video";
-      payload={prompt,image_url:imageUrl,duration:String(secs),aspect_ratio:aspectRatio||"16:9",resolution:res};
-      if(tailImageUrl)payload.end_image_url=tailImageUrl;
-      if(negativePrompt)payload.negative_prompt=negativePrompt;
+      // Kling v2.1 Pro for image-to-video: no face-detection block, better human motion
+      // Duration must be "5" or "10" — clamp to nearest valid value
+      const klingDur=secs>=8?"10":"5";
+      model="fal-ai/kling-video/v2.1/pro/image-to-video";
+      payload={prompt,image_url:imageUrl,duration:klingDur,aspect_ratio:aspectRatio||"16:9"};
+      if(tailImageUrl)payload.tail_image_url=tailImageUrl;
     }
     const sr=await fetch("https://queue.fal.run/"+model,{method:"POST",headers:{"Authorization":"Key "+FAL,"Content-Type":"application/json"},body:JSON.stringify({input:payload})});
     const rt=await sr.text();let sd;try{sd=JSON.parse(rt);}catch{throw new Error("fal non-JSON ("+sr.status+"): "+rt.slice(0,300));}

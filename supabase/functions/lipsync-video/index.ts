@@ -12,8 +12,6 @@ const corsFor = (req: Request) => {
 
 const FAL_KEY = Deno.env.get("FAL_API_KEY");
 const ELEVENLABS_KEY = Deno.env.get("ELEVENLABS_API_KEY");
-
-// Adam — professional male, clear narration
 const DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB";
 
 Deno.serve(async (req: Request) => {
@@ -61,7 +59,7 @@ Deno.serve(async (req: Request) => {
   if (!script || !script.trim()) return json({ error: "script is required" }, 400);
 
   try {
-    // Step 1: ElevenLabs TTS
+    // Step 1: ElevenLabs TTS → audio bytes
     const ttsRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: "POST",
       headers: {
@@ -84,7 +82,7 @@ Deno.serve(async (req: Request) => {
     // Step 2: Upload audio to fal.ai storage
     const formData = new FormData();
     formData.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "tts.mp3");
-    const uploadRes = await fetch("https://fal.run/files/upload", {
+    const uploadRes = await fetch("https://rest.alpha.fal.ai/storage/upload", {
       method: "POST",
       headers: { "Authorization": `Key ${FAL_KEY}` },
       body: formData,
@@ -97,42 +95,29 @@ Deno.serve(async (req: Request) => {
     const audioUrl: string = uploadData.url;
     if (!audioUrl) throw new Error("No URL returned from fal.ai audio upload");
 
-    // Step 3: Submit sync-lipsync job
+    // Step 3: Submit sync-lipsync job and return immediately — client polls via fal-poll
+    // NOTE: fal.ai queue API requires payload wrapped in { input: { ... } }
     const queueRes = await fetch("https://queue.fal.run/fal-ai/sync-lipsync", {
       method: "POST",
       headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ video_url: videoUrl, audio_url: audioUrl }),
+      body: JSON.stringify({ input: { video_url: videoUrl, audio_url: audioUrl } }),
     });
     const queueText = await queueRes.text();
     let queueData: any;
-    try { queueData = JSON.parse(queueText); } catch { throw new Error(`fal non-JSON (${queueRes.status}): ${queueText.slice(0, 300)}`); }
-    if (!queueRes.ok) throw new Error(`sync-lipsync queue failed (${queueRes.status}): ${JSON.stringify(queueData)}`);
+    try { queueData = JSON.parse(queueText); } catch {
+      throw new Error(`fal non-JSON (${queueRes.status}): ${queueText.slice(0, 300)}`);
+    }
+    if (!queueRes.ok) {
+      throw new Error(`sync-lipsync queue failed (${queueRes.status}): ${JSON.stringify(queueData).slice(0, 300)}`);
+    }
 
     const { request_id, status_url, response_url } = queueData;
     if (!request_id) throw new Error("No request_id from fal.ai sync-lipsync");
 
-    // Step 4: Poll for completion (sync-lipsync is fast: 15–40s for short clips)
-    const FAL_AUTH = { "Authorization": `Key ${FAL_KEY}` };
-    for (let attempt = 0; attempt < 24; attempt++) {
-      await new Promise(r => setTimeout(r, 5000));
-      const statusRes = await fetch(`${status_url}?logs=0`, { headers: FAL_AUTH });
-      if (!statusRes.ok) continue;
-      const statusData = await statusRes.json();
-      const st = statusData.status;
-      if (st === "COMPLETED") {
-        const resultRes = await fetch(response_url, { headers: FAL_AUTH });
-        if (!resultRes.ok) throw new Error("Failed to fetch lipsync result");
-        const result = await resultRes.json();
-        const syncedUrl: string = result.video?.url ?? result.video_url ?? result.output?.video?.url;
-        if (!syncedUrl) throw new Error("No video URL in lipsync result: " + JSON.stringify(result).slice(0, 200));
-        return json({ videoUrl: syncedUrl });
-      }
-      if (st === "FAILED") throw new Error("Lip sync generation failed: " + JSON.stringify(statusData.error ?? "").slice(0, 200));
-    }
-    throw new Error("Lip sync timed out after 2 minutes");
+    return json({ requestId: request_id, statusUrl: status_url, responseUrl: response_url });
 
   } catch (e: any) {
     console.error("lipsync-video error:", e);
-    return json({ error: e?.message || "Lip sync generation failed. Please try again." }, 500);
+    return json({ error: e?.message || "Lip sync submission failed. Please try again." }, 500);
   }
 });
