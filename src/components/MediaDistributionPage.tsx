@@ -5688,7 +5688,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       const end   = new Date(biweekEnd.getTime() + 86400000 - 1).toISOString();
       let q = supabase
         .from('scheduled_posts')
-        .select('id,content,platforms,status,scheduled_at,media_urls,post_group_id,error')
+        .select('id,content,platforms,status,scheduled_at,media_urls,post_group_id,workspace_id,error')
         .eq('supabase_user_id', userId)
         .in('status', ['scheduled', 'published', 'error', 'failed'])
         .gte('scheduled_at', start)
@@ -5698,18 +5698,29 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       else q = (q as any).is('workspace_id', null);
       const { data, error } = await q;
       if (error || !data) return;
-      // Group by post_group_id so multi-platform posts appear as one card
+      // Group by post_group_id (or workspace+minute for legacy rows) — same logic as PostLog
       const groupMap = new Map<string, any>();
       for (const p of data) {
-        const key = p.post_group_id || p.id;
-        const plats: string[] = Array.isArray(p.platforms) ? p.platforms : [];
-        if (!groupMap.has(key)) {
-          groupMap.set(key, { id: key, content: p.content || '', platforms: [...plats], scheduledAt: new Date(p.scheduled_at), status: p.status || 'scheduled', error: p.error ?? null, mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [], postGroupId: key, allIds: [p.id] });
+        let groupKey: string;
+        if (p.post_group_id) {
+          groupKey = p.post_group_id;
         } else {
-          const ex = groupMap.get(key);
+          const timeKey = p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime';
+          const wsKey = p.workspace_id ?? 'null';
+          groupKey = `legacy::${wsKey}::${timeKey}`;
+        }
+        const plats: string[] = Array.isArray(p.platforms) ? p.platforms : [];
+        if (!groupMap.has(groupKey)) {
+          const n = plats.length;
+          groupMap.set(groupKey, { id: p.id, content: p.content || '', platforms: [...plats], scheduledAt: new Date(p.scheduled_at), status: p.status || 'scheduled', error: p.error ?? null, mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [], postGroupId: p.post_group_id || groupKey, allIds: [p.id], platformCount: n, platformCountLabel: `${n} platform${n === 1 ? '' : 's'}` });
+        } else {
+          const ex = groupMap.get(groupKey);
+          ex.allIds.push(p.id);
           for (const pl of plats) { if (!ex.platforms.includes(pl)) ex.platforms.push(pl); }
           if (p.status === 'error' || p.status === 'failed') { ex.status = p.status; ex.error = p.error ?? ex.error; }
-          ex.allIds.push(p.id);
+          const n = ex.platforms.length;
+          ex.platformCount = n;
+          ex.platformCountLabel = `${n} platform${n === 1 ? '' : 's'}`;
         }
       }
       setPosts(Array.from(groupMap.values()));
@@ -5910,9 +5921,16 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
                         {isFailed && post.error && <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>}
-                        <div className="flex items-center gap-1.5 mt-1 text-xs text-white/25">
-                          <Clock className="w-3 h-3" />
-                          {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                          <span className="text-xs text-white/25 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                          </span>
+                          {(post as any).platformCountLabel && (
+                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>
+                              {(post as any).platformCountLabel}
+                            </span>
+                          )}
                         </div>
                       </div>
                       <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
