@@ -18,10 +18,11 @@ Deno.serve(async(req)=>{
     const isActive=((sub?.status==="active"||isPromo)||isTrialing)&&!!sub?.plan;
     const plan=isActive?sub!.plan.toLowerCase():"free";
     if(plan==="free")return new Response(JSON.stringify({error:"upgrade_required",message:"AI video generation requires an active plan. Choose a plan to get started.",plan}),{status:403,headers:{...cors,"Content-Type":"application/json"}});
-    const{imageUrl,tailImageUrl,prompt,duration,aspectRatio,textToVideo,style}=await req.json();
+    const{imageUrl,tailImageUrl,prompt,negativePrompt,duration,aspectRatio,textToVideo,style,resolution}=await req.json();
     if(!prompt)return new Response(JSON.stringify({error:"prompt is required"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     if(!textToVideo&&!imageUrl)return new Response(JSON.stringify({error:"imageUrl is required for image-to-video"}),{status:400,headers:{...cors,"Content-Type":"application/json"}});
     const secs=parseInt(String(duration??5),10);
+    const res=resolution==="720p"?"720p":"1080p";
     const period=getPeriod();
     const planLimit=VIDEO_LIMITS[plan]??0;
     const{data:u}=await supabase.from("usage_tracking").select("video_seconds_used,video_seconds_bonus").eq("supabase_user_id",user.id).eq("period",period).maybeSingle();
@@ -30,17 +31,19 @@ Deno.serve(async(req)=>{
     if(secs>rem)return new Response(JSON.stringify({error:"limit_reached",feature:"video_seconds",message:"Only "+rem+"s remaining. This "+secs+"s video would exceed your limit.",used,limit:eff,remaining:rem,plan}),{status:429,headers:{...cors,"Content-Type":"application/json"}});
     const FAL=Deno.env.get("FAL_API_KEY");
     if(!FAL)throw new Error("FAL_API_KEY not configured");
-    // ElevenLabs lip sync — on standby, not active. Re-enable via lipsync-video function when ready.
+    console.log("fal-generate-video: prompt=",JSON.stringify(prompt),"textToVideo=",textToVideo,"duration=",duration,"aspectRatio=",aspectRatio);
     let model,payload;
     if(textToVideo){
-      model="fal-ai/bytedance/seedance-2.0/text-to-video";
-      payload={prompt,duration:secs,aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, ugly, distorted",resolution:"720p"};
+      model="bytedance/seedance-2.0/text-to-video";
+      payload={prompt,duration:String(secs),aspect_ratio:aspectRatio||"16:9",resolution:res};
+      if(negativePrompt)payload.negative_prompt=negativePrompt;
     } else {
-      model="fal-ai/bytedance/seedance-2.0/image-to-video";
-      payload={prompt,image_url:imageUrl,duration:secs,aspect_ratio:aspectRatio||"16:9",negative_prompt:"blurry, low quality, watermark, text overlay, ugly, distorted, scene change, different background",resolution:"720p"};
-      if(tailImageUrl)payload.tail_image_url=tailImageUrl;
+      model="bytedance/seedance-2.0/image-to-video";
+      payload={prompt,image_url:imageUrl,duration:String(secs),aspect_ratio:aspectRatio||"16:9",resolution:res};
+      if(tailImageUrl)payload.end_image_url=tailImageUrl;
+      if(negativePrompt)payload.negative_prompt=negativePrompt;
     }
-    const sr=await fetch("https://queue.fal.run/"+model,{method:"POST",headers:{"Authorization":"Key "+FAL,"Content-Type":"application/json"},body:JSON.stringify(payload)});
+    const sr=await fetch("https://queue.fal.run/"+model,{method:"POST",headers:{"Authorization":"Key "+FAL,"Content-Type":"application/json"},body:JSON.stringify({input:payload})});
     const rt=await sr.text();let sd;try{sd=JSON.parse(rt);}catch{throw new Error("fal non-JSON ("+sr.status+"): "+rt.slice(0,300));}
     if(!sr.ok)throw new Error("fal failed ("+sr.status+"): "+JSON.stringify(sd));
     if(!sd.request_id)throw new Error("No request_id from fal.ai");

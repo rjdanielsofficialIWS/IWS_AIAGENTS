@@ -6378,6 +6378,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   const [historyOpen, setHistoryOpen] = React.useState(false);
   const [globalError, setGlobalError] = React.useState<string | null>(null);
   const [generatingPrompts, setGeneratingPrompts]       = React.useState(false);
+  const [negativePrompt, setNegativePrompt]             = React.useState('');
   const [spokenScript, setSpokenScript]                 = React.useState('');
   const [customInstructions, setCustomInstructions]     = React.useState('');
   const [textOnScreen, setTextOnScreen]           = React.useState(false);
@@ -6495,6 +6496,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       const promptData = await promptRes.json();
       if (!promptRes.ok) throw new Error(promptData.error || 'Failed to enhance brief');
       const enhancedPrompt: string = (promptData.prompts || [])[0] ?? brief;
+      setNegativePrompt(promptData.negativePrompt ?? '');
       setPrompts([{ id: 'p0', text: enhancedPrompt, selected: true }]);
       setEditablePrompt(enhancedPrompt);
       setStep('prompts');
@@ -6531,7 +6533,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ prompt: promptText, duration, aspectRatio, quality: 'high', textToVideo: true, style }),
+          body: JSON.stringify({ prompt: promptText, negativePrompt, duration, aspectRatio, resolution: '1080p', textToVideo: true, style }),
         });
         const data = await res.json();
         if (data.error === 'upgrade_required') { setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: 'Plan required' } : v)); setStep('brief'); onUpgrade(); return; }
@@ -6555,7 +6557,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const newVideo: GeneratedVideo = { id: vidId, frameUrl: effectiveImageUrl, promptText, videoUrl: null, taskId: null, status: 'generating', script: style === 'speaking' ? spokenScript.trim() : undefined };
     setVideos([newVideo]);
     try {
-      const falBody: Record<string, unknown> = { imageUrl: effectiveImageUrl, prompt: promptText, duration, aspectRatio, quality: 'high', style };
+      const falBody: Record<string, unknown> = { imageUrl: effectiveImageUrl, prompt: promptText, negativePrompt, duration, aspectRatio, resolution: '1080p', style };
       if (tailUrl) falBody.tailImageUrl = tailUrl;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
@@ -6693,7 +6695,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ imageUrl: vid.frameUrl, prompt: vid.promptText, duration, aspectRatio, quality: 'high', style }),
+          body: JSON.stringify({ imageUrl: vid.frameUrl, prompt: vid.promptText, negativePrompt, duration, aspectRatio, resolution: '1080p', style }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed');
