@@ -32,8 +32,10 @@ Deno.serve(async (req) => {
     // ── New path: Seedance 2.0 (requestId + modelEndpoint) ──
     if (body.requestId && body.modelEndpoint) {
       const statusUrl = body.statusUrl || `https://queue.fal.run/requests/${body.requestId}/status`;
-      // Model-agnostic result URL — avoids /response suffix 404s and model path issues
-      const responseUrl = `https://queue.fal.run/requests/${body.requestId}`;
+      // Generic result URL — works across models without the /response suffix
+      const genericResultUrl = `https://queue.fal.run/requests/${body.requestId}`;
+      // Model-specific response URL returned by fal-generate-video (fallback)
+      const modelResultUrl: string | undefined = body.responseUrl;
 
       let statusData: any;
       try {
@@ -52,27 +54,37 @@ Deno.serve(async (req) => {
         if (statusData?.error) {
           return reply({ status: "failed", error: statusData.error });
         }
-        let result: any;
-        try {
-          const rr = await fetch(responseUrl, { headers: falAuth });
-          result = await rr.json();
-        } catch (e) {
-          console.error("fal result fetch error:", e);
-          return reply({ status: "processing" });
+
+        const extractVideoUrl = (r: any): string | undefined =>
+          r?.video?.url ??
+          r?.video_url ??
+          r?.output?.video?.url ??
+          r?.output?.video_url ??
+          r?.output?.videos?.[0]?.url ??
+          r?.videos?.[0]?.url ??
+          r?.url ??
+          r?.data?.video?.url ??
+          r?.[0]?.url;
+
+        // Try generic URL first, then fall back to model-specific response URL
+        const urlsToTry = [genericResultUrl, modelResultUrl].filter(Boolean) as string[];
+        for (const fetchUrl of urlsToTry) {
+          let result: any;
+          try {
+            const rr = await fetch(fetchUrl, { headers: falAuth });
+            if (!rr.ok) { console.error("fal result fetch non-OK:", rr.status, fetchUrl); continue; }
+            result = await rr.json();
+          } catch (e) {
+            console.error("fal result fetch error:", fetchUrl, e);
+            continue;
+          }
+          console.log("fal result from", fetchUrl, ":", JSON.stringify(result).slice(0, 400));
+          const videoUrl = extractVideoUrl(result);
+          if (videoUrl) return reply({ status: "succeed", videoUrl });
         }
-        const videoUrl: string =
-          result?.video?.url ??
-          result?.video_url ??
-          result?.output?.video?.url ??
-          result?.videos?.[0]?.url ??
-          result?.url ??
-          result?.data?.video?.url ??
-          result?.[0]?.url;
-        if (!videoUrl) {
-          console.error("No video URL in result:", JSON.stringify(result).slice(0, 500));
-          return reply({ status: "failed", error: "Video generation failed to produce output. Please try again." });
-        }
-        return reply({ status: "succeed", videoUrl });
+
+        console.error("No video URL found after trying all endpoints");
+        return reply({ status: "failed", error: "Video generation failed to produce output. Please try again." });
       }
 
       // IN_QUEUE, IN_PROGRESS, or unknown — keep polling
