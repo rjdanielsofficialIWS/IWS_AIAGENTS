@@ -66,24 +66,36 @@ Deno.serve(async (req) => {
           r?.data?.video?.url ??
           r?.[0]?.url;
 
-        // Try generic URL first, then fall back to model-specific response URL
-        const urlsToTry = [genericResultUrl, modelResultUrl].filter(Boolean) as string[];
+        // 1. Some models return output inline in the status response — check first
+        const inlineUrl = extractVideoUrl(statusData);
+        if (inlineUrl) return reply({ status: "succeed", videoUrl: inlineUrl });
+
+        // 2. Build result URL list: model-specific (with and without /response suffix) + generic
+        const responseUrlNoSuffix = modelResultUrl?.endsWith('/response')
+          ? modelResultUrl.slice(0, -9)
+          : undefined;
+        const urlsToTry = [
+          modelResultUrl,      // fal.ai's canonical response_url (may have /response suffix)
+          responseUrlNoSuffix, // same URL stripped of /response
+          genericResultUrl,    // generic queue.fal.run/requests/{id}
+        ].filter(Boolean) as string[];
+
         for (const fetchUrl of urlsToTry) {
           let result: any;
           try {
             const rr = await fetch(fetchUrl, { headers: falAuth });
-            if (!rr.ok) { console.error("fal result fetch non-OK:", rr.status, fetchUrl); continue; }
+            if (!rr.ok) { console.error("fal result non-OK:", rr.status, fetchUrl); continue; }
             result = await rr.json();
           } catch (e) {
             console.error("fal result fetch error:", fetchUrl, e);
             continue;
           }
-          console.log("fal result from", fetchUrl, ":", JSON.stringify(result).slice(0, 400));
+          console.log("fal result [" + fetchUrl + "]:", JSON.stringify(result).slice(0, 500));
           const videoUrl = extractVideoUrl(result);
           if (videoUrl) return reply({ status: "succeed", videoUrl });
         }
 
-        console.error("No video URL found after trying all endpoints");
+        console.error("No video URL in any endpoint. statusData:", JSON.stringify(statusData).slice(0, 500));
         return reply({ status: "failed", error: "Video generation failed to produce output. Please try again." });
       }
 
