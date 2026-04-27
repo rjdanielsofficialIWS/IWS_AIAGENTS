@@ -35,7 +35,9 @@ Deno.serve(async(req)=>{
     let model,payload;
     if(textToVideo){
       model="bytedance/seedance-2.0/text-to-video";
-      payload={prompt,duration:String(secs),aspect_ratio:aspectRatio||"16:9",resolution:res};
+      // Seedance 2.0 only accepts "480p" or "720p" — never "1080p"
+      const seedanceDur=Math.max(4,Math.min(15,secs));
+      payload={prompt,duration:String(seedanceDur),aspect_ratio:aspectRatio||"16:9",resolution:"720p"};
       if(negativePrompt)payload.negative_prompt=negativePrompt;
     } else {
       // Kling v2.1 Pro for image-to-video: no face-detection block, better human motion

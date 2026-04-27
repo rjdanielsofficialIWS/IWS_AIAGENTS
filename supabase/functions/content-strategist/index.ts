@@ -292,7 +292,7 @@ Deno.serve(async (req: Request) => {
       } catch { /* fall through to Claude-only */ }
 
       const researchBlock = strategyIntel
-        ? `\nLIVE MARKET RESEARCH (gathered right now — use this to make every output specific and current):\n${strategyIntel}\n`
+        ? `\nLIVE MARKET RESEARCH (gathered right now — use specific tool names, creator names, platform features, data points, and stats from this research directly in your outputs. Name actual tools and platforms — never write "AI tools" or "social media" when a specific name is available. Generic references when specifics exist are not acceptable):\n${strategyIntel}\n`
         : "";
 
       // Phase 2: 3 parallel Claude calls, all fed with real-world research
@@ -468,7 +468,7 @@ GOALS: ${goalList}
 ${offer ? `OFFER: ${offer}` : ""}
 TODAY: ${CURRENT_DATE}
 
-LIVE RESEARCH (gathered from the web right now):
+LIVE RESEARCH (gathered from the web right now — use specific tool names, platform names, creator names, stats, and data points from this research directly in your output. Name actual tools and platforms. "AI tools" or "social media platforms" are not acceptable when specific names are in the research):
 ${searchIntel}
 
 Synthesize the above into ONLY this JSON - no preamble, no explanation:
@@ -526,7 +526,7 @@ ${requirements}`;
       }
 
       const researchBlock = tpResearch
-        ? `\nLIVE RESEARCH (use to make points specific and grounded):\n${tpResearch}\n`
+        ? `\nLIVE RESEARCH (use the specific tool names, product names, data points, and stats from this research directly in your talking points — name actual tools and platforms, cite real numbers. "AI tools are changing X" is not acceptable when the research names the actual tools):\n${tpResearch}\n`
         : "";
 
       const raw = await callClaude(

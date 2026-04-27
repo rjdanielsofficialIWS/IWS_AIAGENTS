@@ -109,6 +109,13 @@ Character limits — hard constraints, no exceptions:
 - Over 280: too long — cut ruthlessly until it lands under the ceiling
 - Never sacrifice the character range for tone, style, or any other rule
 
+Specificity mandate — non-negotiable:
+- When the topic involves tools, platforms, strategies, or methods: NAME the actual tools (e.g., ChatGPT, Claude, Cursor, Midjourney, Perplexity, ElevenLabs, Runway, Sora, Notion AI — whatever fits the topic). Never write "AI tools" or "modern technology" as a substitute for a real name.
+- Use real numbers, dollar amounts, timeframes, and percentages. Make them feel grounded — not inflated. "Saved 3 hours a day" beats "saves you time".
+- Name specific features, use cases, or workflows where the topic allows — "Claude's Projects feature" or "ChatGPT's operator system prompts" beats "this AI tool".
+- If the live research context contains specific tool names, version updates, pricing changes, or data points — use them directly in posts.
+- Vague references like "AI tools", "modern technology", "the latest updates", "digital tools" are BANNED when specifics are available. A post that could be about anything is a bad post.
+
 Non-negotiable bans:
 - No em-dashes
 - No emojis
@@ -188,20 +195,20 @@ Deno.serve(async(req)=>{
       const topicList=topicsRaw.length>0?topicsRaw.slice(0,3):[source];
       const postsPerTopic=topicList.length===1?10:topicList.length===2?5:4;
 
-      // Research: fetch live context for the primary topic/source
-      let researchBlock = "";
-      try {
-        const primaryTopic = topicList[0] || source;
-        if (primaryTopic.trim()) {
-          const month = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
-          const intel = await tavilySearch(`${primaryTopic.slice(0, 100)} ${month}`, 4);
-          if (intel) researchBlock = `\n\nLIVE CONTEXT (ground hooks in what is actually trending right now — use for specificity, not as subject matter to name-drop):\n${intel}`;
-        }
-      } catch { /* proceed without research */ }
+      // Research: fetch live context independently for each topic
+      const month = new Date().toLocaleString("en-US", { month: "long", year: "numeric" });
+      const researchBlocks: string[] = await Promise.all(
+        topicList.map(async (topic) => {
+          try {
+            const intel = await tavilySearch(`${topic.slice(0, 100)} ${month}`, 4);
+            return intel ? `\n\nLIVE CONTEXT (use the specific tool names, version numbers, data points, and stats in this research directly in your posts — this is current intelligence, not background flavor):\n${intel}` : "";
+          } catch { return ""; }
+        })
+      );
 
-      const buildPrompt=(topic:string)=>`Create exactly ${postsPerTopic} posts per platform from the content below. You MUST return exactly ${postsPerTopic} items in each platform array — no fewer.\n\nTone directive:\n${toneG}\n\nContent:\n"${topic}"${researchBlock}\n\nPlatforms: ${postPlatforms.join(", ")}\n\nUniversal rules:\n- every single post MUST use a completely different hook mechanic — embody it, never label it or name it\n- hook mechanics to rotate through: pattern interrupt, curiosity gap, stakes/consequences, contrarian claim, transformation frame, unexpected stat or observation, direct challenge, hard truth, micro-lesson, social proof frame\n- if two posts share the same opening structure, emotional register, or angle type, rewrite one of them\n- each post should feel natively written for its platform\n- avoid generic filler and AI phrasing\n- sound current and human\n\nPlatform rules:\n- twitter posts: between 200-280 characters (hard minimum 200, hard maximum 280 — count every character)\n- linkedin posts: 100-300 words, same hook mechanic diversity — different hook type and framing per post`;
+      const buildPrompt=(topic:string, researchBlock:string)=>`Create exactly ${postsPerTopic} posts per platform from the content below. You MUST return exactly ${postsPerTopic} items in each platform array — no fewer.\n\nTone directive:\n${toneG}\n\nContent:\n"${topic}"${researchBlock}\n\nPlatforms: ${postPlatforms.join(", ")}\n\nSPECIFICITY MANDATE — violating this overrides all other rules:\n- If the topic involves tools, platforms, methods, or strategies: name the actual tools (e.g., ChatGPT, Claude, Cursor, Midjourney, Perplexity, ElevenLabs, Runway, Notion AI — whatever fits). NEVER write "AI tools", "modern technology", or "the latest tools" when a real name fits.\n- Use concrete numbers, dollar amounts, timeframes, percentages. "I cut my edit time from 4 hours to 20 minutes using Descript" not "I saved so much time".\n- Name specific features, prompts, use cases, or workflows: "Claude's Projects feature" or "Midjourney v6's --style raw flag" beats "this AI tool".\n- If live research contains specific names, stats, or version updates — use them directly. That data exists to make posts more specific, not to sit in the background.\n- A post that could apply to any topic is a failure. Every post must feel like it was written by someone who actually uses these tools.\n\nUniversal rules:\n- every single post MUST use a completely different hook mechanic — embody it, never label it or name it\n- hook mechanics to rotate through: pattern interrupt, curiosity gap, stakes/consequences, contrarian claim, transformation frame, unexpected stat or observation, direct challenge, hard truth, micro-lesson, social proof frame\n- if two posts share the same opening structure, emotional register, or angle type, rewrite one of them\n- each post should feel natively written for its platform\n- avoid generic filler and AI phrasing\n- sound current and human\n\nPlatform rules:\n- twitter posts: between 200-280 characters (hard minimum 200, hard maximum 280 — count every character)\n- linkedin posts: 100-300 words, same hook mechanic diversity — different hook type and framing per post`;
       const inputSchema={type:"object",additionalProperties:false,properties:Object.fromEntries(postPlatforms.map((platform)=>[platform,{type:"array",items:{type:"string"},minItems:postsPerTopic,maxItems:postsPerTopic}])),required:postPlatforms};
-      const allResults=await Promise.all(topicList.map(topic=>callClaudeJson(SYS_RP,buildPrompt(topic),inputSchema,Math.max(3000,postsPerTopic*postPlatforms.length*400))));
+      const allResults=await Promise.all(topicList.map((topic, i)=>callClaudeJson(SYS_RP,buildPrompt(topic, researchBlocks[i]),inputSchema,Math.max(3000,postsPerTopic*postPlatforms.length*400))));
       const merged:Record<string,string[]>={};
       for(const res of allResults){for(const[k,v]of Object.entries(res as Record<string,unknown>)){const isTwitter=k==="twitter"||k==="x";const arr=Array.isArray(v)?v.map((x:any)=>{const s=String(x).trim();return isTwitter&&s.length>280?s.slice(0,280):s;}).filter(Boolean):[];if(arr.length){if(!merged[k])merged[k]=[];merged[k].push(...arr);}}}
       const validPosts:Record<string,string[]>=Object.fromEntries(Object.entries(merged).filter(([,arr])=>arr.length>0));
@@ -212,7 +219,7 @@ Deno.serve(async(req)=>{
     }else if(mode==="thread_posts"){
       const toneG=buildTone(tone||"");
       const tweetCount=Math.max(3,Math.min(10,Number(thread_count)||5));
-      const raw=await callClaude("You are a ghostwriter. Sound like a real human. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nTopic/content:\n\""+source+"\"\n\nWrite a Twitter/X thread of "+tweetCount+" tweets. Rules:\n- Each tweet MUST be strictly under 280 characters — hard limit, never exceed\n- First tweet is the hook — make it impossible to scroll past\n- Each tweet stands alone but flows into the next\n- No tweet numbering (no '1/' or '1.')\n- 0-1 hashtags per tweet max\n- Sound like a real person, not an AI\n- Last tweet must be a CTA (ask to share, follow, reply, save, tag someone, DM for more — feel human, never salesy)\n\nReturn JSON: {\"thread\":[\"tweet1\",\"tweet2\",\"tweet3\"]}",2000);
+      const raw=await callClaude("You are a ghostwriter. Sound like a real human. Return ONLY valid JSON. Never use em-dashes (—) in any output.","Tone: "+toneG+"\n\nTopic/content:\n\""+source+"\"\n\nWrite a Twitter/X thread of "+tweetCount+" tweets. Rules:\n- Each tweet MUST be strictly under 280 characters — hard limit, never exceed\n- First tweet is the hook — make it impossible to scroll past\n- Each tweet stands alone but flows into the next\n- No tweet numbering (no '1/' or '1.')\n- 0-1 hashtags per tweet max\n- Sound like a real person, not an AI\n- Last tweet must be a CTA (ask to share, follow, reply, save, tag someone, DM for more — feel human, never salesy)\n\nSPECIFICITY MANDATE — non-negotiable:\n- If the topic involves tools, platforms, or methods: name them directly (ChatGPT, Claude, Cursor, Midjourney, Perplexity, ElevenLabs, Runway, Notion AI, etc.). NEVER write 'AI tools' or 'modern technology' when a real name fits.\n- Use real numbers, timeframes, dollar amounts. 'I cut 4 hours to 20 minutes' beats 'I saved time'.\n- Name specific features, workflows, prompts. A thread that could be about anything is a bad thread.\n\nReturn JSON: {\"thread\":[\"tweet1\",\"tweet2\",\"tweet3\"]}",2000);
       const parsed=JSON.parse(raw);
       const thread:string[]=Array.isArray(parsed.thread)?parsed.thread.map((t:string)=>String(t).slice(0,280)):[];
       return new Response(JSON.stringify({thread}),{headers:{...cors,"Content-Type":"application/json"}});

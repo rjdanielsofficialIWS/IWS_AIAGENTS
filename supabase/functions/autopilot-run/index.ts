@@ -429,6 +429,11 @@ MANDATORY POST-TO-STORY ASSIGNMENTS — this is the law. Every value post is pre
 ${postAssignments}
 Post 10: sell post — tie any one research story to why the product/service matters right now.
 
+SPECIFICITY MANDATE — non-negotiable:
+- When a story involves a specific tool, product, company, person, number, timeframe, or technique — use that specific detail directly in the post. Name the tool (ChatGPT, Claude, Cursor, Notion AI, etc.), cite the number, reference the concrete situation. Generic references when specifics are available are a failure.
+- "AI tools are changing everything" is a bad post. "ChatGPT's new operator system prompts let businesses lock the AI to a single task" is a good post.
+- Use real data points, names, and specifics from the assigned story — just never reveal the source publication.
+
 REQUIREMENTS:
 - Each value post (1-9) MUST be rooted exclusively in its assigned story above. Extract a specific insight, hard truth, angle, or lesson from that story and express it as YOUR OWN perspective and voice — never quote headlines, never name any source or publication, never allude to where you learned it. Write as if this is something you believe and observed, not something you read. Do not mention the product/service. Use a different angle, hook type, and sentence structure on every post.
 - Post 10: sell post for the product/service. Makes the pitch feel timely and earned, not like an ad. Must end with a CTA. Rotate CTA style: "Link in bio", a reply-driving question, "DM me [word]", scarcity nudge, soft qualifier, curiosity tease, or benefit-forward command. Never name a source or platform in the post copy.

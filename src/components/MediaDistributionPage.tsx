@@ -2496,7 +2496,7 @@ function InlinePostComposer({
     return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T20:00`;
   });
   const [autoSchedLoading, setAutoSchedLoading]   = useState(false);
-  const [autoSchedResult, setAutoSchedResult]     = useState<{ scheduled: number; failed: number } | null>(null);
+  const [autoSchedResult, setAutoSchedResult]     = useState<{ scheduled: number; failed: number; firstError?: string } | null>(null);
   // Ordered multi-select for auto-schedule queue — click order = schedule order
   const [textAiMultiSelected, setTextAiMultiSelected] = useState<Record<string, number[]>>({});
 
@@ -2934,13 +2934,17 @@ function InlinePostComposer({
     setAutoSchedLoading(true); setAutoSchedResult(null); setSubmitError(null);
     const allAccounts = selectedTextAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
-      return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
+      return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', accountPlatform: acct?.platform || '' };
     }).filter(a => a.platformId);
-    let scheduled = 0, failed = 0;
+    let scheduled = 0, failed = 0, firstError: string | undefined;
     try {
       for (const [platform, posts] of Object.entries(textAiPosts)) {
-        const isLi  = platform === 'linkedin';
-        const pIds  = allAccounts.filter(a => isLi ? a.isLinkedIn : !a.isLinkedIn).map(a => a.platformId);
+        // Match accounts to platform exactly: twitter→x only, threads→threads only, linkedin→linkedin only
+        const pIds = allAccounts.filter(a => {
+          if (platform === 'linkedin') return a.accountPlatform === 'linkedin';
+          if (platform === 'threads')  return a.accountPlatform === 'threads';
+          return a.accountPlatform === 'x';
+        }).map(a => a.platformId);
         const queued = textAiMultiSelected[platform] ?? [];
         if (pIds.length === 0 || queued.length === 0) continue;
         const orderedIndices = queued;
@@ -2951,10 +2955,10 @@ function InlinePostComposer({
             await ayrsharePost({ platforms: pIds, post: orderedPosts[i], scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
             scheduled++;
             setTextAiPostStatus(prev => ({ ...prev, [platform]: { ...(prev[platform] ?? {}), [orderedIndices[i]]: 'scheduled' } }));
-          } catch { failed++; }
+          } catch (e: any) { failed++; if (!firstError) firstError = e?.message || 'Unknown error'; }
         }
       }
-      setAutoSchedResult({ scheduled, failed });
+      setAutoSchedResult({ scheduled, failed, firstError });
     } catch (e: any) {
       setSubmitError(e.message || 'Auto-scheduling failed');
     } finally {
@@ -3842,6 +3846,9 @@ function InlinePostComposer({
                             <div className="text-xs font-bold text-center py-1 rounded-lg" style={{ color: autoSchedResult.failed === 0 ? '#4ade80' : '#fbbf24', background: autoSchedResult.failed === 0 ? 'rgba(74,222,128,0.08)' : 'rgba(251,191,36,0.08)' }}>
                               {autoSchedResult.scheduled} post{autoSchedResult.scheduled !== 1 ? 's' : ''} scheduled
                               {autoSchedResult.failed > 0 ? ` · ${autoSchedResult.failed} failed` : ' successfully'}
+                              {autoSchedResult.firstError && (
+                                <div className="text-[10px] font-normal mt-0.5 opacity-80">{autoSchedResult.firstError}</div>
+                              )}
                             </div>
                           )}
 
