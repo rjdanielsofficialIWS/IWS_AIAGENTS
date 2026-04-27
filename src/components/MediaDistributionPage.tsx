@@ -2470,7 +2470,7 @@ function InlinePostComposer({
   const [textTab, setTextTab]           = useState<string>(() => { try { return sessionStorage.getItem('textTab') || 'twitter'; } catch { return 'twitter'; } });
   const [xText, setXText]               = useState('');
   const [linkedinText, setLinkedinText] = useState('');
-  const [showTextAi, setShowTextAi]     = useState(false);
+  const [showTextAi, setShowTextAi]     = useState<boolean>(() => { try { const s = sessionStorage.getItem('textAiPosts'); return !!s; } catch { return false; } });
   const [textAiMode, setTextAiMode]     = useState<'from_video' | 'from_description'>('from_description');
   const [textAiTopics, setTextAiTopics] = useState<string[]>(() => { try { const s = sessionStorage.getItem('textAiTopics'); return s ? JSON.parse(s) : ['']; } catch { return ['']; } });
   const [textAiTone, setTextAiTone]     = useState<string>(() => { try { return sessionStorage.getItem('textAiTone') || ''; } catch { return ''; } });
@@ -2482,10 +2482,11 @@ function InlinePostComposer({
   const [textAiSelected, setTextAiSelected] = useState<Record<string, number | null>>({});
   const [textAiPostStatus, setTextAiPostStatus] = useState<Record<string, Record<number, 'posted' | 'scheduled'>>>({});
   // Persist generated posts and inputs across page refreshes
-  useEffect(() => { try { if (textAiPosts) sessionStorage.setItem('textAiPosts', JSON.stringify(textAiPosts)); else sessionStorage.removeItem('textAiPosts'); } catch {} }, [textAiPosts]);
+  useEffect(() => { try { if (textAiPosts) { sessionStorage.setItem('textAiPosts', JSON.stringify(textAiPosts)); } else { sessionStorage.removeItem('textAiPosts'); } } catch {} }, [textAiPosts]);
   useEffect(() => { try { sessionStorage.setItem('textAiTopics', JSON.stringify(textAiTopics)); } catch {} }, [textAiTopics]);
   useEffect(() => { try { sessionStorage.setItem('textAiTone', textAiTone); } catch {} }, [textAiTone]);
   useEffect(() => { try { sessionStorage.setItem('textTab', textTab); } catch {} }, [textTab]);
+  useEffect(() => { try { sessionStorage.setItem('showTextAi', showTextAi ? '1' : ''); } catch {} }, [showTextAi]);
 
   // Auto-schedule state
   const [showAutoSchedule, setShowAutoSchedule]   = useState(false);
