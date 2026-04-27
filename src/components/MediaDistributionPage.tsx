@@ -2992,12 +2992,9 @@ function InlinePostComposer({
     setAutoSchedLoading(true); setAutoSchedResult(null); setSubmitError(null);
     const allAccounts = selectedTextAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
-      const platformKey = normalizePlatformId(acct?.integ.profile || acct?.integ.identifier || acct?.platform || '');
-      return { platformId: platformKey, accountPlatform: acct?.platform || '', integrationId: acct?.integ.id || '' };
-    }).filter(a => a.platformId && a.integrationId);
-    // Build caller-supplied accountId map: platform → Zernio integration id
-    const platformAccountIds: Record<string, string> = {};
-    for (const a of allAccounts) { if (a.integrationId) platformAccountIds[a.platformId] = a.integrationId; }
+      const platformKey = acct?.integ.profile || acct?.integ.id || acct?.platform || '';
+      return { platformId: platformKey, accountPlatform: acct?.platform || '' };
+    }).filter(a => a.platformId);
     let scheduled = 0, failed = 0, firstError: string | undefined;
     try {
       for (const [platform, posts] of Object.entries(textAiPosts)) {
@@ -3014,7 +3011,7 @@ function InlinePostComposer({
         const times = spreadScheduleTimes(autoSchedStart, autoSchedEnd, orderedPosts.length);
         for (let i = 0; i < orderedPosts.length; i++) {
           try {
-            await ayrsharePost({ platforms: pIds, post: orderedPosts[i], scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID(), platformAccountIds });
+            await ayrsharePost({ platforms: pIds, post: orderedPosts[i], scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
             scheduled++;
             setTextAiPostStatus(prev => ({ ...prev, [platform]: { ...(prev[platform] ?? {}), [orderedIndices[i]]: 'scheduled' } }));
           } catch (e: any) { failed++; if (!firstError) firstError = e?.message || 'Unknown error'; }
@@ -3041,18 +3038,14 @@ function InlinePostComposer({
     setSavedBatchLoading(true); setSavedBatchResult(null);
     const postsToSchedule = savedBatchSelected.map(id => savedPosts.find(p => p.id === id)).filter(Boolean) as { id: string; text: string; label: string; savedAt: Date }[];
     const times = spreadScheduleTimes(savedBatchStart, savedBatchEnd, postsToSchedule.length);
-    // Build platform list and caller-supplied accountId map from selected accounts
-    const batchAccountMap: Record<string, string> = {};
     const pIds = savedBatchAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
-      const platformKey = normalizePlatformId(acct?.integ.profile || acct?.integ.identifier || acct?.platform || '');
-      if (platformKey && acct?.integ.id) batchAccountMap[platformKey] = acct.integ.id;
-      return platformKey;
+      return acct?.integ.profile || acct?.integ.id || acct?.platform || '';
     }).filter(Boolean);
     let scheduled = 0, failed = 0, firstError: string | undefined;
     for (let i = 0; i < postsToSchedule.length; i++) {
       try {
-        await ayrsharePost({ platforms: pIds, post: postsToSchedule[i].text, scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID(), platformAccountIds: batchAccountMap });
+        await ayrsharePost({ platforms: pIds, post: postsToSchedule[i].text, scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
         scheduled++;
       } catch (e: any) { failed++; if (!firstError) firstError = e?.message || 'Unknown error'; }
     }
