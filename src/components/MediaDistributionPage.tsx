@@ -7,7 +7,7 @@ import {
   Video, Link2, Link2Off, RefreshCw, Send, Edit3, Image,
   ChevronDown, ChevronUp, Play, Pause, Volume2, VolumeX, Maximize2, LogOut,
   ClipboardList, FileText, Trash2, BookOpen, DollarSign, Copy, TrendingUp, Users, Gift,
-  Film, Upload, Download, RefreshCcw, Wand2, Bot, Zap, CheckCircle,
+  Film, Upload, Download, RefreshCcw, Wand2, Bot, Zap, CheckCircle, CalendarDays,
 } from 'lucide-react';
 import { FFmpeg } from '@ffmpeg/ffmpeg';
 import { fetchFile } from '@ffmpeg/util';
@@ -2379,6 +2379,27 @@ function InlinePostComposer({
     if (flashKey) { setSavedFlash(flashKey); setTimeout(() => setSavedFlash(null), 1500); }
   };
   const deleteSavedPost = (id: string) => persistSaved(savedPosts.filter(p => p.id !== id));
+
+  // Saved posts batch auto-schedule state
+  const [showSavedBatch, setShowSavedBatch]         = useState(false);
+  const [savedBatchSelected, setSavedBatchSelected] = useState<string[]>([]);
+  const [savedBatchAccounts, setSavedBatchAccounts] = useState<string[]>([]);
+  const [savedBatchStart, setSavedBatchStart]       = useState<string>(() => {
+    const p = (n: number) => String(n).padStart(2, '0');
+    const d = new Date(); d.setHours(9, 0, 0, 0);
+    if (d <= new Date()) d.setDate(d.getDate() + 1);
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T09:00`;
+  });
+  const [savedBatchEnd, setSavedBatchEnd]           = useState<string>(() => {
+    const p = (n: number) => String(n).padStart(2, '0');
+    const d = new Date(); d.setDate(d.getDate() + 7); d.setHours(20, 0, 0, 0);
+    return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}T20:00`;
+  });
+  const [savedBatchLoading, setSavedBatchLoading]   = useState(false);
+  const [savedBatchResult, setSavedBatchResult]     = useState<{ scheduled: number; failed: number; firstError?: string } | null>(null);
+  const toggleSavedBatchPost = (id: string) => setSavedBatchSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  const toggleSavedBatchAccount = (id: string) => setSavedBatchAccounts(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+
   const [scheduleType, setScheduleType] = useState<'now' | 'schedule'>('now');
   const [scheduleDateStr, setScheduleDate] = useState(() => {
     const d = new Date(); d.setHours(d.getHours() + 1, 0, 0, 0);
@@ -2977,6 +2998,28 @@ function InlinePostComposer({
       const cur = prev[platform] ?? [];
       return { ...prev, [platform]: cur.includes(idx) ? cur.filter(i => i !== idx) : [...cur, idx] };
     });
+
+  const handleSavedBatchSchedule = async () => {
+    if (savedBatchSelected.length === 0) { setSavedBatchResult({ scheduled: 0, failed: 0, firstError: 'Select at least one post.' }); return; }
+    if (savedBatchAccounts.length === 0) { setSavedBatchResult({ scheduled: 0, failed: 0, firstError: 'Select at least one account.' }); return; }
+    if (new Date(savedBatchEnd) <= new Date(savedBatchStart)) { setSavedBatchResult({ scheduled: 0, failed: 0, firstError: 'End time must be after start.' }); return; }
+    setSavedBatchLoading(true); setSavedBatchResult(null);
+    const postsToSchedule = savedBatchSelected.map(id => savedPosts.find(p => p.id === id)).filter(Boolean) as { id: string; text: string; label: string; savedAt: Date }[];
+    const times = spreadScheduleTimes(savedBatchStart, savedBatchEnd, postsToSchedule.length);
+    const pIds = savedBatchAccounts.map(id => {
+      const acct = textPostAccounts.find(a => a.integ.id === id);
+      return acct?.integ.profile || acct?.integ.id || acct?.platform || '';
+    }).filter(Boolean);
+    let scheduled = 0, failed = 0, firstError: string | undefined;
+    for (let i = 0; i < postsToSchedule.length; i++) {
+      try {
+        await ayrsharePost({ platforms: pIds, post: postsToSchedule[i].text, scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
+        scheduled++;
+      } catch (e: any) { failed++; if (!firstError) firstError = e?.message || 'Unknown error'; }
+    }
+    setSavedBatchResult({ scheduled, failed, firstError });
+    setSavedBatchLoading(false);
+  };
 
   const scheduleSectionJsx = (
     <div>
@@ -3891,29 +3934,122 @@ function InlinePostComposer({
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="text-xs font-bold text-white/30 uppercase tracking-wider">
-                {savedPosts.length} Saved Post{savedPosts.length !== 1 ? 's' : ''}
+              {/* Header row */}
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold text-white/30 uppercase tracking-wider">
+                  {savedPosts.length} Saved Post{savedPosts.length !== 1 ? 's' : ''}
+                </div>
+                <button
+                  onClick={() => { setShowSavedBatch(v => !v); setSavedBatchResult(null); }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition hover:brightness-110"
+                  style={{ borderColor: showSavedBatch ? GOLD : BORDER, background: showSavedBatch ? `${GOLD}18` : 'transparent', color: showSavedBatch ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                  <CalendarDays className="w-3.5 h-3.5" /> Batch Schedule
+                </button>
               </div>
 
+              {/* Batch schedule panel */}
+              {showSavedBatch && (
+                <div className="rounded-xl border p-4 space-y-4" style={{ borderColor: `${GOLD}30`, background: `${GOLD}08` }}>
+                  {/* Account selection */}
+                  <div>
+                    <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Post to accounts</div>
+                    {textPostAccounts.length === 0 ? (
+                      <div className="text-xs text-white/25">No connected accounts. Connect X, LinkedIn, or Threads first.</div>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        {textPostAccounts.map(({ integ, platform }) => {
+                          const sel = savedBatchAccounts.includes(integ.id);
+                          return (
+                            <button key={integ.id} onClick={() => toggleSavedBatchAccount(integ.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition"
+                              style={{ borderColor: sel ? GOLD : BORDER, background: sel ? `${GOLD}18` : 'transparent', color: sel ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
+                              {platform === 'linkedin' ? '💼' : platform === 'threads' ? '🧵' : '𝕏'} {integ.displayName || integ.profile || platform}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Date range */}
+                  <div>
+                    <div className="text-xs font-bold text-white/30 uppercase tracking-wider mb-2">Schedule window</div>
+                    <div className="flex gap-2 flex-wrap">
+                      {(['Start', 'End'] as const).map((label, li) => (
+                        <div key={label} className="flex flex-col gap-1">
+                          <span className="text-[10px] text-white/25">{label}</span>
+                          <input type="datetime-local"
+                            value={li === 0 ? savedBatchStart : savedBatchEnd}
+                            onChange={e => li === 0 ? setSavedBatchStart(e.target.value) : setSavedBatchEnd(e.target.value)}
+                            className="rounded-xl border bg-black/25 px-3 py-1.5 text-xs text-white outline-none"
+                            style={{ borderColor: BORDER, colorScheme: 'dark', minWidth: '180px' }} />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-[10px] text-white/25 mt-1.5">Posts are spread evenly across this window in the order you select them.</p>
+                  </div>
+
+                  {/* Select all / none */}
+                  <div className="flex items-center gap-2">
+                    <button onClick={() => setSavedBatchSelected(savedPosts.map(p => p.id))}
+                      className="text-xs font-bold px-2.5 py-1 rounded-lg border transition hover:brightness-110"
+                      style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>Select All</button>
+                    <button onClick={() => setSavedBatchSelected([])}
+                      className="text-xs font-bold px-2.5 py-1 rounded-lg border transition hover:brightness-110"
+                      style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>Deselect All</button>
+                    <span className="text-xs text-white/25 ml-1">{savedBatchSelected.length} selected</span>
+                  </div>
+
+                  {/* Result */}
+                  {savedBatchResult && (
+                    <div className="text-xs font-bold text-center py-1.5 rounded-lg"
+                      style={{ color: savedBatchResult.failed === 0 ? '#4ade80' : '#fbbf24', background: savedBatchResult.failed === 0 ? 'rgba(74,222,128,0.08)' : 'rgba(251,191,36,0.08)' }}>
+                      {savedBatchResult.scheduled} post{savedBatchResult.scheduled !== 1 ? 's' : ''} scheduled
+                      {savedBatchResult.failed > 0 ? ` · ${savedBatchResult.failed} failed` : ' successfully'}
+                      {savedBatchResult.firstError && <div className="text-[10px] font-normal mt-0.5 opacity-80">{savedBatchResult.firstError}</div>}
+                    </div>
+                  )}
+
+                  <button onClick={handleSavedBatchSchedule} disabled={savedBatchLoading}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50 transition hover:brightness-110"
+                    style={{ background: `linear-gradient(135deg, ${GOLD_D ?? GOLD}, ${GOLD})`, color: '#000' }}>
+                    {savedBatchLoading
+                      ? <><Loader className="w-3.5 h-3.5 animate-spin" /> Scheduling…</>
+                      : <><CalendarDays className="w-3.5 h-3.5" /> Schedule {savedBatchSelected.length || 'Selected'} Post{savedBatchSelected.length !== 1 ? 's' : ''}</>}
+                  </button>
+                </div>
+              )}
+
+              {/* Post cards — with selection checkbox when batch mode is active */}
               {savedPosts.map(p => (
-                <SavedPostCard
-                  key={p.id}
-                  post={p}
-                  textPostAccounts={textPostAccounts}
-                  workspaceId={workspaceId}
-                  isEditing={savedEditId === p.id}
-                  editText={savedEditText}
-                  onEditStart={() => { setSavedEditId(p.id); setSavedEditText(p.text); }}
-                  onEditChange={setSavedEditText}
-                  onEditSave={() => {
-                    persistSaved(savedPosts.map(x => x.id === p.id ? { ...x, text: savedEditText } : x));
-                    setSavedEditId(null);
-                  }}
-                  onEditCancel={() => setSavedEditId(null)}
-                  onDelete={() => deleteSavedPost(p.id)}
-                  onQueueAdd={onQueueAdd}
-                  onQueueUpdate={onQueueUpdate}
-                />
+                <div key={p.id} className="flex gap-2 items-start">
+                  {showSavedBatch && (
+                    <button onClick={() => toggleSavedBatchPost(p.id)}
+                      className="mt-3 w-5 h-5 rounded-md border shrink-0 flex items-center justify-center transition"
+                      style={{ borderColor: savedBatchSelected.includes(p.id) ? GOLD : BORDER, background: savedBatchSelected.includes(p.id) ? `${GOLD}30` : 'transparent' }}>
+                      {savedBatchSelected.includes(p.id) && <CheckCircle2 className="w-3 h-3" style={{ color: GOLD_L }} />}
+                    </button>
+                  )}
+                  <div className="flex-1 min-w-0">
+                    <SavedPostCard
+                      post={p}
+                      textPostAccounts={textPostAccounts}
+                      workspaceId={workspaceId}
+                      isEditing={savedEditId === p.id}
+                      editText={savedEditText}
+                      onEditStart={() => { setSavedEditId(p.id); setSavedEditText(p.text); }}
+                      onEditChange={setSavedEditText}
+                      onEditSave={() => {
+                        persistSaved(savedPosts.map(x => x.id === p.id ? { ...x, text: savedEditText } : x));
+                        setSavedEditId(null);
+                      }}
+                      onEditCancel={() => setSavedEditId(null)}
+                      onDelete={() => deleteSavedPost(p.id)}
+                      onQueueAdd={onQueueAdd}
+                      onQueueUpdate={onQueueUpdate}
+                    />
+                  </div>
+                </div>
               ))}
             </div>
           )}
