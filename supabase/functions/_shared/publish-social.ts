@@ -101,6 +101,10 @@ export type PublishPayload = {
   // When true, skip the cross-post idempotency guard. Autopilot posts must set
   // this so they are completely decoupled from manually scheduled posts.
   skipDuplicateCheck?: boolean;
+  // Optional: caller-supplied map of normalised platform id → Zernio account id.
+  // When present, bypasses the cachedChannels DB lookup for that platform so the
+  // correct accountId is always sent even when cached_channels is stale or empty.
+  platformAccountIds?: Record<string, string>;
 };
 
 export async function publishSocialPost({
@@ -224,9 +228,13 @@ export async function publishSocialPost({
     }
   }
 
+  const callerAccountIds = payload.platformAccountIds ?? {};
   const mappedPlatforms = rawPlatforms.map((raw) => {
     const api = toApiName(raw);
-    const channel = cachedChannels.find((ch) =>
+    // Prefer caller-supplied accountId (direct from frontend integration list) so
+    // we never depend on cached_channels being fresh or correctly formatted.
+    const callerAccountId = callerAccountIds[raw] || callerAccountIds[api] || "";
+    const channel = callerAccountId ? undefined : cachedChannels.find((ch) =>
       normalizePlatformId(ch.id) === raw ||
       normalizePlatformId(ch.profile) === raw ||
       normalizePlatformId(ch.platform) === raw ||
@@ -234,7 +242,9 @@ export async function publishSocialPost({
       normalizePlatformId(ch.profile) === api ||
       normalizePlatformId(ch.platform) === api
     );
-    const entry: Record<string, unknown> = { platform: api, accountId: channel?.accountId || channel?.id || "" };
+    const accountId = callerAccountId || channel?.accountId || channel?.id || "";
+    console.log(`[publish-social] platform=${raw} api=${api} callerAccountId=${callerAccountId} channelId=${channel?.id} resolved accountId=${accountId}`);
+    const entry: Record<string, unknown> = { platform: api, accountId };
     if (api === "youtube") {
       entry.platformSpecificData = {
         title: getYoutubeTitle(post),

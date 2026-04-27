@@ -262,6 +262,7 @@ async function ayrsharePost(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
   workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string; skipDuplicateCheck?: boolean;
+  platformAccountIds?: Record<string, string>;
 }) {
   // Always call refreshSession once to get a guaranteed-fresh token.
   // This avoids stale-token issues and refresh-token rotation races from getToken() being called multiple times.
@@ -2991,8 +2992,12 @@ function InlinePostComposer({
     setAutoSchedLoading(true); setAutoSchedResult(null); setSubmitError(null);
     const allAccounts = selectedTextAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
-      return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', accountPlatform: acct?.platform || '' };
-    }).filter(a => a.platformId);
+      const platformKey = normalizePlatformId(acct?.integ.profile || acct?.integ.identifier || acct?.platform || '');
+      return { platformId: platformKey, accountPlatform: acct?.platform || '', integrationId: acct?.integ.id || '' };
+    }).filter(a => a.platformId && a.integrationId);
+    // Build caller-supplied accountId map: platform → Zernio integration id
+    const platformAccountIds: Record<string, string> = {};
+    for (const a of allAccounts) { if (a.integrationId) platformAccountIds[a.platformId] = a.integrationId; }
     let scheduled = 0, failed = 0, firstError: string | undefined;
     try {
       for (const [platform, posts] of Object.entries(textAiPosts)) {
@@ -3009,7 +3014,7 @@ function InlinePostComposer({
         const times = spreadScheduleTimes(autoSchedStart, autoSchedEnd, orderedPosts.length);
         for (let i = 0; i < orderedPosts.length; i++) {
           try {
-            await ayrsharePost({ platforms: pIds, post: orderedPosts[i], scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
+            await ayrsharePost({ platforms: pIds, post: orderedPosts[i], scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID(), platformAccountIds });
             scheduled++;
             setTextAiPostStatus(prev => ({ ...prev, [platform]: { ...(prev[platform] ?? {}), [orderedIndices[i]]: 'scheduled' } }));
           } catch (e: any) { failed++; if (!firstError) firstError = e?.message || 'Unknown error'; }
@@ -3036,14 +3041,18 @@ function InlinePostComposer({
     setSavedBatchLoading(true); setSavedBatchResult(null);
     const postsToSchedule = savedBatchSelected.map(id => savedPosts.find(p => p.id === id)).filter(Boolean) as { id: string; text: string; label: string; savedAt: Date }[];
     const times = spreadScheduleTimes(savedBatchStart, savedBatchEnd, postsToSchedule.length);
+    // Build platform list and caller-supplied accountId map from selected accounts
+    const batchAccountMap: Record<string, string> = {};
     const pIds = savedBatchAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
-      return acct?.integ.profile || acct?.integ.id || acct?.platform || '';
+      const platformKey = normalizePlatformId(acct?.integ.profile || acct?.integ.identifier || acct?.platform || '');
+      if (platformKey && acct?.integ.id) batchAccountMap[platformKey] = acct.integ.id;
+      return platformKey;
     }).filter(Boolean);
     let scheduled = 0, failed = 0, firstError: string | undefined;
     for (let i = 0; i < postsToSchedule.length; i++) {
       try {
-        await ayrsharePost({ platforms: pIds, post: postsToSchedule[i].text, scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
+        await ayrsharePost({ platforms: pIds, post: postsToSchedule[i].text, scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID(), platformAccountIds: batchAccountMap });
         scheduled++;
       } catch (e: any) { failed++; if (!firstError) firstError = e?.message || 'Unknown error'; }
     }

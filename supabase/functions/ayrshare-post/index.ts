@@ -115,6 +115,9 @@ Deno.serve(async (req) => {
       thread: Array.isArray(body.thread) ? body.thread as string[] : [],
       carousel: body.carousel === true,
       postGroupId: typeof body.postGroupId === "string" ? body.postGroupId : undefined,
+      platformAccountIds: body.platformAccountIds && typeof body.platformAccountIds === "object" && !Array.isArray(body.platformAccountIds)
+        ? body.platformAccountIds as Record<string, string>
+        : undefined,
     },
   });
 
