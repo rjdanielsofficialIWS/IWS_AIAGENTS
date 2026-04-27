@@ -3990,14 +3990,14 @@ function InlinePostComposer({
                   </div>
 
                   {/* Select all / none */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button onClick={() => setSavedBatchSelected(savedPosts.map(p => p.id))}
                       className="text-xs font-bold px-2.5 py-1 rounded-lg border transition hover:brightness-110"
                       style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>Select All</button>
                     <button onClick={() => setSavedBatchSelected([])}
                       className="text-xs font-bold px-2.5 py-1 rounded-lg border transition hover:brightness-110"
                       style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>Deselect All</button>
-                    <span className="text-xs text-white/25 ml-1">{savedBatchSelected.length} selected</span>
+                    <span className="text-xs text-white/25 ml-1">{savedBatchSelected.length} selected — click posts in the order you want them scheduled</span>
                   </div>
 
                   {/* Result */}
@@ -4020,14 +4020,17 @@ function InlinePostComposer({
                 </div>
               )}
 
-              {/* Post cards — with selection checkbox when batch mode is active */}
-              {savedPosts.map(p => (
+              {/* Post cards — with order-number selector when batch mode is active */}
+              {savedPosts.map(p => {
+                const orderIdx = savedBatchSelected.indexOf(p.id);
+                const isSelected = orderIdx !== -1;
+                return (
                 <div key={p.id} className="flex gap-2 items-start">
                   {showSavedBatch && (
                     <button onClick={() => toggleSavedBatchPost(p.id)}
-                      className="mt-3 w-5 h-5 rounded-md border shrink-0 flex items-center justify-center transition"
-                      style={{ borderColor: savedBatchSelected.includes(p.id) ? GOLD : BORDER, background: savedBatchSelected.includes(p.id) ? `${GOLD}30` : 'transparent' }}>
-                      {savedBatchSelected.includes(p.id) && <CheckCircle2 className="w-3 h-3" style={{ color: GOLD_L }} />}
+                      className="mt-3 w-6 h-6 rounded-md border shrink-0 flex items-center justify-center transition text-[10px] font-bold"
+                      style={{ borderColor: isSelected ? GOLD : BORDER, background: isSelected ? `${GOLD}30` : 'transparent', color: isSelected ? GOLD_L : 'rgba(255,255,255,0.2)' }}>
+                      {isSelected ? orderIdx + 1 : ''}
                     </button>
                   )}
                   <div className="flex-1 min-w-0">
@@ -4050,7 +4053,7 @@ function InlinePostComposer({
                     />
                   </div>
                 </div>
-              ))}
+              );})}
             </div>
           )}
         </>
