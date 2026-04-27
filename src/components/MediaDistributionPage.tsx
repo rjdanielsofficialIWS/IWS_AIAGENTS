@@ -2371,15 +2371,21 @@ function InlinePostComposer({
   type PostType = 'media' | 'text' | 'saved';
   type SavedPost = { id: string; text: string; label: string; savedAt: Date };
   const [postType, setPostType]         = useState<PostType>(initialMode || 'media');
+  const savedPostsKey = `mm_saved_posts_${workspaceId || 'personal'}`;
   const [savedPosts, setSavedPosts]     = useState<SavedPost[]>(() => {
-    try { return JSON.parse(localStorage.getItem('mm_saved_posts') || '[]').map((p: any) => ({ ...p, savedAt: new Date(p.savedAt) })); }
+    try { return JSON.parse(localStorage.getItem(`mm_saved_posts_${workspaceId || 'personal'}`) || '[]').map((p: any) => ({ ...p, savedAt: new Date(p.savedAt) })); }
     catch { return []; }
   });
+  // Reload saved posts when the user switches workspaces
+  useEffect(() => {
+    try { setSavedPosts(JSON.parse(localStorage.getItem(savedPostsKey) || '[]').map((p: any) => ({ ...p, savedAt: new Date(p.savedAt) }))); }
+    catch { setSavedPosts([]); }
+  }, [savedPostsKey]);
   const [savedEditId, setSavedEditId]   = useState<string | null>(null);
   const [savedEditText, setSavedEditText] = useState('');
   const persistSaved = (posts: SavedPost[]) => {
     setSavedPosts(posts);
-    try { localStorage.setItem('mm_saved_posts', JSON.stringify(posts)); } catch {}
+    try { localStorage.setItem(savedPostsKey, JSON.stringify(posts)); } catch {}
   };
   const [savedFlash, setSavedFlash] = useState<string | null>(null);
   const savePost = (text: string, label: string, flashKey?: string) => {
