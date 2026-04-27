@@ -2373,8 +2373,22 @@ function InlinePostComposer({
   const [postType, setPostType]         = useState<PostType>(initialMode || 'media');
   const savedPostsKey = `mm_saved_posts_${workspaceId || 'personal'}`;
   const [savedPosts, setSavedPosts]     = useState<SavedPost[]>(() => {
-    try { return JSON.parse(localStorage.getItem(`mm_saved_posts_${workspaceId || 'personal'}`) || '[]').map((p: any) => ({ ...p, savedAt: new Date(p.savedAt) })); }
-    catch { return []; }
+    try {
+      const parse = (raw: string | null): SavedPost[] =>
+        JSON.parse(raw || '[]').map((p: any) => ({ ...p, savedAt: new Date(p.savedAt) }));
+      const newKey = `mm_saved_posts_${workspaceId || 'personal'}`;
+      const existing = localStorage.getItem(newKey);
+      // One-time migration: move old unsorted posts into the personal key
+      if (!existing || existing === '[]') {
+        const legacy = localStorage.getItem('mm_saved_posts');
+        if (legacy && legacy !== '[]' && !workspaceId) {
+          localStorage.setItem(newKey, legacy);
+          localStorage.removeItem('mm_saved_posts');
+          return parse(legacy);
+        }
+      }
+      return parse(existing);
+    } catch { return []; }
   });
   // Reload saved posts when the user switches workspaces
   useEffect(() => {
