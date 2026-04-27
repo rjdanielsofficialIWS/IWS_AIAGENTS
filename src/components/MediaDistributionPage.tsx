@@ -1662,7 +1662,17 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
                     {groupPlatforms.length > 3 && <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>+{groupPlatforms.length - 3}</div>}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
+                    {post.perPlatformContent && Object.keys(post.perPlatformContent).length > 1
+                      ? <div className="space-y-1">
+                          {Object.entries(post.perPlatformContent).map(([pl, cap]) => (
+                            <div key={pl} className="flex gap-1.5 items-start">
+                              <span className="text-[10px] font-bold uppercase shrink-0 mt-0.5 w-16 truncate" style={{ color: GOLD }}>{pl}</span>
+                              <p className="text-sm text-white/70 line-clamp-1 flex-1">{cap || '(No caption)'}</p>
+                            </div>
+                          ))}
+                        </div>
+                      : <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
+                    }
                     {isFailed && post.error && <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>}
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <span className="text-xs text-white/25 flex items-center gap-1">
