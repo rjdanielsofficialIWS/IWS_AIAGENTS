@@ -28,6 +28,12 @@ function toApiName(platform: string): string {
   return platform === "x" ? "twitter" : platform;
 }
 
+// Zernio account IDs are MongoDB ObjectIds — 24 hex chars.
+// Platform names ("x", "twitter", etc.) are not valid account IDs.
+function isValidAccountId(id: string): boolean {
+  return /^[a-f0-9]{24}$/i.test(id);
+}
+
 function isVideoUrl(url: string): boolean {
   return /\.(mp4|mov|webm|avi|mkv|m4v)(\?|$)/i.test(url) || url.includes("videodelivery.net/");
 }
@@ -242,9 +248,11 @@ export async function publishSocialPost({
       normalizePlatformId(ch.profile) === api ||
       normalizePlatformId(ch.platform) === api
     );
-    const accountId = callerAccountId || channel?.accountId || channel?.id || "";
-    console.log(`[publish-social] platform=${raw} api=${api} callerAccountId=${callerAccountId} channelId=${channel?.id} resolved accountId=${accountId}`);
-    const entry: Record<string, unknown> = { platform: api, accountId };
+    const resolvedId = callerAccountId || channel?.accountId || channel?.id || "";
+    const accountId = isValidAccountId(resolvedId) ? resolvedId : "";
+    console.log(`[publish-social] platform=${raw} api=${api} resolvedId=${resolvedId} validAccountId=${accountId}`);
+    const entry: Record<string, unknown> = { platform: api };
+    if (accountId) entry.accountId = accountId;
     if (api === "youtube") {
       entry.platformSpecificData = {
         title: getYoutubeTitle(post),
@@ -252,7 +260,7 @@ export async function publishSocialPost({
       };
     }
     return entry;
-  }).filter((p) => typeof p.accountId === "string" && p.accountId.length > 0);
+  }).filter(Boolean);
 
   if (mappedPlatforms.length === 0) {
     return { ok: false as const, status: 400, error: "No connected accounts for selected platforms." };
