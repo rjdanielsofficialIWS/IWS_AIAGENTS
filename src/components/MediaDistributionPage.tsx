@@ -6607,7 +6607,7 @@ function AffiliateDashboard({ userId, userEmail, userName }: { userId: string | 
 type VideoStudioStep = 'brief' | 'prompts' | 'frames' | 'video' | 'done';
 type VideoPrompt = { id: string; text: string; selected: boolean; };
 type GeneratedFrame = { id: string; promptText: string; imageUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'done'|'error'; error?: string; };
-type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; rawVideoUrl?: string; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; lipsyncStatus?: 'running'|'done'|'failed'; lipsyncError?: string; error?: string; script?: string; };
+type GeneratedVideo = { id: string; frameUrl: string; promptText: string; videoUrl: string | null; taskId: string | null; status: 'idle'|'generating'|'polling'|'done'|'error'; error?: string; };
 type VideoHistoryItem = { id: string; createdAt: string; brief: string; videoUrl: string; thumbnailUrl?: string; };
 
 function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
@@ -6661,7 +6661,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const script = style === 'speaking' ? spokenScript.trim() : '';
     if (!script) return '';
     const quotedScript = script.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    return `MANDATORY EXACT SPOKEN DIALOGUE: The character must speak exactly this dialogue and no other spoken words: "${quotedScript}". The lip-sync audio must use this script verbatim. Do not paraphrase, summarize, reorder, add, or remove any words.`;
+    return `MANDATORY EXACT SPOKEN DIALOGUE: The character must speak exactly this dialogue and no other spoken words: "${quotedScript}". Native generated audio must use this script verbatim. Do not paraphrase, summarize, reorder, add, or remove any words.`;
   };
 
   const withExactDialoguePrompt = (prompt: string) => {
@@ -6670,6 +6670,8 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     if (prompt.includes('MANDATORY EXACT SPOKEN DIALOGUE')) return prompt.trim();
     return `${prompt.trim()}\n\n${exactDialogue}`;
   };
+
+  const shouldGenerateNativeAudio = () => style === 'speaking' || style === 'voiceover';
 
   const addToHistory = (brief: string, videoUrl: string, thumbnailUrl?: string) => {
     const item: VideoHistoryItem = { id: Date.now().toString(), createdAt: new Date().toISOString(), brief, videoUrl, thumbnailUrl };
@@ -6805,11 +6807,11 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       // No start frame — text-to-video
       setStep('video');
       const vidId = `v${Date.now()}-noframe`;
-      setVideos([{ id: vidId, frameUrl: '', promptText, videoUrl: null, taskId: null, status: 'generating', script: style === 'speaking' ? spokenScript.trim() || undefined : undefined }]);
+      setVideos([{ id: vidId, frameUrl: '', promptText, videoUrl: null, taskId: null, status: 'generating' }]);
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ prompt: promptText, negativePrompt, duration, aspectRatio, textToVideo: true, generateAudio: false, style }),
+          body: JSON.stringify({ prompt: promptText, negativePrompt, duration, aspectRatio, textToVideo: true, generateAudio: shouldGenerateNativeAudio(), style }),
         });
         const data = await res.json();
         if (data.error === 'upgrade_required') { setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: 'Plan required' } : v)); setStep('brief'); onUpgrade(); return; }
@@ -6831,10 +6833,10 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const videoPrompt = withExactDialoguePrompt(promptText);
     setStep('video');
     const vidId = `v${Date.now()}-${frameId}`;
-    const newVideo: GeneratedVideo = { id: vidId, frameUrl: effectiveImageUrl, promptText: videoPrompt, videoUrl: null, taskId: null, status: 'generating', script: style === 'speaking' ? spokenScript.trim() || undefined : undefined };
+    const newVideo: GeneratedVideo = { id: vidId, frameUrl: effectiveImageUrl, promptText: videoPrompt, videoUrl: null, taskId: null, status: 'generating' };
     setVideos([newVideo]);
     try {
-      const falBody: Record<string, unknown> = { startImageUrl: effectiveImageUrl, prompt: videoPrompt, negativePrompt, duration, aspectRatio, generateAudio: false, style };
+      const falBody: Record<string, unknown> = { startImageUrl: effectiveImageUrl, prompt: videoPrompt, negativePrompt, duration, aspectRatio, generateAudio: shouldGenerateNativeAudio(), style };
       if (tailUrl) falBody.endImageUrl = tailUrl;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
@@ -6965,14 +6967,14 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const doneFr = frames.filter(f => f.status === 'done' && f.imageUrl);
     if (!doneFr.length) { setGlobalError('No completed frames'); return; }
     setGlobalError(null);
-    const newVideos: GeneratedVideo[] = doneFr.map(f => ({ id: `v${Date.now()}-${f.id}`, frameUrl: f.imageUrl!, promptText: withExactDialoguePrompt(f.promptText), videoUrl: null, taskId: null, status: 'generating' as const, script: style === 'speaking' ? spokenScript.trim() || undefined : undefined }));
+    const newVideos: GeneratedVideo[] = doneFr.map(f => ({ id: `v${Date.now()}-${f.id}`, frameUrl: f.imageUrl!, promptText: withExactDialoguePrompt(f.promptText), videoUrl: null, taskId: null, status: 'generating' as const }));
     setVideos(newVideos); setStep('video');
     const headers = await getAuthHeaders();
     for (const vid of newVideos) {
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ startImageUrl: vid.frameUrl, prompt: withExactDialoguePrompt(vid.promptText), negativePrompt, duration, aspectRatio, generateAudio: false, style }),
+          body: JSON.stringify({ startImageUrl: vid.frameUrl, prompt: withExactDialoguePrompt(vid.promptText), negativePrompt, duration, aspectRatio, generateAudio: shouldGenerateNativeAudio(), style }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed');
@@ -6983,67 +6985,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       } catch (e: any) {
         setVideos(prev => prev.map(v => v.id === vid.id ? { ...v, status: 'error', error: e.message } : v));
       }
-    }
-  };
-
-  const pollLipsyncTask = (vidId: string, requestId: string, statusUrl: string, responseUrl: string) => {
-    let attempts = 0;
-    const interval = setInterval(async () => {
-      attempts++;
-      if (attempts > 72) { // 6 min max
-        clearInterval(interval);
-        setVideos(prev => prev.map(v => v.id === vidId
-          ? { ...v, lipsyncStatus: 'failed', lipsyncError: 'Lip sync timed out', videoUrl: v.rawVideoUrl ?? v.videoUrl }
-          : v));
-        return;
-      }
-      try {
-        const pr = await fetch(`${SUPABASE_URL}/functions/v1/fal-poll`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(await getAuthHeaders()) },
-          body: JSON.stringify({ requestId, modelEndpoint: 'fal-ai/sync-lipsync', statusUrl, responseUrl }),
-        });
-        const pd = await pr.json();
-        if (pd.status === 'succeed' && pd.videoUrl) {
-          clearInterval(interval);
-          setVideos(prev => {
-            const vid = prev.find(v => v.id === vidId);
-            if (vid) addToHistory(vid.promptText, pd.videoUrl, vid.frameUrl);
-            return prev.map(v => v.id === vidId ? { ...v, videoUrl: pd.videoUrl, lipsyncStatus: 'done' } : v);
-          });
-        } else if (pd.status === 'failed') {
-          clearInterval(interval);
-          setVideos(prev => prev.map(v => v.id === vidId
-            ? { ...v, lipsyncStatus: 'failed', lipsyncError: pd.error || 'Lip sync failed', videoUrl: v.rawVideoUrl ?? v.videoUrl }
-            : v));
-        }
-      } catch { /* poll errors are transient — keep retrying */ }
-    }, 5000);
-  };
-
-  const triggerLipsync = async (vidId: string, rawVideoUrl: string, script: string) => {
-    setVideos(prev => prev.map(v => v.id === vidId
-      ? { ...v, lipsyncStatus: 'running', lipsyncError: undefined }
-      : v));
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/lipsync-video`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...headers },
-        body: JSON.stringify({ videoUrl: rawVideoUrl, script }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) {
-        setVideos(prev => prev.map(v => v.id === vidId
-          ? { ...v, lipsyncStatus: 'failed', lipsyncError: data.error || data.message || 'Lip sync failed', videoUrl: rawVideoUrl }
-          : v));
-        return;
-      }
-      pollLipsyncTask(vidId, data.requestId, data.statusUrl, data.responseUrl);
-    } catch (e: any) {
-      setVideos(prev => prev.map(v => v.id === vidId
-        ? { ...v, lipsyncStatus: 'failed', lipsyncError: e.message || 'Lip sync failed', videoUrl: rawVideoUrl }
-        : v));
     }
   };
 
@@ -7066,15 +7007,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
         if (pd.status === 'succeed' && pd.videoUrl) {
           clearInterval(interval);
           setVideos(prev => {
-            const vid = prev.find(v => v.id === vidId);
-            const needsLipsync = !!vid?.script?.trim();
-            if (needsLipsync) {
-              // Store raw video, show it immediately, kick off lipsync in background
-              setTimeout(() => triggerLipsync(vidId, pd.videoUrl, vid!.script!), 0);
-              return prev.map(v => v.id === vidId
-                ? { ...v, status: 'done', rawVideoUrl: pd.videoUrl, videoUrl: pd.videoUrl, lipsyncStatus: 'running' }
-                : v);
-            }
             addToHistory(promptText, pd.videoUrl, frameUrl);
             return prev.map(v => v.id === vidId ? { ...v, status: 'done', videoUrl: pd.videoUrl } : v);
           });
@@ -7473,13 +7405,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                       {vid.status === 'done' && vid.videoUrl
                         ? <div className="relative w-full h-full">
                             <video key={vid.videoUrl} src={vid.videoUrl} loop playsInline controls poster={vid.frameUrl} className="w-full h-full object-contain" />
-                            {vid.lipsyncStatus === 'running' && (
-                              <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/65 pointer-events-none">
-                                <Loader className="w-5 h-5 animate-spin" style={{ color: GOLD }} />
-                                <span className="text-xs font-semibold" style={{ color: GOLD }}>Syncing audio…</span>
-                                <span className="text-[10px] text-white/40">30–90 sec — don't refresh</span>
-                              </div>
-                            )}
                           </div>
                         : vid.status === 'error'
                         ? <div className="absolute inset-0 flex flex-col items-center justify-center gap-2"><AlertCircle className="w-5 h-5 text-red-400" /><span className="text-xs text-red-300">{vid.error}</span></div>
@@ -7494,19 +7419,6 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
                     </div>
                     {vid.status === 'done' && vid.videoUrl && (
                       <div className="p-3 space-y-2">
-                        {vid.lipsyncStatus === 'failed' && vid.rawVideoUrl && (
-                          <div className="space-y-1.5">
-                            <button
-                              onClick={() => triggerLipsync(vid.id, vid.rawVideoUrl!, vid.script ?? '')}
-                              className="w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-bold transition hover:brightness-110"
-                              style={{ background: 'rgba(214,178,94,0.15)', border: `1px solid ${GOLD}`, color: GOLD }}>
-                              <RefreshCw className="w-3.5 h-3.5" /> Retry Lip Sync
-                            </button>
-                            {vid.lipsyncError && (
-                              <p className="text-[10px] text-red-400/70 text-center px-1">{vid.lipsyncError}</p>
-                            )}
-                          </div>
-                        )}
                         <div className="grid gap-2 grid-cols-1">
                           <button
                             onClick={async () => {
