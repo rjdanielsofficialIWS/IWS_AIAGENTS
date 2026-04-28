@@ -311,6 +311,7 @@ async function enhanceBrief(
   endFrameBase64?: string,
   endFrameMediaType?: ImageMediaType,
   customInstructions?: string,
+  spokenScript?: string,
 ): Promise<string> {
   const styleKey = style.toLowerCase();
   const getSystemPrompt = STYLE_SYSTEM_PROMPTS[styleKey] ?? STYLE_SYSTEM_PROMPTS['cinematic'];
@@ -321,12 +322,16 @@ async function enhanceBrief(
     : '';
 
   const isSpeak = styleKey === 'speaking';
+  const exactScript = isSpeak ? spokenScript?.trim() ?? '' : '';
 
   const quotedPhrases = isSpeak
     ? [...brief.matchAll(/"([^"]+)"/g)].map(m => m[0])
     : [];
-  const quotedBlock = quotedPhrases.length > 0
-    ? `\n\n⚠️ MANDATORY VERBATIM SPOKEN DIALOGUE — the character MUST speak these exact words, letter for letter. Do NOT alter them:\n${quotedPhrases.map((q, i) => `  ${i + 1}. ${q}`).join('\n')}`
+  const mandatoryDialogue = exactScript
+    ? [`"${exactScript.replace(/"/g, '\\"')}"`]
+    : quotedPhrases;
+  const quotedBlock = mandatoryDialogue.length > 0
+    ? `\n\n⚠️ MANDATORY VERBATIM SPOKEN DIALOGUE — the character MUST speak these exact words, letter for letter. Do NOT alter them, do NOT add extra spoken words, and do NOT paraphrase:\n${mandatoryDialogue.map((q, i) => `  ${i + 1}. ${q}`).join('\n')}`
     : '';
 
   const overrideBlock = customInstructions?.trim()
@@ -334,7 +339,7 @@ async function enhanceBrief(
     : '';
 
   const textInstruction = isSpeak
-    ? `USER TALKING POINTS / INPUT:\n${brief.trim()}${quotedBlock}${overrideBlock}\n\nASPECT RATIO: ${aspectRatio}\nDURATION: ${duration} seconds${textNote}\n\nConvert these talking points into a Seedance 2.0 speaking video prompt. Any text in quotation marks above must appear verbatim as spoken dialogue in the prompt. Honor all MANDATORY USER OVERRIDES exactly. Return only the final prompt.`
+    ? `USER TALKING POINTS / INPUT:\n${brief.trim()}${quotedBlock}${overrideBlock}\n\nASPECT RATIO: ${aspectRatio}\nDURATION: ${duration} seconds${textNote}\n\nConvert these talking points into a Seedance 2.0 speaking video prompt. The MANDATORY VERBATIM SPOKEN DIALOGUE block, when present, is the exact audio script and must appear in the prompt as the only spoken words. Honor all MANDATORY USER OVERRIDES exactly. Return only the final prompt.`
     : `Transform this brief into an optimized Seedance 2.0 ${styleKey} video prompt:\n\nBRIEF: ${brief.trim()}${overrideBlock}\nASPECT RATIO: ${aspectRatio}\nDURATION: ${duration} seconds${textNote}\n\nHonor all MANDATORY USER OVERRIDES exactly. Return only the final prompt text.`;
 
   type ContentBlock =
@@ -406,6 +411,7 @@ Deno.serve(async (req: Request) => {
   let startFrameBase64: string | undefined, startFrameMediaType: ImageMediaType | undefined;
   let endFrameBase64: string | undefined, endFrameMediaType: ImageMediaType | undefined;
   let customInstructions: string | undefined;
+  let spokenScript: string | undefined;
   try {
     const body = await req.json();
     brief               = body.brief               ?? '';
@@ -422,6 +428,7 @@ Deno.serve(async (req: Request) => {
     endFrameBase64      = body.endFrameBase64      ?? undefined;
     endFrameMediaType   = body.endFrameMediaType   ?? undefined;
     customInstructions  = body.customInstructions  ?? undefined;
+    spokenScript        = body.spokenScript        ?? undefined;
   } catch {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
       status: 400, headers: { ...cors, 'Content-Type': 'application/json' },
@@ -451,7 +458,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const enhanced = await enhanceBrief(brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent, fontColor, hasStartFrame, hasEndFrame, startFrameBase64, startFrameMediaType, endFrameBase64, endFrameMediaType, customInstructions);
+    const enhanced = await enhanceBrief(brief, style, aspectRatio, duration, textOnScreen, textOnScreenContent, fontColor, hasStartFrame, hasEndFrame, startFrameBase64, startFrameMediaType, endFrameBase64, endFrameMediaType, customInstructions, spokenScript);
     const negativePrompt = getStyleNegativePrompt(style);
     return new Response(JSON.stringify({ prompts: [enhanced], negativePrompt }), {
       status: 200, headers: { ...cors, 'Content-Type': 'application/json' },

@@ -6653,7 +6653,22 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   const getAuthHeaders = async (): Promise<Record<string, string>> => {
     let { data: { session } } = await supabase.auth.getSession();
     if (!session) { const r = await supabase.auth.refreshSession(); session = r.data.session; }
-    return await getToken() ? { Authorization: `Bearer ${await getToken()}` } : {};
+    const token = await getToken();
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
+
+  const getExactDialoguePrompt = () => {
+    const script = style === 'speaking' ? spokenScript.trim() : '';
+    if (!script) return '';
+    const quotedScript = script.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    return `MANDATORY EXACT SPOKEN DIALOGUE: The character must speak exactly this dialogue and no other spoken words: "${quotedScript}". The lip-sync audio must use this script verbatim. Do not paraphrase, summarize, reorder, add, or remove any words.`;
+  };
+
+  const withExactDialoguePrompt = (prompt: string) => {
+    const exactDialogue = getExactDialoguePrompt();
+    if (!exactDialogue) return prompt.trim();
+    if (prompt.includes('MANDATORY EXACT SPOKEN DIALOGUE')) return prompt.trim();
+    return `${prompt.trim()}\n\n${exactDialogue}`;
   };
 
   const addToHistory = (brief: string, videoUrl: string, thumbnailUrl?: string) => {
@@ -6745,9 +6760,8 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       const promptRes = await fetch(`${SUPABASE_URL}/functions/v1/kling-generate-prompts`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({
-          brief: style === 'speaking' && spokenScript.trim()
-            ? (brief.trim() ? `${brief.trim()} ${spokenScript.trim()}` : spokenScript.trim())
-            : brief.trim() || spokenScript.trim(), style, aspectRatio, duration,
+          brief: brief.trim() || spokenScript.trim(), style, aspectRatio, duration,
+          spokenScript: style === 'speaking' ? spokenScript.trim() || undefined : undefined,
           hasStartFrame: hasStart, hasEndFrame: hasEnd,
           ...(hasStart && startFrameUrl ? { startFrameBase64: extractImage(startFrameUrl).base64, startFrameMediaType: extractImage(startFrameUrl).mediaType } : {}),
           ...(hasEnd && endFrameUrl   ? { endFrameBase64:   extractImage(endFrameUrl).base64,   endFrameMediaType:   extractImage(endFrameUrl).mediaType   } : {}),
@@ -6757,7 +6771,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       });
       const promptData = await promptRes.json();
       if (!promptRes.ok) throw new Error(promptData.error || 'Failed to enhance brief');
-      const enhancedPrompt: string = (promptData.prompts || [])[0] ?? brief;
+      const enhancedPrompt: string = withExactDialoguePrompt((promptData.prompts || [])[0] ?? brief);
       setNegativePrompt(promptData.negativePrompt ?? '');
       setPrompts([{ id: 'p0', text: enhancedPrompt, selected: true }]);
       setEditablePrompt(enhancedPrompt);
@@ -6767,7 +6781,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
   };
 
   const handleConfirmAndGenerate = async () => {
-    const promptText = editablePrompt.trim() || (prompts[0]?.text ?? brief);
+    const promptText = withExactDialoguePrompt(editablePrompt.trim() || (prompts[0]?.text ?? brief));
     if (!promptText) { setGlobalError('No prompt to generate from'); return; }
     setGlobalError(null);
     const headers = await getAuthHeaders();
@@ -6791,11 +6805,11 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       // No start frame — text-to-video
       setStep('video');
       const vidId = `v${Date.now()}-noframe`;
-      setVideos([{ id: vidId, frameUrl: '', promptText, videoUrl: null, taskId: null, status: 'generating' }]);
+      setVideos([{ id: vidId, frameUrl: '', promptText, videoUrl: null, taskId: null, status: 'generating', script: style === 'speaking' ? spokenScript.trim() || undefined : undefined }]);
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ prompt: promptText, negativePrompt, duration, aspectRatio, resolution: '1080p', textToVideo: true, style }),
+          body: JSON.stringify({ prompt: promptText, negativePrompt, duration, aspectRatio, textToVideo: true, generateAudio: false, style }),
         });
         const data = await res.json();
         if (data.error === 'upgrade_required') { setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: 'Plan required' } : v)); setStep('brief'); onUpgrade(); return; }
@@ -6814,13 +6828,14 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
 
   const autoGenerateVideo = async (frameId: string, imageUrl: string, promptText: string, headers: Record<string, string>, overrideStartUrl?: string | null, tailUrl?: string | null) => {
     const effectiveImageUrl = overrideStartUrl || imageUrl;
+    const videoPrompt = withExactDialoguePrompt(promptText);
     setStep('video');
     const vidId = `v${Date.now()}-${frameId}`;
-    const newVideo: GeneratedVideo = { id: vidId, frameUrl: effectiveImageUrl, promptText, videoUrl: null, taskId: null, status: 'generating', script: style === 'speaking' ? spokenScript.trim() : undefined };
+    const newVideo: GeneratedVideo = { id: vidId, frameUrl: effectiveImageUrl, promptText: videoPrompt, videoUrl: null, taskId: null, status: 'generating', script: style === 'speaking' ? spokenScript.trim() || undefined : undefined };
     setVideos([newVideo]);
     try {
-      const falBody: Record<string, unknown> = { imageUrl: effectiveImageUrl, prompt: promptText, negativePrompt, duration, aspectRatio, resolution: '1080p', style };
-      if (tailUrl) falBody.tailImageUrl = tailUrl;
+      const falBody: Record<string, unknown> = { startImageUrl: effectiveImageUrl, prompt: videoPrompt, negativePrompt, duration, aspectRatio, generateAudio: false, style };
+      if (tailUrl) falBody.endImageUrl = tailUrl;
       const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify(falBody),
@@ -6831,7 +6846,7 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
       if (!res.ok) throw new Error(data.error || 'Failed to generate video');
       if (data.requestId) {
         setVideos(prev => prev.map(v => v.id === vidId ? { ...v, taskId: data.requestId, status: 'polling' } : v));
-        pollFalVideoTask(vidId, data.requestId, data.model, promptText, imageUrl, headers, data.statusUrl, data.responseUrl);
+        pollFalVideoTask(vidId, data.requestId, data.model, videoPrompt, imageUrl, headers, data.statusUrl, data.responseUrl);
       }
     } catch (e: any) {
       setVideos(prev => prev.map(v => v.id === vidId ? { ...v, status: 'error', error: e.message } : v));
@@ -6950,14 +6965,14 @@ function AIVideoStudio({ userId, onUseVideo, subscription, onUpgrade }: {
     const doneFr = frames.filter(f => f.status === 'done' && f.imageUrl);
     if (!doneFr.length) { setGlobalError('No completed frames'); return; }
     setGlobalError(null);
-    const newVideos: GeneratedVideo[] = doneFr.map(f => ({ id: `v${Date.now()}-${f.id}`, frameUrl: f.imageUrl!, promptText: f.promptText, videoUrl: null, taskId: null, status: 'generating' as const, script: style === 'speaking' ? spokenScript.trim() : undefined }));
+    const newVideos: GeneratedVideo[] = doneFr.map(f => ({ id: `v${Date.now()}-${f.id}`, frameUrl: f.imageUrl!, promptText: withExactDialoguePrompt(f.promptText), videoUrl: null, taskId: null, status: 'generating' as const, script: style === 'speaking' ? spokenScript.trim() || undefined : undefined }));
     setVideos(newVideos); setStep('video');
     const headers = await getAuthHeaders();
     for (const vid of newVideos) {
       try {
         const res = await fetch(`${SUPABASE_URL}/functions/v1/fal-generate-video`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', ...headers },
-          body: JSON.stringify({ imageUrl: vid.frameUrl, prompt: vid.promptText, negativePrompt, duration, aspectRatio, resolution: '1080p', style }),
+          body: JSON.stringify({ startImageUrl: vid.frameUrl, prompt: withExactDialoguePrompt(vid.promptText), negativePrompt, duration, aspectRatio, generateAudio: false, style }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || 'Failed');
