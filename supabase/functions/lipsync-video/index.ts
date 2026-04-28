@@ -16,17 +16,10 @@ const corsFor = (req: Request) => {
 
 const FAL_KEY = Deno.env.get("FAL_API_KEY");
 const ELEVENLABS_KEY = Deno.env.get("ELEVENLABS_API_KEY");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 const DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB";
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
+const MEDIA_BUCKET = "media";
 
 Deno.serve(async (req: Request) => {
   const cors = corsFor(req);
@@ -39,11 +32,7 @@ Deno.serve(async (req: Request) => {
   if (!auth.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
   const token = auth.replace("Bearer ", "").trim();
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL") ?? "",
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-    { auth: { persistSession: false } }
-  );
+  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
 
   const { data: { user }, error: authErr } = await supabase.auth.getUser(token);
   if (authErr || !user) return json({ error: "Unauthorized" }, 401);
@@ -93,8 +82,24 @@ Deno.serve(async (req: Request) => {
     }
     const audioBuffer = await ttsRes.arrayBuffer();
 
-    // Step 2: fal file inputs accept data URIs, so avoid deprecated storage upload endpoints.
-    const audioUrl = `data:audio/mpeg;base64,${arrayBufferToBase64(audioBuffer)}`;
+    // Step 2: Store generated audio in Supabase Storage and pass fal a normal HTTPS URL.
+    // sync-lipsync rejects MP3 data URIs as corrupt/unsupported, but accepts public file URLs.
+    const audioPath = `ai-video-lipsync/${user.id}/${crypto.randomUUID()}.mp3`;
+    const uploadRes = await fetch(`${SUPABASE_URL}/storage/v1/object/${MEDIA_BUCKET}/${audioPath}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        apikey: SERVICE_ROLE_KEY,
+        "Content-Type": "audio/mpeg",
+        "x-upsert": "true",
+      },
+      body: audioBuffer,
+    });
+    if (!uploadRes.ok) {
+      const err = await uploadRes.text();
+      throw new Error(`Audio storage upload failed (${uploadRes.status}): ${err.slice(0, 300)}`);
+    }
+    const audioUrl = `${SUPABASE_URL}/storage/v1/object/public/${MEDIA_BUCKET}/${audioPath}`;
 
     // Step 3: Submit sync-lipsync job and return immediately — client polls via fal-poll
     const queueRes = await fetch("https://queue.fal.run/fal-ai/sync-lipsync", {
