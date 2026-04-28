@@ -38,38 +38,19 @@ function normalizeCfgScale(value: unknown): number {
   return Math.max(0, Math.min(1, n));
 }
 
-async function uploadDataUrlToFal(dataUrl: string, falKey: string): Promise<string> {
+function normalizeDataUrl(dataUrl: string): string {
   const match = dataUrl.match(/^data:([^;,]+);base64,(.+)$/);
   if (!match) throw new Error("Invalid image data URL");
   const [, contentType, base64] = match;
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-
-  const ext = contentType.includes("png") ? "png" : contentType.includes("webp") ? "webp" : "jpg";
-  const form = new FormData();
-  form.append("file", new Blob([bytes], { type: contentType }), `reference-frame.${ext}`);
-
-  const uploadRes = await fetch("https://rest.fal.ai/storage/upload", {
-    method: "POST",
-    headers: { Authorization: `Key ${falKey}` },
-    body: form,
-  });
-  const uploadText = await uploadRes.text();
-  let uploadData: any;
-  try { uploadData = JSON.parse(uploadText); } catch {
-    throw new Error(`fal image upload returned non-JSON (${uploadRes.status}): ${uploadText.slice(0, 250)}`);
-  }
-  if (!uploadRes.ok) throw new Error(`fal image upload failed (${uploadRes.status}): ${JSON.stringify(uploadData).slice(0, 250)}`);
-  const url = cleanString(uploadData.url);
-  if (!url) throw new Error("fal image upload returned no URL");
-  return url;
+  if (!contentType.startsWith("image/")) throw new Error("Reference data URL must be an image");
+  try { atob(base64); } catch { throw new Error("Invalid image data URL"); }
+  return dataUrl;
 }
 
-async function normalizeImageUrl(value: unknown, falKey: string): Promise<string> {
+function normalizeImageUrl(value: unknown): string {
   const url = cleanString(value);
   if (!url) return "";
-  if (url.startsWith("data:")) return await uploadDataUrlToFal(url, falKey);
+  if (url.startsWith("data:")) return normalizeDataUrl(url);
   if (/^https?:\/\//i.test(url)) return url;
   throw new Error("Reference image must be an http(s) URL or a valid data URL");
 }
@@ -95,8 +76,8 @@ Deno.serve(async(req)=>{
     const FAL=Deno.env.get("FAL_API_KEY");
     if(!FAL)throw new Error("FAL_API_KEY not configured");
     const textToVideo=body.textToVideo===true;
-    const startImageUrl=await normalizeImageUrl(body.startImageUrl ?? body.start_image_url ?? body.imageUrl ?? body.image_url,FAL);
-    const endImageUrl=await normalizeImageUrl(body.endImageUrl ?? body.end_image_url ?? body.tailImageUrl ?? body.tail_image_url,FAL);
+    const startImageUrl=normalizeImageUrl(body.startImageUrl ?? body.start_image_url ?? body.imageUrl ?? body.image_url);
+    const endImageUrl=normalizeImageUrl(body.endImageUrl ?? body.end_image_url ?? body.tailImageUrl ?? body.tail_image_url);
     if(!textToVideo&&!startImageUrl)return json({error:"startImageUrl is required for image-to-video"},400,cors);
     const durationValue=normalizeDuration(body.duration);
     const secs=Number.parseInt(durationValue,10);
