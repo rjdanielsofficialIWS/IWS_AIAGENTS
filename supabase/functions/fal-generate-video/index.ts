@@ -108,7 +108,7 @@ Deno.serve(async(req)=>{
       if(endImageUrl)payload.end_image_url=endImageUrl;
     }
     console.log("fal-generate-video submit",JSON.stringify({model,textToVideo,promptLength:prompt.length,inputKeys:Object.keys(payload),duration:durationValue,aspectRatio:payload.aspect_ratio}));
-    const sr=await fetch("https://queue.fal.run/"+model,{method:"POST",headers:{"Authorization":"Key "+FAL,"Content-Type":"application/json"},body:JSON.stringify({input:payload})});
+    const sr=await fetch("https://queue.fal.run/"+model,{method:"POST",headers:{"Authorization":"Key "+FAL,"Content-Type":"application/json"},body:JSON.stringify(payload)});
     const rt=await sr.text();let sd;try{sd=JSON.parse(rt);}catch{throw new Error("fal non-JSON ("+sr.status+"): "+rt.slice(0,300));}
     if(!sr.ok)throw new Error("fal failed ("+sr.status+"): "+JSON.stringify(sd));
     if(!sd.request_id)throw new Error("No request_id from fal.ai");
