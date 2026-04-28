@@ -1,6 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const CORS_ORIGINS = ["https://infinitewealthsolutionsai.com", "https://www.infinitewealthsolutionsai.com"];
+const CORS_ORIGINS = [
+  "https://infinitewealthsolutionsai.com",
+  "https://www.infinitewealthsolutionsai.com",
+  "https://iws-aiagents.vercel.app",
+];
 const corsFor = (req: Request) => {
   const o = req.headers.get("Origin") ?? "";
   return {
@@ -13,6 +17,16 @@ const corsFor = (req: Request) => {
 const FAL_KEY = Deno.env.get("FAL_API_KEY");
 const ELEVENLABS_KEY = Deno.env.get("ELEVENLABS_API_KEY");
 const DEFAULT_VOICE_ID = "pNInz6obpgDQGcFmaJgB";
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
 
 Deno.serve(async (req: Request) => {
   const cors = corsFor(req);
@@ -79,28 +93,14 @@ Deno.serve(async (req: Request) => {
     }
     const audioBuffer = await ttsRes.arrayBuffer();
 
-    // Step 2: Upload audio to fal.ai storage
-    const formData = new FormData();
-    formData.append("file", new Blob([audioBuffer], { type: "audio/mpeg" }), "tts.mp3");
-    const uploadRes = await fetch("https://rest.alpha.fal.ai/storage/upload", {
-      method: "POST",
-      headers: { "Authorization": `Key ${FAL_KEY}` },
-      body: formData,
-    });
-    if (!uploadRes.ok) {
-      const err = await uploadRes.text();
-      throw new Error(`fal.ai audio upload failed (${uploadRes.status}): ${err.slice(0, 300)}`);
-    }
-    const uploadData = await uploadRes.json();
-    const audioUrl: string = uploadData.url;
-    if (!audioUrl) throw new Error("No URL returned from fal.ai audio upload");
+    // Step 2: fal file inputs accept data URIs, so avoid deprecated storage upload endpoints.
+    const audioUrl = `data:audio/mpeg;base64,${arrayBufferToBase64(audioBuffer)}`;
 
     // Step 3: Submit sync-lipsync job and return immediately — client polls via fal-poll
-    // NOTE: fal.ai queue API requires payload wrapped in { input: { ... } }
     const queueRes = await fetch("https://queue.fal.run/fal-ai/sync-lipsync", {
       method: "POST",
       headers: { "Authorization": `Key ${FAL_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ input: { video_url: videoUrl, audio_url: audioUrl } }),
+      body: JSON.stringify({ video_url: videoUrl, audio_url: audioUrl, sync_mode: "cut_off" }),
     });
     const queueText = await queueRes.text();
     let queueData: any;
