@@ -50,7 +50,7 @@ async function uploadDataUrlToFal(dataUrl: string, falKey: string): Promise<stri
   const form = new FormData();
   form.append("file", new Blob([bytes], { type: contentType }), `reference-frame.${ext}`);
 
-  const uploadRes = await fetch("https://storage.fal.ai/upload", {
+  const uploadRes = await fetch("https://fal.run/files/upload", {
     method: "POST",
     headers: { Authorization: `Key ${falKey}` },
     body: form,
