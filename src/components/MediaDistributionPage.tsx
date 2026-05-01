@@ -8766,12 +8766,13 @@ function UserMenu({ user, onSignOut, subscription, onManagePlan }: { user: { ema
 
 // ─── TopBar ───────────────────────────────────────────────────────────────────
 
-function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect, user, onSignOut, onSignIn, subscription, onManagePlan }: {
+function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, onRefresh, onOpenConnect, user, onSignOut, onSignIn, subscription, onManagePlan, onCredits }: {
   integrations: PostizIntegration[]; integrationsLoading: boolean;
   onConnect: () => void; onDisconnect: () => void; onRefresh: (force?: boolean) => void; onOpenConnect: () => void;
   user: { email: string } | null; onSignOut: () => void; onSignIn: () => void;
   subscription?: { plan: string; status: string } | null;
   onManagePlan?: () => void;
+  onCredits?: () => void;
 }) {
   return (
     <motion.div
@@ -8812,6 +8813,14 @@ function TopBar({ integrations, integrationsLoading, onConnect, onDisconnect, on
               style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.5)' }}>
               <Plus className="w-3 h-3" /> {integrations.length > 0 ? 'Add Channel' : 'Connect'}
             </button>
+            {onCredits && (
+              <button onClick={onCredits}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition hover:brightness-110"
+                style={{ background: GOLD, color: '#000' }}>
+                <DollarSign className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Credits</span>
+              </button>
+            )}
             <UserMenu user={user} onSignOut={onSignOut} subscription={subscription} onManagePlan={onManagePlan} />
           </>
         ) : (
@@ -8890,14 +8899,6 @@ function CreditsWidget({
 
   return (
     <>
-      {/* Floating button */}
-      <button onClick={onOpen}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-40 flex items-center gap-1.5 px-3 py-2 rounded-full text-xs font-bold shadow-lg transition hover:brightness-110"
-        style={{ background: GOLD, color: '#000' }}>
-        <DollarSign className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Credits</span>
-      </button>
-
       {/* Modal */}
       {open && (
         <div className="fixed inset-0 z-[200] flex items-end md:items-center justify-center md:p-4"
@@ -9616,6 +9617,7 @@ export function MediaDistributionPage() {
         onSignIn={() => setAuthModalOpen(true)}
         subscription={subscription}
         onManagePlan={currentUser ? (subscription?.status === 'active' ? handlePortal : () => setPricingOpen(true)) : () => setAuthModalOpen(true)}
+        onCredits={currentUser ? () => setCreditsOpen(true) : undefined}
       />
 
       {/* ── STATE 1: Auth loading / Logged out — hero ── */}

@@ -31,7 +31,7 @@ export function SupportChat({ userId, isActive }: { userId: string | null; isAct
     if (open && messages.length === 0) {
       setMessages([{
         role: 'assistant',
-        content: "Hi! I'm your Infinite Media support agent. I have full access to your account — posts, usage, connected platforms, and billing. What can I help you with?",
+        content: "Hey! I'm Avery, your support agent. How can I help you today?",
       }]);
     }
   }, [open]);
