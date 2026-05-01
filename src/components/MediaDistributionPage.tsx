@@ -17,6 +17,7 @@ import { supabase } from '../services/vapiAI';
 import { useAuth } from '../contexts/AuthContext';
 import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
 import { EarnPage } from './earn/EarnPage';
+import { SupportChat } from './SupportChat';
 
 // Returns the current session token first and only refreshes if needed.
 async function getToken(): Promise<string> {
@@ -10278,6 +10279,11 @@ export function MediaDistributionPage() {
         onSuccess={() => {
           setAuthModalOpen(false);
         }}
+      />
+
+      <SupportChat
+        userId={currentUser?.id ?? null}
+        isActive={!!(subscription?.status === 'active' || subscription?.stripe_customer_id?.startsWith('promo_') || (subscription?.status === 'trialing' && !!subscription?.current_period_end && new Date(subscription.current_period_end) > new Date()))}
       />
     </div>
   );
