@@ -72,7 +72,7 @@ Tone handling:
 
 Character limits — hard constraints, no exceptions:
 - All non-YouTube posts: exactly 220–280 characters (spaces and punctuation count)
-- Count every character before responding
+- Count every character internally before responding — never include the count in the output
 - Under 220 = too short, rewrite until it hits the floor
 - Over 280 = too long, cut until it fits the ceiling
 - Never sacrifice the character range for any other instruction
@@ -104,7 +104,7 @@ Hook mechanics — embody a different one per post. Never name or label the mech
 
 Character limits — hard constraints, no exceptions:
 - Every post: exactly 220–280 characters (spaces and punctuation included)
-- Count characters before finalising each post
+- Count characters internally before finalising — never include the count in the output
 - Under 220: too short — expand the hook or add a sharper line
 - Over 280: too long — cut ruthlessly until it lands under the ceiling
 - Never sacrifice the character range for tone, style, or any other rule
@@ -127,10 +127,10 @@ const PR={
   tiktok:"TikTok caption: 1-2 lines max. Spoken casual tone. Strong hook in first 5 words. 3-5 relevant hashtags. End with 'follow for part 2' or 'watch till the end' style CTA.",
   instagram:"Instagram caption: FIRST LINE must be a scroll-stopping hook (no more than 10 words, leaves a curiosity gap). Then line break. Then 3-6 short punchy paragraphs or bullet points. Relatable and specific. 3-6 strategic hashtags at end. End with an engagement CTA (comment, save, or share).",
   facebook:"Facebook caption: Open with a relatable scenario or bold statement. 2-4 conversational sentences. Tell a micro-story or share a specific insight. End with a question that sparks comments. 0-2 hashtags max.",
-  linkedin:"LinkedIn post: Hard character range 220–280 — count every character, never go under 220 or over 280. Professional but human — not corporate. Hook in the first line. One sharp, specific insight or lesson. End with a thought-provoking question or CTA. 1-2 hashtags.",
-  x:"X/Twitter: Hard character range 220–280 — count every character, never go under 220 or over 280. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
+  linkedin:"LinkedIn post: Hard character range 220–280 — count characters internally, never include the count in output, never go under 220 or over 280. Professional but human — not corporate. Hook in the first line. One sharp, specific insight or lesson. End with a thought-provoking question or CTA. 1-2 hashtags.",
+  x:"X/Twitter: Hard character range 220–280 — count characters internally, never include the count in output, never go under 220 or over 280. Sharp and punchy. One strong insight or contrarian take. 0-1 hashtags. No thread format. Must stand alone.",
   youtube:"YouTube: youtube_title under 100 chars (curiosity-driven, specific, no clickbait) and youtube description (2-3 sentences, what the video covers, natural keyword inclusion).",
-  threads:"Threads: Hard character range 220–280 — count every character, never go under 220 or over 280. Casual, conversational, feels like a text to a friend. No hashtags.",
+  threads:"Threads: Hard character range 220–280 — count characters internally, never include the count in output, never go under 220 or over 280. Casual, conversational, feels like a text to a friend. No hashtags.",
   bluesky:"Bluesky: Thoughtful and direct. Under 200 chars. Intellectual but approachable tone."
 };
 async function callClaude(sys,usr,max=3000){const ctrl=new AbortController();const t=setTimeout(()=>ctrl.abort(),55000);let r:Response;try{r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+OPENAI_API_KEY},body:JSON.stringify({model:"gpt-4.1",max_tokens:max,messages:[{role:"system",content:sys},{role:"user",content:usr}]}),signal:ctrl.signal});}catch(e:any){clearTimeout(t);if(e?.name==="AbortError")throw new Error("AI generation timed out. Please try again.");throw e;}finally{clearTimeout(t);}if(!r.ok)throw new Error("OpenAI error: "+await r.text());const d=await r.json();const raw0=(d.choices?.[0]?.message?.content||"{}").replace(/```json|```/g,"").replace(/—/g,"-").trim();const s=raw0.indexOf("{");if(s===-1)return"{}";let depth=0,inStr=false,esc=false,end=-1;for(let i=s;i<raw0.length;i++){const c=raw0[i];if(esc){esc=false;continue;}if(c==="\\"&&inStr){esc=true;continue;}if(c==='"'){inStr=!inStr;continue;}if(inStr)continue;if(c==="{")depth++;else if(c==="}"){depth--;if(depth===0){end=i;break;}}}const extracted=end>=0?raw0.slice(s,end+1):raw0.slice(s);const sanitized=extracted.replace(/"(?:[^"\\]|\\.)*"/g,(m)=>m.replace(/\n/g,"\\n").replace(/\r/g,"\\r").replace(/\t/g,"\\t"));try{JSON.parse(sanitized);return sanitized;}catch{let fix=sanitized.replace(/,\s*$/,"").replace(/:\s*"[^"]*$/,': ""');const closers:string[]=[];let d2=0;for(const ch of fix){if(ch==="{"){d2++;closers.push("}");}else if(ch==="["){d2++;closers.push("]");}else if(ch==="}"||ch==="]"){d2--;closers.pop();}}fix+=closers.reverse().join("");try{JSON.parse(fix);return fix;}catch{return "{}";}}}
