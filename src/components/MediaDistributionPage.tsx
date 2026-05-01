@@ -18,12 +18,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { MediaMachineAuthModal } from './auth/MediaMachineAuthModal';
 import { EarnPage } from './earn/EarnPage';
 
-// Always fetches a fresh, auto-refreshed token — never expires mid-session
+// Returns the current session token first and only refreshes if needed.
 async function getToken(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
-  const expiresAt = session?.expires_at ? session.expires_at * 1000 : 0;
-  const isFreshEnough = !!session?.access_token && expiresAt - Date.now() > 60_000;
-  if (isFreshEnough) return session!.access_token;
+  if (session?.access_token) return session.access_token;
   const { data: refreshed } = await supabase.auth.refreshSession();
   return refreshed.session?.access_token ?? '';
 }
@@ -99,6 +97,7 @@ const SUPABASE_URL      = import.meta.env.VITE_SUPABASE_URL as string;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
 const LS_SOCIAL_RETURN_KEY = 'postiz_social_return';
+const LS_SOCIAL_RETURN_PLATFORM_KEY = 'postiz_social_return_platform';
 
 type PlatformId =
   | 'instagram' | 'facebook' | 'tiktok' | 'youtube'
@@ -162,6 +161,7 @@ type UploadState =
 type PostizIntegration = {
   id: string; name: string; identifier: string;
   picture?: string; profile?: string; disabled?: boolean;
+  accountId?: string; displayName?: string;
 };
 
 type ViewMode = 'composer' | 'calendar' | 'planner' | 'partner' | 'video' | 'workspaces' | 'autopilot';
@@ -211,6 +211,35 @@ function normalizePlatformId(value?: string | null): string {
 
 function getIntegrationPlatformId(integration?: Partial<PostizIntegration> | null): string {
   return normalizePlatformId(integration?.profile || integration?.identifier || integration?.id || '');
+}
+
+function getIntegrationAccountId(integration?: Partial<PostizIntegration> | null): string {
+  const explicit = typeof integration?.accountId === 'string' ? integration.accountId.trim() : '';
+  return explicit;
+}
+
+function buildPlatformTargetsFromIntegrationIds(
+  integrationIds: string[],
+  integrations: PostizIntegration[],
+): Array<{ platform: string; accountId?: string }> {
+  return integrationIds
+    .map((integrationId) => integrations.find((integration) => integration.id === integrationId))
+    .filter(Boolean)
+    .map((integration) => {
+      const platform = getIntegrationPlatformId(integration);
+      const accountId = getIntegrationAccountId(integration);
+      return accountId ? { platform, accountId } : { platform };
+    })
+    .filter((target) => !!target.platform);
+}
+
+function buildPlatformAccountIdsFromTargets(
+  targets: Array<{ platform: string; accountId?: string }>,
+): Record<string, string> {
+  return targets.reduce<Record<string, string>>((acc, target) => {
+    if (target.platform && target.accountId && !acc[target.platform]) acc[target.platform] = target.accountId;
+    return acc;
+  }, {});
 }
 
 function getCloudflareUidFromUrl(url?: string | null): string {
@@ -263,14 +292,22 @@ async function ayrsharePost(payload: {
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
   workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string; skipDuplicateCheck?: boolean;
   platformAccountIds?: Record<string, string>;
+  platformTargets?: Array<{ platform: string; accountId?: string }>;
 }) {
-  // Always call refreshSession once to get a guaranteed-fresh token.
-  // This avoids stale-token issues and refresh-token rotation races from getToken() being called multiple times.
-  const { data: { session: freshSession } } = await supabase.auth.refreshSession();
-  const token = freshSession?.access_token;
+  const token = await getToken();
   if (!token) throw new Error('Your session has expired. Please log out and log back in, then try again.');
   const body = JSON.stringify({
     ...payload,
+    platformTargets: Array.isArray(payload.platformTargets)
+      ? payload.platformTargets
+        .map((target) => ({
+          platform: normalizePlatformId(target?.platform),
+          ...(typeof target?.accountId === 'string' && target.accountId.trim()
+            ? { accountId: target.accountId.trim() }
+            : {}),
+        }))
+        .filter((target) => !!target.platform)
+      : undefined,
     platforms: (payload.platforms || []).map(normalizePlatformId).filter(Boolean),
     mediaUrls: await resolvePublishMediaUrls(payload.mediaUrls || []),
   });
@@ -281,7 +318,23 @@ async function ayrsharePost(payload: {
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
-    if (res.status === 401) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+    if (res.status === 401) {
+      const { data: refreshed } = await supabase.auth.refreshSession();
+      const retryToken = refreshed.session?.access_token || '';
+      if (!retryToken) throw new Error('Your session has expired. Please log out and log back in, then try again.');
+      const retryRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-post`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${retryToken}` },
+        body,
+      });
+      const retryData = await retryRes.json().catch(() => ({}));
+      if (!retryRes.ok) {
+        const retryMsg = retryData.error || retryData.message || `Post failed (${retryRes.status})`;
+        const retryHint = retryData.hint ? `\n\n💡 ${retryData.hint}` : '';
+        throw new Error(retryMsg + retryHint);
+      }
+      return retryData;
+    }
     const msg = data.error || data.message || `Post failed (${res.status})`;
     const hint = data.hint ? `\n\n💡 ${data.hint}` : '';
     throw new Error(msg + hint);
@@ -293,6 +346,8 @@ async function queueMediaPublish(payload: {
   platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
   youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
   workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
+  platformAccountIds?: Record<string, string>;
+  platformTargets?: Array<{ platform: string; accountId?: string }>;
 }, cfUid: string, streamUrl: string, userId?: string | null) {
   let { data: { session } } = await supabase.auth.getSession();
   if (!session) {
@@ -309,6 +364,16 @@ async function queueMediaPublish(payload: {
     streamReady: false,
     payload: {
       ...payload,
+      platformTargets: Array.isArray(payload.platformTargets)
+        ? payload.platformTargets
+          .map((target) => ({
+            platform: normalizePlatformId(target?.platform),
+            ...(typeof target?.accountId === 'string' && target.accountId.trim()
+              ? { accountId: target.accountId.trim() }
+              : {}),
+          }))
+          .filter((target) => !!target.platform)
+        : undefined,
       platforms: (payload.platforms || []).map(normalizePlatformId).filter(Boolean),
       mediaUrls: payload.mediaUrls || [],
     },
@@ -335,7 +400,7 @@ async function queueMediaPublish(payload: {
   return data;
 }
 
-async function pollJobStatus(jobId: string, timeoutMs = 300_000): Promise<void> {
+async function pollJobStatus(jobId: string, timeoutMs = 1_200_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/media-publish-intent?jobId=${encodeURIComponent(jobId)}`, {
@@ -348,18 +413,18 @@ async function pollJobStatus(jobId: string, timeoutMs = 300_000): Promise<void> 
     }
     await new Promise(r => setTimeout(r, 8000));
   }
-  throw new Error('Publishing is taking longer than expected. Please check your social media accounts.');
+  throw new Error('Cloudflare is still preparing the video for social posting. Leave the queue open and try again shortly if it has not completed.');
 }
 
 const MEDIA_REQUIRED_PLATFORMS = new Set(['youtube', 'tiktok', 'instagram']);
 
 async function fetchChannels(userId: string, force = false, workspaceId?: string | null): Promise<PostizIntegration[]> {
   if (!userId) return [];
-  const { data: { session } } = await supabase.auth.getSession();
   const wsParam = workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : '';
   const url = `${SUPABASE_URL}/functions/v1/ayrshare-channels?userId=${encodeURIComponent(userId)}${force ? '&force=true' : ''}${wsParam}`;
+  const token = await getToken();
   const res = await fetch(url, {
-    headers: await getToken() ? { 'Authorization': `Bearer ${await getToken()}` } : {},
+    headers: token ? { 'Authorization': `Bearer ${token}` } : {},
   });
   if (!res.ok) return [];
   const data = await res.json();
@@ -367,7 +432,16 @@ async function fetchChannels(userId: string, force = false, workspaceId?: string
   return channels.map(ch => {
     const identifier = getIntegrationPlatformId(ch);
     const profile = normalizePlatformId(ch.profile || ch.identifier || '');
-    return { ...ch, identifier, profile: profile || undefined };
+    const explicitAccountId = (() => {
+      const raw = (ch as any)?.accountId;
+      if (typeof raw === 'string') return raw.trim();
+      if (raw && typeof raw === 'object') {
+        const nested = typeof raw._id === 'string' ? raw._id : typeof raw.id === 'string' ? raw.id : '';
+        if (nested) return nested.trim();
+      }
+      return '';
+    })();
+    return { ...ch, identifier, profile: profile || undefined, ...(explicitAccountId ? { accountId: explicitAccountId } : {}) };
   });
 }
 
@@ -736,6 +810,11 @@ function PlatformIcon({ id, size = 'md', picture }: { id: string; size?: 'xs' | 
   const iconPx = size === 'xs' ? 9 : size === 'sm' ? 14 : size === 'lg' ? 24 : 20;
   const r = size === 'xs' ? 5 : size === 'sm' ? 7 : size === 'lg' ? 12 : 10;
   const key = (id || '').toLowerCase().replace('twitter', 'x');
+  const [pictureFailed, setPictureFailed] = useState(false);
+
+  useEffect(() => {
+    setPictureFailed(false);
+  }, [id, picture]);
 
   const logos: Record<string, { bg: string; node: React.ReactNode }> = {
     instagram: {
@@ -789,15 +868,32 @@ function PlatformIcon({ id, size = 'md', picture }: { id: string; size?: 'xs' | 
   };
 
   const logo = logos[key];
+  const avatarUrl = typeof picture === 'string' ? picture.trim() : '';
+  const canRenderPicture = (() => {
+    if (!avatarUrl || pictureFailed) return false;
+    if (avatarUrl.startsWith('data:') || avatarUrl.startsWith('blob:') || avatarUrl.startsWith('/')) return true;
+    try {
+      const url = new URL(avatarUrl, typeof window !== 'undefined' ? window.location.origin : 'https://infinitewealthsolutionsai.com');
+      return url.protocol === 'http:' || url.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  })();
 
   // Profile photo avatar with platform badge
-  if (picture && picture.startsWith('http')) {
-    const badgePx = size === 'sm' ? 20 : size === 'lg' ? 30 : 24;
-    const badgeOffset = -6;
+  if (canRenderPicture) {
+    const badgePx = size === 'xs' ? 13 : size === 'sm' ? 18 : size === 'lg' ? 28 : 22;
+    const badgeOffset = size === 'xs' ? -4 : size === 'sm' ? -5 : -6;
     return (
       <div style={{ position: 'relative', width: px, height: px, flexShrink: 0 }}>
         <div style={{ width: px, height: px, borderRadius: '50%', overflow: 'hidden', boxShadow: '0 2px 8px rgba(0,0,0,0.5)', border: '1.5px solid rgba(255,255,255,0.15)' }}>
-          <img src={picture} alt={id} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+          <img
+            src={avatarUrl}
+            alt={id}
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            referrerPolicy="no-referrer"
+            onError={() => setPictureFailed(true)}
+          />
         </div>
         {logo && (
           <div style={{ position: 'absolute', bottom: badgeOffset, right: badgeOffset, width: badgePx, height: badgePx, borderRadius: '50%', background: logo.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #111', boxShadow: '0 1px 4px rgba(0,0,0,0.8)', overflow: 'hidden', flexShrink: 0 }}>
@@ -923,6 +1019,7 @@ function ConnectAccountsModal({
       if (!connectUrl) { popup?.close(); throw new Error('No connect URL returned'); }
 
       localStorage.setItem(LS_SOCIAL_RETURN_KEY, '1');
+      localStorage.setItem(LS_SOCIAL_RETURN_PLATFORM_KEY, normalizePlatformId(platformId));
       if (popup) { popup.location.href = connectUrl; }
       else { window.location.href = connectUrl; }
       setConnecting(null);
@@ -1171,15 +1268,16 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
   const handleSave = async () => {
     if (!scheduleDateStr) { setSubmitError('Pick a schedule date and time.'); return; }
     if (!selectedIntegrations.length) { setSubmitError('Select at least one channel.'); return; }
-    const filledRows = selectedIntegrations
-      .map(integId => {
-        const integ = integrations.find(i => i.id === integId);
-        if (!integ) return null;
-        const platformId = getIntegrationPlatformId(integ);
-        const caption = manualCaptions[platformId] || '';
-        return caption.trim() ? { platform: platformId, content: caption } : null;
-      })
-      .filter(Boolean) as { platform: string; content: string }[];
+      const filledRows = selectedIntegrations
+        .map(integId => {
+          const integ = integrations.find(i => i.id === integId);
+          if (!integ) return null;
+          const platformId = getIntegrationPlatformId(integ);
+          const caption = manualCaptions[platformId] || '';
+          const accountId = getIntegrationAccountId(integ);
+          return caption.trim() ? { platform: platformId, content: caption, ...(accountId ? { accountId } : {}) } : null;
+        })
+        .filter(Boolean) as { platform: string; content: string; accountId?: string }[];
     if (!filledRows.length) { setSubmitError('Write at least one caption.'); return; }
     setSubmitting(true); setSubmitError(null);
     try {
@@ -1220,7 +1318,17 @@ function EditPostModal({ open, onClose, post, onSaved, integrations, workspaceId
       const scheduleISO = new Date(scheduleDateStr).toISOString();
       const groupId = hasRealGroupId ? post.postGroupId : generateUUID();
       await Promise.all(filledRows.map(row =>
-        ayrsharePost({ platforms: [row.platform], post: row.content, mediaUrls, scheduleDate: scheduleISO, workspaceId: workspaceId ?? null, postGroupId: groupId, skipDuplicateCheck: true })
+        ayrsharePost({
+          platforms: [row.platform],
+          platformTargets: [{ platform: row.platform, ...(row.accountId ? { accountId: row.accountId } : {}) }],
+          platformAccountIds: row.accountId ? { [row.platform]: row.accountId } : undefined,
+          post: row.content,
+          mediaUrls,
+          scheduleDate: scheduleISO,
+          workspaceId: workspaceId ?? null,
+          postGroupId: groupId,
+          skipDuplicateCheck: true,
+        })
       ));
       setSubmitOk(true);
       setTimeout(onSaved, 800);
@@ -1557,16 +1665,16 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     <>
     <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+      <div className="relative w-full md:max-w-2xl rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[94dvh] md:max-h-[90vh]"
         style={{ background: SURFACE, borderColor: BORDER }}>
-        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+        <div className="flex items-center justify-between px-4 md:px-6 py-3.5 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
           <div>
             <h2 className="text-base font-bold text-white">Post Log</h2>
             <p className="text-xs text-white/35 mt-0.5">Your recent and upcoming posts</p>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition"><X className="w-4 h-4" /></button>
         </div>
-        <div className="flex items-center gap-1 px-5 py-2.5 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
+        <div className="flex items-center gap-1 px-3 md:px-5 py-2.5 border-b shrink-0 overflow-x-auto" style={{ borderColor: BORDER }}>
           {/* Queue tab */}
           <button onClick={() => handleTabClick('queue')} className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0"
             style={{ background: filter === 'queue' ? 'rgba(56,189,248,0.12)' : 'transparent', color: filter === 'queue' ? '#7dd3fc' : 'rgba(255,255,255,0.35)' }}>
@@ -1593,7 +1701,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           })}
           {loading && <Loader className="ml-auto w-4 h-4 animate-spin text-white/20 shrink-0" />}
         </div>
-        <div className="mm-scroll flex-1 overflow-y-auto px-5 py-4 space-y-2">
+        <div className="mm-scroll flex-1 overflow-y-auto px-3 md:px-5 py-3 md:py-4 space-y-2.5">
           {filter === 'queue' ? (
             queueItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center gap-2">
@@ -1607,33 +1715,35 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
                 const isDone = item.status === 'done';
                 const isError = item.status === 'error';
                 return (
-                  <div key={item.id} className="flex items-start gap-3 p-3 rounded-xl border"
+                  <div key={item.id} className="flex flex-col sm:flex-row sm:items-start gap-3 p-3 rounded-xl border"
                     style={{ borderColor: isError ? 'rgba(239,68,68,0.25)' : isDone ? 'rgba(34,197,94,0.2)' : 'rgba(56,189,248,0.2)', background: isError ? 'rgba(239,68,68,0.04)' : isDone ? 'rgba(34,197,94,0.04)' : 'rgba(56,189,248,0.04)' }}>
-                    <div className="flex -space-x-1.5 shrink-0 pt-0.5">
-                      {item.platforms.slice(0, 3).map((pid, i) => (
-                        <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
-                      ))}
-                      {item.platforms.length > 3 && <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>+{item.platforms.length - 3}</div>}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm text-white/70 line-clamp-2">{item.content || '(No caption)'}</p>
-                      {isError && item.error && <p className="text-xs mt-1" style={{ color: '#fca5a5' }}>{item.error}</p>}
-                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                        <span className="text-xs text-white/25 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {item.addedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                        </span>
-                        {item.scheduleDate && (
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
+                      <div className="flex -space-x-1.5 shrink-0 pt-0.5">
+                        {item.platforms.slice(0, 3).map((pid, i) => (
+                          <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
+                        ))}
+                        {item.platforms.length > 3 && <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>+{item.platforms.length - 3}</div>}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-white/70 line-clamp-3 sm:line-clamp-2">{item.content || '(No caption)'}</p>
+                        {isError && item.error && <p className="text-xs mt-1" style={{ color: '#fca5a5' }}>{item.error}</p>}
+                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                           <span className="text-xs text-white/25 flex items-center gap-1">
-                            Scheduled for {new Date(item.scheduleDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                            <Clock className="w-3 h-3" />
+                            {item.addedAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                           </span>
-                        )}
+                          {item.scheduleDate && (
+                            <span className="text-xs text-white/25 flex items-center gap-1">
+                              Scheduled for {new Date(item.scheduleDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1.5"
+                    <span className="self-start sm:self-auto px-2 py-1 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1.5"
                       style={{ background: isDone ? 'rgba(34,197,94,0.12)' : isError ? 'rgba(239,68,68,0.12)' : 'rgba(56,189,248,0.12)', color: isDone ? '#86efac' : isError ? '#fca5a5' : '#7dd3fc' }}>
                       {isActive && <Loader className="w-3 h-3 animate-spin" />}
-                      {item.status === 'queuing' ? 'Queued' : item.status === 'processing' ? 'Posting…' : isDone ? (item.resolvedStatus === 'scheduled' ? 'Scheduled ✓' : 'Published ✓') : 'Failed'}
+                      {item.status === 'queuing' ? 'Queued' : item.status === 'processing' ? (item.isVideoUpload ? 'Preparing video…' : 'Posting…') : isDone ? (item.resolvedStatus === 'scheduled' ? 'Scheduled ✓' : 'Published ✓') : 'Failed'}
                     </span>
                   </div>
                 );
@@ -1654,56 +1764,60 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
               const retriedResult = retried[post.id];
               const groupPlatforms = post.platforms;
               return (
-                <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border group"
+                <div key={post.id} className="flex flex-col sm:flex-row sm:items-start gap-3 p-3 rounded-xl border group"
                   style={{ borderColor: isFailed ? 'rgba(239,68,68,0.25)' : isScheduled ? `${GOLD}20` : BORDER }}>
-                  <div className="flex -space-x-1.5 shrink-0 pt-0.5">
-                    {groupPlatforms.slice(0, 3).map((pid: string, i: number) => (
-                      <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
-                    ))}
-                    {groupPlatforms.length > 3 && <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>+{groupPlatforms.length - 3}</div>}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    {post.perPlatformContent && Object.keys(post.perPlatformContent).length > 1
-                      ? <div className="space-y-1">
-                          {Object.entries(post.perPlatformContent).map(([pl, cap]) => (
-                            <div key={pl} className="flex gap-1.5 items-start">
-                              <span className="text-[10px] font-bold uppercase shrink-0 mt-0.5 w-16 truncate" style={{ color: GOLD }}>{pl}</span>
-                              <p className="text-sm text-white/70 line-clamp-1 flex-1">{cap || '(No caption)'}</p>
-                            </div>
-                          ))}
-                        </div>
-                      : <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
-                    }
-                    {isFailed && post.error && <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>}
-                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                      <span className="text-xs text-white/25 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
-                        {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
-                      </span>
-                      {post.platformCountLabel && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>{post.platformCountLabel}</span>}
-                      {isFailed && !retriedResult && (
-                        <button onClick={() => handleRetry(post)} disabled={isRetrying} className="text-xs font-bold px-2 py-0.5 rounded-md transition" style={{ background: `${GOLD}20`, color: GOLD_L, opacity: isRetrying ? 0.5 : 1 }}>
-                          {isRetrying ? 'Posting…' : '↺ Retry Now'}
-                        </button>
-                      )}
-                      {retriedResult === 'ok' && <span className="text-xs font-bold" style={{ color: '#86efac' }}>✓ Posted!</span>}
-                      {retriedResult === 'err' && <span className="text-xs font-bold" style={{ color: '#fca5a5' }}>Retry failed</span>}
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <div className="flex -space-x-1.5 shrink-0 pt-0.5">
+                      {groupPlatforms.slice(0, 3).map((pid: string, i: number) => (
+                        <div key={i} className="rounded-full border-2" style={{ borderColor: SURFACE }}><PlatformIcon id={pid} size="sm" /></div>
+                      ))}
+                      {groupPlatforms.length > 3 && <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>+{groupPlatforms.length - 3}</div>}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      {post.perPlatformContent && Object.keys(post.perPlatformContent).length > 1
+                        ? <div className="space-y-1">
+                            {Object.entries(post.perPlatformContent).map(([pl, cap]) => (
+                              <div key={pl} className="flex gap-1.5 items-start">
+                                <span className="text-[10px] font-bold uppercase shrink-0 mt-0.5 w-14 sm:w-16 truncate" style={{ color: GOLD }}>{pl}</span>
+                                <p className="text-sm text-white/70 line-clamp-2 sm:line-clamp-1 flex-1">{cap || '(No caption)'}</p>
+                              </div>
+                            ))}
+                          </div>
+                        : <p className="text-sm text-white/70 line-clamp-3 sm:line-clamp-2">{post.content || '(No caption)'}</p>
+                      }
+                      {isFailed && post.error && <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className="text-xs text-white/25 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {post.scheduledAt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        </span>
+                        {post.platformCountLabel && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>{post.platformCountLabel}</span>}
+                        {isFailed && !retriedResult && (
+                          <button onClick={() => handleRetry(post)} disabled={isRetrying} className="text-xs font-bold px-2 py-0.5 rounded-md transition" style={{ background: `${GOLD}20`, color: GOLD_L, opacity: isRetrying ? 0.5 : 1 }}>
+                            {isRetrying ? 'Posting…' : '↺ Retry Now'}
+                          </button>
+                        )}
+                        {retriedResult === 'ok' && <span className="text-xs font-bold" style={{ color: '#86efac' }}>✓ Posted!</span>}
+                        {retriedResult === 'err' && <span className="text-xs font-bold" style={{ color: '#fca5a5' }}>Retry failed</span>}
+                      </div>
                     </div>
                   </div>
-                  <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0" style={{ background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : isFailed ? 'rgba(239,68,68,0.12)' : `${GOLD}12`, color: post.status === 'published' ? '#86efac' : isFailed ? '#fca5a5' : GOLD_L }}>
-                    {isFailed ? 'Failed' : post.status.charAt(0).toUpperCase() + post.status.slice(1)}
-                  </span>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {isScheduled && (
-                      <button onClick={() => setEditingPost(post as any)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition" style={{ color: GOLD }} title="Edit post">
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {(isScheduled || isFailed) && (
-                      <button onClick={() => handleDelete(post as any)} disabled={isDeleting} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/50 hover:text-red-400 disabled:opacity-40" title="Delete post">
-                        {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                      </button>
-                    )}
+                  <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+                    <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0" style={{ background: post.status === 'published' ? 'rgba(34,197,94,0.12)' : isFailed ? 'rgba(239,68,68,0.12)' : `${GOLD}12`, color: post.status === 'published' ? '#86efac' : isFailed ? '#fca5a5' : GOLD_L }}>
+                      {isFailed ? 'Failed' : post.status.charAt(0).toUpperCase() + post.status.slice(1)}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isScheduled && (
+                        <button onClick={() => setEditingPost(post as any)} className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition" style={{ color: GOLD }} title="Edit post">
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {(isScheduled || isFailed) && (
+                        <button onClick={() => handleDelete(post as any)} disabled={isDeleting} className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/50 hover:text-red-400 disabled:opacity-40" title="Delete post">
+                          {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -2662,26 +2776,22 @@ function InlinePostComposer({
         sourceText = aiDescription;
       }
       const mode = captionMode === 'from_video' ? 'captions_from_video' : 'captions_from_description';
-      let { data: { session: capSession } } = await supabase.auth.getSession();
-      if (!capSession) { const r = await supabase.auth.refreshSession(); capSession = r.data.session; }
-      if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
-      // Proactively refresh token — Safari ITP causes stale sessions
-      { const r = await supabase.auth.refreshSession(); if (r.data.session) capSession = r.data.session; }
+      const capToken = await getToken();
+      if (!capToken) throw new Error('Your session has expired. Please sign out and sign back in.');
       setAiStep('Writing captions…');
       const captionBody = JSON.stringify({ mode, transcript: captionMode === 'from_video' ? sourceText : undefined, description: captionMode !== 'from_video' ? sourceText : undefined, platforms: getSelectedPlatforms(), tone: aiTone });
       let res = await Promise.race<Response>([
         fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` }, body: captionBody,
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capToken}` }, body: captionBody,
         }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
       ]);
       if (res.status === 401) {
-        const r = await supabase.auth.refreshSession();
-        capSession = r.data.session;
-        if (!capSession) throw new Error('Your session has expired. Please sign out and sign back in.');
+        const retryToken = await getToken();
+        if (!retryToken) throw new Error('Your session has expired. Please sign out and sign back in.');
         res = await Promise.race<Response>([
           fetch(`${SUPABASE_URL}/functions/v1/generate-captions`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${capSession.access_token}` }, body: captionBody,
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${retryToken}` }, body: captionBody,
           }),
           new Promise<never>((_, reject) => setTimeout(() => reject(new Error('Generation timed out. Please try again.')), 90000)),
         ]);
@@ -2699,8 +2809,7 @@ function InlinePostComposer({
     if (textAiSelPlatformKeys.length === 0) { setTextAiError('Select at least one account above first.'); return; }
     setTextAiLoading(true); setTextAiError(null); setTextAiPosts(null); setTextAiSelected({}); setTextAiPostStatus({}); setTextAiMultiSelected({});
     try {
-      const { data: { session: freshSession } } = await supabase.auth.refreshSession();
-      const token = freshSession?.access_token || await getToken();
+      const token = await getToken();
       if (!token) throw new Error('Your session has expired. Please sign out and sign back in.');
 
       let source: string;
@@ -2846,6 +2955,8 @@ function InlinePostComposer({
           platforms: string[]; post: string; mediaUrls?: string[]; scheduleDate?: string;
           youTubeTitle?: string; youTubeShorts?: boolean; youTubeVisibility?: string;
           workspaceId?: string | null; thread?: string[]; carousel?: boolean; postGroupId?: string;
+          platformAccountIds?: Record<string, string>;
+          platformTargets?: Array<{ platform: string; accountId?: string }>;
         }) => {
           if (queuedViaCloudflare && resolvedVideoUpload.cfUid) {
             const result = await queueMediaPublish(payload, resolvedVideoUpload.cfUid, resolvedVideoUpload.url, userId);
@@ -2858,24 +2969,57 @@ function InlinePostComposer({
         const postGroupId = generateUUID();
         if (snapPostFormat === 'thread') {
           const validTweets = snapThreadTweets.filter(t => t.trim());
-          const platformIds = snapSelectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
-          await enqueueOrPost({ platforms: platformIds, post: validTweets[0], thread: validTweets.slice(1), mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId });
+          const platformTargets = buildPlatformTargetsFromIntegrationIds(snapSelectedIntegrations, integrations);
+          await enqueueOrPost({
+            platforms: platformTargets.map((target) => target.platform),
+            platformTargets,
+            platformAccountIds: buildPlatformAccountIdsFromTargets(platformTargets),
+            post: validTweets[0],
+            thread: validTweets.slice(1),
+            mediaUrls,
+            scheduleDate: sd,
+            workspaceId: workspaceId ?? null,
+            postGroupId,
+          });
         } else if (captionType === 'manual') {
           if (snapSelectedIntegrations.length === 1) {
-            const platforms = snapSelectedIntegrations.map(id => getIntegrationPlatformId(integrations.find(x => x.id === id))).filter(Boolean);
+            const platformTargets = buildPlatformTargetsFromIntegrationIds(snapSelectedIntegrations, integrations);
+            const platforms = platformTargets.map((target) => target.platform);
             const isYT = platforms.includes('youtube');
             const cap = snapManualCaptions[platforms[0]] || snapContent;
             const isCarousel = snapPostFormat === 'carousel' && mediaUrls.length > 1;
-            await enqueueOrPost({ platforms, post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: snapYouTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), ...(isCarousel ? { carousel: true } : {}), postGroupId });
+            await enqueueOrPost({
+              platforms,
+              platformTargets,
+              platformAccountIds: buildPlatformAccountIdsFromTargets(platformTargets),
+              post: cap,
+              mediaUrls,
+              scheduleDate: sd,
+              workspaceId: workspaceId ?? null,
+              ...(isYT ? { youTubeTitle: snapYouTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}),
+              ...(isCarousel ? { carousel: true } : {}),
+              postGroupId,
+            });
           } else {
             await Promise.all(snapSelectedIntegrations.map(async (integId) => {
               const integ = integrations.find(i => i.id === integId);
               if (!integ) return;
               const platformId = getIntegrationPlatformId(integ);
+              const accountId = getIntegrationAccountId(integ);
               const cap = snapManualCaptions[platformId] || snapContent || '';
               if (!cap) return;
               const isYT = platformId === 'youtube';
-              await enqueueOrPost({ platforms: [platformId], post: cap, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: snapYouTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}), postGroupId });
+              await enqueueOrPost({
+                platforms: [platformId],
+                platformTargets: [{ platform: platformId, ...(accountId ? { accountId } : {}) }],
+                platformAccountIds: accountId ? { [platformId]: accountId } : undefined,
+                post: cap,
+                mediaUrls,
+                scheduleDate: sd,
+                workspaceId: workspaceId ?? null,
+                ...(isYT ? { youTubeTitle: snapYouTubeTitle || cap.slice(0, 100), youTubeShorts: true } : {}),
+                postGroupId,
+              });
             }));
           }
         } else {
@@ -2883,13 +3027,24 @@ function InlinePostComposer({
             const integ = integrations.find(i => i.id === integId);
             if (!integ) return;
             const platformId = getIntegrationPlatformId(integ);
+            const accountId = getIntegrationAccountId(integ);
             const caption = snapGeneratedCaptions![platformId]
               ?? snapGeneratedCaptions![platformId.toLowerCase()]
               ?? Object.values(snapGeneratedCaptions!)[0]
               ?? '';
             if (!caption) return;
             const isYT = platformId === 'youtube';
-            await enqueueOrPost({ platforms: [platformId], post: caption, mediaUrls, scheduleDate: sd, workspaceId: workspaceId ?? null, ...(isYT ? { youTubeTitle: snapYouTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}), postGroupId });
+            await enqueueOrPost({
+              platforms: [platformId],
+              platformTargets: [{ platform: platformId, ...(accountId ? { accountId } : {}) }],
+              platformAccountIds: accountId ? { [platformId]: accountId } : undefined,
+              post: caption,
+              mediaUrls,
+              scheduleDate: sd,
+              workspaceId: workspaceId ?? null,
+              ...(isYT ? { youTubeTitle: snapYouTubeTitle || caption.slice(0, 100), youTubeShorts: true } : {}),
+              postGroupId,
+            });
           }));
         }
 
@@ -2926,7 +3081,9 @@ function InlinePostComposer({
     const sd = isScheduled ? new Date(scheduleDateStr).toISOString() : undefined;
     const allAccounts = selectedTextAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
-      return { platformId: acct?.integ.profile || acct?.integ.id || acct?.platform || '', isLinkedIn: acct?.platform === 'linkedin' };
+      const platform = acct?.platform || '';
+      const accountId = getIntegrationAccountId(acct?.integ);
+      return { platformId: platform, accountId, isLinkedIn: platform === 'linkedin' };
     }).filter(a => a.platformId);
     const snapXText = editingIdx ? aiEditText : xText;
     const snapLinkedinText = editingIdx ? aiEditText : linkedinText;
@@ -2935,17 +3092,46 @@ function InlinePostComposer({
       const postGroupId = generateUUID();
       if (postFormat === 'thread') {
         const validTweets = threadTweets.filter(t => t.trim());
-        await ayrsharePost({ platforms: allAccounts.map(a => a.platformId), post: validTweets[0], thread: validTweets.slice(1), scheduleDate: sd, workspaceId: workspaceId ?? null });
+        const platformTargets = allAccounts.map(({ platformId, accountId }) => ({ platform: platformId, ...(accountId ? { accountId } : {}) }));
+        await ayrsharePost({
+          platforms: platformTargets.map((target) => target.platform),
+          platformTargets,
+          platformAccountIds: buildPlatformAccountIdsFromTargets(platformTargets),
+          post: validTweets[0],
+          thread: validTweets.slice(1),
+          scheduleDate: sd,
+          workspaceId: workspaceId ?? null,
+        });
       } else {
-        const liIds = allAccounts.filter(a => a.isLinkedIn).map(a => a.platformId);
-        const otIds = allAccounts.filter(a => !a.isLinkedIn).map(a => a.platformId);
+        const liTargets = allAccounts.filter(a => a.isLinkedIn).map(({ platformId, accountId }) => ({ platform: platformId, ...(accountId ? { accountId } : {}) }));
+        const otTargets = allAccounts.filter(a => !a.isLinkedIn).map(({ platformId, accountId }) => ({ platform: platformId, ...(accountId ? { accountId } : {}) }));
         const posts: Promise<unknown>[] = [];
-        if (otIds.length > 0 && snapXText.trim()) posts.push(ayrsharePost({ platforms: otIds, post: snapXText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId }));
-        if (liIds.length > 0 && snapLinkedinText.trim()) posts.push(ayrsharePost({ platforms: liIds, post: snapLinkedinText, scheduleDate: sd, workspaceId: workspaceId ?? null, postGroupId }));
+        if (otTargets.length > 0 && snapXText.trim()) {
+          posts.push(ayrsharePost({
+            platforms: otTargets.map((target) => target.platform),
+            platformTargets: otTargets,
+            platformAccountIds: buildPlatformAccountIdsFromTargets(otTargets),
+            post: snapXText,
+            scheduleDate: sd,
+            workspaceId: workspaceId ?? null,
+            postGroupId,
+          }));
+        }
+        if (liTargets.length > 0 && snapLinkedinText.trim()) {
+          posts.push(ayrsharePost({
+            platforms: liTargets.map((target) => target.platform),
+            platformTargets: liTargets,
+            platformAccountIds: buildPlatformAccountIdsFromTargets(liTargets),
+            post: snapLinkedinText,
+            scheduleDate: sd,
+            workspaceId: workspaceId ?? null,
+            postGroupId,
+          }));
+        }
         await Promise.all(posts);
         const statusLabel: 'posted' | 'scheduled' = sd ? 'scheduled' : 'posted';
-        const otPosted = otIds.length > 0 && !!snapXText.trim();
-        const liPosted = liIds.length > 0 && !!snapLinkedinText.trim();
+        const otPosted = otTargets.length > 0 && !!snapXText.trim();
+        const liPosted = liTargets.length > 0 && !!snapLinkedinText.trim();
         setTextAiPostStatus(prev => {
           const next = { ...prev };
           for (const platform of Object.keys(textAiPosts ?? {})) {
@@ -2992,26 +3178,35 @@ function InlinePostComposer({
     setAutoSchedLoading(true); setAutoSchedResult(null); setSubmitError(null);
     const allAccounts = selectedTextAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
-      const platformKey = acct?.integ.profile || acct?.integ.id || acct?.platform || '';
-      return { platformId: platformKey, accountPlatform: acct?.platform || '' };
+      const platform = acct?.platform || '';
+      const accountId = getIntegrationAccountId(acct?.integ);
+      return { platformId: platform, accountId, accountPlatform: platform };
     }).filter(a => a.platformId);
     let scheduled = 0, failed = 0, firstError: string | undefined;
     try {
       for (const [platform, posts] of Object.entries(textAiPosts)) {
         // Match accounts to platform exactly: twitter→x only, threads→threads only, linkedin→linkedin only
-        const pIds = allAccounts.filter(a => {
+        const pTargets = allAccounts.filter(a => {
           if (platform === 'linkedin') return a.accountPlatform === 'linkedin';
           if (platform === 'threads')  return a.accountPlatform === 'threads';
           return a.accountPlatform === 'x';
-        }).map(a => a.platformId);
+        }).map(({ platformId, accountId }) => ({ platform: platformId, ...(accountId ? { accountId } : {}) }));
         const queued = textAiMultiSelected[platform] ?? [];
-        if (pIds.length === 0 || queued.length === 0) continue;
+        if (pTargets.length === 0 || queued.length === 0) continue;
         const orderedIndices = queued;
         const orderedPosts   = orderedIndices.map(i => posts[i]).filter(Boolean);
         const times = spreadScheduleTimes(autoSchedStart, autoSchedEnd, orderedPosts.length);
         for (let i = 0; i < orderedPosts.length; i++) {
           try {
-            await ayrsharePost({ platforms: pIds, post: orderedPosts[i], scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
+            await ayrsharePost({
+              platforms: pTargets.map((target) => target.platform),
+              platformTargets: pTargets,
+              platformAccountIds: buildPlatformAccountIdsFromTargets(pTargets),
+              post: orderedPosts[i],
+              scheduleDate: times[i],
+              workspaceId: workspaceId ?? null,
+              postGroupId: generateUUID(),
+            });
             scheduled++;
             setTextAiPostStatus(prev => ({ ...prev, [platform]: { ...(prev[platform] ?? {}), [orderedIndices[i]]: 'scheduled' } }));
           } catch (e: any) { failed++; if (!firstError) firstError = e?.message || 'Unknown error'; }
@@ -3032,20 +3227,30 @@ function InlinePostComposer({
     });
 
   const handleSavedBatchSchedule = async () => {
-    if (savedBatchSelected.length === 0) { setSavedBatchResult({ scheduled: 0, failed: 0, firstError: 'Select at least one post.' }); return; }
-    if (savedBatchAccounts.length === 0) { setSavedBatchResult({ scheduled: 0, failed: 0, firstError: 'Select at least one account.' }); return; }
-    if (new Date(savedBatchEnd) <= new Date(savedBatchStart)) { setSavedBatchResult({ scheduled: 0, failed: 0, firstError: 'End time must be after start.' }); return; }
+    if (savedBatchSelected.length === 0) { setSavedBatchResult({ scheduled: 0, failed: 1, firstError: 'Select at least one post.' }); return; }
+    if (savedBatchAccounts.length === 0) { setSavedBatchResult({ scheduled: 0, failed: 1, firstError: 'Select at least one account.' }); return; }
+    if (new Date(savedBatchEnd) <= new Date(savedBatchStart)) { setSavedBatchResult({ scheduled: 0, failed: 1, firstError: 'End time must be after start.' }); return; }
     setSavedBatchLoading(true); setSavedBatchResult(null);
     const postsToSchedule = savedBatchSelected.map(id => savedPosts.find(p => p.id === id)).filter(Boolean) as { id: string; text: string; label: string; savedAt: Date }[];
     const times = spreadScheduleTimes(savedBatchStart, savedBatchEnd, postsToSchedule.length);
-    const pIds = savedBatchAccounts.map(id => {
+    const pTargets = savedBatchAccounts.map(id => {
       const acct = textPostAccounts.find(a => a.integ.id === id);
-      return acct?.integ.profile || acct?.integ.id || acct?.platform || '';
-    }).filter(Boolean);
+      const platform = acct?.platform || '';
+      const accountId = getIntegrationAccountId(acct?.integ);
+      return platform ? { platform, ...(accountId ? { accountId } : {}) } : null;
+    }).filter(Boolean) as Array<{ platform: string; accountId?: string }>;
     let scheduled = 0, failed = 0, firstError: string | undefined;
     for (let i = 0; i < postsToSchedule.length; i++) {
       try {
-        await ayrsharePost({ platforms: pIds, post: postsToSchedule[i].text, scheduleDate: times[i], workspaceId: workspaceId ?? null, postGroupId: generateUUID() });
+        await ayrsharePost({
+          platforms: pTargets.map((target) => target.platform),
+          platformTargets: pTargets,
+          platformAccountIds: buildPlatformAccountIdsFromTargets(pTargets),
+          post: postsToSchedule[i].text,
+          scheduleDate: times[i],
+          workspaceId: workspaceId ?? null,
+          postGroupId: generateUUID(),
+        });
         scheduled++;
       } catch (e: any) { failed++; if (!firstError) firstError = e?.message || 'Unknown error'; }
     }
@@ -3991,11 +4196,14 @@ function InlinePostComposer({
                       <div className="flex flex-wrap gap-2">
                         {textPostAccounts.map(({ integ, platform }) => {
                           const sel = savedBatchAccounts.includes(integ.id);
+                          const p = PLATFORMS[platform];
                           return (
                             <button key={integ.id} onClick={() => toggleSavedBatchAccount(integ.id)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition"
-                              style={{ borderColor: sel ? GOLD : BORDER, background: sel ? `${GOLD}18` : 'transparent', color: sel ? GOLD_L : 'rgba(255,255,255,0.4)' }}>
-                              {platform === 'linkedin' ? '💼' : platform === 'threads' ? '🧵' : '𝕏'} {integ.displayName || integ.profile || platform}
+                              className="flex items-center gap-2 px-3 py-2 rounded-xl border font-semibold transition min-h-[42px] max-w-full"
+                              style={{ borderColor: sel ? (p?.color || GOLD) : BORDER, background: sel ? (p?.bg || `${GOLD}15`) : 'transparent', color: sel ? (p?.color || GOLD) : 'rgba(255,255,255,0.4)' }}>
+                              <PlatformIcon id={platform} size="sm" picture={integ.picture} />
+                              <span className="text-xs truncate max-w-[110px]">{integ.displayName || integ.name || integ.profile || platform}</span>
+                              {sel && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
                             </button>
                           );
                         })}
@@ -4034,12 +4242,20 @@ function InlinePostComposer({
 
                   {/* Result */}
                   {savedBatchResult && (
-                    <div className="text-xs font-bold text-center py-1.5 rounded-lg"
-                      style={{ color: savedBatchResult.failed === 0 ? '#4ade80' : '#fbbf24', background: savedBatchResult.failed === 0 ? 'rgba(74,222,128,0.08)' : 'rgba(251,191,36,0.08)' }}>
-                      {savedBatchResult.scheduled} post{savedBatchResult.scheduled !== 1 ? 's' : ''} scheduled
-                      {savedBatchResult.failed > 0 ? ` · ${savedBatchResult.failed} failed` : ' successfully'}
-                      {savedBatchResult.firstError && <div className="text-[10px] font-normal mt-0.5 opacity-80">{savedBatchResult.firstError}</div>}
-                    </div>
+                    (() => {
+                      const isValidationError = savedBatchResult.scheduled === 0 && !!savedBatchResult.firstError;
+                      const isSuccess = savedBatchResult.failed === 0 && !isValidationError;
+                      const color = isSuccess ? '#4ade80' : isValidationError ? '#f87171' : '#fbbf24';
+                      const background = isSuccess ? 'rgba(74,222,128,0.08)' : isValidationError ? 'rgba(248,113,113,0.08)' : 'rgba(251,191,36,0.08)';
+                      return (
+                        <div className="text-xs font-bold text-center py-1.5 px-3 rounded-lg" style={{ color, background }}>
+                          {isValidationError
+                            ? savedBatchResult.firstError
+                            : `${savedBatchResult.scheduled} post${savedBatchResult.scheduled !== 1 ? 's' : ''} scheduled${savedBatchResult.failed > 0 ? ` · ${savedBatchResult.failed} failed` : ' successfully'}`}
+                          {!isValidationError && savedBatchResult.firstError && <div className="text-[10px] font-normal mt-0.5 opacity-80">{savedBatchResult.firstError}</div>}
+                        </div>
+                      );
+                    })()
                   )}
 
                   <button onClick={handleSavedBatchSchedule} disabled={savedBatchLoading}
@@ -5800,7 +6016,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
                         color: isDone ? '#86efac' : isError ? '#fca5a5' : '#c4b5fd',
                       }}>
                       {isActive && <Loader className="w-3 h-3 animate-spin" />}
-                      {item.status === 'queuing' ? 'Queued' : item.status === 'processing' ? 'Uploading…' : isDone ? (item.resolvedStatus === 'scheduled' ? 'Scheduled ✓' : 'Published ✓') : 'Failed'}
+                      {item.status === 'queuing' ? 'Queued' : item.status === 'processing' ? (item.isVideoUpload ? 'Preparing video…' : 'Uploading…') : isDone ? (item.resolvedStatus === 'scheduled' ? 'Scheduled ✓' : 'Published ✓') : 'Failed'}
                     </span>
                   </div>
                 );
@@ -5963,37 +6179,43 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
-        <div className="flex items-center gap-1.5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-4 md:px-8 py-3 md:py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+        <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-start">
           <button onClick={prevBiweek} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <ChevronLeft className="w-4 h-4" />
           </button>
-          <span className="text-sm font-bold text-white w-44 text-center">{rangeLabel}</span>
+          <span className="text-sm font-bold text-white flex-1 sm:flex-none sm:w-44 text-center">{rangeLabel}</span>
           <button onClick={nextBiweek} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
             <ChevronRight className="w-4 h-4" />
           </button>
-          <button onClick={goToday} className="px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition"
+          <button onClick={goToday} className="hidden sm:block px-2 py-1 rounded-lg text-xs font-bold border hover:bg-white/8 transition"
             style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.4)' }}>
             Today
           </button>
           {loading && <Loader className="w-4 h-4 animate-spin text-white/20" />}
         </div>
-        <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
-          style={{ background: GOLD, color: '#000' }}>
-          <Plus className="w-3.5 h-3.5" /><span className="hidden sm:inline">New Post</span>
-        </button>
+        <div className="flex gap-2">
+          <button onClick={goToday} className="sm:hidden flex-1 px-3 py-2 rounded-xl text-xs font-bold border hover:bg-white/8 transition"
+            style={{ borderColor: BORDER, color: 'rgba(255,255,255,0.45)' }}>
+            Today
+          </button>
+          <button onClick={() => { setComposerDate(undefined); setComposerOpen(true); }}
+            className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition hover:brightness-110"
+            style={{ background: GOLD, color: '#000' }}>
+            <Plus className="w-3.5 h-3.5" /><span>New Post</span>
+          </button>
+        </div>
       </div>
 
       {/* Day-of-week headers */}
-      <div className="grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
+      <div className="hidden md:grid grid-cols-7 border-b shrink-0" style={{ borderColor: BORDER }}>
         {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map(d => (
           <div key={d} className="py-2 text-center text-[10px] font-bold text-white/25 uppercase tracking-wider">{d}</div>
         ))}
       </div>
 
       {/* 14-day grid — 7 cols × 2 rows, fills remaining page height */}
-      <div className="flex-1 min-h-0 grid grid-cols-7 grid-rows-2">
+      <div className="flex-1 min-h-0 grid grid-cols-1 md:grid-cols-7 md:grid-rows-2 gap-2 md:gap-0 p-2 md:p-0 overflow-y-auto md:overflow-hidden mm-scroll">
           {days14.map(day => {
             const dateStr   = day.toISOString().split('T')[0];
             const dayPosts  = postsOnDay(day);
@@ -6004,27 +6226,33 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
             const overflow  = dayPosts.length - 3;
 
             return (
-              <div key={dateStr} className="border-r border-b flex flex-col min-h-0 overflow-hidden"
+              <div key={dateStr} className="group border md:border-r md:border-b flex flex-col min-h-[136px] md:min-h-0 overflow-hidden rounded-xl md:rounded-none"
                 style={{ borderColor: BORDER, background: isToday ? `${GOLD}06` : isWeekend ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
                 {/* Day number + add button */}
-                <div className="flex items-center justify-between px-2 pt-2 pb-1">
-                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-black shrink-0"
-                    style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.55)' }}>
-                    {day.getDate()}
+                <div className="flex items-center justify-between px-3 md:px-2 pt-2.5 md:pt-2 pb-1.5 md:pb-1">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 md:w-6 md:h-6 rounded-full flex items-center justify-center text-[12px] md:text-[11px] font-black shrink-0"
+                      style={isToday ? { background: GOLD, color: '#000' } : { color: isWeekend ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.55)' }}>
+                      {day.getDate()}
+                    </div>
+                    <div className="md:hidden min-w-0">
+                      <div className="text-xs font-bold text-white/55">{day.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</div>
+                      <div className="text-[10px] text-white/25">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</div>
+                    </div>
                   </div>
                   <button
                     onClick={() => { setComposerDate(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10, 0)); setComposerOpen(true); }}
-                    className="w-5 h-5 rounded flex items-center justify-center opacity-0 hover:opacity-100 group-hover:opacity-100 hover:bg-white/10 transition text-white/30">
+                    className="w-7 h-7 md:w-5 md:h-5 rounded-lg md:rounded flex items-center justify-center opacity-100 md:opacity-0 hover:opacity-100 group-hover:opacity-100 hover:bg-white/10 transition text-white/30">
                     <Plus className="w-3 h-3" />
                   </button>
                 </div>
 
                 {/* Post cards */}
-                <div className="flex flex-col gap-1 px-1.5 pb-1.5 flex-1 overflow-y-auto mm-scroll">
+                <div className="flex flex-col gap-1.5 md:gap-1 px-2.5 md:px-1.5 pb-2.5 md:pb-1.5 flex-1 overflow-y-auto mm-scroll">
                   {visible.map(post => (
                     <button key={post.id}
                       onClick={() => { setSelectedDate(day); setDayLogOpen(true); }}
-                      className="w-full text-left rounded px-1.5 py-1 transition hover:brightness-110"
+                      className="w-full text-left rounded-lg md:rounded px-2 md:px-1.5 py-1.5 md:py-1 transition hover:brightness-110"
                       style={{ background: STATUS_BG(post.status), border: `1px solid ${STATUS_COLOR(post.status)}25` }}>
                       <div className="flex items-center gap-1.5 mb-0.5">
                         <div className="flex items-center gap-0.5 shrink-0">
@@ -6037,13 +6265,14 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
                           {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                         </span>
                       </div>
-                      <p className="text-[10px] text-white/60 leading-tight line-clamp-2">{post.content || '(No caption)'}</p>
+                      <p className="text-[11px] md:text-[10px] text-white/60 leading-snug md:leading-tight line-clamp-2">{post.content || '(No caption)'}</p>
                     </button>
                   ))}
                   {dayPosts.length === 0 && (
                     <button
                       onClick={() => { setComposerDate(new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10, 0)); setComposerOpen(true); }}
-                      className="flex-1 flex items-center justify-center opacity-0 hover:opacity-100 transition text-white/15 text-xs">
+                      className="flex-1 min-h-[56px] md:min-h-0 flex items-center justify-center opacity-100 md:opacity-0 hover:opacity-100 transition text-white/15 text-xs rounded-lg border border-dashed"
+                      style={{ borderColor: 'rgba(255,255,255,0.08)' }}>
                       <Plus className="w-3 h-3" />
                     </button>
                   )}
@@ -6068,68 +6297,73 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
         return (
           <div className="fixed inset-0 z-[999] flex items-end md:items-center justify-center md:p-4">
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={() => setDayLogOpen(false)} />
-            <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[80vh]"
+            <div className="relative w-full md:max-w-md rounded-t-2xl md:rounded-2xl border overflow-hidden shadow-2xl flex flex-col max-h-[88dvh] md:max-h-[80vh]"
               style={{ background: SURFACE, borderColor: BORDER }}>
-              <div className="flex items-center justify-between px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
+              <div className="flex items-center justify-between gap-3 px-4 md:px-5 py-4 border-b shrink-0" style={{ borderColor: BORDER }}>
                 <div>
                   <div className="text-sm font-black text-white">{dateLabel}</div>
                   <div className="text-xs text-white/35 mt-0.5">{dayPosts.length} post{dayPosts.length !== 1 ? 's' : ''}</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => { setComposerDate(new Date(selectedDate.getFullYear(), selectedDate.getMonth(), selectedDate.getDate(), 10, 0)); setDayLogOpen(false); setComposerOpen(true); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition"
+                    className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 rounded-lg text-xs font-bold hover:brightness-110 transition whitespace-nowrap"
                     style={{ background: GOLD, color: '#000' }}>
-                    <Plus className="w-3 h-3" /> Add Post
+                    <Plus className="w-3 h-3" /><span>Add</span>
                   </button>
                   <button onClick={() => setDayLogOpen(false)} className="w-8 h-8 rounded-lg flex items-center justify-center hover:bg-white/10 text-white/40 hover:text-white transition">
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
-              <div className="mm-scroll flex-1 overflow-y-auto px-5 py-4 space-y-2">
+              <div className="mm-scroll flex-1 overflow-y-auto px-3 md:px-5 py-3 md:py-4 space-y-2.5">
                 {dayPosts.map(post => {
                   const isScheduled = post.status === 'scheduled';
                   const isFailed    = post.status === 'failed' || post.status === 'error';
                   const isDeleting  = deleting[post.id];
                   return (
-                    <div key={post.id} className="flex items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
-                      <div className="flex -space-x-1 shrink-0 pt-0.5">
-                        {post.platforms.slice(0, 3).map((pid, i2) => (
-                          <div key={i2} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
-                            <PlatformIcon id={pid} size="sm" />
-                          </div>
-                        ))}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-white/70 line-clamp-2">{post.content || '(No caption)'}</p>
-                        {isFailed && post.error && <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>}
-                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                          <span className="text-xs text-white/25 flex items-center gap-1">
-                            <Clock className="w-3 h-3" />
-                            {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                          </span>
-                          {(post as any).platformCountLabel && (
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>
-                              {(post as any).platformCountLabel}
+                    <div key={post.id} className="flex flex-col sm:flex-row sm:items-start gap-3 p-3 rounded-xl border" style={{ borderColor: BORDER }}>
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
+                        <div className="flex -space-x-1 shrink-0 pt-0.5">
+                          {post.platforms.slice(0, 3).map((pid, i2) => (
+                            <div key={i2} className="rounded-full border-2" style={{ borderColor: SURFACE }}>
+                              <PlatformIcon id={pid} size="sm" />
+                            </div>
+                          ))}
+                          {post.platforms.length > 3 && <div className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold text-white/40 border-2" style={{ borderColor: SURFACE, background: SURFACE }}>+{post.platforms.length - 3}</div>}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-white/70 line-clamp-3 sm:line-clamp-2">{post.content || '(No caption)'}</p>
+                          {isFailed && post.error && <p className="text-xs mt-1 line-clamp-2" style={{ color: '#fca5a5' }}>{post.error}</p>}
+                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                            <span className="text-xs text-white/25 flex items-center gap-1">
+                              <Clock className="w-3 h-3" />
+                              {post.scheduledAt.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
                             </span>
-                          )}
+                            {(post as any).platformCountLabel && (
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded" style={{ background: `${GOLD}12`, color: GOLD }}>
+                                {(post as any).platformCountLabel}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
-                      <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
-                        style={{ background: STATUS_BG(post.status), color: STATUS_COLOR(post.status) }}>
-                        {STATUS_LABEL(post.status)}
-                      </span>
-                      <div className="flex items-center gap-1 shrink-0">
-                        {isScheduled && (
-                          <button onClick={() => setEditingPost(post as any)} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition" style={{ color: GOLD }} title="Edit post">
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                        {(isScheduled || isFailed) && (
-                          <button onClick={() => handleDelete(post as any)} disabled={isDeleting} className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/50 hover:text-red-400 disabled:opacity-40" title="Delete post">
-                            {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-                          </button>
-                        )}
+                      <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+                        <span className="px-2 py-1 rounded-lg text-xs font-bold shrink-0"
+                          style={{ background: STATUS_BG(post.status), color: STATUS_COLOR(post.status) }}>
+                          {STATUS_LABEL(post.status)}
+                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isScheduled && (
+                            <button onClick={() => setEditingPost(post as any)} className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center hover:bg-white/10 transition" style={{ color: GOLD }} title="Edit post">
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {(isScheduled || isFailed) && (
+                            <button onClick={() => handleDelete(post as any)} disabled={isDeleting} className="w-8 h-8 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center hover:bg-red-500/20 transition text-red-400/50 hover:text-red-400 disabled:opacity-40" title="Delete post">
+                              {isDeleting ? <Loader className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -8951,28 +9185,42 @@ export function MediaDistributionPage() {
   // We poll with retries because Late can take a few seconds to register the connection.
   const pollForChannels = useCallback(async () => {
     if (!currentUserId) return;
+    const expectedPlatform = (() => {
+      try { return normalizePlatformId(localStorage.getItem(LS_SOCIAL_RETURN_PLATFORM_KEY)); }
+      catch { return ''; }
+    })();
+    const hasExpectedPlatform = (channels: PostizIntegration[]) => {
+      if (!expectedPlatform) return channels.length > 0;
+      return channels.some(ch => getIntegrationPlatformId(ch) === expectedPlatform);
+    };
     setIntegrationsLoading(true);
     let found = false;
-    // Attempt 1: immediate (no delay) — catches cases where Late already has the account
+    // Attempt 1: immediate — catches cases where Zernio already has the account.
     try {
-      const channels = await fetchChannels(currentUserId, true);
-      setIntegrations(channels);
-      if (channels.length > 0) found = true;
+      const channels = await fetchChannels(currentUserId, true, activeWorkspaceId);
+      if (activeWorkspaceId) setWorkspaceIntegrations(channels);
+      else setIntegrations(channels);
+      if (hasExpectedPlatform(channels)) found = true;
     } catch { /* keep going */ }
 
-    // If first attempt returned empty, poll with retries
+    // If this user already had other channels, don't stop until the newly
+    // connected platform appears. Zernio can lag for several seconds after OAuth.
     if (!found) {
-      for (let attempt = 0; attempt < 5; attempt++) {
-        await new Promise(r => setTimeout(r, 2500));
+      for (let attempt = 0; attempt < 20; attempt++) {
+        await new Promise(r => setTimeout(r, 3000));
         try {
-          const channels = await fetchChannels(currentUserId, true);
-          setIntegrations(channels);
-          if (channels.length > 0) { found = true; break; }
+          const channels = await fetchChannels(currentUserId, true, activeWorkspaceId);
+          if (activeWorkspaceId) setWorkspaceIntegrations(channels);
+          else setIntegrations(channels);
+          if (hasExpectedPlatform(channels)) { found = true; break; }
         } catch { /* keep polling */ }
       }
     }
+    if (found) {
+      try { localStorage.removeItem(LS_SOCIAL_RETURN_PLATFORM_KEY); } catch {}
+    }
     setIntegrationsLoading(false);
-  }, [currentUserId]);
+  }, [activeWorkspaceId, currentUserId]);
 
   // Load workspace-scoped channels when active workspace changes
   useEffect(() => {
@@ -9042,7 +9290,7 @@ export function MediaDistributionPage() {
   };
 
   const handleDisconnect = () => {
-    try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); } catch {}
+    try { localStorage.removeItem(LS_SOCIAL_RETURN_KEY); localStorage.removeItem(LS_SOCIAL_RETURN_PLATFORM_KEY); } catch {}
     setIntegrations([]);
     setOauthError(null);
   };
@@ -9728,8 +9976,8 @@ export function MediaDistributionPage() {
             <div className="md:hidden px-4 py-4 space-y-3">
               {([
                 {key:"starter",name:"Creator",price:"$47",highlight:false,features:["30 posts/mo","15 AI captions/mo","3 social accounts","60s AI video/mo","Content calendar"],trialEligible:true},
-                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 media posts/mo","200 text posts/mo","100 AI captions/mo","All social accounts","180s AI video/mo","Content repurposing","4 Content Strategies/mo"],trialEligible:true},
-                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited media posts","Unlimited text posts","Unlimited AI captions","All social accounts","540s AI video/mo","Everything in Viral","Unlimited Content Strategies","3 client workspaces included","Priority support + call"],trialEligible:false},
+                {key:"viral",name:"Viral",price:"$97",highlight:true,features:["100 media posts/mo","200 text posts/mo","100 AI captions/mo","All social accounts","120s AI video/mo","Content repurposing","4 Content Strategies/mo"],trialEligible:true},
+                {key:"agency",name:"Agency",price:"$297",highlight:false,features:["Unlimited media posts","Unlimited text posts","Unlimited AI captions","All social accounts","240s AI video/mo","Everything in Viral","Unlimited Content Strategies","3 client workspaces included","Priority support + call"],trialEligible:false},
               ] as const).map(plan=>{
                 const isCurrent=_pricingIsActive&&subscription?.plan===plan.key;
                 const isTrialingThis=_pricingIsTrialing&&subscription?.plan===plan.key;
@@ -9810,7 +10058,7 @@ export function MediaDistributionPage() {
                 ["Scheduled Media Posts",["30","100","Unlimited"]],
                 ["Text Posts / mo",["60","200","Unlimited"]],
                 ["Social Media Accounts",["3","All","All"]],
-                ["AI Video / mo",["60s","180s","540s"]],
+                ["AI Video / mo",["60s","120s","240s"]],
                 ["Content Repurposing",[false,true,true]],
                 ["AI Strategist / mo",["—","4","Unlimited"]],
                 ["Client Workspaces",["—","—","3 (+$49/mo ea)"]],
