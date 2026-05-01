@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { publishSocialPost } from '../_shared/publish-social.ts';
 
 const CORS = ['https://infinitewealthsolutionsai.com', 'https://www.infinitewealthsolutionsai.com'];
-const ANTHROPIC_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
+const OPENAI_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
 const TAVILY_KEY = Deno.env.get('TAVILY_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -446,18 +446,16 @@ Return ONLY the JSON object with keys for each requested platform, each containi
 
   let res: Response;
   try {
-    res = await fetch('https://api.anthropic.com/v1/messages', {
+    res = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': '2023-06-01',
+        'Authorization': 'Bearer ' + OPENAI_KEY,
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'gpt-4.1',
         max_tokens: 8000,
-        system: SYS,
-        messages: [{ role: 'user', content: userMsg }],
+        messages: [{ role: 'system', content: SYS }, { role: 'user', content: userMsg }],
       }),
       signal: controller.signal,
     });
@@ -465,9 +463,9 @@ Return ONLY the JSON object with keys for each requested platform, each containi
     clearTimeout(timeout);
   }
 
-  if (!res.ok) throw new Error('Claude API error: ' + await res.text());
+  if (!res.ok) throw new Error('OpenAI API error: ' + await res.text());
   const data = await res.json();
-  const raw = (data.content?.[0]?.text ?? '').trim()
+  const raw = (data.choices?.[0]?.message?.content ?? '').trim()
     .replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').replace(/—/g, '-').trim();
 
   // Extract the JSON object robustly

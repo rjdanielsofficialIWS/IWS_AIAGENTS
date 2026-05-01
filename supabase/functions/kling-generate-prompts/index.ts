@@ -13,7 +13,7 @@ function getCorsHeaders(origin: string | null | undefined) {
 
 const SUPABASE_URL          = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_KEY  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const ANTHROPIC_KEY         = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
+const OPENAI_KEY            = Deno.env.get('OPENAI_API_KEY') ?? '';
 
 // ─── NEGATIVE PROMPTS ────────────────────────────────────────────────────────
 // Style-specific negatives optimised for Seedance 2.0 on fal.ai
@@ -344,38 +344,36 @@ async function enhanceBrief(
 
   type ContentBlock =
     | { type: 'text'; text: string }
-    | { type: 'image'; source: { type: 'base64'; media_type: ImageMediaType; data: string } };
+    | { type: 'image_url'; image_url: { url: string } };
 
   const content: ContentBlock[] = [];
 
   if (startFrameBase64 && startFrameMediaType) {
     content.push({ type: 'text', text: '--- START FRAME IMAGE (opening visual state) ---' });
-    content.push({ type: 'image', source: { type: 'base64', media_type: startFrameMediaType, data: startFrameBase64 } });
+    content.push({ type: 'image_url', image_url: { url: `data:${startFrameMediaType};base64,${startFrameBase64}` } });
   }
   if (endFrameBase64 && endFrameMediaType) {
     content.push({ type: 'text', text: '--- END FRAME IMAGE (closing visual state) ---' });
-    content.push({ type: 'image', source: { type: 'base64', media_type: endFrameMediaType, data: endFrameBase64 } });
+    content.push({ type: 'image_url', image_url: { url: `data:${endFrameMediaType};base64,${endFrameBase64}` } });
   }
 
   content.push({ type: 'text', text: textInstruction });
 
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
+  const r = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-key': ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
+      'Authorization': 'Bearer ' + OPENAI_KEY,
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-6',
+      model: 'gpt-4.1',
       max_tokens: 650,
-      system: systemPrompt,
-      messages: [{ role: 'user', content }],
+      messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content }],
     }),
   });
-  if (!r.ok) throw new Error('Claude enhancement error: ' + await r.text());
+  if (!r.ok) throw new Error('OpenAI enhancement error: ' + await r.text());
   const d = await r.json();
-  const claudeOutput = (d.content?.[0]?.text ?? brief).trim();
+  const claudeOutput = (d.choices?.[0]?.message?.content ?? brief).trim();
   if (customInstructions?.trim()) {
     return `${claudeOutput} ${customInstructions.trim()}`;
   }
@@ -441,7 +439,7 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  if (!ANTHROPIC_KEY) {
+  if (!OPENAI_KEY) {
     return new Response(JSON.stringify({ error: 'Server configuration error' }), {
       status: 500, headers: { ...cors, 'Content-Type': 'application/json' },
     });

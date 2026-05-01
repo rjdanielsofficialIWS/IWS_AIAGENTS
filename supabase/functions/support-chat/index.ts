@@ -74,49 +74,64 @@ Deno.serve(async (req) => {
     const messages: { role: string; content: string }[] = body.messages ?? [];
     if (!messages.length) return json({ error: "messages required" }, 400, cors);
 
-    const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
-    if (!ANTHROPIC_KEY) throw new Error("ANTHROPIC_API_KEY not configured");
+    const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY") ?? "";
+    if (!OPENAI_KEY) throw new Error("OPENAI_API_KEY not configured");
 
     const TELEGRAM_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN") ?? "";
     const TELEGRAM_CHAT_ID = Deno.env.get("TELEGRAM_CHAT_ID") ?? "";
 
     const tools = [
       {
-        name: "get_account_info",
-        description: "Get the user's subscription plan, status, and billing details",
-        input_schema: { type: "object", properties: {}, required: [] },
-      },
-      {
-        name: "get_usage_stats",
-        description: "Get the user's current month usage vs their plan limits for posts, AI captions, and video seconds",
-        input_schema: { type: "object", properties: {}, required: [] },
-      },
-      {
-        name: "get_recent_posts",
-        description: "Get the user's most recent scheduled posts, their publish status, platforms, and any error messages",
-        input_schema: {
-          type: "object",
-          properties: {
-            limit: { type: "number", description: "How many posts to fetch (default 10, max 20)" },
-          },
-          required: [],
+        type: "function",
+        function: {
+          name: "get_account_info",
+          description: "Get the user's subscription plan, status, and billing details",
+          parameters: { type: "object", properties: {}, required: [] },
         },
       },
       {
-        name: "get_connected_integrations",
-        description: "Get which social media accounts and workspaces the user has connected",
-        input_schema: { type: "object", properties: {}, required: [] },
+        type: "function",
+        function: {
+          name: "get_usage_stats",
+          description: "Get the user's current month usage vs their plan limits for posts, AI captions, and video seconds",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
       },
       {
-        name: "escalate_to_support",
-        description: "Escalate to the human support team via Telegram. Use when: the issue requires a refund, manual plan change, or server-side fix you cannot perform; you have tried to resolve it and failed; or the user is clearly frustrated and needs a human.",
-        input_schema: {
-          type: "object",
-          properties: {
-            summary: { type: "string", description: "Clear description of the issue and what was already attempted" },
-            urgency: { type: "string", enum: ["low", "medium", "high"] },
+        type: "function",
+        function: {
+          name: "get_recent_posts",
+          description: "Get the user's most recent scheduled posts, their publish status, platforms, and any error messages",
+          parameters: {
+            type: "object",
+            properties: {
+              limit: { type: "number", description: "How many posts to fetch (default 10, max 20)" },
+            },
+            required: [],
           },
-          required: ["summary", "urgency"],
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "get_connected_integrations",
+          description: "Get which social media accounts and workspaces the user has connected",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
+      },
+      {
+        type: "function",
+        function: {
+          name: "escalate_to_support",
+          description: "Escalate to the human support team via Telegram. Use when: the issue requires a refund, manual plan change, or server-side fix you cannot perform; you have tried to resolve it and failed; or the user is clearly frustrated and needs a human.",
+          parameters: {
+            type: "object",
+            properties: {
+              summary: { type: "string", description: "Clear description of the issue and what was already attempted" },
+              urgency: { type: "string", enum: ["low", "medium", "high"] },
+            },
+            required: ["summary", "urgency"],
+          },
         },
       },
     ];
@@ -151,39 +166,40 @@ Approach:
     let finalReply = "";
 
     for (let round = 0; round < 6; round++) {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const res = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": ANTHROPIC_KEY,
-          "anthropic-version": "2023-06-01",
+          "Authorization": "Bearer " + OPENAI_KEY,
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-6",
+          model: "gpt-4.1",
           max_tokens: 1024,
-          system: systemPrompt,
-          messages: claudeMessages,
+          messages: [{ role: "system", content: systemPrompt }, ...claudeMessages],
           tools,
+          tool_choice: "auto",
         }),
       });
 
-      if (!res.ok) throw new Error("Claude API error: " + await res.text());
+      if (!res.ok) throw new Error("OpenAI API error: " + await res.text());
       const data = await res.json();
+      const choice = data.choices?.[0];
 
-      if (data.stop_reason === "end_turn") {
-        finalReply = data.content.find((b: any) => b.type === "text")?.text ?? "";
+      if (choice?.finish_reason === "stop") {
+        finalReply = choice.message?.content ?? "";
         break;
       }
 
-      if (data.stop_reason === "tool_use") {
-        claudeMessages.push({ role: "assistant", content: data.content });
+      if (choice?.finish_reason === "tool_calls") {
+        claudeMessages.push(choice.message);
         const toolResults: any[] = [];
 
-        for (const block of data.content) {
-          if (block.type !== "tool_use") continue;
+        for (const toolCall of choice.message.tool_calls ?? []) {
+          const blockName = toolCall.function.name;
+          const blockInput = JSON.parse(toolCall.function.arguments || "{}");
           let result: unknown;
 
-          if (block.name === "get_account_info") {
+          if (blockName === "get_account_info") {
             result = {
               plan,
               status: sub?.status,
@@ -192,7 +208,7 @@ Approach:
               trialEndsAt: sub?.current_period_end ?? null,
               email: user.email,
             };
-          } else if (block.name === "get_usage_stats") {
+          } else if (blockName === "get_usage_stats") {
             const period = getPeriod();
             const { data: u } = await supabase
               .from("usage_tracking")
@@ -218,8 +234,8 @@ Approach:
                 video_seconds: limits.video_seconds + (u?.video_seconds_bonus ?? 0),
               },
             };
-          } else if (block.name === "get_recent_posts") {
-            const limit = Math.min(Number(block.input?.limit) || 10, 20);
+          } else if (blockName === "get_recent_posts") {
+            const limit = Math.min(Number(blockInput?.limit) || 10, 20);
             const { data: posts } = await supabase
               .from("scheduled_posts")
               .select("id,created_at,platforms,status,error,ayrshare_post_id")
@@ -227,7 +243,7 @@ Approach:
               .order("created_at", { ascending: false })
               .limit(limit);
             result = posts ?? [];
-          } else if (block.name === "get_connected_integrations") {
+          } else if (blockName === "get_connected_integrations") {
             const { data: profiles } = await supabase
               .from("ayrshare_profiles")
               .select("profile_key,cached_channels")
@@ -237,7 +253,7 @@ Approach:
               .select("id,profile_key,cached_channels,assigned_channel_ids")
               .eq("owner_user_id", user.id);
             result = { personal_profile: profiles?.[0] ?? null, workspaces: workspaces ?? [] };
-          } else if (block.name === "escalate_to_support") {
+          } else if (blockName === "escalate_to_support") {
             escalated = true;
             if (TELEGRAM_TOKEN && TELEGRAM_CHAT_ID) {
               const convo = messages
@@ -247,8 +263,8 @@ Approach:
                 `🆘 SUPPORT ESCALATION — Infinite Media\n\n` +
                 `👤 ${user.email}\n` +
                 `📋 Plan: ${planLabel}\n` +
-                `🚨 Urgency: ${(block.input.urgency as string).toUpperCase()}\n\n` +
-                `📝 Issue:\n${block.input.summary}\n\n` +
+                `🚨 Urgency: ${(blockInput.urgency as string).toUpperCase()}\n\n` +
+                `📝 Issue:\n${blockInput.summary}\n\n` +
                 `💬 Conversation:\n${convo}\n\n` +
                 `⏰ ${new Date().toLocaleString()}`;
               await sendTelegram(TELEGRAM_TOKEN, TELEGRAM_CHAT_ID, msg);
@@ -257,13 +273,13 @@ Approach:
           }
 
           toolResults.push({
-            type: "tool_result",
-            tool_use_id: block.id,
+            role: "tool",
+            tool_call_id: toolCall.id,
             content: JSON.stringify(result),
           });
         }
 
-        claudeMessages.push({ role: "user", content: toolResults });
+        claudeMessages.push(...toolResults);
       }
     }
 

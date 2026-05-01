@@ -20,7 +20,7 @@ const corsFor = (req: Request) => {
   };
 };
 
-const ANTHROPIC_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const OPENAI_KEY = Deno.env.get("OPENAI_API_KEY");
 const TAVILY_KEY = Deno.env.get("TAVILY_API_KEY");
 const CURRENT_DATE = new Date().toISOString().slice(0, 10);
 
@@ -109,23 +109,21 @@ async function fetchTrendIntel(niche: string, platformList: string): Promise<str
 }
 
 async function callClaude(system: string, user: string, maxTokens = 4000): Promise<string> {
-  const r = await fetch("https://api.anthropic.com/v1/messages", {
+  const r = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-api-key": ANTHROPIC_KEY!,
-      "anthropic-version": "2023-06-01",
+      "Authorization": "Bearer " + OPENAI_KEY,
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "gpt-4.1",
       max_tokens: maxTokens,
-      system,
-      messages: [{ role: "user", content: user }],
+      messages: [{ role: "system", content: system }, { role: "user", content: user }],
     }),
   });
-  if (!r.ok) throw new Error("Claude error: " + await r.text());
+  if (!r.ok) throw new Error("OpenAI error: " + await r.text());
   const d = await r.json();
-  return (d.content?.[0]?.text || "{}").replace(/```json|```/g, "").replace(/—/g, "-").trim();
+  return (d.choices?.[0]?.message?.content || "{}").replace(/```json|```/g, "").replace(/—/g, "-").trim();
 }
 
 function stripFences(s: string): string {
@@ -225,7 +223,7 @@ Deno.serve(async (req: Request) => {
   };
   const pf = PLAN_FEATURES[plan] ?? PLAN_FEATURES.free;
 
-  if (!ANTHROPIC_KEY) return json({ error: "Server configuration error" }, 500);
+  if (!OPENAI_KEY) return json({ error: "Server configuration error" }, 500);
 
   let body: any;
   try { body = await req.json(); } catch { return json({ error: "Invalid JSON" }, 400); }
