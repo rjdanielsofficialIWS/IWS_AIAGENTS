@@ -28,10 +28,13 @@ function toApiName(platform: string): string {
   return platform === "x" ? "twitter" : platform;
 }
 
-// Zernio account IDs are MongoDB ObjectIds — 24 hex chars.
-// Platform names ("x", "twitter", etc.) are not valid account IDs.
-function isValidAccountId(id: string): boolean {
-  return /^[a-f0-9]{24}$/i.test(id);
+function extractAccountId(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return extractAccountId(record.accountId ?? record._id ?? record.id);
+  }
+  return "";
 }
 
 function isVideoUrl(url: string): boolean {
@@ -90,13 +93,68 @@ function sanitizeForYoutube(s: string): string {
   return s.replace(/[<>]/g, "").trim();
 }
 
+// Zernio rejects a post when the exact same content is already scheduled,
+// publishing, or was posted to that account within the last 24 hours. This is a
+// benign duplicate (the content is already queued on the account), not a real
+// failure — so we detect it and surface it as a duplicate success instead of a
+// hard error. Common triggers: edit/reschedule races against Zernio's async
+// cancel, and the per-account global-scope retry below.
+function isDuplicateContentError(msg: unknown): boolean {
+  return /already (scheduled|publishing|posted)|within the last 24 hours/i.test(String(msg ?? ""));
+}
+
 function getYoutubeTitle(content: string): string {
   const firstLine = sanitizeForYoutube(content.split("\n")[0] || "");
   return firstLine.slice(0, 100) || "Video";
 }
 
+async function fetchLiveAccountsForProfile(profileId: string) {
+  const response = await fetch(`${LATE_API_URL}/accounts?profileId=${encodeURIComponent(profileId)}`, {
+    headers: { Authorization: `Bearer ${LATE_API_KEY}` },
+  });
+  if (!response.ok) throw new Error(`Failed to fetch connected accounts (${response.status})`);
+  const data = await response.json().catch(() => ({}));
+  return Array.isArray(data?.accounts) ? data.accounts as Array<Record<string, unknown>> : [];
+}
+
+function buildLiveAccountsByPlatform(accounts: Array<Record<string, unknown>>) {
+  const byPlatform = new Map<string, Array<Record<string, unknown>>>();
+  for (const account of accounts) {
+    const platform = normalizePlatformId(account.platform);
+    const accountId = extractAccountId(account);
+    if (!platform || !accountId) continue;
+    if (account.isActive === false) continue;
+    if (!byPlatform.has(platform)) byPlatform.set(platform, []);
+    byPlatform.get(platform)!.push(account);
+  }
+  return byPlatform;
+}
+
+function pickLiveAccountIdForPlatform(
+  platform: string,
+  liveAccountsByPlatform: Map<string, Array<Record<string, unknown>>>,
+  candidateIds: string[],
+): string {
+  const liveAccounts = liveAccountsByPlatform.get(normalizePlatformId(platform)) ?? [];
+  if (liveAccounts.length === 0) return "";
+
+  const liveIds = new Set(liveAccounts.map((account) => extractAccountId(account)).filter(Boolean));
+  const verifiedCandidate = candidateIds.find((id) => liveIds.has(id));
+  if (verifiedCandidate) return verifiedCandidate;
+
+  const defaultAccount = liveAccounts.find((account) => account.isDefault === true);
+  if (defaultAccount) {
+    const defaultId = extractAccountId(defaultAccount);
+    if (defaultId) return defaultId;
+  }
+
+  if (liveAccounts.length === 1) return extractAccountId(liveAccounts[0]);
+  return "";
+}
+
 export type PublishPayload = {
   platforms?: string[];
+  platformTargets?: Array<{ platform?: string; accountId?: string }>;
   post?: string;
   mediaUrls?: string[];
   scheduleDate?: string;
@@ -161,7 +219,18 @@ export async function publishSocialPost({
   const rawPlatforms = Array.isArray(payload.platforms)
     ? payload.platforms.map(normalizePlatformId).filter(Boolean)
     : [];
-  const cleanPlatforms = rawPlatforms.map(toApiName);
+  const explicitTargets = Array.isArray(payload.platformTargets)
+    ? payload.platformTargets
+      .map((target) => ({
+        raw: normalizePlatformId(target?.platform),
+        accountId: extractAccountId(target?.accountId),
+      }))
+      .filter((target) => !!target.raw)
+    : [];
+  const selectedTargets = explicitTargets.length > 0
+    ? explicitTargets
+    : rawPlatforms.map((raw) => ({ raw, accountId: "" }));
+  const cleanPlatforms = selectedTargets.map((target) => toApiName(target.raw));
   const post = typeof payload.post === "string" ? payload.post : "";
   const mediaUrls = Array.isArray(payload.mediaUrls) ? payload.mediaUrls.filter((u): u is string => typeof u === "string" && u.length > 0) : [];
   let resolvedMediaUrls: string[];
@@ -235,35 +304,95 @@ export async function publishSocialPost({
   }
 
   const callerAccountIds = payload.platformAccountIds ?? {};
-  const mappedPlatforms = rawPlatforms.map((raw) => {
-    const api = toApiName(raw);
-    // Prefer caller-supplied accountId (direct from frontend integration list) so
-    // we never depend on cached_channels being fresh or correctly formatted.
-    const callerAccountId = callerAccountIds[raw] || callerAccountIds[api] || "";
-    const channel = callerAccountId ? undefined : cachedChannels.find((ch) =>
-      normalizePlatformId(ch.id) === raw ||
-      normalizePlatformId(ch.profile) === raw ||
-      normalizePlatformId(ch.platform) === raw ||
-      normalizePlatformId(ch.id) === api ||
-      normalizePlatformId(ch.profile) === api ||
-      normalizePlatformId(ch.platform) === api
-    );
-    const resolvedId = callerAccountId || channel?.accountId || channel?.id || "";
-    const accountId = isValidAccountId(resolvedId) ? resolvedId : "";
-    console.log(`[publish-social] platform=${raw} api=${api} resolvedId=${resolvedId} validAccountId=${accountId}`);
-    const entry: Record<string, unknown> = { platform: api };
-    if (accountId) entry.accountId = accountId;
-    if (api === "youtube") {
-      entry.platformSpecificData = {
-        title: getYoutubeTitle(post),
-        description: sanitizeForYoutube(post),
+  async function publishWithScope(scopeProfileKey: string, scopeCachedChannels: Array<{ id?: string; profile?: string; platform?: string; accountId?: string }>) {
+    const liveAccounts = scopeProfileKey ? await fetchLiveAccountsForProfile(scopeProfileKey).catch((error) => {
+      console.warn("[publish-social] live account fetch failed", error instanceof Error ? error.message : error);
+      return [] as Array<Record<string, unknown>>;
+    }) : [];
+    const liveAccountsByPlatform = buildLiveAccountsByPlatform(liveAccounts);
+    const mappedPlatforms = selectedTargets.map(({ raw, accountId: explicitAccountId }) => {
+      const api = toApiName(raw);
+      const channel = scopeCachedChannels.find((ch) =>
+        normalizePlatformId(ch.id) === raw ||
+        normalizePlatformId(ch.profile) === raw ||
+        normalizePlatformId(ch.platform) === raw ||
+        normalizePlatformId(ch.id) === api ||
+        normalizePlatformId(ch.profile) === api ||
+        normalizePlatformId(ch.platform) === api
+      );
+      const candidateIds = [
+        extractAccountId(explicitAccountId),
+        extractAccountId(callerAccountIds[raw]),
+        extractAccountId(callerAccountIds[api]),
+        extractAccountId(channel?.accountId),
+        extractAccountId(channel?.id),
+      ].filter((id): id is string => !!id);
+      const accountId = pickLiveAccountIdForPlatform(api, liveAccountsByPlatform, candidateIds);
+      console.log(`[publish-social] scope=${scopeProfileKey ? "scoped" : "global"} platform=${raw} api=${api} candidates=${candidateIds.length} liveCount=${(liveAccountsByPlatform.get(normalizePlatformId(api)) ?? []).length} picked=${accountId ? "yes" : "no"}`);
+      const entry: Record<string, unknown> = { platform: api };
+      if (accountId) entry.accountId = accountId;
+      if (api === "youtube") {
+        entry.platformSpecificData = {
+          title: getYoutubeTitle(post),
+          description: sanitizeForYoutube(post),
+        };
+      }
+      return entry;
+    }).filter(Boolean);
+
+    if (mappedPlatforms.length === 0) {
+      return { ok: false as const, status: 400, error: "No connected accounts for selected platforms." };
+    }
+    const missingAccountPlatforms = mappedPlatforms
+      .filter((platform) => !platform.accountId)
+      .map((platform) => String(platform.platform || ""));
+    if (missingAccountPlatforms.length > 0) {
+      const missingLabels = missingAccountPlatforms.map((platform) => platform === "twitter" ? "X/Twitter" : platform).join(", ");
+      return {
+        ok: false as const,
+        status: 400,
+        error: `No active connected account for: ${missingLabels}.`,
+        hint: "Reconnect the affected social account, then refresh the page and try again.",
       };
     }
-    return entry;
-  }).filter(Boolean);
 
-  if (mappedPlatforms.length === 0) {
-    return { ok: false as const, status: 400, error: "No connected accounts for selected platforms." };
+    let requestBody: Record<string, unknown>;
+    if (threadPosts.length > 0) {
+      const firstItem: Record<string, unknown> = { content: post };
+      if (resolvedMediaUrls.length > 0) {
+        firstItem.mediaItems = resolvedMediaUrls.map((url) => ({ type: isVideoUrl(url) ? "video" : "image", url }));
+      }
+      const threadItems = [firstItem, ...threadPosts.map((content) => ({ content }))];
+      requestBody = {
+        content: post,
+        platforms: mappedPlatforms.map((platform: any) => ({
+          ...platform,
+          platformSpecificData: { threadItems },
+        })),
+      };
+    } else {
+      requestBody = { content: post, platforms: mappedPlatforms };
+      if (resolvedMediaUrls.length > 0) {
+        requestBody.mediaItems = resolvedMediaUrls.map((url) => ({
+          type: isCarousel ? "image" : (isVideoUrl(url) ? "video" : "image"),
+          url,
+        }));
+      }
+    }
+
+    if (scheduleDate) requestBody.scheduledFor = new Date(scheduleDate).toISOString();
+    else requestBody.publishNow = true;
+
+    const lateRes = await fetch(`${LATE_API_URL}/posts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${LATE_API_KEY}` },
+      body: JSON.stringify(requestBody),
+      redirect: "follow",
+    });
+    const result = await lateRes.json().catch(() => ({}));
+    const isError = !lateRes.ok;
+    const errorMsg = isError ? (result.message || result.error || `API error ${lateRes.status}`) : null;
+    return { ok: !isError, status: lateRes.status, result, errorMsg, requestBody, mappedPlatforms, profileKey: scopeProfileKey };
   }
 
   // Idempotency guard: if identical content is already scheduled/published for this user
@@ -289,55 +418,66 @@ export async function publishSocialPost({
     } else {
       dedupQ = (dedupQ as any).is("workspace_id", null);
     }
+    // Only suppress true duplicate submissions for the same target platform(s).
+    // Multi-account scheduling can intentionally create one request per platform
+    // with identical content and scheduled_at. Without this overlap filter, the
+    // first platform succeeds and every subsequent platform is silently reported
+    // as a duplicate success without being scheduled.
+    dedupQ = (dedupQ as any).overlaps("platforms", selectedTargets.map((target) => target.raw));
     const { data: existing } = await (dedupQ as any).maybeSingle();
     if (existing) {
       return { ok: true as const, status: 200, result: {}, postId: null, profileKey, duplicate: true };
     }
   }
 
-  let requestBody: Record<string, unknown>;
-  if (threadPosts.length > 0) {
-    const firstItem: Record<string, unknown> = { content: post };
-    if (resolvedMediaUrls.length > 0) {
-      firstItem.mediaItems = resolvedMediaUrls.map((url) => ({ type: isVideoUrl(url) ? "video" : "image", url }));
-    }
-    const threadItems = [firstItem, ...threadPosts.map((content) => ({ content }))];
-    requestBody = {
-      content: post,
-      platforms: mappedPlatforms.map((platform: any) => ({
-        ...platform,
-        platformSpecificData: { threadItems },
-      })),
-    };
-  } else {
-    requestBody = { content: post, platforms: mappedPlatforms };
-    if (resolvedMediaUrls.length > 0) {
-      requestBody.mediaItems = resolvedMediaUrls.map((url) => ({
-        type: isCarousel ? "image" : (isVideoUrl(url) ? "video" : "image"),
-        url,
-      }));
+  const primaryScope = { profileKey, cachedChannels };
+  const globalScope = await supabase
+    .from("ayrshare_profiles")
+    .select("profile_key,cached_channels")
+    .eq("supabase_user_id", userId)
+    .maybeSingle()
+    .then(({ data }) => ({
+      profileKey: data?.profile_key ? String(data.profile_key) : "",
+      cachedChannels: Array.isArray(data?.cached_channels) ? data.cached_channels : [],
+    }))
+    .catch(() => ({ profileKey: "", cachedChannels: [] as Array<{ id?: string; profile?: string; platform?: string; accountId?: string }> }));
+
+  let attempt = await publishWithScope(primaryScope.profileKey, primaryScope.cachedChannels);
+  const shouldRetryWithGlobal = !!globalScope.profileKey &&
+    globalScope.profileKey !== primaryScope.profileKey &&
+    (!attempt.ok) &&
+    // Never retry on a duplicate-content rejection — re-sending the same content
+    // to the same account only trips Zernio's 24h dedup guard again.
+    !isDuplicateContentError(attempt.errorMsg) &&
+    /belong to this user|account|unauthori|profile|not found|API error 500/i.test(String(attempt.errorMsg || ""));
+  if (shouldRetryWithGlobal) {
+    const retry = await publishWithScope(globalScope.profileKey, globalScope.cachedChannels);
+    if (retry.ok || !attempt.ok) {
+      attempt = retry.ok ? retry : attempt;
     }
   }
 
-  if (scheduleDate) requestBody.scheduledFor = new Date(scheduleDate).toISOString();
-  else requestBody.publishNow = true;
+  if (!attempt.ok && !("result" in attempt)) {
+    return attempt;
+  }
 
-  const lateRes = await fetch(`${LATE_API_URL}/posts?profileId=${profileKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${LATE_API_KEY}` },
-    body: JSON.stringify(requestBody),
-    redirect: "follow",
-  });
-  const result = await lateRes.json().catch(() => ({}));
-  const isError = !lateRes.ok;
-  const errorMsg = isError ? (result.message || result.error || `API error ${lateRes.status}`) : null;
+  const { result, errorMsg, requestBody } = attempt;
+  const isError = !attempt.ok;
+
+  // Zernio's per-account 24h duplicate guard means the content is already queued
+  // on this account. Treat it as a benign duplicate (same as the local idempotency
+  // guard above) rather than a hard error, so it doesn't surface as a failed post.
+  // No row is inserted and usage is not incremented — nothing new was scheduled.
+  if (isError && isDuplicateContentError(errorMsg)) {
+    return { ok: true as const, status: 200, result: {}, postId: null, profileKey: attempt.profileKey || profileKey, duplicate: true };
+  }
 
   try {
     await supabase.from("scheduled_posts").insert({
       supabase_user_id: userId,
-      profile_key: profileKey,
+      profile_key: attempt.profileKey || profileKey,
       ayrshare_post_id: result.post?._id ?? result._id ?? result.id ?? null,
-      platforms: rawPlatforms,
+      platforms: selectedTargets.map((target) => target.raw),
       content: post,
       media_urls: resolvedMediaUrls,
       scheduled_at: scheduleDate ? new Date(scheduleDate).toISOString() : new Date().toISOString(),
@@ -351,8 +491,8 @@ export async function publishSocialPost({
   }
 
   if (isError) {
-    console.error("API error:", lateRes.status, JSON.stringify(result), "sent:", JSON.stringify(requestBody));
-    return { ok: false as const, status: 500, error: errorMsg || "Failed to publish post", detail: result };
+    console.error("API error:", JSON.stringify(result), "sent:", JSON.stringify(requestBody));
+    return { ok: false as const, status: attempt.status || 500, error: errorMsg || "Failed to publish post", detail: result };
   }
 
   try {
@@ -366,6 +506,6 @@ export async function publishSocialPost({
     status: 200,
     result,
     postId: result._id || result.id || result.post?._id || null,
-    profileKey,
+    profileKey: attempt.profileKey || profileKey,
   };
 }
