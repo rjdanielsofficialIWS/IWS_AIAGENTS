@@ -2855,6 +2855,22 @@ function InlinePostComposer({
     setEditingIdx(null);
   };
 
+  // Reset the entire composer to a clean slate after a successful submit so the
+  // next post starts completely fresh. Critically this also clears submitError —
+  // a leftover validation warning ("Select at least one channel", "require a
+  // video", etc.) made users think their post hadn't gone through.
+  const resetComposer = () => {
+    setSubmitError(null);
+    setContent('');
+    setVideoFile(null); setVideoObjectUrl(null); setVideoUpload({ status: 'idle' });
+    setImageFiles([]); setImageUploads([]);
+    setGeneratedCaptions(null); setManualCaptions({}); setCaptionType('manual');
+    setSelectedIntegrations([]); setSelectedTextAccounts([]);
+    setPostFormat('standard'); setThreadTweets(['', '']); setCarouselCount(3); setThreadTopic('');
+    setYouTubeTitle('');
+    setXText(''); setLinkedinText(''); setAiEditText(''); setEditingIdx(null);
+  };
+
   const handleMediaSubmit = () => {
     if (submittingMedia) return; // guard against double-submission
     if (!userId)                      { setSubmitError('Sign in to post.'); return; }
@@ -2922,10 +2938,7 @@ function InlinePostComposer({
     });
     setTimeout(() => {
       setSubmitOk(false);
-      setContent(''); setVideoFile(null); setVideoObjectUrl(null);
-      setVideoUpload({ status: 'idle' }); setImageFiles([]); setImageUploads([]);
-      setGeneratedCaptions(null); setManualCaptions({}); setSelectedIntegrations([]);
-      setPostFormat('standard'); setThreadTweets(['', '']); setCarouselCount(3); setThreadTopic('');
+      resetComposer();
       onSuccess?.();
     }, 2000);
 
@@ -3145,9 +3158,7 @@ function InlinePostComposer({
         });
       }
       setSubmitOk(true);
-      setXText(''); setLinkedinText('');
-      setAiEditText(''); setEditingIdx(null);
-      setPostFormat('standard'); setThreadTweets(['', '']);
+      resetComposer();
       setTimeout(() => setSubmitOk(false), 3000);
     } catch (e: any) {
       setSubmitError(e.message === 'SESSION_EXPIRED' ? 'Your session has expired. Please log out and log back in.' : (e.message || 'Post failed'));
