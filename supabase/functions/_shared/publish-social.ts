@@ -118,7 +118,7 @@ export async function publishSocialPost({
   userId,
   payload,
 }: {
-  supabase: ReturnType<typeof createClient>;
+  supabase: any;
   userId: string;
   payload: PublishPayload;
 }) {
