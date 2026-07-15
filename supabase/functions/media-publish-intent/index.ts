@@ -6,7 +6,7 @@ const CORS_ORIGINS = [
   "https://www.infinitewealthsolutionsai.com",
 ];
 
-async function dispatchPendingJobsForUid(supabase: ReturnType<typeof createClient>, cfUid: string) {
+async function dispatchPendingJobsForUid(supabase: any, cfUid: string) {
   const { data: jobs, error } = await supabase
     .from("media_publish_jobs")
     .select("*")
@@ -17,7 +17,7 @@ async function dispatchPendingJobsForUid(supabase: ReturnType<typeof createClien
   if (error || !jobs || jobs.length === 0) return { dispatched: 0 };
 
   let dispatched = 0;
-  for (const job of jobs) {
+  for (const job of jobs as any[]) {
     await supabase
       .from("media_publish_jobs")
       .update({ status: "processing", attempts: (job.attempts ?? 0) + 1 })
@@ -29,8 +29,8 @@ async function dispatchPendingJobsForUid(supabase: ReturnType<typeof createClien
     const mediaUrls = Array.isArray((payload as any).mediaUrls)
       ? (payload as any).mediaUrls.filter((u: unknown): u is string => typeof u === "string" && u.length > 0)
       : [];
-    const nextMediaUrls = mediaUrls.some((url) => url.includes("videodelivery.net/"))
-      ? mediaUrls.map((url) => url.includes("videodelivery.net/") ? job.stream_url : url)
+    const nextMediaUrls = mediaUrls.some((url: string) => url.includes("videodelivery.net/"))
+      ? mediaUrls.map((url: string) => url.includes("videodelivery.net/") ? job.stream_url : url)
       : [...mediaUrls, job.stream_url];
 
     const result = await publishSocialPost({
@@ -57,6 +57,29 @@ async function dispatchPendingJobsForUid(supabase: ReturnType<typeof createClien
   return { dispatched };
 }
 
+async function isCloudflareDownloadReady(cfUid: string) {
+  const accountId = Deno.env.get("CF_ACCOUNT_ID") ?? "";
+  const token = Deno.env.get("CF_STREAM_TOKEN") ?? "";
+  if (!cfUid || !accountId || !token) return false;
+
+  const apiBase = `https://api.cloudflare.com/client/v4/accounts/${accountId}/stream/${cfUid}`;
+  const streamRes = await fetch(apiBase, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+  if (!streamRes?.ok) return false;
+  const streamData = await streamRes.json().catch(() => ({}));
+  if (!streamData?.result?.readyToStream) return false;
+
+  await fetch(`${apiBase}/downloads`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: "{}",
+  }).catch(() => {});
+
+  const downloadRes = await fetch(`${apiBase}/downloads`, { headers: { Authorization: `Bearer ${token}` } }).catch(() => null);
+  if (!downloadRes?.ok) return false;
+  const downloadData = await downloadRes.json().catch(() => ({}));
+  return downloadData?.result?.default?.status === "ready" && typeof downloadData?.result?.default?.url === "string";
+}
+
 Deno.serve(async (req) => {
   const origin = req.headers.get("Origin") ?? "";
   const cors = {
@@ -80,10 +103,21 @@ Deno.serve(async (req) => {
     if (!jobId) return respond(400, { error: "jobId required" });
     const { data: job, error: jobErr } = await supabase
       .from("media_publish_jobs")
-      .select("status, error")
+      .select("id, cf_uid, status, error")
       .eq("id", jobId)
       .maybeSingle();
     if (jobErr || !job) return respond(404, { error: "Job not found" });
+
+    if (job.status === "pending_media" && await isCloudflareDownloadReady(job.cf_uid)) {
+      await dispatchPendingJobsForUid(supabase, job.cf_uid);
+      const { data: refreshed } = await supabase
+        .from("media_publish_jobs")
+        .select("status, error")
+        .eq("id", jobId)
+        .maybeSingle();
+      return respond(200, { status: refreshed?.status ?? job.status, error: refreshed?.error ?? null });
+    }
+
     return respond(200, { status: job.status, error: job.error ?? null });
   }
 

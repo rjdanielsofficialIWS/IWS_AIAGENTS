@@ -38,6 +38,22 @@ Deno.serve(async (req) => {
   const { data: posts, error: dbError } = await query;
   if (dbError) return respond(500, { error: "DB error" });
 
+  let jobQuery = supabase
+    .from("media_publish_jobs")
+    .select("id, post_payload, scheduled_at, status, error, stream_url, post_group_id, created_at, updated_at")
+    .eq("supabase_user_id", userId)
+    .in("status", ["pending_media", "processing", "error"])
+    .gte("created_at", start)
+    .lte("created_at", end)
+    .order("created_at", { ascending: false })
+    .limit(100);
+
+  if (workspaceId) jobQuery = (jobQuery as any).eq("workspace_id", workspaceId);
+  else jobQuery = (jobQuery as any).is("workspace_id", null);
+
+  const { data: mediaJobs, error: jobError } = await jobQuery;
+  if (jobError) return respond(500, { error: "Job DB error" });
+
   const now = new Date();
 
   // Lazy reconciliation: for past-due posts that have a GetLate ID, fetch real status
@@ -87,5 +103,23 @@ Deno.serve(async (req) => {
       mediaUrls:   Array.isArray(p.media_urls) ? p.media_urls : [],
       postGroupId: p.post_group_id ?? null,
     })),
+    queue: (mediaJobs ?? []).map((job: any) => {
+      const payload = typeof job.post_payload === "object" && job.post_payload ? job.post_payload : {};
+      const mediaUrls = Array.isArray(payload.mediaUrls) ? payload.mediaUrls : [];
+      return {
+        id:          job.id,
+        content:     typeof payload.post === "string" ? payload.post : "",
+        platforms:   Array.isArray(payload.platforms) ? payload.platforms : [],
+        scheduledAt: job.scheduled_at ?? job.created_at,
+        status:      job.status,
+        error:       job.error ?? null,
+        mediaUrls:   mediaUrls.some((u: unknown) => typeof u === "string" && u.length > 0)
+          ? mediaUrls
+          : (job.stream_url ? [job.stream_url] : []),
+        postGroupId: job.post_group_id ?? null,
+        createdAt:   job.created_at,
+        updatedAt:   job.updated_at,
+      };
+    }),
   });
 });

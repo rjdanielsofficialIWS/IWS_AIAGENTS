@@ -172,11 +172,13 @@ type Workspace = { id: string; name: string; color: string; assignedChannelIds: 
 type ScheduledPost = {
   id: string; content: string; platforms: string[];
   scheduledAt: Date;
-  status: 'scheduled' | 'published' | 'failed' | 'error';
+  status: 'scheduled' | 'published' | 'failed' | 'error' | 'pending_media' | 'processing';
   error?: string | null; mediaUrls?: string[];
   postGroupId?: string | null;
   perPlatformContent?: Record<string, string> | null;
   platformCount?: number | null; platformCountLabel?: string | null;
+  source?: 'scheduled_posts' | 'media_publish_jobs';
+  updatedAt?: Date | null;
 };
 
 type QueueItem = {
@@ -189,6 +191,8 @@ type QueueItem = {
   error?: string;
   addedAt: Date;
   isVideoUpload?: boolean;
+  source?: 'local' | 'media_publish_jobs';
+  updatedAt?: Date | null;
 };
 
 type PlannerItem = {
@@ -1499,6 +1503,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
   const [retried, setRetried]       = useState<Record<string, 'ok' | 'err'>>({});
   const [deleting, setDeleting]     = useState<Record<string, boolean>>({});
   const [editingPost, setEditingPost] = useState<(ScheduledPost & { postGroupId?: string | null }) | null>(null);
+  const [backendQueueItems, setBackendQueueItems] = useState<QueueItem[]>([]);
 
   useEffect(() => { if (open) setFilter(initialFilter as any); }, [open, initialFilter]);
 
@@ -1527,6 +1532,46 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       else query = (query as any).is('workspace_id', null);
       const { data: rows, error: dbErr } = await query;
       if (dbErr) throw dbErr;
+
+      const start = new Date(); start.setMonth(start.getMonth() - 1);
+      const end = new Date(); end.setMonth(end.getMonth() + 3);
+      const wsParam = workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : '';
+      const queueRes = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${wsParam}`, {
+        headers: { 'Authorization': `Bearer ${session?.access_token || await getToken() || SUPABASE_ANON_KEY}` },
+      }).catch(() => null);
+      const queuePayload = queueRes?.ok ? await queueRes.json().catch(() => ({})) : {};
+      const durableJobs = Array.isArray(queuePayload?.queue) ? queuePayload.queue : [];
+      const durableQueue = durableJobs
+        .filter((job: any) => job.status === 'pending_media' || job.status === 'processing')
+        .map((job: any): QueueItem => ({
+          id: `job:${job.id}`,
+          content: job.content || '',
+          platforms: Array.isArray(job.platforms) ? job.platforms : [],
+          scheduleDate: job.scheduledAt || undefined,
+          status: job.status === 'processing' ? 'processing' : 'queuing',
+          error: job.error ?? undefined,
+          addedAt: job.createdAt ? new Date(job.createdAt) : new Date(job.scheduledAt || Date.now()),
+          updatedAt: job.updatedAt ? new Date(job.updatedAt) : null,
+          isVideoUpload: true,
+          source: 'media_publish_jobs',
+        }));
+      setBackendQueueItems(durableQueue);
+      const failedJobs = durableJobs
+        .filter((job: any) => job.status === 'error')
+        .map((job: any): ScheduledPost => ({
+          id: `job:${job.id}`,
+          content: job.content || '',
+          platforms: Array.isArray(job.platforms) ? job.platforms : [],
+          scheduledAt: new Date(job.scheduledAt || job.createdAt || Date.now()),
+          status: 'error',
+          error: job.error ?? 'Media publish job failed before it reached the scheduler.',
+          mediaUrls: Array.isArray(job.mediaUrls) ? job.mediaUrls : [],
+          postGroupId: job.postGroupId ?? null,
+          platformCount: Array.isArray(job.platforms) ? job.platforms.length : 0,
+          platformCountLabel: Array.isArray(job.platforms) ? `${job.platforms.length} platform${job.platforms.length === 1 ? '' : 's'}` : null,
+          source: 'media_publish_jobs',
+          updatedAt: job.updatedAt ? new Date(job.updatedAt) : null,
+        }));
 
       // Group rows into one card per post_group_id (or per content+time for legacy null rows).
       // Each card carries perPlatformContent so the edit modal never needs a separate DB fetch.
@@ -1585,14 +1630,14 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           existing.platformCountLabel = `${n} platform${n === 1 ? '' : 's'}`;
         }
       }
-      const list = Array.from(groupMap.values());
+      const list = [...Array.from(groupMap.values()), ...failedJobs];
       setPosts(list);
       // Counts reflect individual platform rows (not grouped), so count raw rows
       const rawRows = rows ?? [];
       setServerCounts({
         scheduled: rawRows.filter((p: any) => p.status === 'scheduled').length,
         published: rawRows.filter((p: any) => p.status === 'published').length,
-        failed:    rawRows.filter((p: any) => p.status === 'error' || p.status === 'failed').length,
+        failed:    rawRows.filter((p: any) => p.status === 'error' || p.status === 'failed').length + failedJobs.length,
       });
     } catch (e) { console.error('[PostLogModal] loadPosts error:', e); }
     finally { setLoading(false); }
@@ -1661,6 +1706,10 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     : posts;
   const counts = { all: posts.length, scheduled: serverCounts?.scheduled ?? posts.filter(p => p.status === 'scheduled').length, published: serverCounts?.published ?? posts.filter(p => p.status === 'published').length, failed: serverCounts?.failed ?? posts.filter(p => p.status === 'failed').length, error: serverCounts?.failed ?? posts.filter(p => p.status === 'error').length };
   const dedupedFiltered = filtered;
+  const combinedQueueItems = [
+    ...queueItems,
+    ...backendQueueItems.filter(job => !queueItems.some(item => item.id === job.id || (item.source !== 'media_publish_jobs' && item.content === job.content && item.scheduleDate === job.scheduleDate))),
+  ];
 
   return (
     <>
@@ -1680,8 +1729,8 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           <button onClick={() => handleTabClick('queue')} className="relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0"
             style={{ background: filter === 'queue' ? 'rgba(56,189,248,0.12)' : 'transparent', color: filter === 'queue' ? '#7dd3fc' : 'rgba(255,255,255,0.35)' }}>
             Queue
-            {queueItems.filter(q => q.status === 'queuing' || q.status === 'processing').length > 0 && (
-              <span className="flex items-center gap-0.5"><Loader className="w-3 h-3 animate-spin opacity-70" />{queueItems.filter(q => q.status === 'queuing' || q.status === 'processing').length}</span>
+            {combinedQueueItems.filter(q => q.status === 'queuing' || q.status === 'processing').length > 0 && (
+              <span className="flex items-center gap-0.5"><Loader className="w-3 h-3 animate-spin opacity-70" />{combinedQueueItems.filter(q => q.status === 'queuing' || q.status === 'processing').length}</span>
             )}
             {(unseenCounts?.queue ?? 0) > 0 && filter !== 'queue' && (
               <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-black flex items-center justify-center" style={{ background: '#38bdf8', color: '#000' }}>{unseenCounts!.queue}</span>
@@ -1704,17 +1753,19 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
         </div>
         <div className="mm-scroll flex-1 overflow-y-auto px-3 md:px-5 py-3 md:py-4 space-y-2.5">
           {filter === 'queue' ? (
-            queueItems.length === 0 ? (
+            combinedQueueItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-40 text-center gap-2">
                 <div className="text-2xl opacity-30">↑</div>
                 <div className="text-sm font-bold text-white/25">No posts in queue</div>
                 <div className="text-xs text-white/20">Posts appear here while being processed</div>
               </div>
             ) : (
-              [...queueItems].reverse().map(item => {
+              [...combinedQueueItems].reverse().map(item => {
                 const isActive = item.status === 'queuing' || item.status === 'processing';
                 const isDone = item.status === 'done';
                 const isError = item.status === 'error';
+                const stuckMinutes = isActive ? Math.floor((Date.now() - item.addedAt.getTime()) / 60000) : 0;
+                const isStuck = stuckMinutes >= 10;
                 return (
                   <div key={item.id} className="flex flex-col sm:flex-row sm:items-start gap-3 p-3 rounded-xl border"
                     style={{ borderColor: isError ? 'rgba(239,68,68,0.25)' : isDone ? 'rgba(34,197,94,0.2)' : 'rgba(56,189,248,0.2)', background: isError ? 'rgba(239,68,68,0.04)' : isDone ? 'rgba(34,197,94,0.04)' : 'rgba(56,189,248,0.04)' }}>
@@ -1728,6 +1779,11 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
                       <div className="flex-1 min-w-0">
                         <p className="text-sm text-white/70 line-clamp-3 sm:line-clamp-2">{item.content || '(No caption)'}</p>
                         {isError && item.error && <p className="text-xs mt-1" style={{ color: '#fca5a5' }}>{item.error}</p>}
+                        {isStuck && (
+                          <p className="text-xs mt-1" style={{ color: '#fbbf24' }}>
+                            This has been queued for {stuckMinutes} minutes. The backend is still holding the job; it has not been lost.
+                          </p>
+                        )}
                         <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                           <span className="text-xs text-white/25 flex items-center gap-1">
                             <Clock className="w-3 h-3" />
@@ -1737,6 +1793,9 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
                             <span className="text-xs text-white/25 flex items-center gap-1">
                               Scheduled for {new Date(item.scheduleDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                             </span>
+                          )}
+                          {item.source === 'media_publish_jobs' && (
+                            <span className="text-xs text-white/25">Backend queue</span>
                           )}
                         </div>
                       </div>
@@ -5815,7 +5874,8 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const { data: { session } } = await supabase.auth.getSession();
       const end   = new Date(); end.setMonth(end.getMonth() + 3);
       const start = new Date(); start.setMonth(start.getMonth() - 1);
-      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}`, {
+      const wsParam = workspaceId ? `&workspaceId=${encodeURIComponent(workspaceId)}` : '';
+      const res  = await fetch(`${SUPABASE_URL}/functions/v1/ayrshare-scheduled?userId=${encodeURIComponent(userId)}&start=${encodeURIComponent(start.toISOString())}&end=${encodeURIComponent(end.toISOString())}${wsParam}`, {
         headers: { 'Authorization': `Bearer ${session?.access_token || await getToken() || SUPABASE_ANON_KEY}` },
       });
       const data = res.ok ? await res.json() : { posts: [] };
@@ -5838,7 +5898,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   };
 
   const handleQueueAdd = React.useCallback((item: QueueItem) => {
-    setQueueItems(prev => [...prev, item]);
+    setQueueItems(prev => [...prev, { ...item, source: item.source ?? 'local' }]);
   }, []);
 
   const handleQueueUpdate = React.useCallback((id: string, update: Partial<QueueItem>) => {
@@ -5846,12 +5906,12 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     if (update.status === 'done' && update.resolvedStatus) {
       if (update.resolvedStatus === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: prev.scheduled + 1 }));
       else if (update.resolvedStatus === 'published') setUnseenCounts(prev => ({ ...prev, published: prev.published + 1 }));
-      // Remove from queue after a short delay so user sees the success state
-      setTimeout(() => setQueueItems(prev => prev.filter(q => q.id !== id)), 2500);
+      loadPosts();
     } else if (update.status === 'error') {
       setUnseenCounts(prev => ({ ...prev, failed: prev.failed + 1 }));
+      loadPosts();
     }
-  }, []);
+  }, [loadPosts]);
 
   const handleTabSeen = React.useCallback((tab: string) => {
     if (tab === 'scheduled') setUnseenCounts(prev => ({ ...prev, scheduled: 0 }));
