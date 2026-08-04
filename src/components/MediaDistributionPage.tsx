@@ -70,12 +70,118 @@ function generateUUID(): string {
     (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16));
 }
 
+// ─── Post status ─────────────────────────────────────────────────────────────
+// scheduled_posts.status only ever holds 'scheduled' | 'published' | 'error'.
+// Upstream (GetLate) calls a delivery failure "failed"; ayrshare-scheduled maps that
+// to 'error' before it is written. Every raw status entering the UI goes through
+// canonicalStatus so a provider-side spelling can never produce a value the status
+// filters don't match — that mismatch is what made failed posts render as an empty list.
+type PostStatus = 'scheduled' | 'published' | 'error';
+
+const canonicalStatus = (raw: string | null | undefined): PostStatus =>
+  raw === 'published' ? 'published'
+    : (raw === 'error' || raw === 'failed') ? 'error'
+    : 'scheduled';
+
 // Resolve a raw API status against current time — if scheduled but past-due, treat as published
-const resolveStatus = (raw: string, scheduledAt: Date): 'scheduled' | 'published' | 'failed' | 'error' => {
-  if (raw === 'error') return 'error';
-  if (raw === 'scheduled' && scheduledAt < new Date()) return 'published';
-  return (raw as any) || 'scheduled';
+const resolveStatus = (raw: string, scheduledAt: Date): PostStatus => {
+  const status = canonicalStatus(raw);
+  if (status === 'scheduled' && scheduledAt < new Date()) return 'published';
+  return status;
 };
+
+type GroupedPostRow = {
+  id: string;
+  allIds: string[];
+  content: string;
+  platforms: string[];
+  scheduledAt: Date;
+  status: PostStatus;
+  error: string | null;
+  mediaUrls: string[];
+  postGroupId: string;
+  perPlatformContent: Record<string, string>;
+  platformCount: number;
+  platformCountLabel: string;
+};
+
+// Collapse raw scheduled_posts rows into one card per post_group_id (or per
+// workspace+minute for legacy rows that predate group ids). Failed rows split into
+// their own card so only the failing platform(s) turn red, not the whole group.
+// Shared by the Post Log and the dashboard counters so a tab count and the rows it
+// opens are always produced by the same pass over the same data.
+function groupPostRows(rows: any[] | null | undefined): GroupedPostRow[] {
+  const groupMap = new Map<string, GroupedPostRow>();
+  for (const p of rows ?? []) {
+    const status = canonicalStatus(p.status);
+    const isFailed = status === 'error';
+
+    const baseKey: string = p.post_group_id
+      ? p.post_group_id
+      : `legacy::${p.workspace_id ?? 'null'}::${p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime'}`;
+    const groupKey = isFailed ? `${baseKey}::failed` : baseKey;
+
+    const platformsForRow: string[] = Array.isArray(p.platforms) ? p.platforms : [];
+    const existing = groupMap.get(groupKey);
+
+    if (!existing) {
+      const perPlatformContent: Record<string, string> = {};
+      for (const pl of platformsForRow) perPlatformContent[pl] = p.content || '';
+      // Failed cards get a legacy-prefixed postGroupId so delete uses the allIds path
+      // (deletes only the failed rows, not the whole group)
+      const cardPostGroupId = isFailed ? `legacy::${baseKey}::failed` : (p.post_group_id || baseKey);
+      groupMap.set(groupKey, {
+        id: p.id,
+        allIds: [p.id],
+        content: p.content || '',
+        platforms: [...platformsForRow],
+        scheduledAt: new Date(p.scheduled_at),
+        status,
+        error: p.error ?? null,
+        mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
+        postGroupId: cardPostGroupId,
+        perPlatformContent,
+        platformCount: platformsForRow.length,
+        platformCountLabel: `${platformsForRow.length} platform${platformsForRow.length === 1 ? '' : 's'}`,
+      });
+    } else {
+      existing.allIds.push(p.id);
+      for (const pl of platformsForRow) {
+        if (!existing.platforms.includes(pl)) existing.platforms.push(pl);
+        if (!existing.perPlatformContent[pl]) existing.perPlatformContent[pl] = p.content || '';
+      }
+      // Keep the first non-empty reason so a failed card always explains itself, even
+      // when the row that opened the group happened to carry a null error.
+      if (!existing.error && p.error) existing.error = p.error;
+      const n = existing.platforms.length;
+      existing.platformCount = n;
+      existing.platformCountLabel = `${n} platform${n === 1 ? '' : 's'}`;
+    }
+  }
+  return Array.from(groupMap.values());
+}
+
+// Counts are always derived from the rendered cards, never from a parallel query.
+// This is what guarantees a tab can't advertise "Failed (359)" and then show nothing.
+const countPostsByStatus = (cards: { status: PostStatus }[]) => ({
+  all:       cards.length,
+  scheduled: cards.filter(c => c.status === 'scheduled').length,
+  published: cards.filter(c => c.status === 'published').length,
+  error:     cards.filter(c => c.status === 'error').length,
+});
+
+// Post Log tabs. There is exactly one failure tab ('error', shown as "Failed").
+// 'failed' is still accepted from older callers and deep links and folds into it.
+// LogStatusFilter is exactly the key set countPostsByStatus returns, so every tab
+// rendered from LOG_FILTERS is guaranteed to have a count backing it.
+type LogStatusFilter = keyof ReturnType<typeof countPostsByStatus>;
+type LogFilter = 'queue' | LogStatusFilter;
+const LOG_FILTERS: readonly LogStatusFilter[] = ['all', 'scheduled', 'published', 'error'] as const;
+
+const normalizeLogFilter = (raw: string | null | undefined): LogFilter =>
+  raw === 'queue' || raw === 'scheduled' || raw === 'published' ? raw
+    : (raw === 'error' || raw === 'failed') ? 'error'
+    : 'all';
 
 // Viral content angles injected into every AI generation call
 const VIRAL_ANGLES = [
@@ -1496,16 +1602,15 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
   postsScheduled?: number;
 }) {
   const [posts, setPosts]           = useState<ScheduledPost[]>([]);
-  const [serverCounts, setServerCounts] = useState<{ scheduled: number; published: number; failed: number } | null>(null);
   const [loading, setLoading]       = useState(false);
-  const [filter, setFilter]         = useState<'queue' | 'all' | 'scheduled' | 'published' | 'failed' | 'error'>(initialFilter as any);
+  const [filter, setFilter]         = useState<LogFilter>(() => normalizeLogFilter(initialFilter));
   const [retrying, setRetrying]     = useState<Record<string, boolean>>({});
   const [retried, setRetried]       = useState<Record<string, 'ok' | 'err'>>({});
   const [deleting, setDeleting]     = useState<Record<string, boolean>>({});
   const [editingPost, setEditingPost] = useState<(ScheduledPost & { postGroupId?: string | null }) | null>(null);
   const [backendQueueItems, setBackendQueueItems] = useState<QueueItem[]>([]);
 
-  useEffect(() => { if (open) setFilter(initialFilter as any); }, [open, initialFilter]);
+  useEffect(() => { if (open) setFilter(normalizeLogFilter(initialFilter)); }, [open, initialFilter]);
 
   // Notify parent when a tab is viewed so it can clear the badge
   const handleTabClick = (tab: typeof filter) => {
@@ -1525,7 +1630,7 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
       // Fetch posts directly from DB — bypasses unreliable edge function auth
       let query = supabase
         .from('scheduled_posts')
-        .select('id, content, platforms, scheduled_at, status, error, media_urls, post_group_id')
+        .select('id, content, platforms, scheduled_at, status, error, media_urls, post_group_id, workspace_id')
         .eq('supabase_user_id', userId)
         .order('scheduled_at', { ascending: false });
       if (workspaceId) query = query.eq('workspace_id', workspaceId);
@@ -1557,13 +1662,13 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
         }));
       setBackendQueueItems(durableQueue);
       const failedJobs = durableJobs
-        .filter((job: any) => job.status === 'error')
+        .filter((job: any) => canonicalStatus(job.status) === 'error')
         .map((job: any): ScheduledPost => ({
           id: `job:${job.id}`,
           content: job.content || '',
           platforms: Array.isArray(job.platforms) ? job.platforms : [],
           scheduledAt: new Date(job.scheduledAt || job.createdAt || Date.now()),
-          status: 'error',
+          status: canonicalStatus(job.status),
           error: job.error ?? 'Media publish job failed before it reached the scheduler.',
           mediaUrls: Array.isArray(job.mediaUrls) ? job.mediaUrls : [],
           postGroupId: job.postGroupId ?? null,
@@ -1573,72 +1678,10 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
           updatedAt: job.updatedAt ? new Date(job.updatedAt) : null,
         }));
 
-      // Group rows into one card per post_group_id (or per content+time for legacy null rows).
-      // Each card carries perPlatformContent so the edit modal never needs a separate DB fetch.
-      const groupMap = new Map<string, any>();
-      for (const p of (rows ?? [])) {
-        // Compute base group key
-        let baseKey: string;
-        if (p.post_group_id) {
-          baseKey = p.post_group_id;
-        } else {
-          const timeKey = p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime';
-          const wsKey = p.workspace_id ?? 'null';
-          baseKey = `legacy::${wsKey}::${timeKey}`;
-        }
-
-        // Failed rows split into their own card so only the failing platform(s) turn red
-        const isFailed = p.status === 'error' || p.status === 'failed';
-        const groupKey = isFailed ? `${baseKey}::failed` : baseKey;
-
-        const platformsForRow: string[] = Array.isArray(p.platforms) ? p.platforms : [];
-
-        if (!groupMap.has(groupKey)) {
-          const perPlatformContent: Record<string, string> = {};
-          for (const pl of platformsForRow) {
-            perPlatformContent[pl] = p.content || '';
-          }
-          const initCount = platformsForRow.length;
-          // Failed cards get a legacy-prefixed postGroupId so delete uses the allIds path
-          // (deletes only the failed rows, not the whole group)
-          const cardPostGroupId = isFailed ? `legacy::${baseKey}::failed` : (p.post_group_id || baseKey);
-          groupMap.set(groupKey, {
-            id: p.id,
-            allIds: [p.id],
-            content: p.content || '',
-            platforms: [...platformsForRow],
-            scheduledAt: new Date(p.scheduled_at),
-            status: (p.status || 'scheduled') as any,
-            error: p.error ?? null,
-            mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [],
-            postGroupId: cardPostGroupId,
-            perPlatformContent,
-            platformCount: initCount,
-            platformCountLabel: `${initCount} platform${initCount === 1 ? '' : 's'}`,
-          });
-        } else {
-          const existing = groupMap.get(groupKey);
-          existing.allIds.push(p.id);
-          for (const pl of platformsForRow) {
-            if (!existing.platforms.includes(pl)) existing.platforms.push(pl);
-            if (!existing.perPlatformContent[pl]) {
-              existing.perPlatformContent[pl] = p.content || '';
-            }
-          }
-          const n = existing.platforms.length;
-          existing.platformCount = n;
-          existing.platformCountLabel = `${n} platform${n === 1 ? '' : 's'}`;
-        }
-      }
-      const list = [...Array.from(groupMap.values()), ...failedJobs];
-      setPosts(list);
-      // Counts reflect individual platform rows (not grouped), so count raw rows
-      const rawRows = rows ?? [];
-      setServerCounts({
-        scheduled: rawRows.filter((p: any) => p.status === 'scheduled').length,
-        published: rawRows.filter((p: any) => p.status === 'published').length,
-        failed:    rawRows.filter((p: any) => p.status === 'error' || p.status === 'failed').length + failedJobs.length,
-      });
+      // One card per post_group_id. Each card carries perPlatformContent so the edit
+      // modal never needs a separate DB fetch. Tab counts are derived from this same
+      // list below, so every tab number equals the rows it opens.
+      setPosts([...groupPostRows(rows), ...failedJobs] as ScheduledPost[]);
     } catch (e) { console.error('[PostLogModal] loadPosts error:', e); }
     finally { setLoading(false); }
   }, [userId, open, workspaceId]);
@@ -1699,13 +1742,10 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
     finally { setDeleting(d => ({ ...d, [post.id]: false })); }
   };
 
-  const filtered = filter === 'scheduled' ? posts.filter(p => p.status === 'scheduled')
-    : filter === 'published' ? posts.filter(p => p.status === 'published')
-    : filter === 'error' ? posts.filter(p => p.status === 'error')
-    : filter === 'failed' ? posts.filter(p => p.status === 'failed')
-    : posts;
-  const counts = { all: posts.length, scheduled: serverCounts?.scheduled ?? posts.filter(p => p.status === 'scheduled').length, published: serverCounts?.published ?? posts.filter(p => p.status === 'published').length, failed: serverCounts?.failed ?? posts.filter(p => p.status === 'failed').length, error: serverCounts?.failed ?? posts.filter(p => p.status === 'error').length };
-  const dedupedFiltered = filtered;
+  const counts = countPostsByStatus(posts as { status: PostStatus }[]);
+  const dedupedFiltered = filter === 'all' || filter === 'queue'
+    ? posts
+    : posts.filter(p => p.status === filter);
   const combinedQueueItems = [
     ...queueItems,
     ...backendQueueItems.filter(job => !queueItems.some(item => item.id === job.id || (item.source !== 'media_publish_jobs' && item.content === job.content && item.scheduleDate === job.scheduleDate))),
@@ -1737,12 +1777,12 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
             )}
           </button>
           {/* Existing status tabs */}
-          {(['all', 'scheduled', 'published', 'error', 'failed'] as const).map(f => {
-            const unseen = f === 'scheduled' ? (unseenCounts?.scheduled ?? 0) : f === 'published' ? (unseenCounts?.published ?? 0) : (f === 'failed' || f === 'error') ? (unseenCounts?.failed ?? 0) : 0;
-            return (counts[f as keyof typeof counts] > 0 || f === 'all' || f === 'scheduled' || f === 'published') ? (
+          {LOG_FILTERS.map(f => {
+            const unseen = f === 'scheduled' ? (unseenCounts?.scheduled ?? 0) : f === 'published' ? (unseenCounts?.published ?? 0) : f === 'error' ? (unseenCounts?.failed ?? 0) : 0;
+            return (counts[f] > 0 || f === 'all' || f === 'scheduled' || f === 'published') ? (
               <button key={f} onClick={() => handleTabClick(f)} className="relative px-3 py-1.5 rounded-lg text-xs font-bold transition capitalize whitespace-nowrap shrink-0"
                 style={{ background: filter === f ? `${GOLD}18` : 'transparent', color: filter === f ? GOLD_L : 'rgba(255,255,255,0.35)' }}>
-                {f === 'error' ? 'Failed' : f} {f !== 'all' && <span className="opacity-60">({counts[f as keyof typeof counts]})</span>}
+                {f === 'error' ? 'Failed' : f} {f !== 'all' && <span className="opacity-60">({counts[f]})</span>}
                 {unseen > 0 && filter !== f && (
                   <span className="absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full text-[9px] font-black flex items-center justify-center" style={{ background: GOLD, color: '#000' }}>{unseen}</span>
                 )}
@@ -1813,11 +1853,11 @@ function PostLogModal({ open, onClose, userId, initialFilter = 'all', workspaceI
             <div className="flex items-center justify-center h-40 gap-3 text-white/25"><Loader className="w-5 h-5 animate-spin" /> Loading…</div>
           ) : dedupedFiltered.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-center">
-              <div className="text-sm font-bold text-white/25">No {filter === 'all' ? '' : filter} posts found</div>
+              <div className="text-sm font-bold text-white/25">No {filter === 'all' ? '' : filter === 'error' ? 'failed' : filter} posts found</div>
             </div>
           ) : (
             dedupedFiltered.map(post => {
-              const isFailed = post.status === 'error' || post.status === 'failed';
+              const isFailed = post.status === 'error';
               const isScheduled = post.status === 'scheduled';
               const isRetrying = retrying[post.id];
               const isDeleting = deleting[post.id];
@@ -5844,12 +5884,12 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
   postsScheduled?: number;
 }) {
   const [logOpen, setLogOpen]             = useState(false);
-  const [logFilter, setLogFilter]         = useState<'queue' | 'all' | 'scheduled' | 'published' | 'failed' | 'error'>('all');
+  const [logFilter, setLogFilter]         = useState<LogFilter>('all');
   const [posts, setPosts]                 = useState<ScheduledPost[]>([]);
   const [queueItems, setQueueItems]       = useState<QueueItem[]>([]);
   const [unseenCounts, setUnseenCounts]   = useState({ queue: 0, scheduled: 0, published: 0, failed: 0 });
   const [loading, setLoading]             = useState(false);
-  const [serverCounts, setServerCounts]   = useState<{ scheduled: number; published: number; failed: number } | null>(null);
+  const [serverCounts, setServerCounts]   = useState<ReturnType<typeof countPostsByStatus> | null>(null);
   const [addModalOpen, setAddModalOpen]   = useState(false);
   const [addDate]                         = useState(() => new Date().toISOString().split('T')[0]);
   const [pendingItem, setPendingItem]     = useState<{ title: string; notes?: string; category: string; sourceLabel: string } | null>(null);
@@ -5859,16 +5899,17 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
     setLoading(true);
     // Always fetch counts directly from DB — scoped to workspace (or personal if no workspace)
     try {
-      let countQuery = supabase.from('scheduled_posts').select('status').eq('supabase_user_id', userId);
+      // Group before counting, using the same helper the Post Log renders with, so a
+      // tile ("Failed 87") always matches the tab it opens rather than counting the
+      // per-platform rows behind each card.
+      let countQuery = supabase
+        .from('scheduled_posts')
+        .select('id, status, platforms, scheduled_at, post_group_id, workspace_id')
+        .eq('supabase_user_id', userId);
       if (workspaceId) countQuery = countQuery.eq('workspace_id', workspaceId);
       else countQuery = (countQuery as any).is('workspace_id', null);
       const { data: countData } = await countQuery;
-      if (countData) {
-        const scheduled = countData.filter((p: any) => p.status === 'scheduled').length;
-        const published = countData.filter((p: any) => p.status === 'published').length;
-        const failed    = countData.filter((p: any) => p.status === 'error' || p.status === 'failed').length;
-        setServerCounts({ scheduled, published, failed });
-      }
+      if (countData) setServerCounts(countPostsByStatus(groupPostRows(countData)));
     } catch (_) {}
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -5882,7 +5923,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
       const list = Array.isArray(data?.posts) ? data.posts : [];
       setPosts(list.map((p: any) => {
         const scheduledAt = new Date(p.scheduledAt);
-        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: (p.status || 'scheduled') as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null, platformCount: p.platformCount ?? null, platformCountLabel: p.platformCountLabel ?? null };
+        return { id: p.id, content: p.content || '', platforms: Array.isArray(p.platforms) ? p.platforms : [], scheduledAt, status: canonicalStatus(p.status) as any, error: p.error ?? null, mediaUrls: Array.isArray(p.mediaUrls) ? p.mediaUrls : [], postGroupId: p.postGroupId ?? null, platformCount: p.platformCount ?? null, platformCountLabel: p.platformCountLabel ?? null };
       }));
     } catch (e) {}
     finally { setLoading(false); }
@@ -5890,12 +5931,7 @@ function ComposerPanel({ integrations, userId, initialVideoUrl, initialComposerM
 
   useEffect(() => { loadPosts(); }, [loadPosts]);
 
-  const counts = {
-    scheduled: serverCounts?.scheduled ?? posts.filter(p => p.status === 'scheduled').reduce((sum, p) => sum + p.platforms.length, 0),
-    published: serverCounts?.published ?? posts.filter(p => p.status === 'published').length,
-    failed:    serverCounts?.failed    ?? posts.filter(p => p.status === 'failed' || p.status === 'error').length,
-    error:     serverCounts?.failed    ?? posts.filter(p => p.status === 'failed' || p.status === 'error').length,
-  };
+  const counts = serverCounts ?? countPostsByStatus(posts as { status: PostStatus }[]);
 
   const handleQueueAdd = React.useCallback((item: QueueItem) => {
     setQueueItems(prev => [...prev, { ...item, source: item.source ?? 'local' }]);
@@ -6165,35 +6201,7 @@ function CalendarView({ integrations, userId, workspaceId, onUpgrade }: { integr
       else q = (q as any).is('workspace_id', null);
       const { data, error } = await q;
       if (error || !data) return;
-      // Group by post_group_id (or workspace+minute for legacy rows). Failed rows split into
-      // their own card so only the failing platform(s) turn red, not the whole group.
-      const groupMap = new Map<string, any>();
-      for (const p of data) {
-        let baseKey: string;
-        if (p.post_group_id) {
-          baseKey = p.post_group_id;
-        } else {
-          const timeKey = p.scheduled_at ? new Date(p.scheduled_at).toISOString().slice(0, 16) : 'notime';
-          const wsKey = p.workspace_id ?? 'null';
-          baseKey = `legacy::${wsKey}::${timeKey}`;
-        }
-        const isFailed = p.status === 'error' || p.status === 'failed';
-        const groupKey = isFailed ? `${baseKey}::failed` : baseKey;
-        const plats: string[] = Array.isArray(p.platforms) ? p.platforms : [];
-        if (!groupMap.has(groupKey)) {
-          const n = plats.length;
-          const cardPostGroupId = isFailed ? `legacy::${baseKey}::failed` : (p.post_group_id || baseKey);
-          groupMap.set(groupKey, { id: p.id, content: p.content || '', platforms: [...plats], scheduledAt: new Date(p.scheduled_at), status: p.status || 'scheduled', error: p.error ?? null, mediaUrls: Array.isArray(p.media_urls) ? p.media_urls : [], postGroupId: cardPostGroupId, allIds: [p.id], platformCount: n, platformCountLabel: `${n} platform${n === 1 ? '' : 's'}` });
-        } else {
-          const ex = groupMap.get(groupKey);
-          ex.allIds.push(p.id);
-          for (const pl of plats) { if (!ex.platforms.includes(pl)) ex.platforms.push(pl); }
-          const n = ex.platforms.length;
-          ex.platformCount = n;
-          ex.platformCountLabel = `${n} platform${n === 1 ? '' : 's'}`;
-        }
-      }
-      setPosts(Array.from(groupMap.values()));
+      setPosts(groupPostRows(data) as ScheduledPost[]);
     } catch (e) {}
     finally { setLoading(false); }
   }, [userId, biweekStart.getTime(), workspaceId]);
