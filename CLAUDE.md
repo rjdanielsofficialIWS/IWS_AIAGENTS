@@ -17,6 +17,26 @@ There are no automated tests. Verification is done by running `npm run build` (c
 
 Edge functions live in `supabase/functions/<name>/index.ts` and are Deno-based. Deploy via the Supabase MCP tool (`mcp__claude_ai_Supabase__deploy_edge_function`) with `project_id: wcbkzebgcsfvrugibsjr`. After editing an edge function locally, always redeploy it — the deployed version is what production uses.
 
+**⚠️ This repo is NOT the source of truth for edge functions. Production is.**
+
+Many deployed functions are newer than the copy in `supabase/functions/`, and ~24 deployed functions have no copy in the repo at all (including `media-publish-recovery`, which runs on a per-minute cron, and `publish-social`, `retry-failed-posts`, `network-rank-job`, `ayrshare-connect`, `ayrshare-channels`, `send-email`). Deploying a stale repo copy silently reverts production fixes — this has already caused the same publishing bugs to be "fixed" more than once.
+
+**Before editing or deploying ANY edge function, pull the live version first:**
+
+```
+mcp__claude_ai_Supabase__get_edge_function(project_id: "wcbkzebgcsfvrugibsjr", function_slug: "<name>")
+```
+
+Diff it against the repo copy, port your change onto the *live* source, deploy, then commit the deployed source back so the repo catches up. Never assume the repo copy is current.
+
+Known drift markers to watch for — if you see these in a repo copy, it is stale:
+- `getlate.dev` — retired provider host. Live functions use `https://zernio.com/api/v1`.
+- An inlined `sk_...` API key — live functions read `Deno.env.get("ZERNIO_API_KEY")`.
+
+### Post status vocabulary
+
+`scheduled_posts.status` only ever holds `scheduled` | `published` | `error`. The provider reports a delivery failure as `"failed"`; every write path normalises that to `error` before it is stored. Frontend code must route raw statuses through `canonicalStatus()` in `MediaDistributionPage.tsx` rather than comparing strings directly — a filter matching `'failed'` matches no row and renders an empty list under a non-zero count, which is what made failed posts appear to vanish when opened.
+
 ### Pushing to GitHub
 
 `gh auth setup-git` must be run before `git push` in each new session — the HTTPS credential helper resets between sessions.
